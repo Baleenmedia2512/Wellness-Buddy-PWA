@@ -15,6 +15,7 @@ import MedicalConditionAutocomplete from './MedicalConditionAutocomplete';
 import {
   PORTRAIT_IMAGE_CLASS,
   sanitizeDurationDigits,
+  sanitizeWeightTyping,
 } from '../services/testimonialFormUtils.js';
 
 const PORTRAIT_PLACEHOLDER_CLASS =
@@ -165,9 +166,9 @@ export default function TestimonialForm({
                 Before Weight (kg) <span className="text-red-500">*</span>
               </label>
               <input
-                type="text" inputMode="decimal" pattern="[0-9]*" min="1" max="500" step="0.1" placeholder="e.g. 85.0"
+                type="text" inputMode="decimal" autoComplete="off" min="1" max="500" step="0.1" placeholder="e.g. 85.0"
                 value={form.beforeWeightKg}
-                onChange={(e) => setField('beforeWeightKg', e.target.value)}
+                onChange={(e) => setField('beforeWeightKg', sanitizeWeightTyping(e.target.value))}
                 className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
               />
             </div>
@@ -261,9 +262,9 @@ export default function TestimonialForm({
               After Weight (kg) <span className="text-red-500">*</span>
             </label>
             <input
-              type="text" inputMode="decimal" pattern="[0-9]*" min="1" max="500" step="0.1" placeholder="e.g. 72.5"
+              type="text" inputMode="decimal" autoComplete="off" min="1" max="500" step="0.1" placeholder="e.g. 72.5"
               value={form.afterWeightKg}
-              onChange={(e) => setField('afterWeightKg', e.target.value)}
+              onChange={(e) => setField('afterWeightKg', sanitizeWeightTyping(e.target.value))}
               className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
             />
           </div>

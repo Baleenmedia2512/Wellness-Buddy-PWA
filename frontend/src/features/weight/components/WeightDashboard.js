@@ -6,7 +6,7 @@
  * `WeightSummaryCards` and `WeightChart`, dot navigator, history list and
  * the lazy `WeightCardModal`. Both `hideHeader` branches are preserved.
  */
-import React, { lazy, Suspense, useEffect, useRef } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useWeightDashboard } from '../hooks/useWeightDashboard';
 import { weightEntryFromDiaryRow } from '../services/weightDashboardFormatter';
 import WeightSummaryCards from './WeightSummaryCards';
@@ -141,10 +141,17 @@ const WeightDashboard = ({
   openRef = null,
   // Called after the detail modal is closed so the timeline can refresh.
   onAfterModalClose = null,
+  /** Timeline modal-host: skip history/profile until first open. */
+  deferDataFetch = false,
+  /** Diary owner zone — list and detail must use the same clock. */
+  timezoneIana = null,
 }) => {
+  const [dataFetchEnabled, setDataFetchEnabled] = useState(!deferDataFetch);
   const vm = useWeightDashboard({
     user, apiBaseUrl, initialEntryId, selectedDate, refreshKey,
     onDeleteWithUndo, onDeleteUndoCancel,
+    enabled: dataFetchEnabled,
+    timezoneIana,
   });
   const pendingOpenIdRef = useRef(null);
 
@@ -162,6 +169,9 @@ const WeightDashboard = ({
   // Imperative open handle for the timeline shell (ff.diary-timeline).
   if (openRef) {
     openRef.current = (entryOrId) => {
+      if (deferDataFetch && !dataFetchEnabled) {
+        setDataFetchEnabled(true);
+      }
       if (entryOrId && typeof entryOrId === 'object' && entryOrId.kind === 'weight') {
         const p = entryOrId.payload || {};
         const found = (vm.weightHistory || []).find((e) => String(e.ID) === String(p.id));

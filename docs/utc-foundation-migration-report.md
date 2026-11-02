@@ -19,7 +19,7 @@ Repositories continue to use legacy `getISTTimestamp()` and existing day-bound q
 | File | Purpose |
 |---|---|
 | `backend/shared/lib/datetime/datetime.js` | Core UTC helpers (`nowUtc`, `toUtcRange`, etc.) |
-| `backend/shared/lib/datetime/applyDayFilter.js` | Supabase day-filter helper (not used in repos yet) |
+| `backend/shared/lib/datetime/applyDayFilter.js` | MySQL day-filter helper (not used in repos yet) |
 | `backend/shared/lib/datetime/index.js` | Barrel export |
 | `backend/shared/lib/datetime/__tests__/datetime.test.js` | Unit tests (11 passing) |
 | `docs/utc-foundation-migration-report.md` | This report |
@@ -46,7 +46,7 @@ Import from `backend/shared/lib/datetime/index.js` (or `@shared/lib/datetime` vi
 | `todayInTimezone()` | `(timezoneIana) → string` | Today's `YYYY-MM-DD` in given zone |
 | `formatUtcForDisplay()` | `(utcTimestamp, timezoneIana?, format?) → string` | UTC → local display string |
 | `addUtcDays()` | `(utcIso, days) → string` | Add days to a UTC instant (utility) |
-| `applyDayFilter()` | `(query, column, dateYmd, timezoneIana) → query` | Chains `.gte`/`.lte` on Supabase builder |
+| `applyDayFilter()` | `(query, column, dateYmd, timezoneIana) → query` | Chains `.gte`/`.lte` on MySQL builder |
 
 ### Example Usage (next phase)
 
@@ -58,7 +58,7 @@ const today = todayInTimezone(IANA_IST);
 const { startUtc, endUtc } = toUtcRange('2026-07-21', IANA_IST);
 
 // Repository (future):
-let q = supabase.from('food_nutrition_data_table').select('*').eq('UserID', userId);
+let q = db.from('food_nutrition_data_table').select('*').eq('UserID', userId);
 q = applyDayFilter(q, 'CreatedAt', today, IANA_IST);
 ```
 
@@ -72,8 +72,8 @@ All helpers below are **retained** (not deleted) and marked `@deprecated` with a
 
 | Helper | File | Replacement |
 |---|---|---|
-| `getISTTimestamp()` | `utils/supabaseClient.js` | `nowUtc()` (after column migration to `timestamptz`) |
-| `convertToIST()` | `utils/supabaseClient.js` | `formatUtcForDisplay()` + UTC storage |
+| `getISTTimestamp()` | `utils/mysqlClient.js` | `nowUtc()` (after column migration to `timestamptz`) |
+| `convertToIST()` | `utils/mysqlClient.js` | `formatUtcForDisplay()` + UTC storage |
 | `convertISTToUserLocalTime()` | `utils/timezoneConverter.js` | `formatUtcForDisplay()` with IANA zones |
 | `getTimezoneInfo()` | `utils/timezoneConverter.js` | IANA zones via `assertIanaTimezone()` |
 | `parseDateRange()` | `utils/disciplineHelpers.js` | `toUtcRangeInclusive()` |

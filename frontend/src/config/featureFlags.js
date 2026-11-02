@@ -70,6 +70,15 @@ const REGISTRY = Object.freeze({
     description:    'Contact Picker API shortcut on the phone login field.',
   },
 
+  // Sample Events page and name-only demo registration. Owner: @principal-eng.
+  // Remove by 2027-01-31, or when live event data replaces this demo.
+  'ff.events': {
+    envKey:         'REACT_APP_FF_EVENTS',
+    storageKey:     'ff.events',
+    defaultEnabled: true,
+    description:    'Sample Events page and non-persistent name-only registration demo.',
+  },
+
   // Testimonials — before/after Herbalife transformation photos with
   // coach OTP verification. Members upload; coach verifies via emailed OTP.
   // Default ON. Set REACT_APP_FF_TESTIMONIALS=false or
@@ -81,16 +90,16 @@ const REGISTRY = Object.freeze({
     description:    'Before/after testimonial upload + coach OTP verification flow.',
   },
 
-  // Reports module — coach/upline analytics.
-  // Currently: direct-downline weight status (current vs BMI 19–23 ideal range).
-  // Tab is only shown to coach / upline / admin / developer roles.
+  // Reports module — common analytics (Ideal Weight, Wellness Score, Nutrition, Trend).
+  // Shown to every signed-in user. Leaf members see their own data; coaches
+  // still see downline search / team scopes.
   // Default ON. Set REACT_APP_FF_REPORTS_MODULE=false or
   // localStorage 'ff.reports-module'='false' to disable.
   'ff.reports-module': {
     envKey:         'REACT_APP_FF_REPORTS_MODULE',
     storageKey:     'ff.reports-module',
     defaultEnabled: true,
-    description:    'Reports module with downline weight status report for coaches.',
+    description:    'Reports module: Ideal Weight + Wellness Score + Nutrition + Trend for all users.',
   },
 
   // Wellness Score Sheet — home tile + 34-parameter score view + coach config.
@@ -100,7 +109,7 @@ const REGISTRY = Object.freeze({
     envKey:         'REACT_APP_FF_WELLNESS_SCORE_SHEET',
     storageKey:     'ff.wellness-score-sheet',
     defaultEnabled: true,
-    description:    'Wellness Score home tile, daily score API, and admin Wellness Score Setup configuration.',
+    description:    'Wellness Score home tile, daily score API, admin setup, and Wellness Score Report.',
   },
 
   // AI Credits — Manual Entry AI Mode + Diary Retry AI credit gate.
@@ -112,6 +121,15 @@ const REGISTRY = Object.freeze({
     storageKey:     'ff.ai-credits',
     defaultEnabled: true,
     description:    'AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI).',
+  },
+
+  // DB-driven main-nav page access by role. Matrix edited in Admin Config.
+  // When OFF, all main tabs stay visible (legacy). Kill switch: localStorage or env.
+  'ff.nav-page-access': {
+    envKey:         'REACT_APP_FF_NAV_PAGE_ACCESS',
+    storageKey:     'ff.nav-page-access',
+    defaultEnabled: true,
+    description:    'Role → nav page access from DB (Customer/Sponsor/Admin/Developer).',
   },
 
   // ADR-0005 — master nutrition knowledge base (search/resolve micros).
@@ -132,6 +150,81 @@ const REGISTRY = Object.freeze({
     storageKey:     'ff.consent-gate',
     defaultEnabled: true,
     description:    'Require User Consent Form Agree before OTP/Google and app use (ADR-0006).',
+  },
+
+  // ADR-0008 — Manual Log Good Habit (single photo).
+  // Default ON. Set REACT_APP_FF_GOOD_HABIT=false or
+  // localStorage 'ff.good-habit'='false' to hide the tile.
+  'ff.good-habit': {
+    envKey:         'REACT_APP_FF_GOOD_HABIT',
+    storageKey:     'ff.good-habit',
+    defaultEnabled: true,
+    description:    'Manual Log Good Habit and wellness-score Good Habit Post (ADR-0008).',
+  },
+
+  // Meal Builder — multi-add tray + bottom sheet (replaces cart UX in food search).
+  // Default ON. Set REACT_APP_FF_MEAL_BUILDER=false or
+  // localStorage 'ff.meal-builder'='false' to fall back to the orange cart panel.
+  'ff.meal-builder': {
+    envKey:         'REACT_APP_FF_MEAL_BUILDER',
+    storageKey:     'ff.meal-builder',
+    defaultEnabled: true,
+    description:    'Meal Builder multi-add tray + sheet + voice insert in SmartFoodSearchModal.',
+  },
+
+  // ADR-0013 — Community ID create / co-sponsor via 24h sponsor OTP on Profile.
+  // Default ON. Set REACT_APP_FF_COMMUNITY_ID_OTP=false or
+  // localStorage 'ff.community-id-otp'='false' to restore immediate Save Profile.
+  'ff.community-id-otp': {
+    envKey:         'REACT_APP_FF_COMMUNITY_ID_OTP',
+    storageKey:     'ff.community-id-otp',
+    defaultEnabled: true,
+    description:    'Profile Community ID Create + sponsor OTP (create / co-sponsor).',
+  },
+
+  // Profile height: first Save free; later changes need the coach's email approval.
+  // Default ON. Set REACT_APP_FF_HEIGHT_CHANGE_OTP=false or
+  // localStorage 'ff.height-change-otp'='false' to restore free height edits.
+  'ff.height-change-otp': {
+    envKey:         'REACT_APP_FF_HEIGHT_CHANGE_OTP',
+    storageKey:     'ff.height-change-otp',
+    defaultEnabled: true,
+    description:    'Profile height lock after first save; OTP to change.',
+  },
+
+  // BroadCast — paid how-to + payment entry. Upload and Burst wait on recharge.
+  // Default ON. Set REACT_APP_FF_BROADCAST=false or
+  // localStorage 'ff.broadcast'='false' to hide the tab.
+  'ff.broadcast': {
+    envKey:         'REACT_APP_FF_BROADCAST',
+    storageKey:     'ff.broadcast',
+    defaultEnabled: true,
+    description:    'BroadCast paid screen: how-to video and payment entry.',
+  },
+
+  // Profile Go Premium — opens Cashfree checkout. Kill switch hides the row.
+  'ff.go-premium': {
+    envKey:         'REACT_APP_FF_GO_PREMIUM',
+    storageKey:     'ff.go-premium',
+    defaultEnabled: true,
+    description:    'Profile Go Premium opens Cashfree checkout.',
+  },
+
+  // Create Event — event form plus update, delete, postpone, and cancel.
+  'ff.create-event': {
+    envKey:         'REACT_APP_FF_CREATE_EVENT',
+    storageKey:     'ff.create-event',
+    defaultEnabled: true,
+    description:    'Create Event page in the main navigation.',
+  },
+
+  // Unique per-user wallet. Cash-in after OTP to a selected Wellness Valley person.
+  // Default ON. Set REACT_APP_FF_WALLET=false or localStorage 'ff.wallet'='false' to hide.
+  'ff.wallet': {
+    envKey:         'REACT_APP_FF_WALLET',
+    storageKey:     'ff.wallet',
+    defaultEnabled: true,
+    description:    'Profile Wallet: unique balance and OTP-approved cash-in.',
   },
 });
 

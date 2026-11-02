@@ -23,6 +23,7 @@ import HierarchicalReportLayout, {
 import HierarchicalNode from "../../../shared/components/common/HierarchicalNode";
 import { teamHierarchyService } from "../../../shared/services/teamHierarchyService";
 import TimeWindowSettingsModal from "../../../shared/components/TimeWindowSettingsModal";
+import { isAdminLikeRole } from "../../../shared/constants/roles";
 import { TeamMemberProfileModal } from "../../../shared/components/TeamMemberProfileModal";
 
 // ΓöÇΓöÇΓöÇConstants ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -487,8 +488,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       try {
         // Fetch hierarchy first to determine if this user has team members.
         // If they do, treat them as "coach" for the activity report API so that
-        // all downline member data is returned ΓÇö matching the behaviour of
-        // DisciplineReport and AttendanceReport.
+        // all downline member data is returned.
         const hierarchyRes = await teamHierarchyService
           .getTeamHierarchy(user.id, false)
           .catch(() => null);
@@ -976,6 +976,8 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
     handleCsvDownload();
   };
 
+  const canManageTimeWindows = isAdminLikeRole(userRole);
+
   const handleSettings = () => {
     setShowSettings((prev) => !prev);
   };
@@ -989,7 +991,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       onBack={onBack}
       onRefresh={() => fetchData(true)}
       onDownload={handleDownload}
-      onSettings={handleSettings}
+      onSettings={canManageTimeWindows ? handleSettings : undefined}
       loading={loading}
       refreshing={refreshing}
       error={error}
@@ -1122,12 +1124,15 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       ) : null}
 
       {/* Time Window Settings Modal */}
-      <TimeWindowSettingsModal
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-        onUpdate={() => fetchData(true)}
-        userEmail={user?.email}
-      />
+      {canManageTimeWindows && (
+        <TimeWindowSettingsModal
+          isOpen={showSettings}
+          onClose={() => setShowSettings(false)}
+          onUpdate={() => fetchData(true)}
+          userEmail={user?.email}
+          requesterUserId={user?.id}
+        />
+      )}
 
       {/* Member Profile Viewer */}
       <TeamMemberProfileModal

@@ -6,9 +6,10 @@
 import React from 'react';
 import { Monitor, Calendar, Clock, BookOpen, X } from 'lucide-react';
 import { formatLogDate, formatLogTime } from '../services/educationFormatter';
+import { handleActivityPhotoError } from '../../../shared/assets/activityPhotoTemplates';
 
 export default function EducationImagePreview({
-  log, imageSrc, imageLoading, onClose,
+  log, imageSrc, imageLoading, onClose, timezoneIana,
 }) {
   return (
     <div className="relative">
@@ -17,7 +18,7 @@ export default function EducationImagePreview({
           src={imageSrc}
           alt={log.Topic || 'Meeting Screenshot'}
           className={`w-full h-72 object-cover transition-opacity duration-300 ${imageLoading ? 'opacity-60' : 'opacity-100'}`}
-          onError={(e) => { e.target.style.display = 'none'; }}
+          onError={(e) => handleActivityPhotoError(e, 'education')}
         />
       ) : (
         <div className="w-full h-72 bg-gradient-to-br from-purple-100 to-indigo-100 flex items-center justify-center">
@@ -32,15 +33,15 @@ export default function EducationImagePreview({
               {log.Topic || 'Education Meeting'}
             </h2>
             <p className="text-xs text-white/70 mt-0.5">
-              Logged at {formatLogTime(log.CreatedAt)}
+              Logged at {formatLogTime(log.CreatedAt, timezoneIana)}
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2 pt-1">
           <Chip icon={Monitor} label={log.Platform || 'Online Meeting'} />
-          <Chip icon={Calendar} label={formatLogDate(log.CreatedAt)} />
-          <Chip icon={Clock} label={formatLogTime(log.CreatedAt)} />
+          <Chip icon={Calendar} label={formatLogDate(log.CreatedAt, timezoneIana)} />
+          <Chip icon={Clock} label={formatLogTime(log.CreatedAt, timezoneIana)} />
         </div>
       </div>
 

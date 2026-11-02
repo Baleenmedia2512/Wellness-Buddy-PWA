@@ -26,6 +26,7 @@ import {
   assertCanTransition,
   isValidImageType,
 } from './domain/image-types.js';
+import logger from '../../shared/lib/logger.js';
 
 /**
  * Mirror the legacy `createPendingCapture` write into `captures_table`.
@@ -70,6 +71,21 @@ export async function recordPending({
     nutritionCenterId,
     centerName,
   });
+
+  if (imageBase64 && row?.ID) {
+    try {
+      const { persistCaptureImageKey } = await import('./capture-image-storage.service.js');
+      await persistCaptureImageKey(userId, row.ID, imageBase64);
+    } catch (err) {
+      // Non-fatal: capture row + Base64 already saved.
+      logger.warn('captures.recordPending: R2 persist skipped', {
+        captureId: row.ID,
+        userId: userId?.toString(),
+        message: err?.message || String(err),
+      });
+    }
+  }
+
   return { id: row.ID, publicShareToken: row.PublicShareToken, shareCode: row.ShareCode || null };
 }
 
@@ -168,6 +184,12 @@ export async function updateTypeById({ captureId, userId, toType }) {
  *
  * Returns the row (PascalCase keys) or null when not found / soft-deleted.
  */
+/** ImageKey only — other domains pointer to this object, they must not re-PUT. */
+export async function getImageKeyById(captureId) {
+  if (!captureId) return null;
+  return repo.getImageKeyById(captureId);
+}
+
 export async function findById(captureId) {
   if (!captureId) {
     const err = new Error('captures.findById: captureId required');

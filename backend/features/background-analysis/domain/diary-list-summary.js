@@ -1,0 +1,270 @@
+/**
+ * Lean list-card projection extracted from food AnalysisData.
+ * Keeps /api/diary/list free of full AI JSON + base64 while preserving
+ * names, activity subtype, and share-card item lines.
+ */
+
+const ACTIVITY = Object.freeze({
+  FOOD: 'food',
+  WATER: 'water',
+  AFRESH: 'afresh',
+  SHAKE: 'shake',
+  TARGET_NUTRITION: 'target_nutrition',
+});
+
+/**
+ * @param {unknown} analysisData
+ * @param {string|null|undefined} processedBy
+ * @returns {{
+ *   name: string,
+ *   activityType: 'food'|'water'|'afresh'|'shake'|'target_nutrition',
+ *   mealKind: string|null,
+ *   volumeMl: number|null,
+ *   scoops: number|null,
+ *   servings: number,
+ *   shakeProducts: Array<{ name: string, scoops: number }>|null,
+ *   items: Array<{ name: string, calories: number, glycemicIndex: number|null }>,
+ * }}
+ */
+export function extractFoodListSummary(analysisData, processedBy = null) {
+  const raw = parseRaw(analysisData);
+  const foods = collectAnalysisFoods(raw);
+  const name = formatFoodsTitle(foods) || 'Food';
+  const activityType = resolveActivityType(processedBy, raw, foods, name);
+  const volumeMl = sumVolumeMl(foods);
+  const scoops = sumScoops(foods);
+  const servings = extractServings(raw, foods);
+  const shakeProducts = activityType === ACTIVITY.SHAKE
+    ? extractShakeProducts(foods)
+    : null;
+  const items = foods.slice(0, 20).map((item) => ({
+    name: String(item?.name || item?.foodName || 'Item'),
+    calories: Math.round(Number(item?.calories ?? item?.nutrition?.calories ?? 0) || 0),
+    glycemicIndex: readItemGlycemicIndex(item),
+  }));
+  const mealKind = typeof raw?.mealKind === 'string' && raw.mealKind.trim()
+    ? raw.mealKind.trim()
+    : null;
+
+  return {
+    name,
+    activityType,
+    mealKind,
+    volumeMl,
+    scoops,
+    servings,
+    shakeProducts,
+    items,
+  };
+}
+
+/**
+ * True when a row likely has photo bytes (without selecting Base64).
+ * Food: ImagePath or CaptureID. Other kinds: opt-in via explicit flag.
+ */
+export function inferHasImage({ imagePath, captureId, hasImageHint } = {}) {
+  if (typeof hasImageHint === 'boolean') return hasImageHint;
+  if (imagePath && String(imagePath).trim() !== '') return true;
+  if (captureId != null && captureId !== '') return true;
+  return false;
+}
+
+function parseRaw(analysisData) {
+  if (!analysisData) return null;
+  if (typeof analysisData === 'object') return analysisData;
+  if (typeof analysisData !== 'string') return null;
+  try {
+    return JSON.parse(analysisData);
+  } catch {
+    return null;
+  }
+}
+
+/** Prefer the longer of foods[] / detailedItems[] so share captions keep every dish. */
+function collectAnalysisFoods(raw) {
+  const foods = Array.isArray(raw?.foods) ? raw.foods : [];
+  const detailed = Array.isArray(raw?.detailedItems) ? raw.detailedItems : [];
+  if (detailed.length > foods.length) return detailed;
+  if (foods.length > 0) return foods;
+  return detailed;
+}
+
+function formatFoodsTitle(foods) {
+  const seen = new Set();
+  const names = [];
+  for (const food of foods) {
+    const name = String(food?.name || food?.foodName || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  if (names.length === 0) return null;
+  return names.join(', ');
+}
+
+function resolveActivityType(processedBy, raw, foods, title) {
+  const by = String(processedBy || raw?.processedBy || '').toLowerCase().trim();
+  if (by === 'water_preset') return ACTIVITY.WATER;
+  if (by === 'afresh_preset') return ACTIVITY.AFRESH;
+  if (by === 'shake_calculator') return ACTIVITY.SHAKE;
+
+  const names = foods
+    .map((item) => String(item?.name || item?.foodName || '').toLowerCase().trim())
+    .filter(Boolean);
+  const primary = names[0] || String(title || '').toLowerCase().trim();
+  const allLabels = names.length > 0 ? names : (primary ? [primary] : []);
+
+  if (isWaterName(primary) || (names.length === 1 && isWaterName(names[0]))) {
+    return ACTIVITY.WATER;
+  }
+  if (foods.length > 0 && foods.every(isWaterLikeLiquidItem)) {
+    return ACTIVITY.WATER;
+  }
+  if (names.some(isAfreshName) || isAfreshName(primary)) return ACTIVITY.AFRESH;
+  if (names.some(isShakeName) || isShakeName(primary) || allLabels.some(isMealShakeName)) {
+    return ACTIVITY.SHAKE;
+  }
+
+  // Target Nutrition catalog / supplements — not breakfast/lunch/dinner
+  if (raw?.mealKind === 'dry-salad') return ACTIVITY.TARGET_NUTRITION;
+  if (allLabels.length > 0 && allLabels.every(isNonMealSupplementName)) {
+    return ACTIVITY.TARGET_NUTRITION;
+  }
+
+  return ACTIVITY.FOOD;
+}
+
+function isWaterName(name) {
+  if (!name) return false;
+  return name === 'water'
+    || name === 'plain water'
+    || name.startsWith('plain water');
+}
+
+function isWaterLikeLiquidItem(item) {
+  if (!item || typeof item !== 'object') return false;
+  const name = String(item?.name || '').toLowerCase().trim();
+  if (isAfreshName(name) || isShakeName(name)) return false;
+  if (isWaterName(name)) return true;
+  const cal = Number(item?.nutrition?.calories ?? item?.calories ?? 0);
+  const vol = Number(item?.volume_ml);
+  const liquid = item?.isLiquid === true || item?.unit === 'ml';
+  return liquid && Number.isFinite(vol) && vol > 0 && cal === 0;
+}
+
+function isAfreshName(name) {
+  return Boolean(name && name.includes('afresh'));
+}
+
+function isShakeName(name) {
+  if (!name) return false;
+  return name.includes('herbalife shake')
+    || name.includes('protein shake')
+    || name === 'shake'
+    || isMealShakeName(name);
+}
+
+function isMealShakeName(name) {
+  if (!name) return false;
+  const n = String(name).toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  return n.includes('formula 1')
+    || n.includes('formula1')
+    || n.includes('f1 shake')
+    || n.includes('meal replacement')
+    || n.includes('protein shake')
+    || n.includes('herbalife shake');
+}
+
+const NON_MEAL_SUPPLEMENT_PATTERNS = [
+  /\bvriti\s*life\b/,
+  /\bvritilife\b/,
+  /\btriphala\b/,
+  /digestive\s*health/,
+  /multivitamin/,
+  /fish\s*oil/,
+  /\bsupplement\b/,
+  /cell\s*activator/,
+  /nightworks/,
+  /niteworks/,
+  /xtra[- ]?cal/,
+  /shakemate/,
+  /personalized\s*protein/,
+  /\bdino\s*shake\b/,
+  /\bdinoshake\b/,
+  /\bhn\s*-/,
+  /skin\s*booster/,
+  /\bjoint\s*support\b/,
+  /\blift\s*off\b/,
+  /\bh\s*24\b/,
+  /formula\s*2\b/,
+  /formula2\b/,
+  /\btablet\b/,
+  /\bcapsule\b/,
+];
+
+function isNonMealSupplementName(name) {
+  if (!name) return false;
+  if (isMealShakeName(name)) return false;
+  if (isAfreshName(name)) return true;
+  const n = String(name).toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  return NON_MEAL_SUPPLEMENT_PATTERNS.some((re) => re.test(n));
+}
+
+function sumVolumeMl(foods) {
+  let sum = 0;
+  let found = false;
+  for (const item of foods) {
+    const vol = Number(item?.volume_ml);
+    if (Number.isFinite(vol) && vol > 0) {
+      sum += vol;
+      found = true;
+    }
+  }
+  return found ? Math.round(sum) : null;
+}
+
+function sumScoops(foods) {
+  let sum = 0;
+  let found = false;
+  for (const item of foods) {
+    const scoops = Number(item?.scoops ?? item?.serving_qty);
+    if (Number.isFinite(scoops) && scoops > 0) {
+      sum += scoops;
+      found = true;
+    }
+  }
+  return found ? Math.round(sum * 10) / 10 : null;
+}
+
+function extractServings(raw, foods) {
+  const fromRaw = Number(raw?.servings ?? raw?.total?.servings);
+  if (Number.isFinite(fromRaw) && fromRaw > 0) return fromRaw;
+  if (foods.length === 0) return 1;
+  return 1;
+}
+
+function extractShakeProducts(foods) {
+  const products = [];
+  for (const item of foods) {
+    const name = String(item?.name || '').trim();
+    if (!name) continue;
+    const scoops = Number(item?.scoops ?? item?.serving_qty ?? 1);
+    products.push({
+      name,
+      scoops: Number.isFinite(scoops) && scoops > 0 ? scoops : 1,
+    });
+  }
+  return products.length ? products : null;
+}
+
+function readItemGlycemicIndex(item) {
+  const raw = item?.nutrition?.glycemic_index
+    ?? item?.glycemic_index
+    ?? item?.glycemicIndex
+    ?? item?.per100g?.glycemic_index;
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}

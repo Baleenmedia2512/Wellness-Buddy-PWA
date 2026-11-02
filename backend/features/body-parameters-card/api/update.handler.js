@@ -9,8 +9,10 @@ import {
   findPreviousCardByUserId,
   findTeamPhoneByUserId,
   enforceBpcLeadNoCoachUntilOnboarding,
+  invalidateBpcListCache,
 } from '../data/card.repo.js';
 import { syncCardToProfileAfterSave } from '../data/sync.repo.js';
+import { syncBcmPhotosToTestimonial } from '../domain/bcmTestimonialPhotoSync.js';
 import logger from '../../../shared/lib/logger.js';
 
 function buildLinkPayload(payload, card) {
@@ -22,6 +24,9 @@ function buildLinkPayload(payload, card) {
     bmr:          payload.bmr,
     weightKg:     payload.weightKg,
     fatPercent:   payload.fatPercent,
+    dietType:     payload.dietType,
+    physicalActivityLevel: payload.physicalActivityLevel,
+    transformationPhotos: payload.transformationPhotos,
   };
 }
 
@@ -33,6 +38,7 @@ export async function handleUpdateCard(body) {
   const payload = enrichPayloadWithCalculatedBmr(validateUpdateCard(body));
 
   const card = await updateCard(payload.id, payload);
+  invalidateBpcListCache(card.created_by);
   const linkPayload = buildLinkPayload(payload, card);
 
   let syncResult = { synced: false, userId: card.user_id ?? null };
@@ -46,6 +52,16 @@ export async function handleUpdateCard(body) {
       message: syncErr?.message,
     });
     throw syncErr;
+  }
+
+  if (card.user_id && payload.transformationPhotos) {
+    await syncBcmPhotosToTestimonial({
+      userId: card.user_id,
+      transformationPhotos: payload.transformationPhotos,
+      weightKg: payload.weightKg,
+      heightCm: payload.heightCm,
+      recoveredHealthIssues: payload.recoveredHealthIssues,
+    });
   }
 
   if (card.user_id) {
@@ -90,7 +106,15 @@ export async function handleUpdateCard(body) {
         waistCm:          card.waist_cm,
         hipCm:            card.hip_cm,
         recordedDate:     card.recorded_date,
+        appointmentDate:  card.appointment_date ?? payload.appointmentDate ?? null,
         locationName:     card.location_name,
+        createdAt:        card.created_at,
+        updatedAt:        card.updated_at ?? null,
+        recoveredHealthIssues: Array.isArray(card.recovered_health_issues)
+          ? card.recovered_health_issues
+          : (payload.recoveredHealthIssues || []),
+        dietType:         payload.dietType || null,
+        physicalActivityLevel: payload.physicalActivityLevel || null,
         phoneNumber:      phoneNumber || payload.phoneNumber || null,
         userId:           card.user_id ?? null,
         profileSynced:    syncResult.synced,

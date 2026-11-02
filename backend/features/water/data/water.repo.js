@@ -2,28 +2,30 @@
  * backend/features/water/data/water.repo.js
  * ---------------------------------------------------------------------------
  * Data-access layer for the water feature. Only this file may talk to
- * Supabase. Domain and api layers consume the returned plain objects.
+ * MySQL. Domain and api layers consume the returned plain objects.
  *
  * Per claude.md §2.2 / §8.3:
  *   - parameterised queries only
  *   - structured logger, never console.log
  * ---------------------------------------------------------------------------
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import logger from '../../../shared/lib/logger.js';
 import { applyDayFilterWidened } from '../../../shared/lib/datetime/applyDayFilter.js';
 import { IANA_IST, filterFoodRowsByCalendarDay } from '../../../shared/lib/datetime/index.js';
 
 /**
  * Returns the user's most-recent non-deleted weight row, or null.
+ * BodyFat / Bmr are included so Wellness Score can resolve Katch-McArdle BMR
+ * when team_table.Bmr was never synced.
  * @param {string|number} userId
- * @returns {Promise<{ Weight: number|string, CreatedAt: string } | null>}
+ * @returns {Promise<{ Weight: number|string, BodyFat?: number|string|null, Bmr?: number|string|null, CreatedAt: string } | null>}
  */
 export async function getLatestWeight(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('weight_records_table')
-    .select('Weight, CreatedAt')
+    .select('Weight, BodyFat, Bmr, CreatedAt')
     .eq('UserId', userId)
     .or('IsDeleted.is.null,IsDeleted.eq.0,IsDeleted.eq.false')
     .order('CreatedAt', { ascending: false })
@@ -46,8 +48,8 @@ export async function getLatestWeight(userId) {
  * @returns {Promise<Array<{ CreatedAt: string, AnalysisData: unknown }>>}
  */
 export async function getFoodRowsForDate(userId, date, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('food_nutrition_data_table')
     .select('CreatedAt, AnalysisData')
     .eq('UserID', String(userId))

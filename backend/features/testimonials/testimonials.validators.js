@@ -1,4 +1,4 @@
-﻿/**
+/**
  * testimonials.validators.js â€” Input validation for the testimonials feature.
  * Uses the same manual-validation pattern as other features in this codebase.
  *
@@ -7,6 +7,8 @@
  *   - Adding afterImageBase64 + afterWeightKg (on submit or edit)  â†’ status: 'pending' + email coach
  */
 import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { isValidEmailOtp } from '../auth/domain/otp-length.rules.js';
+import { normalizeTestimonialsListPagination } from './domain/testimonials-list.pagination.js';
 
 const GOAL_TYPES = ['loss', 'gain'];
 const MAX_DURATION_LEN = 100;
@@ -97,9 +99,10 @@ function validateOptionalBase64Image(value, fieldName) {
 }
 
 function validateWeight(value, fieldName) {
-  const n = parseFloat(value);
-  if (isNaN(n) || n <= 0 || n > 500) throw new ValidationError(422, `${fieldName} must be a positive number â‰¤ 500`);
-  return n;
+  // Accept decimals (72.5) and locale commas (72,5). DB column is numeric(5,2).
+  const n = parseFloat(String(value ?? '').trim().replace(',', '.'));
+  if (isNaN(n) || n <= 0 || n > 500) throw new ValidationError(422, `${fieldName} must be a positive number ≤ 500`);
+  return Math.round(n * 100) / 100;
 }
 
 /**
@@ -129,6 +132,8 @@ export function validateSubmitTestimonial(body) {
   }
   const normalizedDuration = validateDurationText(durationText);
 
+  const shareCardImage = validateOptionalBase64Image(body.shareCardImageBase64, 'shareCardImageBase64');
+
   return {
     userId:                userIdN,
     beforeImageBase64,
@@ -138,7 +143,8 @@ export function validateSubmitTestimonial(body) {
     goalType,
     durationText:          normalizedDuration,
     hasAfter,
-    recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues, { required: hasAfter }),
+    recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues, { required: false }),
+    ...(shareCardImage !== undefined ? { shareCardImageBase64: shareCardImage } : {}),
   };
 }
 
@@ -155,7 +161,7 @@ export function validateVerifyOtp(body) {
   if (isNaN(idN) || idN < 1) throw new ValidationError(400, 'testimonialId must be a valid integer');
 
   if (!otp || typeof otp !== 'string') throw new ValidationError(400, 'otp is required');
-  if (!/^\d{6}$/.test(otp.trim())) throw new ValidationError(422, 'otp must be a 6-digit number');
+  if (!isValidEmailOtp(otp.trim())) throw new ValidationError(422, 'otp must be a 4-digit number');
 
   return { testimonialId: idN, otp: otp.trim() };
 }
@@ -198,19 +204,49 @@ export function validateEditTestimonial(body) {
     result.recoveredHealthIssues = validateRecoveredHealthIssues(recoveredHealthIssues);
   }
 
+  const shareCardImage = validateOptionalBase64Image(body.shareCardImageBase64, 'shareCardImageBase64');
+  if (shareCardImage !== undefined) result.shareCardImageBase64 = shareCardImage;
+
   return result;
 }
 
 /**
  * Validate query params for GET /api/testimonials/list-for-coach
+ * Supports page/limit/search/scope/uploadFilter for server-side pagination.
  */
 export function validateListForCoach(query) {
-  const { coachId, scope } = query || {};
-  if (!coachId) throw new ValidationError(400, 'coachId is required');
-  const coachIdN = parseInt(coachId, 10);
-  if (isNaN(coachIdN) || coachIdN < 1) throw new ValidationError(400, 'coachId must be a valid integer');
-  const normalizedScope = scope === 'full' ? 'full' : 'direct';
-  return { coachId: coachIdN, scope: normalizedScope };
+  const normalized = normalizeTestimonialsListPagination(query || {});
+  if (!normalized.coachId) throw new ValidationError(400, 'coachId is required');
+  // Mine scope is frontend-only (my-testimonial); list API treats it as direct empty-safe.
+  const scope = normalized.scope === 'full' ? 'full' : 'direct';
+  return {
+    coachId: normalized.coachId,
+    scope,
+    page: normalized.page,
+    limit: normalized.limit,
+    search: normalized.search,
+    healthIssue: normalized.healthIssue,
+    uploadFilter: normalized.uploadFilter,
+  };
+}
+
+/**
+ * Validate query params for GET /api/testimonials/detail
+ */
+export function validateTestimonialDetail(query) {
+  const { userId, coachId } = query || {};
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  const userIdN = parseInt(userId, 10);
+  if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
+
+  let coachIdN = null;
+  if (coachId != null && coachId !== '') {
+    coachIdN = parseInt(coachId, 10);
+    if (isNaN(coachIdN) || coachIdN < 1) {
+      throw new ValidationError(400, 'coachId must be a valid integer');
+    }
+  }
+  return { userId: userIdN, coachId: coachIdN };
 }
 
 /**
@@ -226,9 +262,9 @@ export function validateMyTestimonial(query) {
 
 // ─── Video validators ─────────────────────────────────────────────────────────
 
-// Binary size limits for direct storage uploads (not base64)
-export const MAX_HEALTH_VIDEO_BYTES   = 20 * 1024 * 1024;
-export const MAX_BUSINESS_VIDEO_BYTES = 40 * 1024 * 1024;
+// Binary size limits for direct storage uploads (not base64).
+export const MAX_HEALTH_VIDEO_BYTES   = 15 * 1024 * 1024;
+export const MAX_BUSINESS_VIDEO_BYTES = 15 * 1024 * 1024;
 
 function validateOptionalVideoPath(value, fieldName, userId, slot) {
   if (value === undefined || value === null || value === '') return undefined;
@@ -380,7 +416,7 @@ export function validateVerifyVideoOtp(body) {
   if (isNaN(idN) || idN < 1) throw new ValidationError(400, 'testimonialId must be a valid integer');
 
   if (!otp || typeof otp !== 'string') throw new ValidationError(400, 'otp is required');
-  if (!/^\d{6}$/.test(otp.trim())) throw new ValidationError(422, 'otp must be a 6-digit number');
+  if (!isValidEmailOtp(otp.trim())) throw new ValidationError(422, 'otp must be a 4-digit number');
 
   return { testimonialId: idN, otp: otp.trim() };
 }
@@ -414,7 +450,7 @@ export function validateTeamReport(query) {
 
 // ─── Unified edit + OTP validators ───────────────────────────────────────────
 
-const VALID_DIRTY_SLOTS = new Set(['before', 'after', 'health', 'business', 'issues']);
+const VALID_DIRTY_SLOTS = new Set(['before', 'after', 'health', 'business', 'issues', 'duration', 'weight', 'goal']);
 
 /**
  * Validate payload for POST /api/testimonials/submit-all-edits
@@ -473,6 +509,7 @@ if (Array.isArray(dirtySlots)) {
 const result = {
   userId: userIdN,
   dirtySlots: [...slots],
+  submitForApproval: body.submitForApproval === true,
 };
 
   if (slots.has('before')) {
@@ -521,7 +558,39 @@ const result = {
     result.durationText = validateDurationText(durationText);
   }
 
+  const shareCardImage = validateOptionalBase64Image(body.shareCardImageBase64, 'shareCardImageBase64');
+  if (shareCardImage !== undefined) result.shareCardImageBase64 = shareCardImage;
+
   return result;
+}
+
+/**
+ * Validate payload for POST /api/testimonials/update-health-issues
+ * Payload shape kept for older clients; service always rejects with 403.
+ */
+export function validateUpdateMemberHealthIssues(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+
+  const { coachId, userId } = body;
+  const recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
+
+  if (!coachId) throw new ValidationError(400, 'coachId is required');
+  const coachIdN = parseInt(coachId, 10);
+  if (isNaN(coachIdN) || coachIdN < 1) throw new ValidationError(400, 'coachId must be a valid integer');
+
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  const userIdN = parseInt(userId, 10);
+  if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
+
+  if (recoveredHealthIssues === undefined) {
+    throw new ValidationError(400, 'recoveredHealthIssues is required');
+  }
+
+  return {
+    coachId: coachIdN,
+    userId: userIdN,
+    recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues, { required: false }),
+  };
 }
 
 /**
@@ -538,8 +607,82 @@ export function validateVerifyUnifiedOtp(body) {
   if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
 
   if (!otp || typeof otp !== 'string') throw new ValidationError(400, 'otp is required');
-  if (!/^\d{6}$/.test(otp.trim())) throw new ValidationError(422, 'otp must be a 6-digit number');
+  if (!isValidEmailOtp(otp.trim())) throw new ValidationError(422, 'otp must be a 4-digit number');
 
   return { userId: userIdN, otp: otp.trim() };
+}
+
+/**
+ * Validate payload for POST /api/testimonials/resend-unified-otp
+ */
+export function validateResendUnifiedOtp(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+
+  const { userId } = body;
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  const userIdN = parseInt(userId, 10);
+  if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
+
+  return { userId: userIdN };
+}
+
+/**
+ * Validate payload for POST /api/testimonials/sync-profile-photos
+ * Profile / BCM Left → testimonial Before (no OTP). afterImageBase64 is accepted but ignored.
+ */
+export function validateSyncProfilePhotos(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+
+  const { userId, beforeImageBase64, afterImageBase64, beforeWeightKg, goalType } = body;
+  const recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
+
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  const userIdN = parseInt(userId, 10);
+  if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
+
+  const result = { userId: userIdN };
+
+  const beforeImage = validateOptionalBase64Image(beforeImageBase64, 'beforeImageBase64');
+  if (beforeImage !== undefined) result.beforeImageBase64 = beforeImage;
+
+  const afterImage = validateOptionalBase64Image(afterImageBase64, 'afterImageBase64');
+  if (afterImage !== undefined) result.afterImageBase64 = afterImage;
+
+  if (beforeWeightKg !== undefined && beforeWeightKg !== null && beforeWeightKg !== '') {
+    result.beforeWeightKg = validateWeight(beforeWeightKg, 'beforeWeightKg');
+  }
+
+  if (goalType !== undefined) {
+    if (!GOAL_TYPES.includes(goalType)) {
+      throw new ValidationError(422, `goalType must be one of: ${GOAL_TYPES.join(', ')}`);
+    }
+    result.goalType = goalType;
+  } else {
+    result.goalType = 'loss';
+  }
+
+  if (recoveredHealthIssues !== undefined) {
+    result.recoveredHealthIssues = validateRecoveredHealthIssues(recoveredHealthIssues);
+  }
+
+  return result;
+}
+
+/**
+ * Validate payload for POST /api/testimonials/cancel-unified-otp
+ */
+export function validateCancelUnifiedOtp(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+
+  const { userId, restoreData } = body;
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  const userIdN = parseInt(userId, 10);
+  if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
+
+  const result = { userId: userIdN };
+  if (restoreData && typeof restoreData === 'object') {
+    result.restoreData = restoreData;
+  }
+  return result;
 }
 

@@ -1,6 +1,6 @@
 // Login entry step — phone number only input.
 // Phone OTP flow:
-//   - autocomplete="tel" lets Android/iOS fill the number from saved contacts.
+//   - Auto-focus opens the OS numeric keypad by default (same pad as Enter OTP).
 //   - Country code picker defaults to India (+91).
 //   - After OTP is sent, WebOTP (useWebOtp hook) auto-reads the code from SMS
 //     on Android Chrome / Capacitor WebView — no user interaction needed.
@@ -14,6 +14,12 @@ import { isFlagEnabled } from '../../../../config/featureFlags';
 import CountryFlagIcon from '../../../../shared/components/icons/CountryFlagIcon';
 import { isIOS } from '../../../../shared/utils/platform';
 import NativeInput from '../../../../shared/components/NativeInput.jsx';
+import {
+  focusInputForKeyboard,
+  scheduleFocusInputForKeyboard,
+} from '../../../../shared/utils/focusInputForKeyboard.js';
+import { SMS_OTP_LENGTH } from '../../domain/otpLength';
+
 const Spinner = () => (
   <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -24,6 +30,7 @@ const Spinner = () => (
 const LoginEmailEntry = ({
   email, setEmail, onSubmit, loading,
   countryDial, setCountryDial, errorMessage,
+  termsAccepted, setTermsAccepted, onOpenTerms, onOpenPrivacy,
 }) => {
   const inputRef = useRef(null);
   const { supported: contactPickerSupported, picking, pick } = useContactPicker();
@@ -32,16 +39,35 @@ const LoginEmailEntry = ({
   const ios = isIOS();
   const selectedCountry = COUNTRY_CODES.find((c) => c.dial === countryDial) || DEFAULT_COUNTRY;
 
-  // Auto-focus phone input on mount so Android keyboard + number suggestions
-  // appear immediately (mirrors Swiggy/Zomato UX).
-  useEffect(() => {
-    const t = setTimeout(() => inputRef.current?.focus(), 300);
-    return () => clearTimeout(t);
-  }, []);
+  // Focus phone field on mount so the OS number pad opens immediately
+  // (same behaviour as Enter OTP).
+  useEffect(() => scheduleFocusInputForKeyboard(() => inputRef.current), []);
+
+  // Keep the phone field focused so the number pad does not dismiss when the
+  // user taps the terms checkbox / label (mousedown preventDefault stops focus steal).
+  const keepPhoneKeyboard = (event) => {
+    event.preventDefault();
+  };
+
+  const restorePhoneKeyboard = () => {
+    requestAnimationFrame(() => focusInputForKeyboard(inputRef.current));
+  };
+
+  const handleTermsChange = (checked) => {
+    setTermsAccepted?.(checked);
+    restorePhoneKeyboard();
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!termsAccepted) return;
     onSubmit();
+  };
+
+  const openDoc = (event, open) => {
+    event.preventDefault();
+    event.stopPropagation();
+    open?.();
   };
 
   return (
@@ -97,6 +123,7 @@ const LoginEmailEntry = ({
             inputMode="numeric"
             pattern="[0-9]*"
             autoComplete="off"
+            autoFocus
             name="tel"
             value={email}
             onChange={(e) => {
@@ -119,15 +146,62 @@ const LoginEmailEntry = ({
           />
         </div>
         <p className="mt-1.5 text-xs text-gray-500">
-          We&apos;ll send a 6-digit code via SMS to verify your number.
+          We&apos;ll send a {SMS_OTP_LENGTH}-digit code via SMS to verify your number.
         </p>
+      </div>
+      <div className="flex items-start gap-2.5">
+        {/*
+          Use a button checkbox (not <input type="checkbox">) so iOS/Android
+          never move focus away from the phone field — number pad stays open.
+        */}
+        <button
+          type="button"
+          id="signup-terms"
+          role="checkbox"
+          aria-checked={termsAccepted === true}
+          aria-label="Accept Terms of Service and Privacy Policy"
+          disabled={loading}
+          onMouseDown={keepPhoneKeyboard}
+          onPointerDown={keepPhoneKeyboard}
+          onTouchStart={keepPhoneKeyboard}
+          onClick={() => handleTermsChange(!(termsAccepted === true))}
+          className={`compact-touch mt-0.5 h-[18px] w-[18px] min-h-0 min-w-0 shrink-0 rounded border flex items-center justify-center ${
+            termsAccepted === true
+              ? 'border-[#2563eb] bg-[#2563eb] text-white'
+              : 'border-gray-300 bg-white'
+          }`}
+        >
+          {termsAccepted === true && (
+            <svg viewBox="0 0 16 16" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+            </svg>
+          )}
+        </button>
+        <div className="text-sm leading-snug text-gray-600">
+          By Signing up, I accept the{' '}
+          <button
+            type="button"
+            className="inline compact-touch p-0 align-baseline font-medium text-[#2563eb] underline underline-offset-2"
+            onClick={(e) => openDoc(e, onOpenTerms)}
+          >
+            Terms of Service
+          </button>
+          {' '}and acknowledge the{' '}
+          <button
+            type="button"
+            className="inline compact-touch p-0 align-baseline font-medium text-[#2563eb] underline underline-offset-2"
+            onClick={(e) => openDoc(e, onOpenPrivacy)}
+          >
+            Privacy Policy
+          </button>
+        </div>
       </div>
       {errorMessage && (
         <p className="text-sm text-red-600 text-center">{errorMessage}</p>
       )}
       <button
         type="submit"
-        disabled={loading || !email}
+        disabled={loading || !email || termsAccepted !== true}
         className="w-full flex items-center justify-center px-4 xs:px-6 py-3 xs:py-3.5 bg-gradient-to-r from-green-400 to-teal-400 text-white rounded-xl shadow-sm hover:shadow-md hover:from-green-500 hover:to-teal-500 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400 disabled:opacity-50 min-h-[48px]"
       >
         {loading ? <span className="flex items-center"><Spinner />Sending OTP...</span> : 'Send OTP'}

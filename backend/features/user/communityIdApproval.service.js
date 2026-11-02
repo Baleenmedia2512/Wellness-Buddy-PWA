@@ -1,0 +1,513 @@
+/**
+ * Profile Community ID create / co-sponsor — 24h sponsor OTP (ADR-0013).
+ */
+import bcrypt from 'bcryptjs';
+import logger from '../../shared/lib/logger.js';
+import { nowUtc } from '../../shared/lib/datetime/index.js';
+import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { isEnabled } from '../../shared/lib/feature-flags.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
+import { assignLeadSeat, releaseLeadSeat, releaseOtherLeadSeats, resolveLeadSeatForUser } from '../../utils/coachTeamSeats.js';
+import { generateEmailOtp } from '../auth/domain/otp-length.rules.js';
+import { sendTransactionalMail } from '../../shared/lib/smtp-mail.js';
+import * as userRepo from './user.repository.js';
+import * as requestRepo from './communityIdApproval.repository.js';
+import { normalizeTeamCodeFromCommunityId } from './domain/communityIdTeamCodeSync.rules.js';
+import {
+  CLAIM_ALREADY_OWNED,
+  CLAIM_FULL,
+  COMMUNITY_ID_OTP_BCRYPT_COST,
+  COMMUNITY_ID_OTP_FLAG,
+  COMMUNITY_ID_OTP_HOURS,
+  COMMUNITY_ID_OTP_MAX_ATTEMPTS,
+  REQUEST_KIND_CO_SPONSOR,
+  REQUEST_STATUS_PENDING,
+  buildCommunityIdOccupancy,
+  canAttemptCommunityIdOtp,
+  classifyCommunityIdRequest,
+  communityIdOtpExpiresAt,
+  formatCommunityIdPairLabel,
+  isCommunityIdOtpExpired,
+  occupancyWithoutUser,
+  resolveCoachTeamIdFromApprover,
+  resolveConfirmedCommunityId,
+  toPublicCommunityIdRequest,
+  userAlreadyOwnsCommunityId,
+} from './domain/communityIdApproval.rules.js';
+import {
+  buildCoSponsorCommunityIdOtpEmail,
+  buildCreateCommunityIdOtpEmail,
+} from './domain/communityIdOtpEmail.rules.js';
+
+function featureDisabled() {
+  throw new ValidationError(404, 'Community ID approval is not available.');
+}
+
+function clearProfileCache({ email, userId }) {
+  if (email) {
+    try { cache.delete(cacheKeys.userProfile(String(email).toLowerCase())); } catch { /* non-fatal */ }
+  }
+  if (userId != null) {
+    try { cache.delete(cacheKeys.userProfile(`id:${userId}`)); } catch { /* non-fatal */ }
+  }
+}
+
+async function loadRequester({ email, userId }) {
+  if (userId) {
+    const row = await requestRepo.findUserIdentity(userId);
+    if (row) return row;
+  }
+  if (email) {
+    return userRepo.findByEmail(
+      email,
+      '"UserId", "UserName", "Email", "CoachId", "TeamId", "CoachTeamId", "CommunityId", "Role", "Status"',
+    );
+  }
+  return null;
+}
+
+async function loadOccupancy(code, requesterId) {
+  const [activeTeam, teamIdOwnerIds, pendingCreate] = await Promise.all([
+    requestRepo.findActiveCoachTeam(code),
+    requestRepo.findTeamIdOwners(code, requesterId),
+    requestRepo.findPendingCreateByCommunityId(code, requesterId),
+  ]);
+  return buildCommunityIdOccupancy({
+    activeTeam,
+    teamIdOwnerIds,
+    pendingCreateRequesterId: pendingCreate?.RequesterId ?? null,
+  });
+}
+
+async function resolveMainSponsorName(mainSponsorId) {
+  if (!mainSponsorId) return null;
+  const row = await requestRepo.findUserIdentity(mainSponsorId);
+  return row?.UserName ? String(row.UserName).trim() : null;
+}
+
+/**
+ * Additive GET profile field. Never throws for a missing table.
+ * @param {number|string} userId
+ */
+export async function getPublicPendingCommunityIdRequest(userId) {
+  if (!isEnabled(COMMUNITY_ID_OTP_FLAG)) return null;
+  try {
+    const pending = await requestRepo.findPendingByRequesterId(userId);
+    if (!pending) return null;
+    if (isCommunityIdOtpExpired(pending.OtpExpiresAt)) {
+      await requestRepo.markExpired(pending.Id);
+      return null;
+    }
+    const approver = await requestRepo.findUserIdentity(pending.ApproverId);
+    const approverEmail = String(approver?.Email || '').trim();
+    return toPublicCommunityIdRequest(pending, {
+      approverName: approver?.UserName || null,
+      approverEmail: approverEmail.includes('@') ? approverEmail : null,
+    });
+  } catch (err) {
+    if (requestRepo.isCommunityIdRequestsTableMissing(err)) {
+      logger.warn('[community-id] requests table missing — run create_community_id_requests_table.sql');
+      return null;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Sponsor / Co-Sponsor first-name pair for Profile under Community ID.
+ * Additive — null when the user has no lead seat on an active team.
+ *
+ * @param {string|null|undefined} teamId
+ * @returns {Promise<{
+ *   sponsorName: string|null,
+ *   coSponsorName: string|null,
+ *   label: string,
+ * }|null>}
+ */
+export async function getCommunityIdLeadPair(teamId) {
+  const code = normalizeTeamCodeFromCommunityId(teamId);
+  if (!code) return null;
+  try {
+    const team = await requestRepo.findActiveCoachTeam(code);
+    if (!team?.CoachId && !team?.CoCoachId) return null;
+    const [sponsor, coSponsor] = await Promise.all([
+      team.CoachId ? requestRepo.findUserIdentity(team.CoachId) : Promise.resolve(null),
+      team.CoCoachId ? requestRepo.findUserIdentity(team.CoCoachId) : Promise.resolve(null),
+    ]);
+    const sponsorName = sponsor?.UserName ? String(sponsor.UserName).trim() : null;
+    const coSponsorName = coSponsor?.UserName ? String(coSponsor.UserName).trim() : null;
+    const label = formatCommunityIdPairLabel({ sponsorName, coSponsorName });
+    if (!label) return null;
+    return { sponsorName, coSponsorName, label };
+  } catch (err) {
+    logger.warn('[community-id] lead pair lookup failed', {
+      teamId: code,
+      message: err?.message,
+    });
+    return null;
+  }
+}
+
+async function buildAlreadyOwnedResponse({
+  db,
+  requester,
+  code,
+  leadSeat,
+  occupancy,
+}) {
+  // Always echo the code they actually hold — never the different code they typed
+  // (that incorrectly skipped OTP on Profile Change).
+  const ownedCode = normalizeTeamCodeFromCommunityId(leadSeat?.teamId)
+    || normalizeTeamCodeFromCommunityId(requester.CommunityId)
+    || normalizeTeamCodeFromCommunityId(code);
+
+  let seat = leadSeat?.seat || null;
+  if (!seat && ownedCode === normalizeTeamCodeFromCommunityId(code)) {
+    const heal = await assignLeadSeat(db, ownedCode, Number(requester.UserId));
+    if (heal.ok) {
+      seat = heal.seat === 'already'
+        ? (Number(occupancy?.sponsorUserId) === Number(requester.UserId)
+          ? 'sponsor'
+          : 'co-sponsor')
+        : heal.seat;
+    }
+  }
+  if (!seat && Number(occupancy?.sponsorUserId) === Number(requester.UserId)) {
+    seat = 'sponsor';
+  } else if (!seat && Number(occupancy?.coSponsorUserId) === Number(requester.UserId)) {
+    seat = 'co-sponsor';
+  }
+  if (!seat) seat = 'sponsor';
+
+  try {
+    await requestRepo.cancelPendingByRequesterId(requester.UserId);
+  } catch {
+    /* non-fatal — still return already-owned */
+  }
+
+  let communityIdPair = null;
+  try {
+    communityIdPair = await getCommunityIdLeadPair(ownedCode);
+  } catch {
+    communityIdPair = null;
+  }
+
+  clearProfileCache({ email: requester.Email, userId: requester.UserId });
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      alreadyOwned: true,
+      communityId: ownedCode,
+      teamId: ownedCode,
+      teamSeat: seat,
+      communityIdPair,
+      message: 'This Community ID is already yours.',
+    },
+  };
+}
+
+export async function requestCommunityIdApproval({ email = null, userId = null, communityId }) {
+  if (!isEnabled(COMMUNITY_ID_OTP_FLAG)) featureDisabled();
+
+  const requester = await loadRequester({ email, userId });
+  if (!requester) {
+    throw new ValidationError(404, 'User not found');
+  }
+
+  const db = getMysqlClient();
+  const profileTeamHint = normalizeTeamCodeFromCommunityId(requester.CommunityId)
+    || normalizeTeamCodeFromCommunityId(requester.TeamId);
+  const leadSeat = await resolveLeadSeatForUser(
+    db,
+    requester.UserId,
+    profileTeamHint,
+  );
+  const confirmedCode = resolveConfirmedCommunityId({
+    teamId: requester.TeamId,
+    communityId: requester.CommunityId,
+    teamSeat: leadSeat.seat,
+  });
+
+  const code = normalizeTeamCodeFromCommunityId(communityId);
+  if (!code) {
+    throw new ValidationError(400, 'Community ID is required');
+  }
+
+  let occupancy;
+  try {
+    occupancy = await loadOccupancy(code, requester.UserId);
+  } catch (err) {
+    if (requestRepo.isCommunityIdRequestsTableMissing(err)) {
+      throw new ValidationError(503, 'Community ID approval is not configured yet. Run the database migration.');
+    }
+    throw err;
+  }
+
+  // Already confirmed on this exact code — never start a new OTP flow.
+  const storedCommunityId = normalizeTeamCodeFromCommunityId(requester.CommunityId);
+  const ownsRequested = userAlreadyOwnsCommunityId({
+    code,
+    storedCommunityId,
+    confirmedCode,
+  });
+  if (ownsRequested) {
+    return buildAlreadyOwnedResponse({
+      db,
+      requester,
+      code,
+      leadSeat,
+      occupancy,
+    });
+  }
+
+  let classified = classifyCommunityIdRequest({
+    requestedCode: code,
+    requesterId: requester.UserId,
+    requesterCoachId: requester.CoachId,
+    requesterConfirmedCode: confirmedCode,
+    occupancy,
+  });
+
+  // Stale seat / pending row on the *new* code must not skip OTP when the user
+  // is changing away from a different confirmed Community ID.
+  if (!classified.ok && classified.status === CLAIM_ALREADY_OWNED) {
+    classified = classifyCommunityIdRequest({
+      requestedCode: code,
+      requesterId: requester.UserId,
+      requesterCoachId: requester.CoachId,
+      requesterConfirmedCode: confirmedCode,
+      occupancy: occupancyWithoutUser(occupancy, requester.UserId),
+    });
+  }
+
+  if (!classified.ok) {
+    if (classified.status === CLAIM_ALREADY_OWNED) {
+      return buildAlreadyOwnedResponse({
+        db,
+        requester,
+        code: classified.code,
+        leadSeat,
+        occupancy,
+      });
+    }
+    throw new ValidationError(
+      classified.status === CLAIM_FULL ? 409 : 400,
+      classified.message,
+    );
+  }
+
+  const approver = await requestRepo.findUserIdentity(requester.CoachId);
+  if (!approver) {
+    throw new ValidationError(404, 'Your sponsor could not be found.');
+  }
+  if (!approver.Email || !String(approver.Email).includes('@')) {
+    throw new ValidationError(
+      502,
+      'Your sponsor has no email on file, so we cannot send the approval code.',
+    );
+  }
+
+  const mainSponsorName = classified.kind === REQUEST_KIND_CO_SPONSOR
+    ? (await resolveMainSponsorName(classified.mainSponsorId))
+    : null;
+
+  const otp = generateEmailOtp();
+  const otpHash = await bcrypt.hash(otp, COMMUNITY_ID_OTP_BCRYPT_COST);
+  const requestedAt = nowUtc();
+  const otpExpiresAt = communityIdOtpExpiresAt(new Date(requestedAt)).toISOString();
+
+  await requestRepo.cancelPendingByRequesterId(requester.UserId);
+
+  const inserted = await requestRepo.insertRequest({
+    RequesterId: requester.UserId,
+    ApproverId: approver.UserId,
+    CommunityId: classified.code,
+    RequestKind: classified.kind,
+    MainSponsorId: classified.mainSponsorId,
+    MainSponsorName: mainSponsorName,
+    OtpHash: otpHash,
+    OtpExpiresAt: otpExpiresAt,
+    OtpSentAt: requestedAt,
+    OtpAttempts: 0,
+    Status: REQUEST_STATUS_PENDING,
+    RequestedAt: requestedAt,
+  });
+
+  const mail = classified.kind === REQUEST_KIND_CO_SPONSOR
+    ? buildCoSponsorCommunityIdOtpEmail({
+      otp,
+      memberName: requester.UserName,
+      communityId: classified.code,
+      mainSponsorName,
+      expiresHours: COMMUNITY_ID_OTP_HOURS,
+    })
+    : buildCreateCommunityIdOtpEmail({
+      otp,
+      memberName: requester.UserName,
+      communityId: classified.code,
+      expiresHours: COMMUNITY_ID_OTP_HOURS,
+    });
+
+  try {
+    await sendTransactionalMail({
+      to: approver.Email,
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
+    });
+  } catch (err) {
+    logger.warn('[community-id] sponsor OTP email failed', {
+      requesterId: requester.UserId,
+      message: err?.message,
+    });
+    throw new ValidationError(502, 'Could not email the approval code to your sponsor. Please try again.');
+  }
+
+  logger.info('[community-id] approval OTP sent', {
+    requesterId: requester.UserId,
+    kind: classified.kind,
+    communityId: classified.code,
+  });
+
+  clearProfileCache({ email: requester.Email, userId: requester.UserId });
+
+  const publicRequest = toPublicCommunityIdRequest(inserted, {
+    approverName: approver.UserName || null,
+    approverEmail: String(approver.Email || '').trim(),
+  });
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      message: classified.kind === REQUEST_KIND_CO_SPONSOR
+        ? 'Approval code sent to your sponsor. They will confirm you as Co-Sponsor.'
+        : 'Approval code sent to your sponsor. Community ID is pending until they approve.',
+      communityIdRequest: publicRequest,
+      expiresIn: '24 hours',
+    },
+  };
+}
+
+export async function verifyCommunityIdOtp({ email = null, userId = null, otp }) {
+  if (!isEnabled(COMMUNITY_ID_OTP_FLAG)) featureDisabled();
+
+  const requester = await loadRequester({ email, userId });
+  if (!requester) {
+    throw new ValidationError(404, 'User not found');
+  }
+
+  let pending;
+  try {
+    pending = await requestRepo.findPendingByRequesterId(requester.UserId);
+  } catch (err) {
+    if (requestRepo.isCommunityIdRequestsTableMissing(err)) {
+      throw new ValidationError(503, 'Community ID approval is not configured yet. Run the database migration.');
+    }
+    throw err;
+  }
+
+  if (!pending) {
+    throw new ValidationError(404, 'No pending Community ID request found.');
+  }
+
+  if (isCommunityIdOtpExpired(pending.OtpExpiresAt)) {
+    await requestRepo.markExpired(pending.Id);
+    throw new ValidationError(400, 'This code has expired (24 hours). Please send a new request.');
+  }
+
+  if (!canAttemptCommunityIdOtp(pending.OtpAttempts, COMMUNITY_ID_OTP_MAX_ATTEMPTS)) {
+    await requestRepo.markExpired(pending.Id);
+    throw new ValidationError(400, 'Maximum attempts exceeded. Please send a new request.');
+  }
+
+  const matches = await bcrypt.compare(String(otp), pending.OtpHash);
+  if (!matches) {
+    const next = Number(pending.OtpAttempts || 0) + 1;
+    await requestRepo.incrementOtpAttempts(pending.Id, next);
+    const left = COMMUNITY_ID_OTP_MAX_ATTEMPTS - next;
+    throw new ValidationError(
+      400,
+      left > 0
+        ? `Incorrect code. ${left} attempt${left === 1 ? '' : 's'} left.`
+        : 'Maximum attempts exceeded. Please send a new request.',
+    );
+  }
+
+  const db = getMysqlClient();
+  const nextCode = normalizeTeamCodeFromCommunityId(pending.CommunityId);
+  const profileHint = normalizeTeamCodeFromCommunityId(requester.CommunityId)
+    || normalizeTeamCodeFromCommunityId(requester.TeamId);
+  const previousSeat = await resolveLeadSeatForUser(
+    db,
+    requester.UserId,
+    profileHint,
+  );
+  const previousCode = normalizeTeamCodeFromCommunityId(previousSeat.teamId);
+
+  // Release old / stale seats first, then claim the new code.
+  // Assign-before-release left users on two teams and blocked later changes.
+  if (nextCode) {
+    await releaseOtherLeadSeats(db, Number(requester.UserId), nextCode);
+  } else if (previousSeat.seat && previousCode) {
+    await releaseLeadSeat(db, Number(requester.UserId), previousCode);
+  }
+
+  const seatResult = await assignLeadSeat(
+    db,
+    nextCode || pending.CommunityId,
+    Number(requester.UserId),
+  );
+  if (!seatResult.ok) {
+    throw new ValidationError(409, seatResult.error || 'This Community ID is unavailable.');
+  }
+
+  const resolvedSeat = seatResult.seat === 'already'
+    ? (pending.RequestKind === REQUEST_KIND_CO_SPONSOR ? 'co-sponsor' : 'sponsor')
+    : seatResult.seat;
+
+  const approver = await requestRepo.findUserIdentity(pending.ApproverId);
+  const coachTeamId = resolveCoachTeamIdFromApprover({
+    approverCommunityId: approver?.CommunityId,
+    approverTeamId: approver?.TeamId,
+    approverCoachTeamId: approver?.CoachTeamId,
+    existingCoachTeamId: requester.CoachTeamId,
+  });
+
+  const confirmedCode = nextCode || pending.CommunityId;
+  const teamUpdate = {
+    CommunityId: confirmedCode,
+    TeamId: confirmedCode,
+  };
+  if (coachTeamId) {
+    teamUpdate.CoachTeamId = coachTeamId;
+  }
+
+  await userRepo.updateUserById(requester.UserId, teamUpdate);
+  await requestRepo.markApproved(pending.Id);
+
+  logger.info('[community-id] request approved', {
+    requesterId: requester.UserId,
+    communityId: confirmedCode,
+    coachTeamId: coachTeamId || null,
+    teamSeat: resolvedSeat,
+  });
+
+  clearProfileCache({ email: requester.Email, userId: requester.UserId });
+
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      message: resolvedSeat === 'co-sponsor'
+        ? 'You are now Co-Sponsor of this Community ID.'
+        : 'Community ID confirmed. You are the Sponsor.',
+      communityId: confirmedCode,
+      teamId: confirmedCode,
+      teamSeat: resolvedSeat,
+    },
+  };
+}

@@ -4,12 +4,21 @@
  * Inline editing is now handled directly on the Mine card — no modal needed.
  * Route: shown when App.js `showTestimonials` is true.
  */
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import CoachTestimonialsPage from './CoachTestimonialsPage';
 
 export default function TestimonialsPage({ user, tabVisitKey = 0 }) {
   const userId = user?.userId ?? user?.id ?? null;
-  const [reloadSignal, setReloadSignal] = useState(0);
+  const userName = user?.userName || user?.displayName || user?.name || null;
+  const profileImage = user?.profileImage || user?.photoURL || null;
+  const phoneNumber = user?.phoneNumber || user?.PhoneNumber || null;
+  const [reloadSignal] = useState(0);
+  // App.js currently passes a new `{ userId }` object every render. Stabilize
+  // identity so the Mine card is not torn down mid photo-pick.
+  const stableUser = useMemo(
+    () => (userId ? { userId, userName, profileImage, phoneNumber } : null),
+    [userId, userName, profileImage, phoneNumber],
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -19,7 +28,7 @@ export default function TestimonialsPage({ user, tabVisitKey = 0 }) {
 
       {userId ? (
         <CoachTestimonialsPage
-          user={user}
+          user={stableUser}
           reloadSignal={reloadSignal}
           tabVisitKey={tabVisitKey}
         />

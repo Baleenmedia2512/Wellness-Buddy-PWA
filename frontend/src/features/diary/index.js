@@ -9,3 +9,31 @@ export { DIARY_UNDO_SECONDS } from './components/DiaryUndoRow';
 // Hook is exported so tests + a future embedded "today's diary" widget
 // can subscribe without going through the full DiaryFeed shell.
 export { useDiary } from './hooks/useDiary';
+
+// Activity display + WhatsApp share builders (ADR-0003 diary subtypes).
+export {
+  DIARY_FOOD_ACTIVITY,
+  resolveFoodActivityType,
+  shouldShowMealBadge,
+  extractVolumeMl,
+  extractScoops,
+  extractShakeServings,
+  extractShakeProducts,
+  sumAfreshScoopsFromDayAnalyses,
+  extractFoodItemDisplayNames,
+  extractFoodShareItems,
+} from './domain/activityType';
+export { formatWaterVolume } from './domain/formatVolume';
+export { resolveFoodRowPresentation } from './domain/foodRowDisplay';
+export {
+  buildDiaryShareText,
+  buildFoodShareText,
+  buildWaterShareText,
+  buildAfreshShareText,
+  buildShakeShareText,
+  buildEducationShareText,
+  buildWeightShareText,
+  buildDiaryShareSuffix,
+  resolveBeverageDayShareText,
+  resolveWeightDeltaDisplay,
+} from './domain/share';

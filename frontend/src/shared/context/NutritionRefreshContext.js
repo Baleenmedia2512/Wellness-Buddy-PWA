@@ -21,7 +21,11 @@
  *   triggerRefresh({ immediate: true, source: 'meal-edit' });
  */
 import React, { createContext, useContext, useState, useCallback, useRef, startTransition } from 'react';
-import { recordDashboardActivity } from '../services/homeDashboardActivity';
+import {
+  invalidateWellnessScoreSnapshot,
+  recordDashboardActivity,
+  shouldRefreshHomeDashboard,
+} from '../services/homeDashboardActivity';
 import { STALE_PENDING_MS } from '../../features/diary/utils/stalePending';
 
 const NutritionRefreshContext = createContext(null);
@@ -130,7 +134,9 @@ export function NutritionRefreshProvider({ children }) {
    * Also records an async activity-log entry so remounted Home can decide
    * whether a refetch is needed (newer log) or can keep cached state.
    *
-   * Wrapped in startTransition to prevent Suspense errors.
+   * Immediate saves bump refreshKey synchronously so Wellness Score can
+   * fetch /daily in the same turn (startTransition deferred it until idle).
+   * Debounced edits still use startTransition.
    * @param {Object} options
    * @param {boolean} options.immediate - Skip debounce (default: false)
    * @param {string} options.source - Debug label for who triggered refresh
@@ -140,6 +146,8 @@ export function NutritionRefreshProvider({ children }) {
 
     // Async activity log: durable watermark for "did anything change?"
     recordDashboardActivity(source);
+    // Drop sheet paint cache so reopen cannot restore a pre-save total.
+    invalidateWellnessScoreSnapshot();
 
     if (process.env.NODE_ENV !== 'production') {
       // Use the functional-update form below, so we do NOT need refreshKey
@@ -147,18 +155,17 @@ export function NutritionRefreshProvider({ children }) {
       console.log(`🔄 [NutritionRefresh] Triggered by: ${source}`, { immediate });
     }
 
-    // Immediate refresh (used after saves/deletes) - wrapped in startTransition
+    // Immediate refresh (used after saves/deletes). Must not use startTransition —
+    // image-save work would defer the Wellness Score /daily fetch until idle.
     if (immediate) {
-      startTransition(() => {
-        setRefreshKey(prev => {
-          const newKey = prev + 1;
-          if (process.env.NODE_ENV !== 'production') {
-            console.log(`🔄 [NutritionRefresh] Key updated: ${prev} → ${newKey}`);
-          }
-          return newKey;
-        });
-        setPendingRefresh(false);
+      setRefreshKey((prev) => {
+        const newKey = prev + 1;
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`🔄 [NutritionRefresh] Key updated: ${prev} → ${newKey}`);
+        }
+        return newKey;
       });
+      setPendingRefresh(false);
       return;
     }
 
@@ -178,10 +185,12 @@ export function NutritionRefreshProvider({ children }) {
   }, []); // stable — uses functional-update form for setRefreshKey, no stale closure risk
 
   /**
-   * Refetch Home dashboard data when the user returns from a nav tab overlay.
-   * Does not advance the async activity log — navigation alone is enough to reload.
+   * Called when the user returns to Home from a nav tab.
+   * Only bumps refreshKey when a real mutation advanced the activity log
+   * (AI analysis, manual log, meal edit, etc.). Plain tab switches do nothing.
    */
   const refreshOnTabFocus = useCallback(() => {
+    if (!shouldRefreshHomeDashboard()) return;
     startTransition(() => {
       setRefreshKey((prev) => prev + 1);
     });

@@ -1,28 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import APP_VERSION from "../../config/version";
 import { cacheProfileUserName } from "../utils/shareUtils.js";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 import AppNavTabs from "./AppNavTabs";
 import wellnessValleyIcon from "../../assets/wellness-valley-icon.png";
-
-/** Roles that always see the Ideal Weight Report nav tab (ff.reports-module). */
-const REPORTS_TAB_ROLES = ['coach', 'coccoach', 'upline', 'admin', 'developer'];
-
-function canAccessReportsTab(role, hasTeamMembers) {
-  return REPORTS_TAB_ROLES.includes(role) || Boolean(hasTeamMembers);
-}
-
-async function fetchHasTeamMembers(userId) {
-  if (!userId) return false;
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-  const res = await fetch(
-    `${apiBaseUrl}/api/team/has-members?userId=${encodeURIComponent(userId)}`,
-    { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
-  );
-  if (!res.ok) return false;
-  const data = await res.json();
-  return Boolean(data?.hasTeamMembers);
-}
+import { getProfile } from "../../features/user/services/user.api";
+import { isFlagEnabled } from "../../config/featureFlags";
+import { canAccessReportsModule } from "../../features/reports/domain/reportsAccess.rules.js";
+import { hasValidProfileName } from "../../features/user/domain/profileCompleteness";
+import { PremiumCrownMark, PremiumHeaderTag } from "../../features/payments/components/PremiumBadge";
+import usePremiumStatus from "../../features/payments/hooks/usePremiumStatus";
+import * as Session from "../services/sessionStorage";
 
 const Header = ({
   user,
@@ -35,6 +23,8 @@ const Header = ({
   onShowNutritionCentersMap,
   onShowActivityReport,
   onShowTestimonials,
+  onShowBroadcast,
+  onShowCreateEvent,
   onShowReports,
   onShowWellnessScoreSetup,
   wellnessScoreSetupEnabled = false,
@@ -47,50 +37,61 @@ const Header = ({
   manualModeActive = false,
   onToggleManualMode,
   navOnly = false,
+  /** null = fail-open (all tabs); object = DB role page map */
+  allowedPages = null,
 }) => {
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
-  const [hasTeamMembers, setHasTeamMembers] = useState(false);
+  const prevProfileKeyRef = useRef(profileKey);
 
-  const reportsEnabled = canAccessReportsTab(userRole, hasTeamMembers);
+  // Premium crown on the avatar. Tab-only headers skip the check.
+  const premiumUserId = navOnly
+    ? null
+    : (user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null);
+  const { premium: isPremiumMember } = usePremiumStatus(premiumUserId);
 
-  // Grant report tab to downline leaders even when Role is still "user" (e.g. u2, a3).
+  // Reports: common module for every signed-in user when the flag is on.
+  const reportsEnabled = isFlagEnabled('ff.reports-module')
+    && canAccessReportsModule(userRole);
+
+  // After profile photo save, App updates user.profileImage immediately —
+  // apply it here so header does not keep a stale getProfile avatar until refetch.
   useEffect(() => {
-    if (!user?.id || REPORTS_TAB_ROLES.includes(userRole)) {
-      setHasTeamMembers(false);
-      return undefined;
+    const fromUser = user?.profileImage || user?.ProfileImage || user?.photoURL;
+    if (typeof fromUser === 'string' && fromUser.startsWith('data:image/')) {
+      setSavedProfileImage(fromUser);
     }
-    let cancelled = false;
-    fetchHasTeamMembers(user.id)
-      .then((has) => { if (!cancelled) setHasTeamMembers(has); })
-      .catch(() => { if (!cancelled) setHasTeamMembers(false); });
-    return () => { cancelled = true; };
-  }, [user?.id, userRole]);
+  }, [user?.profileImage, user?.ProfileImage, user?.photoURL]);
 
   // Fetch saved user name + avatar for header display.
-  // Re-runs when email changes OR when profileKey is incremented (after a save).
+  // Re-runs when email/userId changes OR when profileKey is incremented (after a save).
+  // Uses shared getProfile cache so Home / Diary / nutrition hooks do not re-hit the network.
   useEffect(() => {
     const fetchUserProfile = async () => {
-      if (!user?.email) return;
+      const email = user?.email || user?.Email || null;
+      const userId = user?.id || user?.UserId || user?.userId || null;
+      if (!email && !userId) return;
       try {
-        const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-        const cacheBuster = Date.now();
-        const response = await fetch(
-          `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(user.email)}&_t=${cacheBuster}`,
-          {
-            cache: "no-store",
-            headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
-          },
+        const shouldBust = profileKey !== prevProfileKeyRef.current;
+        prevProfileKeyRef.current = profileKey;
+        const data = await getProfile(
+          email
+            ? { email, userId: userId || undefined, cacheBust: shouldBust }
+            : { userId, cacheBust: shouldBust },
         );
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.data) {
-            if (data.data.userName) {
-              setSavedUserName(data.data.userName);
-              cacheProfileUserName(user.email, data.data.userName);
-            }
-            if (data.data.profileImage) setSavedProfileImage(data.data.profileImage);
+        if (data.success && data.data) {
+          const phoneNumber = data.data.phoneNumber || user?.phoneNumber || user?.phone;
+          const profileEmail = data.data.email || email;
+          if (hasValidProfileName(data.data.userName, { email: profileEmail, phoneNumber })) {
+            setSavedUserName(data.data.userName);
+            if (profileEmail) cacheProfileUserName(profileEmail, data.data.userName);
+          } else {
+            setSavedUserName(null);
           }
+          // Profile avatar only — Centre transformation photo is independent.
+          const nextImage = data.data.profileImage || null;
+          if (nextImage) setSavedProfileImage(nextImage);
+          else if (shouldBust) setSavedProfileImage(null);
         }
       } catch (err) {
         console.error("Error fetching user profile for header:", err);
@@ -98,10 +99,27 @@ const Header = ({
     };
     fetchUserProfile();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: profileKey drives force-refresh
-  }, [user?.email, profileKey]);
+  }, [user?.email, user?.Email, user?.id, user?.UserId, user?.userId, profileKey]);
 
-  const userName = savedUserName || user?.displayName || user?.username || user?.email || "User";
-  const userEmail = user?.email || "";
+  const phoneNumber = user?.phoneNumber || user?.PhoneNumber || user?.phone;
+  const userEmail = user?.email || user?.Email || "";
+  const userName = (() => {
+    const candidates = [
+      savedUserName,
+      user?.userName,
+      user?.username,
+      user?.displayName,
+    ];
+    return candidates.find((n) => hasValidProfileName(n, { email: userEmail, phoneNumber }))
+      || userEmail
+      || "User";
+  })();
+  // Prefer fetched profile; fall back to session user after profile photo save (before refetch lands).
+  const headerAvatarSrc = savedProfileImage
+    || user?.profileImage
+    || user?.ProfileImage
+    || user?.photoURL
+    || null;
 
   const getInitial = () => {
     if (userName) return userName.charAt(0).toUpperCase();
@@ -113,6 +131,32 @@ const Header = ({
     const colors = ["bg-blue-500", "bg-green-500", "bg-purple-500", "bg-pink-500", "bg-indigo-500", "bg-yellow-500", "bg-red-500", "bg-teal-500"];
     return colors[(userName || userEmail || "").length % colors.length];
   };
+
+  const avatarNode = headerAvatarSrc ? (
+    <img
+      src={headerAvatarSrc}
+      alt="User Avatar"
+      className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm pointer-events-none"
+      loading="lazy"
+      decoding="async"
+      draggable="false"
+      referrerPolicy="no-referrer"
+      style={{
+        WebkitUserSelect: "none",
+        userSelect: "none",
+        WebkitTouchCallout: "none",
+        WebkitUserDrag: "none",
+        pointerEvents: "none",
+        WebkitTapHighlightColor: "transparent",
+      }}
+    />
+  ) : (
+    <div
+      className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}
+    >
+      {getInitial()}
+    </div>
+  );
 
   // navOnly mode: render only the tab navigation row (Row 2).
   // Used by full-page sub-views so they display the full nav without
@@ -132,8 +176,11 @@ const Header = ({
           onShowWellnessCounselling={onShowWellnessCounselling}
           onShowNutritionCentersMap={onShowNutritionCentersMap}
           onShowTestimonials={onShowTestimonials}
+          onShowBroadcast={onShowBroadcast}
+          onShowCreateEvent={onShowCreateEvent}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}
+          allowedPages={allowedPages}
         />
       </nav>
     );
@@ -179,28 +226,23 @@ const Header = ({
 
         {/* Profile avatar — tap to navigate to full profile page */}
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          {isPremiumMember ? <PremiumHeaderTag /> : null}
           <TouchFeedbackButton
-            onClick={onOpenProfile}
+            type="button"
+            onClick={(e) => {
+              if (e && typeof e.preventDefault === 'function') e.preventDefault();
+              if (typeof onOpenProfile === 'function') onOpenProfile();
+            }}
             className="focus:outline-none rounded-full"
             title="My Profile"
             ariaLabel="My Profile"
           >
-            {savedProfileImage ? (
-              <img
-                src={savedProfileImage}
-                alt="User Avatar"
-                className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
-                loading="lazy"
-                decoding="async"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div
-                className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}
-              >
-                {getInitial()}
-              </div>
-            )}
+            {isPremiumMember ? (
+              <span className="relative inline-flex">
+                {avatarNode}
+                <PremiumCrownMark />
+              </span>
+            ) : avatarNode}
           </TouchFeedbackButton>
         </div>
       </div>
@@ -216,8 +258,11 @@ const Header = ({
           onShowWellnessCounselling={onShowWellnessCounselling}
           onShowNutritionCentersMap={onShowNutritionCentersMap}
           onShowTestimonials={onShowTestimonials}
+          onShowBroadcast={onShowBroadcast}
+          onShowCreateEvent={onShowCreateEvent}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}
+          allowedPages={allowedPages}
         />
       </nav>
     </header>

@@ -1,9 +1,15 @@
-import { largeBodyConfig as config } from '../../../../utils/apiConfig.js';
+// Inline config for Next.js 15
 import { applyCors, methodNotAllowed, runService } from '../../../../shared/lib/handler.js';
 import { validateRetryPromotion } from '../../../../features/background-analysis/analysis.validators.js';
 import { retryPromotionToFood } from '../../../../features/background-analysis/diary.service.js';
 
-export { config };
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
+};
 
 /**
  * POST /api/background-analysis/captures/retry-promotion

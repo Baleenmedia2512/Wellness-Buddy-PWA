@@ -1,11 +1,12 @@
 /**
  * backend/features/nutrition-knowledge/data/nutrition-knowledge.repo.js
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import logger from '../../../shared/lib/logger.js';
-import { normalizeFoodName } from '../domain/nutrition.rules.js';
+import { foodNameMatchesQuery, normalizeFoodName, sortByFoodNameMatch } from '../domain/nutrition.rules.js';
 
 const TABLE = 'nutrition_master_profiles_table';
+const SUBMISSIONS_TABLE = 'nutrition_custom_food_submissions_table';
 
 function mapRow(row) {
   if (!row) return null;
@@ -23,6 +24,7 @@ function mapRow(row) {
     sightings: Number(row.sightings) || 0,
     version: Number(row.version) || 1,
     reviewed_by_user_id: row.reviewed_by_user_id ?? null,
+    created_by_user_id: row.created_by_user_id ?? null,
     updated_at: row.updated_at,
   };
 }
@@ -30,30 +32,60 @@ function mapRow(row) {
 /**
  * @param {string} term
  * @param {{ status?: string, limit?: number }} [opts]
- * @returns {Promise<object[]>}
+ * @returns {Promise<object[]|null>} null when table/query failed (caller uses seeds)
  */
 export async function searchProfiles(term, { status = 'approved', limit = 20 } = {}) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const q = String(term || '').trim();
-  if (q.length < 2) return [];
+  if (q.length < 1) return [];
 
   const safe = q.replace(/[%_,]/g, ' ').trim();
-  if (safe.length < 2) return [];
+  if (safe.length < 1) return [];
 
-  const { data, error } = await supabase
+  // Wider fetch, then rank by match position (prefix first). Plain A→Z + limit
+  // would bury "Onion" behind many mid-string "o" hits.
+  const fetchLimit = Math.max(limit * 4, 80);
+
+  const { data, error } = await db
     .from(TABLE)
     .select('*')
     .eq('status', status)
     .or(`canonical_name.ilike.%${safe}%,normalized_name.ilike.%${safe}%`)
     .order('canonical_name', { ascending: true })
-    .limit(limit);
+    .limit(fetchLimit);
 
   if (error) {
     // Table missing / not migrated — caller falls back to in-code seeds.
     logger.warn('[nutrition-knowledge.repo] searchProfiles failed', { err: error.message });
     return null;
   }
-  return (data || []).map(mapRow);
+
+  let rows = (data || []).map(mapRow);
+
+  // Typo / alias recall: broaden with a short prefix, then filter in memory.
+  if (rows.length === 0 && safe.length >= 3) {
+    const prefix = safe.slice(0, 2).replace(/[%_,]/g, ' ').trim();
+    if (prefix.length >= 1) {
+      const broad = await db
+        .from(TABLE)
+        .select('*')
+        .eq('status', status)
+        .or(`canonical_name.ilike.%${prefix}%,normalized_name.ilike.%${prefix}%`)
+        .order('canonical_name', { ascending: true })
+        .limit(Math.max(fetchLimit, 60));
+      if (broad.error) {
+        logger.warn('[nutrition-knowledge.repo] searchProfiles broad failed', {
+          err: broad.error.message,
+        });
+      } else {
+        rows = (broad.data || [])
+          .map(mapRow)
+          .filter((row) => foodNameMatchesQuery(row.canonical_name, safe, row.aliases));
+      }
+    }
+  }
+
+  return sortByFoodNameMatch(rows, safe).slice(0, limit);
 }
 
 /**
@@ -64,9 +96,9 @@ export async function searchProfiles(term, { status = 'approved', limit = 20 } =
 export async function findProfileByName(name, { status = 'approved' } = {}) {
   const key = normalizeFoodName(name);
   if (!key) return null;
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .select('*')
     .eq('status', status)
@@ -80,7 +112,7 @@ export async function findProfileByName(name, { status = 'approved' } = {}) {
   if (Array.isArray(data) && data.length > 0) return mapRow(data[0]);
 
   // Alias match — fetch a small approved set and filter in memory (aliases jsonb).
-  const { data: approved, error: err2 } = await supabase
+  const { data: approved, error: err2 } = await db
     .from(TABLE)
     .select('*')
     .eq('status', status)
@@ -98,15 +130,328 @@ export async function findProfileByName(name, { status = 'approved' } = {}) {
 }
 
 /**
+ * Find any master profile by normalized name (any status). Used for custom-food dedupe.
+ * @param {string} name
+ * @returns {Promise<object|null|undefined>} null = DB error; undefined = not found; object = hit
+ */
+export async function findAnyProfileByName(name) {
+  const key = normalizeFoodName(name);
+  if (!key) return undefined;
+  const db = getMysqlClient();
+
+  const { data, error } = await db
+    .from(TABLE)
+    .select('*')
+    .eq('normalized_name', key)
+    .limit(1);
+
+  if (error) {
+    logger.warn('[nutrition-knowledge.repo] findAnyProfileByName failed', { err: error.message });
+    return null;
+  }
+  if (Array.isArray(data) && data.length > 0) return mapRow(data[0]);
+  return undefined;
+}
+
+/**
+ * Build a mapped row when INSERT succeeds but RETURNING/SELECT is blocked (RLS).
+ * @param {{ canonicalName: string, normalized: string, servingSize: number, unit: 'g'|'ml', portionLabel: string, source: string }} p
+ */
+function syntheticCustomFoodRow(p) {
+  return {
+    id: null,
+    canonical_name: p.canonicalName,
+    normalized_name: p.normalized,
+    aliases: [],
+    reference_weight_g: p.servingSize,
+    is_liquid: p.unit === 'ml',
+    portion_label: p.portionLabel,
+    nutrition: {},
+    source: p.source,
+    status: 'approved',
+    sightings: 1,
+    version: 1,
+    reviewed_by_user_id: null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * Log a custom-food add for developer Excel export (every attempt, even duplicates).
+ * @param {{ userId: number, foodName: string, unit: 'g'|'ml', quantity: number, profileId?: number|null }} input
+ */
+export async function insertCustomFoodSubmission(input) {
+  const db = getMysqlClient();
+  const userId = Number(input.userId);
+  const foodName = String(input.foodName || '').trim();
+  const normalized = normalizeFoodName(foodName);
+  const unit = input.unit === 'ml' ? 'ml' : 'g';
+  const quantity = Number(input.quantity);
+  if (!Number.isFinite(userId) || userId <= 0 || !normalized || !(quantity > 0)) {
+    return null;
+  }
+
+  const { data, error } = await db
+    .from(SUBMISSIONS_TABLE)
+    .insert({
+      user_id: userId,
+      food_name: foodName,
+      normalized_name: normalized,
+      unit,
+      quantity,
+      profile_id: input.profileId != null ? Number(input.profileId) : null,
+    })
+    .select('*')
+    .limit(1);
+
+  if (error) {
+    logger.warn('[nutrition-knowledge.repo] insertCustomFoodSubmission failed', {
+      err: error.message,
+    });
+    return null;
+  }
+  return data?.[0] || null;
+}
+
+/**
+ * Rows for Excel/CSV export — newest first.
+ * @param {{ limit?: number, pendingNutritionOnly?: boolean }} [opts]
+ */
+export async function listCustomFoodSubmissionsForExport({
+  limit = 5000,
+  pendingNutritionOnly = false,
+} = {}) {
+  const db = getMysqlClient();
+  const fetchLimit = Math.min(Math.max(Number(limit) || 5000, 1), 20_000);
+
+  const { data, error } = await db
+    .from(SUBMISSIONS_TABLE)
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(fetchLimit);
+
+  if (error) {
+    logger.warn('[nutrition-knowledge.repo] listCustomFoodSubmissionsForExport failed', {
+      err: error.message,
+    });
+    return null;
+  }
+
+  const rows = data || [];
+  if (rows.length === 0) return rows;
+
+  const profileIds = [...new Set(rows.map((r) => r.profile_id).filter(Boolean))];
+  let nutritionById = new Map();
+  if (profileIds.length > 0) {
+    const { data: profiles, error: pErr } = await db
+      .from(TABLE)
+      .select('id, nutrition')
+      .in('id', profileIds);
+    if (pErr) {
+      logger.warn('[nutrition-knowledge.repo] list submissions profile join failed', {
+        err: pErr.message,
+      });
+    } else {
+      nutritionById = new Map(
+        (profiles || []).map((p) => [
+          p.id,
+          p.nutrition && typeof p.nutrition === 'object' ? p.nutrition : {},
+        ]),
+      );
+    }
+  }
+
+  const enriched = rows.map((r) => ({
+    ...r,
+    master_nutrition: r.profile_id ? (nutritionById.get(r.profile_id) || {}) : {},
+  }));
+
+  if (!pendingNutritionOnly) return enriched;
+
+  return enriched.filter((r) => {
+    const n = r.master_nutrition || {};
+    return n.calories == null || n.calories === '' || Number(n.calories) === 0;
+  });
+}
+
+/**
+ * Set / replace nutrition on a master profile (developer fill-in).
+ * @param {{ profileId: number, nutrition: object, referenceWeightG?: number|null, reviewedByUserId?: number|null }} input
+ */
+export async function updateProfileNutrition(input) {
+  const db = getMysqlClient();
+  const profileId = Number(input.profileId);
+  if (!Number.isFinite(profileId) || profileId <= 0) return null;
+
+  const patch = {
+    nutrition: input.nutrition && typeof input.nutrition === 'object' ? input.nutrition : {},
+    updated_at: new Date().toISOString(),
+    status: 'approved',
+  };
+  if (input.referenceWeightG != null && Number(input.referenceWeightG) > 0) {
+    patch.reference_weight_g = Number(input.referenceWeightG);
+  }
+  if (input.reviewedByUserId != null) {
+    patch.reviewed_by_user_id = Number(input.reviewedByUserId);
+  }
+
+  const { data, error } = await db
+    .from(TABLE)
+    .update(patch)
+    .eq('id', profileId)
+    .select('*')
+    .limit(1);
+
+  if (error) {
+    logger.error('[nutrition-knowledge.repo] updateProfileNutrition failed', {
+      err: error.message,
+      profileId,
+    });
+    throw error;
+  }
+  return mapRow(data?.[0] || null);
+}
+
+/**
+ * Insert a user custom food (name + g/ml serving). No nutrition required.
+ * If a row with the same normalized name exists, return it without creating a duplicate.
+ * @param {{ canonicalName: string, servingSize: number, unit: 'g'|'ml', createdByUserId?: number|null }} input
+ * @returns {Promise<{ row: object, created: boolean, error?: string }|null>}
+ */
+export async function upsertUserCustomFood(input) {
+  const db = getMysqlClient();
+  const canonicalName = String(input.canonicalName || '').trim();
+  const normalized = normalizeFoodName(canonicalName);
+  if (!normalized) {
+    return { row: null, created: false, error: 'Invalid food name' };
+  }
+
+  const unit = input.unit === 'ml' ? 'ml' : 'g';
+  const servingSize = Number(input.servingSize);
+  if (!(servingSize > 0)) {
+    return { row: null, created: false, error: 'Invalid serving size' };
+  }
+
+  const existing = await findAnyProfileByName(canonicalName);
+  if (existing === null) {
+    return {
+      row: null,
+      created: false,
+      error: 'Master food table is unavailable',
+    };
+  }
+  if (existing) {
+    return { row: existing, created: false };
+  }
+
+  const now = new Date().toISOString();
+  const portionLabel = `${Number.isInteger(servingSize) ? servingSize : Math.round(servingSize * 100) / 100} ${unit}`;
+  const createdByUserId = Number(input.createdByUserId);
+  const hasCreator = Number.isFinite(createdByUserId) && createdByUserId > 0;
+
+  // Prefer user_manual; fall back to sources already used by approved master rows
+  // if the DB has a CHECK constraint that does not yet allow user_manual.
+  const sourceCandidates = ['user_manual', 'seed', 'ai_promoted'];
+  let lastError = null;
+
+  for (const source of sourceCandidates) {
+    const payload = {
+      canonical_name: canonicalName,
+      normalized_name: normalized,
+      aliases: [],
+      reference_weight_g: servingSize,
+      is_liquid: unit === 'ml',
+      portion_label: portionLabel,
+      nutrition: {},
+      source,
+      status: 'approved',
+      sightings: 1,
+      updated_at: now,
+      ...(hasCreator ? { created_by_user_id: createdByUserId } : {}),
+    };
+
+    const { data, error } = await db
+      .from(TABLE)
+      .insert(payload)
+      .select('*')
+      .limit(1);
+
+    if (error) {
+      lastError = error;
+      // Race: another request inserted the same normalized_name.
+      if (String(error.code) === '1062' || /duplicate|unique/i.test(error.message || '')) {
+        const raced = await findAnyProfileByName(canonicalName);
+        if (raced) return { row: raced, created: false };
+      }
+      // Try next source if this one is rejected by CHECK / enum.
+      if (/source|check|invalid|violat/i.test(error.message || '')) {
+        logger.warn('[nutrition-knowledge.repo] upsertUserCustomFood source rejected', {
+          source,
+          err: error.message,
+          code: error.code,
+        });
+        continue;
+      }
+      logger.warn('[nutrition-knowledge.repo] upsertUserCustomFood insert failed', {
+        err: error.message,
+        code: error.code,
+        source,
+      });
+      return {
+        row: null,
+        created: false,
+        error: error.message || 'Insert failed',
+      };
+    }
+
+    const mapped = mapRow(data?.[0]);
+    if (mapped) {
+      return { row: mapped, created: true };
+    }
+
+    // INSERT ok but RETURNING empty (common when RLS blocks SELECT of new row).
+    const verified = await findAnyProfileByName(canonicalName);
+    if (verified) {
+      return { row: verified, created: true };
+    }
+
+    logger.warn('[nutrition-knowledge.repo] upsertUserCustomFood insert returned no row', {
+      source,
+    });
+    return {
+      row: syntheticCustomFoodRow({
+        canonicalName,
+        normalized,
+        servingSize,
+        unit,
+        portionLabel,
+        source,
+      }),
+      created: true,
+    };
+  }
+
+  logger.warn('[nutrition-knowledge.repo] upsertUserCustomFood exhausted sources', {
+    err: lastError?.message,
+    code: lastError?.code,
+  });
+  return {
+    row: null,
+    created: false,
+    error: lastError?.message || 'Could not insert custom food',
+  };
+}
+
+/**
  * Upsert a draft AI candidate by normalized name. Does not overwrite approved rows' nutrition.
  * @param {{ canonicalName: string, nutrition: object, referenceWeightG?: number, isLiquid?: boolean, portionLabel?: string }} input
  */
 export async function upsertAiCandidate(input) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const normalized = normalizeFoodName(input.canonicalName);
   if (!normalized) return null;
 
-  const { data: existingRows, error: findErr } = await supabase
+  const { data: existingRows, error: findErr } = await db
     .from(TABLE)
     .select('*')
     .eq('normalized_name', normalized)
@@ -123,7 +468,7 @@ export async function upsertAiCandidate(input) {
   if (existing) {
     // Never mutate approved seed/admin nutrition from AI traffic.
     if (existing.status === 'approved') {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from(TABLE)
         .update({
           sightings: (Number(existing.sightings) || 0) + 1,
@@ -140,7 +485,7 @@ export async function upsertAiCandidate(input) {
     }
 
     const nextSightings = (Number(existing.sightings) || 0) + 1;
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from(TABLE)
       .update({
         canonical_name: input.canonicalName,
@@ -164,7 +509,7 @@ export async function upsertAiCandidate(input) {
     return mapRow(data?.[0]);
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .insert({
       canonical_name: input.canonicalName,
@@ -194,8 +539,8 @@ export async function upsertAiCandidate(input) {
  * @param {{ reviewedByUserId?: number|null }} [opts]
  */
 export async function approveProfile(profileId, { reviewedByUserId = null } = {}) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .update({
       status: 'approved',

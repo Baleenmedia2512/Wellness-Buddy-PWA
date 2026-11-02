@@ -1,15 +1,24 @@
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import logger from '../../../shared/lib/logger.js';
+import { getClientAppVersion } from '../../../shared/lib/client-app-version.js';
 import { validateGetProfile, validateUpdateProfile } from '../../../features/user/user.validators.js';
 import { getProfile, updateProfile } from '../../../features/user/user.service.js';
-import { largeBodyConfig as config } from '../../../utils/apiConfig.js';
+import { rejectIfAppVersionTooOld } from '../../../features/app-version/api/enforce-api.handler.js';
 
-export { config };
+// Must be declared inline — Next.js cannot statically parse a re-exported `config`.
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
+};
 
 async function handleUpdateProfile(req, res) {
   logger.info('[profile] incoming update request', {
     method: req.method,
     email: req.body?.email,
+    userId: req.body?.userId ?? req.body?.UserId,
     hasCommunityId: req.body?.communityId !== undefined || req.body?.community_id !== undefined,
     hasTimezone: req.body?.timezone !== undefined
       || req.body?.timezoneIana !== undefined
@@ -29,14 +38,18 @@ async function handleUpdateProfile(req, res) {
       }
       throw err;
     }
-    return updateProfile(input);
+    return updateProfile({ ...input, appVersion: getClientAppVersion(req) });
   });
 }
 
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET, POST, PUT, OPTIONS')) return;
+  if (rejectIfAppVersionTooOld(req, res)) return;
   if (req.method === 'GET') {
-    return runService(res, () => getProfile(validateGetProfile(req.query)));
+    return runService(res, () => getProfile({
+      ...validateGetProfile(req.query),
+      appVersion: getClientAppVersion(req),
+    }));
   }
   if (req.method === 'POST' || req.method === 'PUT') {
     return handleUpdateProfile(req, res);

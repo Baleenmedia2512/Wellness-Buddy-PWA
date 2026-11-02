@@ -1,4 +1,11 @@
 import { getApiBaseUrl } from '../../../config/api.config.js';
+import { getLatestActivityLogId } from '../../../shared/services/homeDashboardActivity';
+import {
+  dedupeWellnessScoreInflight,
+  wellnessScoreInflightKey,
+} from './wellnessScoreInflight';
+
+export { __resetWellnessScoreApiInFlightForTests } from './wellnessScoreInflight';
 
 const base = (apiBaseUrl) => apiBaseUrl || getApiBaseUrl();
 
@@ -10,7 +17,7 @@ async function readJsonResponse(res) {
   return payload;
 }
 
-export async function fetchDailyWellnessScore({ userId, date, apiBaseUrl }) {
+async function fetchDailyWellnessScoreOnce({ userId, date, apiBaseUrl }) {
   const params = new URLSearchParams({ userId, _t: String(Date.now()) });
   if (date) params.set('date', date);
 
@@ -22,7 +29,7 @@ export async function fetchDailyWellnessScore({ userId, date, apiBaseUrl }) {
   return payload?.data ?? payload;
 }
 
-export async function fetchWellnessScoreHistory({ userId, startDate, endDate, apiBaseUrl }) {
+async function fetchWellnessScoreHistoryOnce({ userId, startDate, endDate, apiBaseUrl }) {
   const params = new URLSearchParams({
     userId,
     startDate,
@@ -35,6 +42,25 @@ export async function fetchWellnessScoreHistory({ userId, startDate, endDate, ap
   });
   const payload = await readJsonResponse(res);
   return payload?.data ?? payload;
+}
+
+/**
+ * Concurrent Home + sheet + StrictMode callers share one /daily for the same
+ * user/date/activity watermark so a slower stale response cannot win.
+ */
+export function fetchDailyWellnessScore({ userId, date, apiBaseUrl }) {
+  const key = wellnessScoreInflightKey('daily', [userId, date || '', apiBaseUrl || ''], getLatestActivityLogId());
+  return dedupeWellnessScoreInflight(key, () => fetchDailyWellnessScoreOnce({ userId, date, apiBaseUrl }));
+}
+
+export function fetchWellnessScoreHistory({ userId, startDate, endDate, apiBaseUrl }) {
+  const key = wellnessScoreInflightKey('history', [userId, startDate || '', endDate || '', apiBaseUrl || ''], getLatestActivityLogId());
+  return dedupeWellnessScoreInflight(key, () => fetchWellnessScoreHistoryOnce({
+    userId,
+    startDate,
+    endDate,
+    apiBaseUrl,
+  }));
 }
 
 export async function fetchWellnessScoreAdminConfig({ requesterUserId, requesterEmail, apiBaseUrl }) {

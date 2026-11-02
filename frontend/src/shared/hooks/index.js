@@ -7,3 +7,4 @@ export { useDebounce } from './useDebounce.js';
 export { useOnlineStatus } from './useOnlineStatus.js';
 export { useCameraPermission } from './useCameraPermission.js';
 export { useSwipeToDelete } from './useSwipeToDelete.js';
+export { useAutoScrollStrip } from './useAutoScrollStrip.js';

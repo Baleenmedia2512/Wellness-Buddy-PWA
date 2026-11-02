@@ -3,13 +3,15 @@
  *
  * Shows each member's current weight vs their ideal range (BMI 19–23 × height²).
  * Supports search, team scope (Mine / Direct / Full), and status filter chips.
+ * Member list is server-paginated with infinite scroll (first 20, then more).
  *
  * Props:
  *   user      — { id } from App.js session
  *   onBack    — navigate back handler
  */
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { RefreshCw, CheckCircle } from 'lucide-react';
+import TeamMemberProfileModal from '../../../shared/components/TeamMemberProfileModal';
 import { useDownlineWeightReport } from '../hooks/useDownlineWeightReport';
 import WeightStatusRow from './WeightStatusRow';
 import ReportSearchBar from './ReportSearchBar';
@@ -29,7 +31,29 @@ function getStatusCountKey(filterKey) {
   return 'all';
 }
 
-export default function DownlineWeightReport({ user, tabVisitKey = 0 }) {
+function MemberRowSkeleton() {
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-4 animate-pulse">
+      <div className="flex items-center gap-3">
+        <div className="h-8 w-8 rounded-full bg-gray-200" />
+        <div className="flex-1 h-4 rounded bg-gray-200" />
+        <div className="h-5 w-20 rounded-full bg-gray-200" />
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="h-8 rounded bg-gray-100" />
+        <div className="h-8 rounded bg-gray-100" />
+      </div>
+      <div className="mt-3 h-2 rounded-full bg-gray-100" />
+    </div>
+  );
+}
+
+export default function DownlineWeightReport({
+  user,
+  tabVisitKey = 0,
+  hidePageTitle = false,
+  onRefreshRegister,
+}) {
   const coachId = user?.id ?? null;
   const {
     teamScope,
@@ -44,42 +68,66 @@ export default function DownlineWeightReport({ user, tabVisitKey = 0 }) {
     filtered,
     teamPerformanceByUserId,
     loading,
+    loadingMore,
+    hasNextPage,
+    loadMore,
     error,
     refresh,
   } = useDownlineWeightReport({ coachId, tabVisitKey });
 
+  useEffect(() => {
+    if (typeof onRefreshRegister !== 'function') return undefined;
+    onRefreshRegister({ refresh, refreshing: loading });
+  }, [onRefreshRegister, refresh, loading]);
+
+  const listSentinelRef = useRef(null);
+  const [profileMember, setProfileMember] = useState(null);
+
+  useEffect(() => {
+    const sentinel = listSentinelRef.current;
+    if (!sentinel) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore();
+      },
+      { root: null, rootMargin: '240px', threshold: 0 },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loadMore, filtered.length]);
+
+  const filtersBusy = loading && filtered.length === 0;
+
   return (
     <div className="min-h-full bg-gray-50">
-      {/* Page header */}
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
-        <div className="max-w-lg mx-auto w-full px-4 sm:px-6 py-3">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="flex-1 min-w-0">
-              <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
-                Ideal Weight Report
-              </h1>
-              {/* <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 truncate">
-                Team weight · ideal range tracking
-              </p> */}
+      {!hidePageTitle && (
+        <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
+          <div className="max-w-lg mx-auto w-full px-4 sm:px-6 py-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
+                  Ideal Weight Report
+                </h1>
+              </div>
+              <TouchFeedbackButton
+                onClick={refresh}
+                disabled={loading}
+                className="flex-shrink-0 p-2 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-40"
+                ariaLabel="Refresh"
+              >
+                <RefreshCw className={`h-4 w-4 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
+              </TouchFeedbackButton>
             </div>
-            <TouchFeedbackButton
-              onClick={refresh}
-              disabled={loading}
-              className="flex-shrink-0 p-2 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-40"
-              ariaLabel="Refresh"
-            >
-              <RefreshCw className={`h-4 w-4 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
-            </TouchFeedbackButton>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="max-w-lg mx-auto w-full px-4 sm:px-6 pt-4 pb-24 space-y-3">
         {/* Search */}
         <ReportSearchBar
           value={searchQuery}
           onChange={setSearchQuery}
-          disabled={loading}
+          disabled={filtersBusy}
         />
 
         {/* Team scope segmented control */}
@@ -99,7 +147,7 @@ export default function DownlineWeightReport({ user, tabVisitKey = 0 }) {
                 key={value}
                 type="button"
                 onClick={() => setTeamScope(value)}
-                disabled={loading}
+                disabled={filtersBusy}
                 aria-pressed={isActive}
                 className={`flex-1 min-w-0 py-2 sm:py-2.5 rounded-lg text-[11px] sm:text-xs font-semibold transition-all duration-150 cursor-pointer px-1 sm:px-2 disabled:opacity-50 disabled:cursor-not-allowed ${
                   isActive
@@ -142,21 +190,10 @@ export default function DownlineWeightReport({ user, tabVisitKey = 0 }) {
         {/* Body */}
         <div className="space-y-3">
         {/* Loading skeleton */}
-        {loading && filtered.length === 0 && (
+        {filtersBusy && (
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="bg-white rounded-2xl border border-gray-100 p-4 animate-pulse">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-full bg-gray-200" />
-                  <div className="flex-1 h-4 rounded bg-gray-200" />
-                  <div className="h-5 w-20 rounded-full bg-gray-200" />
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <div className="h-8 rounded bg-gray-100" />
-                  <div className="h-8 rounded bg-gray-100" />
-                </div>
-                <div className="mt-3 h-2 rounded-full bg-gray-100" />
-              </div>
+              <MemberRowSkeleton key={i} />
             ))}
           </div>
         )}
@@ -196,6 +233,7 @@ export default function DownlineWeightReport({ user, tabVisitKey = 0 }) {
           <WeightStatusRow
             key={row.userId}
             row={row}
+            onViewProfile={setProfileMember}
             teamPerformance={resolveRowTeamPerformance({
               row,
               teamScope,
@@ -205,8 +243,26 @@ export default function DownlineWeightReport({ user, tabVisitKey = 0 }) {
             })}
           />
         ))}
+
+        {loadingMore && (
+          <div className="space-y-3">
+            <MemberRowSkeleton />
+            <MemberRowSkeleton />
+          </div>
+        )}
+
+        {/* Infinite-scroll sentinel — keeps previously loaded rows; loads next page on view */}
+        {!error && hasNextPage && (
+          <div ref={listSentinelRef} className="h-4 w-full" aria-hidden="true" />
+        )}
         </div>
       </div>
+      <TeamMemberProfileModal
+        isOpen={Boolean(profileMember)}
+        onClose={() => setProfileMember(null)}
+        memberEmail={profileMember?.email}
+        memberUserId={profileMember?.userId}
+      />
     </div>
   );
 }

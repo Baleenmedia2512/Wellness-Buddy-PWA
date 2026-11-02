@@ -31,7 +31,18 @@ const RETRYABLE_CODES = new Set([429, 500, 502, 503]);
 const DEFAULT_MAX_ATTEMPTS  = 3;
 const DEFAULT_BASE_DELAY_MS = 600;   // 600 ms → 1.2 s → 2.4 s + jitter
 const DEFAULT_MAX_DELAY_MS  = 15_000; // cap single backoff at 15 s
-const DEFAULT_TIMEOUT_MS    = 30_000; // hard per-attempt timeout
+/**
+ * Hard per-attempt timeout (model call only; telemetry is outside this budget).
+ * Gemini p95 ≈ 43s; Vercel orchestrate maxDuration = 60s.
+ * Override with AI_CALL_TIMEOUT_MS when needed (e.g. local debugging).
+ */
+export const DEFAULT_TIMEOUT_MS = (() => {
+  const fromEnv = Number.parseInt(process.env.AI_CALL_TIMEOUT_MS ?? '', 10);
+  if (Number.isFinite(fromEnv) && fromEnv >= 10_000 && fromEnv <= 120_000) {
+    return fromEnv;
+  }
+  return 58_000;
+})();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -75,21 +86,42 @@ function isRetryable(err) {
 
 /**
  * Wrap a promise with a hard per-attempt timeout.
- * Rejects with `err.code = 'TIMEOUT'` if the timeout fires first.
+ * Rejects with `err.code = 'TIMEOUT'` only if the underlying promise has not
+ * already settled. If Gemini resolves in the same tick as the timer, the
+ * successful result wins (avoids discarding a just-finished model response).
  */
 function withTimeout(promise, ms, label) {
   if (!ms || ms <= 0) return promise;
 
-  let timerId;
-  const timeoutPromise = new Promise((_, reject) => {
-    timerId = setTimeout(() => {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const pending = Promise.resolve(promise);
+
+    const timerId = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      // Keep the orphaned Gemini call from becoming an unhandledRejection.
+      pending.catch(() => {});
       const err = new Error(`AI call timed out after ${ms} ms [${label}]`);
-      err.code  = 'TIMEOUT';
+      err.code = 'TIMEOUT';
       reject(err);
     }, ms);
-  });
 
-  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timerId));
+    pending.then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timerId);
+        resolve(value);
+      },
+      (err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timerId);
+        reject(err);
+      },
+    );
+  });
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -105,7 +137,7 @@ function withTimeout(promise, ms, label) {
  * @param {number} [opts.maxAttempts=3]
  * @param {number} [opts.baseDelayMs=600]
  * @param {number} [opts.maxDelayMs=15000]
- * @param {number} [opts.timeoutMs=30000]    Per-attempt hard timeout.
+ * @param {number} [opts.timeoutMs=55000]    Per-attempt hard timeout.
  * @param {boolean}[opts.useCircuitBreaker=true]
  * @returns {Promise<{ result: T, attempts: number, totalLatencyMs: number }>}
  * @throws The last error after all retry attempts are exhausted.

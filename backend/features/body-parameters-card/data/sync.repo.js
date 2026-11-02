@@ -1,11 +1,16 @@
 /**
- * sync.repo.js — DB access for Body Parameters Card ↔ Profile sync.
+ * sync.repo.js — MySQL access for Body Parameters Card ↔ Profile sync.
  * Writes only changed fields. Does not go through profile.service /
  * update handlers (avoids circular sync).
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getPrisma } from '../../../shared/lib/prisma.js';
 import { cache, cacheKeys } from '../../../utils/cache.js';
 import logger from '../../../shared/lib/logger.js';
+import {
+  nowUtc,
+  utcInstantToLegacyIstWallStorage,
+  IANA_IST,
+} from '../../../shared/lib/datetime/index.js';
 import {
   buildTeamTableDiff,
   buildWeightInsertIfChanged,
@@ -13,29 +18,88 @@ import {
 } from '../domain/sync.rules.js';
 import { ensureCardLinkedToUser } from './card.repo.js';
 
-const TEAM = 'team_table';
-const WEIGHT = 'weight_records_table';
+function mysql() {
+  return getPrisma();
+}
+
+function plainNum(value) {
+  if (value == null) return null;
+  if (typeof value === 'object' && typeof value.toNumber === 'function') {
+    const asNumber = value.toNumber();
+    return Number.isFinite(asNumber) ? asNumber : null;
+  }
+  const asNumber = Number(value);
+  return Number.isFinite(asNumber) ? asNumber : null;
+}
+
+/** Store the IST wall-clock string as the same digits in a UTC DATETIME column. */
+function wallClockDate(wall) {
+  return new Date(`${String(wall).trim().replace(' ', 'T')}Z`);
+}
 
 /**
  * @param {number} userId
- * @returns {Promise<{ userName: string|null, height: number|null, bmr: number|null, email: string|null }|null>}
+ * @returns {Promise<{
+ *   userName: string|null,
+ *   height: number|null,
+ *   bmr: number|null,
+ *   email: string|null,
+ *   gender: string|null,
+ *   age: number|null,
+ *   visceralFat: number|null,
+ *   bodyAge: number|null,
+ *   chestCm: number|null,
+ *   waistCm: number|null,
+ *   hipCm: number|null,
+ *   dietType: string|null,
+ *   physicalActivityLevel: string|null,
+ *   recoveredHealthIssues: string[],
+ * }|null>}
  */
 export async function getTeamProfileSnapshot(userId) {
   const uid = parseInt(userId, 10);
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from(TEAM)
-    .select('"UserName", "Height", "Bmr", "Email", "Gender"')
-    .eq('UserId', uid)
-    .maybeSingle();
-  if (error) throw error;
+  if (!Number.isFinite(uid) || uid < 1) return null;
+  const data = await mysql().team_table.findUnique({
+    where: { UserId: uid },
+    select: {
+      UserName: true,
+      Height: true,
+      Bmr: true,
+      Email: true,
+      Gender: true,
+      Age: true,
+      VisceralFat: true,
+      BodyAge: true,
+      ChestCm: true,
+      WaistCm: true,
+      HipCm: true,
+      DietType: true,
+      PhysicalActivityLevel: true,
+      recovered_health_issues: true,
+      transformation_photos: true,
+    },
+  });
   if (!data) return null;
   return {
     userName: data.UserName ?? null,
-    height: data.Height != null ? parseFloat(data.Height) : null,
-    bmr: data.Bmr != null ? parseFloat(data.Bmr) : null,
+    height: plainNum(data.Height),
+    bmr: plainNum(data.Bmr),
     email: data.Email ?? null,
     gender: data.Gender ?? null,
+    age: plainNum(data.Age),
+    visceralFat: plainNum(data.VisceralFat),
+    bodyAge: plainNum(data.BodyAge),
+    chestCm: plainNum(data.ChestCm),
+    waistCm: plainNum(data.WaistCm),
+    hipCm: plainNum(data.HipCm),
+    dietType: data.DietType != null ? String(data.DietType).trim() || null : null,
+    physicalActivityLevel: data.PhysicalActivityLevel != null
+      ? String(data.PhysicalActivityLevel).trim() || null
+      : null,
+    recoveredHealthIssues: Array.isArray(data.recovered_health_issues)
+      ? data.recovered_health_issues.filter((x) => typeof x === 'string' && x.trim())
+      : [],
+    transformationPhotos: data.transformation_photos ?? null,
   };
 }
 
@@ -45,22 +109,21 @@ export async function getTeamProfileSnapshot(userId) {
  */
 export async function getLatestWeightSnapshot(userId) {
   const uid = parseInt(userId, 10);
-  const supabase = getSupabaseClient();
-  const { data: rows, error } = await supabase
-    .from(WEIGHT)
-    .select('"Weight", "BodyFat", "Bmi", "Bmr"')
-    .eq('UserId', uid)
-    .or('"IsDeleted".is.null,"IsDeleted".eq.0,"IsDeleted".eq.false')
-    .order('"CreatedAt"', { ascending: false })
-    .limit(1);
-  if (error) throw error;
-  const data = rows?.[0];
+  if (!Number.isFinite(uid) || uid < 1) return null;
+  const data = await mysql().weight_records_table.findFirst({
+    where: {
+      UserId: BigInt(uid),
+      OR: [{ IsDeleted: null }, { IsDeleted: false }],
+    },
+    orderBy: { CreatedAt: 'desc' },
+    select: { Weight: true, BodyFat: true, Bmi: true, Bmr: true },
+  });
   if (!data) return null;
   return {
-    weight: data.Weight != null ? parseFloat(data.Weight) : null,
-    bodyFat: data.BodyFat != null ? parseFloat(data.BodyFat) : null,
-    bmi: data.Bmi != null ? parseFloat(data.Bmi) : null,
-    bmr: data.Bmr != null ? parseFloat(data.Bmr) : null,
+    weight: plainNum(data.Weight),
+    bodyFat: plainNum(data.BodyFat),
+    bmi: plainNum(data.Bmi),
+    bmr: plainNum(data.Bmr),
   };
 }
 
@@ -75,14 +138,11 @@ export async function patchTeamProfile(userId, diff) {
   if (!Number.isFinite(uid) || uid < 1) {
     throw new Error(`[bpc-sync] invalid UserId for team_table patch: ${userId}`);
   }
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from(TEAM)
-    .update(diff)
-    .eq('UserId', uid)
-    .select('UserId');
-  if (error) throw error;
-  if (!data?.length) {
+  const updated = await mysql().team_table.updateMany({
+    where: { UserId: uid },
+    data: diff,
+  });
+  if (!updated.count) {
     throw new Error(`[bpc-sync] team_table patch affected 0 rows for UserId ${uid}`);
   }
 }
@@ -92,9 +152,25 @@ export async function patchTeamProfile(userId, diff) {
  */
 export async function insertWeightRecord(row) {
   if (!row) return;
-  const supabase = getSupabaseClient();
-  const { error } = await supabase.from(WEIGHT).insert(row);
-  if (error) throw error;
+  // Match weight.service: store CreatedAt as legacy IST wall clock (no Z).
+  // Diary parses timezone-less timestamps as IST. DB default `now()` is UTC —
+  // omitting CreatedAt made BCM weights show ~5.5h early in Diary.
+  const legacyNow = wallClockDate(utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST));
+  const bmr = row.Bmr == null ? null : Math.round(Number(row.Bmr));
+  await mysql().$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("SET time_zone = '+00:00'");
+    await tx.weight_records_table.create({
+      data: {
+        UserId: BigInt(row.UserId),
+        Weight: row.Weight,
+        Bmi: row.Bmi ?? null,
+        BodyFat: row.BodyFat ?? null,
+        Bmr: Number.isFinite(bmr) ? bmr : null,
+        CreatedAt: row.CreatedAt ? wallClockDate(row.CreatedAt) : legacyNow,
+        UpdatedAt: row.UpdatedAt ? wallClockDate(row.UpdatedAt) : legacyNow,
+      },
+    });
+  });
 }
 
 /**
@@ -102,9 +178,10 @@ export async function insertWeightRecord(row) {
  * Compares before write; skips DB when nothing changed.
  *
  * @param {object} card - body_parameters_cards row (snake_case) with user_id
+ * @param {{ dietType?: string|null, physicalActivityLevel?: string|null }} [profileExtras]
  * @returns {Promise<{ synced: boolean, teamFields: string[], weightInserted: boolean }>}
  */
-export async function syncCardToProfile(card) {
+export async function syncCardToProfile(card, profileExtras = {}) {
   const userId = card?.user_id;
   if (!userId) {
     return { synced: false, teamFields: [], weightInserted: false };
@@ -115,7 +192,7 @@ export async function syncCardToProfile(card) {
     getLatestWeightSnapshot(userId),
   ]);
 
-  const teamDiff = buildTeamTableDiff(card, profile || {});
+  const teamDiff = buildTeamTableDiff(card, profile || {}, profileExtras);
   const weightRow = buildWeightInsertIfChanged(card, userId, latestWeight);
 
   if (!hasSyncWrites(teamDiff, weightRow)) {
@@ -133,6 +210,13 @@ export async function syncCardToProfile(card) {
   if (profile?.email) {
     try {
       cache.delete(cacheKeys.userProfile(profile.email));
+    } catch {
+      /* non-fatal */
+    }
+  }
+  if (teamDiff.ProfileImage !== undefined || teamDiff.transformation_photos !== undefined) {
+    try {
+      cache.delete(cacheKeys.userAvatar(userId));
     } catch {
       /* non-fatal */
     }
@@ -166,6 +250,12 @@ export async function syncCardToProfileAfterSave(card, linkPayload = {}) {
     return { synced: false, userId: null, teamFields: [], weightInserted: false };
   }
 
-  const result = await syncCardToProfile({ ...card, user_id: userId });
+  const profileExtras = {
+    dietType: linkPayload.dietType ?? null,
+    physicalActivityLevel: linkPayload.physicalActivityLevel ?? null,
+    transformationPhotos: linkPayload.transformationPhotos ?? null,
+  };
+
+  const result = await syncCardToProfile({ ...card, user_id: userId }, profileExtras);
   return { ...result, userId };
 }

@@ -3,8 +3,10 @@ export { default as NutritionCard } from './components/NutritionCard';
 export { default as HomeNutritionCarousel } from './components/HomeNutritionCarousel';
 export { default as FoodImageShareCard } from './components/FoodImageShareCard';
 export { default as NutritionDashboard } from './components/NutritionDashboard';
+export { default as NutritionSectionStack } from './components/dashboard/NutritionSectionStack';
 export { default as SmartFoodSearchModal } from './components/SmartFoodSearchModal';
 export { default as ShakeCalculatorModal } from './components/ShakeCalculatorModal';
+export { allowHerbalifeShakePost } from './services/allowHerbalifeShakePost';
 export { default as ServingStepperModal, buildWaterAnalysisResult } from './components/ServingStepperModal';
 export { buildAfreshAnalysisResult, AFRESH_PRODUCT } from './domain/afreshProductProfiles';
 export {
@@ -25,14 +27,15 @@ export { default as NutritionSummaryCards } from './components/dashboard/Nutriti
 export { default as NutritionFilters } from './components/dashboard/NutritionFilters';
 export { default as MealAnalysisModal } from './components/dashboard/MealAnalysisModal';
 export { default as UndoRow } from './components/dashboard/UndoRow';
-export { useUserCalorieTarget, useBurnedCalories, useResolveUserId, useDayAnalyses, useCalorieTrend, useCalorieChartData, useMealMutations } from './hooks';
+export { useUserCalorieTarget, useUserLatestWeight, useBurnedCalories, useResolveUserId, useDayAnalyses, useCalorieTrend, useCalorieChartData, useMealMutations } from './hooks';
 export * from './services/foodCorrectionService';
 export * from './services/foodCorrection';
 export * from './services/duplicateDetectionService';
 export * from './services/backgroundNutritionService';
 export * from './services/nutritionSaveService';
 export * from './services/nutritionFallback';
-export { deleteMealById, updateMealNutrition, undoMealDelete } from './services/nutritionDashboard';
+export { deleteMealById, updateMealNutrition, undoMealDelete, fetchWatchBurnedCalories } from './services/nutritionDashboard';
+export { fetchDayAnalyses } from './services/nutritionDashboard/dayAnalysesApi';
 export { aggregateFoodTotals, FOOD_TOTAL_FIELDS } from './domain/aggregateFoodTotals';
 export { parseAnalysisData } from './services/duplicateDetection/foodNameExtractor';
 export {

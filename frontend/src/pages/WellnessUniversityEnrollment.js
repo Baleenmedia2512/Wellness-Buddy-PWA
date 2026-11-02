@@ -1,10 +1,75 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
-import { debugLog } from '../shared/utils/logger.js';
-import { TeamMemberSearch } from '../features/team';
+import { TeamMemberSearch, resolveTeamSearchDisplayName } from '../features/team';
 import { EmojiOrNative } from '../shared/components/icons/EmojiImage';
+import { getProfile } from '../features/user/services/user.api.js';
+import { getCachedProfileUserName } from '../shared/utils/shareUtils.js';
+import { getApiBaseUrl } from '../config/api.config.js';
+import { parseNumericDbUserId, readNumericDbUserId } from '../shared/services/numericDbUserId.js';
+import { TeamMemberProfileModal } from '../shared/components/TeamMemberProfileModal';
 
-const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
+const ENROLLMENT_MEMBER_KEY = 'wv.universityEnrollment.member';
+
+function readEnrolledProgramNames(raw) {
+  if (raw == null || raw === '') return [];
+  let parsed = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (Array.isArray(parsed)) {
+    return parsed.filter((name) => typeof name === 'string' && name.trim() !== '');
+  }
+  if (parsed && typeof parsed === 'object') return Object.keys(parsed);
+  return [];
+}
+
+function readStoredEnrollmentMember() {
+  try {
+    const raw = sessionStorage.getItem(ENROLLMENT_MEMBER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const id = parseNumericDbUserId(parsed?.id || parsed?.userId);
+    if (!id || parsed?.isSelf) return null;
+    return {
+      id,
+      userId: id,
+      name: typeof parsed.name === 'string' ? parsed.name : '',
+      userName: typeof parsed.userName === 'string' ? parsed.userName : '',
+      email: typeof parsed.email === 'string' ? parsed.email : '',
+      isSelf: false,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function rememberEnrollmentMember(member) {
+  try {
+    if (!member || member.isSelf) {
+      sessionStorage.removeItem(ENROLLMENT_MEMBER_KEY);
+      return;
+    }
+    const id = parseNumericDbUserId(member.id || member.userId);
+    if (!id) {
+      sessionStorage.removeItem(ENROLLMENT_MEMBER_KEY);
+      return;
+    }
+    sessionStorage.setItem(ENROLLMENT_MEMBER_KEY, JSON.stringify({
+      id,
+      userId: id,
+      name: member.name || member.userName || '',
+      userName: member.userName || member.name || '',
+      email: member.email || '',
+      isSelf: false,
+    }));
+  } catch {
+    // Private mode can block sessionStorage. The open visit still works.
+  }
+}
 
 const PROGRAMS = [
   {
@@ -60,18 +125,21 @@ const PROGRAMS = [
   },
 ];
 
-const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false, tabVisitKey = 0 }) => {
+const WellnessUniversityEnrollment = ({
+  onBack, user, userRole, savedUserName = '', embedded = false, tabVisitKey = 0, teamSearchRefreshKey = 0,
+}) => {
   // onBack is the canonical prop name (matches App.js). Alias kept for clarity.
   const onClose = onBack;
 
-  const [selectedMember, setSelectedMember] = useState(null);
+  const [selectedMember, setSelectedMember] = useState(readStoredEnrollmentMember);
+  const [showMemberProfile, setShowMemberProfile] = useState(false);
 
-  // Use userId as the primary key for enrollment lookups — more reliable than
-  // email, which can be an empty string when the team hierarchy API returns no
-  // Email for the user (mapped as `member.Email || ""` in getFlatTeamList).
+  // Numeric team_table id only. Firebase uid is not a database user, and
+  // user.id can be missing after the auth object is copied into React state.
+  const selfUserId = readNumericDbUserId(user);
   const viewedUserId = (selectedMember && !selectedMember.isSelf)
-    ? (selectedMember.id || selectedMember.userId)
-    : user?.id;
+    ? (parseNumericDbUserId(selectedMember.id) || parseNumericDbUserId(selectedMember.userId) || selfUserId)
+    : selfUserId;
   const isViewingOther = Boolean(selectedMember && !selectedMember.isSelf);
 
   const [selectedPrograms, setSelectedPrograms] = useState([]);
@@ -82,6 +150,18 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
   const [checkingEnrollment, setCheckingEnrollment] = useState(true);
   const [coachName, setCoachName] = useState("");
   const [isEditMode, setIsEditMode] = useState(false);
+  // Profile UserName only — never Firebase `user_<phone>` / email local-part.
+  const [viewedUserName, setViewedUserName] = useState(() =>
+    resolveTeamSearchDisplayName(
+      savedUserName || getCachedProfileUserName(user?.email),
+      user,
+    ),
+  );
+  const loadGenRef = useRef(0);
+
+  useEffect(() => {
+    rememberEnrollmentMember(selectedMember);
+  }, [selectedMember]);
 
   const checkExistingEnrollment = useCallback(async () => {
     if (!viewedUserId) {
@@ -89,63 +169,82 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
       return;
     }
 
+    const generation = ++loadGenRef.current;
+    const apiBase = getApiBaseUrl();
+
     try {
-      // Fetch user profile to get coach name (only for own profile)
+      // Profile name + coach name + enrollment in parallel.
+      // getProfile is shared/deduped with TeamMemberSearch — no cache-bust, so
+      // Strict Mode remounts and search do not double-hit the 30KB profile payload.
+      const profilePromise = isViewingOther
+        ? (viewedUserId ? getProfile({ userId: viewedUserId }).catch(() => null) : Promise.resolve(null))
+        : (user?.email ? getProfile(user.email).catch(() => null) : Promise.resolve(null));
+
+      // Android WebView and iOS WKWebView replay the first GET after you leave
+      // this page. A fresh URL plus no-store loads the programmes just saved.
+      const enrollmentPromise = fetch(
+        `${apiBase}/api/wellness-university/get-enrollments?userId=${encodeURIComponent(
+          viewedUserId,
+        )}&userOnly=true&_=${Date.now()}`,
+        { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } },
+      ).then((res) => res.json());
+
+      const [profileData, data] = await Promise.all([profilePromise, enrollmentPromise]);
+      if (generation !== loadGenRef.current) return;
+
+      const profileName = profileData?.success ? (profileData.data?.userName || '') : '';
+      const profileUser = {
+        email: profileData?.data?.email || (isViewingOther ? selectedMember?.email : user?.email),
+        phoneNumber: profileData?.data?.phoneNumber
+          || (isViewingOther ? selectedMember?.phoneNumber : user?.phoneNumber),
+        userName: profileName,
+      };
+      setViewedUserName(
+        resolveTeamSearchDisplayName(
+          isViewingOther ? (selectedMember?.userName || selectedMember?.name) : savedUserName,
+          isViewingOther ? { ...selectedMember, ...profileUser } : { ...user, ...profileUser },
+        ),
+      );
+
       if (!isViewingOther) {
-        const cacheBuster = Date.now();
-        const profileResponse = await fetch(
-          `${API_BASE}/api/user/profile?email=${encodeURIComponent(
-            user?.email || '',
-          )}&_t=${cacheBuster}`,
-        );
-        const profileData = await profileResponse.json();
-
-        debugLog("🎓 [Enrollment] Profile data:", profileData);
-
-        if (profileData.success && profileData.data?.coachName) {
-          debugLog(
-            "✅ [Enrollment] Coach name found:",
-            profileData.data.coachName,
-          );
-          setCoachName(profileData.data.coachName);
-        } else {
-          debugLog("⚠️ [Enrollment] No coach name in profile data");
-          setCoachName("");
-        }
+        const name = profileData?.success
+          ? (profileData.data?.coachName || profileData.data?.sponsorName || '')
+          : '';
+        setCoachName(name);
       } else {
         setCoachName("");
       }
 
-      // Check existing enrollment — use userId as the primary key.
-      const cacheBuster = Date.now();
-      const response = await fetch(
-        `${API_BASE}/api/wellness-university/get-enrollments?userId=${encodeURIComponent(
-          viewedUserId,
-        )}&userOnly=true&_t=${cacheBuster}`,
-      );
-      const data = await response.json();
-
       if (data.success && data.enrollments && data.enrollments.length > 0) {
         const enrollment = data.enrollments[0];
         setExistingEnrollment(enrollment);
-        // Load existing programs for editing
-        const _parsed = JSON.parse(enrollment.EnrolledPrograms || "[]");
-        const enrolledPrograms = Array.isArray(_parsed) ? _parsed : Object.keys(_parsed);
-        setSelectedPrograms(enrolledPrograms);
-      } else {
+        setSelectedPrograms(readEnrolledProgramNames(enrollment.EnrolledPrograms));
+        setError("");
+      } else if (data.success) {
         setExistingEnrollment(null);
         setSelectedPrograms([]);
+      } else {
+        setError("Could not load programmes. Open this page again.");
       }
     } catch (err) {
+      if (generation !== loadGenRef.current) return;
       console.error("Error checking enrollment:", err);
+      setError("Could not load programmes. Open this page again.");
     } finally {
-      setCheckingEnrollment(false);
+      if (generation === loadGenRef.current) setCheckingEnrollment(false);
     }
-  }, [viewedUserId, isViewingOther, user?.email]);
+  }, [viewedUserId, isViewingOther, user?.email, savedUserName]);
 
+  // Debounce collapses React Strict Mode remount into one request pair.
   useEffect(() => {
     setCheckingEnrollment(true);
-    checkExistingEnrollment();
+    const timer = setTimeout(() => {
+      checkExistingEnrollment();
+    }, 50);
+    return () => {
+      clearTimeout(timer);
+      loadGenRef.current += 1;
+    };
   }, [checkExistingEnrollment, tabVisitKey]);
 
   const handleProgramToggle = (programName) => {
@@ -157,7 +256,8 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
   };
 
   const handleSubmit = async () => {
-    if (selectedPrograms.length === 0) {
+    // First enrollment still needs at least one program. Updates may clear all.
+    if (!existingEnrollment && selectedPrograms.length === 0) {
       setError("Please select at least one program");
       return;
     }
@@ -165,39 +265,45 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
     setLoading(true);
     setError("");
 
+    const programsSnapshot = [...selectedPrograms];
+    const wasUpdate = Boolean(existingEnrollment);
+
     try {
-      const endpoint = existingEnrollment
-        ? `${API_BASE}/api/wellness-university/update-enrollment`
-        : `${API_BASE}/api/wellness-university/enroll`;
+      const endpoint = wasUpdate
+        ? `${getApiBaseUrl()}/api/wellness-university/update-enrollment`
+        : `${getApiBaseUrl()}/api/wellness-university/enroll`;
 
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: viewedUserId,
-          programs: selectedPrograms,
+          programs: programsSnapshot,
         }),
       });
 
       const data = await response.json();
 
       if (data.success) {
-        setSuccess(true);
-        // Wait for success message, then refresh
-        setTimeout(async () => {
-          if (existingEnrollment) {
-            // Clear existing state first to force fresh fetch
-            setExistingEnrollment(null);
-            setSelectedPrograms([]);
-            // Small delay to ensure backend has committed changes
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            // Refresh enrollment data with fresh fetch
-            await checkExistingEnrollment();
-            setSuccess(false);
-          } else {
-            onClose();
-          }
-        }, 1500);
+        // Optimistic local state — no full-screen reload / delayed refetch.
+        if (wasUpdate) {
+          setExistingEnrollment((prev) => ({
+            ...(prev || {}),
+            EnrolledPrograms: JSON.stringify(
+              Object.fromEntries(programsSnapshot.map((p) => [p, new Date().toISOString()])),
+            ),
+            LastUpdated: new Date().toISOString(),
+          }));
+          setSelectedPrograms(programsSnapshot);
+          setIsEditMode(false);
+          setSuccess(true);
+          setTimeout(() => setSuccess(false), 1200);
+        } else {
+          setSuccess(true);
+          setTimeout(() => {
+            onClose?.();
+          }, 1000);
+        }
       } else {
         setError(data.message || "Failed to submit enrollment");
       }
@@ -237,6 +343,7 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
     : 'bg-white rounded-2xl shadow-2xl w-full max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1rem)] overflow-hidden flex flex-col my-2 sm:my-8';
 
   const formPanel = (
+    <>
     <motion.div
       initial={embedded ? false : { opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -248,7 +355,7 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
             <div className="flex-1 min-w-0">
               <h2 className="text-base xs:text-lg sm:text-2xl font-bold text-white flex items-center gap-2 flex-wrap">
                 <EmojiOrNative emoji="🎓" className="w-5 h-5 xs:w-6 xs:h-6 sm:w-7 sm:h-7 flex-shrink-0" nativeClassName="text-base xs:text-lg sm:text-2xl" />
-                <span className="break-words">{existingEnrollment ? "Programmers enrolled" : " Programmers Enrollment"}</span>
+                <span className="break-words">{existingEnrollment ? "Programmes enrolled" : "Programmes Enrollment"}</span>
               </h2>
               {/* <p className="text-white text-[11px] xs:text-xs sm:text-sm mt-1">
                 {existingEnrollment
@@ -288,6 +395,7 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
               userRole={userRole}
               selectedMember={selectedMember}
               onMemberSelect={setSelectedMember}
+              refreshKey={teamSearchRefreshKey}
             />
           </div>
 
@@ -295,11 +403,17 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
           <div className="bg-gray-50 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs sm:text-sm text-gray-600 font-semibold">Name:</span>
-              <span className="text-xs sm:text-sm text-gray-800 break-words">
-                {isViewingOther
-                  ? selectedMember?.name || selectedMember?.userName || selectedMember?.email?.split("@")[0]
-                  : user?.displayName || user?.email?.split("@")[0]}
-              </span>
+              {isViewingOther ? (
+                <button
+                  type="button"
+                  onClick={() => setShowMemberProfile(true)}
+                  className="text-xs sm:text-sm text-gray-800 break-words text-left hover:underline"
+                >
+                  {viewedUserName}
+                </button>
+              ) : (
+                <span className="text-xs sm:text-sm text-gray-800 break-words">{viewedUserName}</span>
+              )}
             </div>
             {coachName && (
               <div className="flex items-center gap-2 mb-2">
@@ -430,7 +544,7 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
             )}
             <button
               onClick={handleSubmit}
-              disabled={loading || selectedPrograms.length === 0}
+              disabled={loading || (!existingEnrollment && selectedPrograms.length === 0)}
               className="flex-1 bg-gradient-to-r from-green-400 to-teal-400 text-white py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
@@ -447,6 +561,14 @@ const WellnessUniversityEnrollment = ({ onBack, user, userRole, embedded = false
           </div>
         </div>
       </motion.div>
+      <TeamMemberProfileModal
+        isOpen={showMemberProfile}
+        onClose={() => setShowMemberProfile(false)}
+        memberEmail={selectedMember?.email}
+        memberUserId={selectedMember?.userId || selectedMember?.id}
+        apiBaseUrl={getApiBaseUrl()}
+      />
+    </>
   );
 
   if (embedded) {

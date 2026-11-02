@@ -84,6 +84,44 @@ export function formatWellnessDayLabel(dateStr, today = todayBusinessDate(DEFAUL
   return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
+function formatShortRangeDate(dateStr) {
+  const [y, m, d] = String(dateStr).split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+export function formatWellnessRangeLabel({
+  dateRange,
+  customStartDate,
+  customEndDate,
+  today = todayBusinessDate(DEFAULT_BUSINESS_TIMEZONE),
+}) {
+  switch (dateRange) {
+    case 'today':
+      return 'Today';
+    case 'yesterday':
+      return 'Yesterday';
+    case 'last7days':
+      return 'Last 7 Days';
+    case 'last10days':
+      return 'Last 10 Days';
+    case 'custom': {
+      const resolved = resolveWellnessDateRange({
+        preset: 'custom',
+        customStartDate,
+        customEndDate,
+        today,
+      });
+      if (resolved.startDate === resolved.endDate) {
+        return formatWellnessDayLabel(resolved.startDate, today);
+      }
+      return `${formatShortRangeDate(resolved.startDate)} - ${formatShortRangeDate(resolved.endDate)}`;
+    }
+    default:
+      return 'Wellness Score';
+  }
+}
+
 export function dateFromPickerValue(date) {
   return ymdFromValue(date);
 }

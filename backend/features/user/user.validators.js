@@ -4,10 +4,19 @@
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import { assertIanaTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { VALID_PHYSICAL_ACTIVITY_LEVELS, isValidPhysicalActivityLevel } from '../../utils/tdeeCalculations.js';
+import { parseOptionalBodyMetric } from './domain/profileBodyMetrics.rules.js';
+import { normalizeRecoveredHealthIssues } from '../body-parameters-card/validation/card.schema.js';
+import {
+  TRANSFORMATION_PHOTO_SLOTS,
+  hasTransformationPhotoUpdates,
+  isStoredTransformationPhoto,
+} from './domain/transformationPhotos.rules.js';
+import { validateHeightCm as validateHeightCmInput } from './domain/heightChange.rules.js';
 
 const VALID_DIETS = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
 const VALID_GOAL_MODES = ['loss', 'gain', 'maintain'];
 export const COMMUNITY_ID_MAX_LENGTH = 100;
+export const COMMUNITY_ID_MIN_LENGTH = 4;
 const COMMUNITY_ID_PATTERN = /^[a-zA-Z0-9]+$/;
 export { VALID_GOAL_MODES, VALID_PHYSICAL_ACTIVITY_LEVELS };
 
@@ -20,6 +29,12 @@ export function normalizeCommunityId(raw) {
 export function validateCommunityId(raw) {
   const normalized = normalizeCommunityId(raw);
   if (normalized === null) return { valid: true, value: null };
+  if (normalized.length < COMMUNITY_ID_MIN_LENGTH) {
+    return {
+      valid: false,
+      message: `Community ID must be at least ${COMMUNITY_ID_MIN_LENGTH} characters.`,
+    };
+  }
   if (normalized.length > COMMUNITY_ID_MAX_LENGTH) {
     return {
       valid: false,
@@ -61,16 +76,32 @@ export function normalizeEmail(raw) {
 
 export function validateGetProfile(query) {
   const email = normalizeEmail(query?.email);
-  if (!email) throw new ValidationError(400, 'Missing required query parameter: email');
-  return { email };
+  const userIdRaw = query?.userId ?? query?.UserId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
+  if ((!userId || !Number.isFinite(userId)) && !email) {
+    throw new ValidationError(400, 'Missing required query parameter: email or userId');
+  }
+  return {
+    email: email || null,
+    userId: userId && Number.isFinite(userId) ? userId : null,
+  };
 }
 
 const VALID_GENDERS = ['Male', 'Female'];
 
 export function validateUpdateProfile(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
-  const email = body.email;
-  if (!email) throw new ValidationError(400, 'Missing required field: email');
+  const email = normalizeEmail(body.email) || null;
+  const userIdRaw = body.userId ?? body.UserId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
+  const resolvedUserId = userId && Number.isFinite(userId) && userId > 0 ? userId : null;
+  if (!email && !resolvedUserId) {
+    throw new ValidationError(400, 'Missing required field: email or userId');
+  }
   const weightGoalMode = body.weightGoalMode;
   if (weightGoalMode != null && !VALID_GOAL_MODES.includes(weightGoalMode)) {
     throw new ValidationError(400, `Invalid weightGoalMode. Must be one of: ${VALID_GOAL_MODES.join(', ')}`);
@@ -93,6 +124,38 @@ export function validateUpdateProfile(body) {
     communityId = validation.value;
   }
 
+  let bodyFat;
+  if ('bodyFat' in body || 'BodyFat' in body || 'body_fat' in body) {
+    const raw = body.bodyFat !== undefined
+      ? body.bodyFat
+      : (body.BodyFat !== undefined ? body.BodyFat : body.body_fat);
+    if (raw === null || raw === '') {
+      bodyFat = null;
+    } else {
+      const n = parseFloat(raw);
+      if (!Number.isFinite(n) || n < 1 || n > 70) {
+        throw new ValidationError(400, 'Invalid bodyFat. Must be a number between 1 and 70.');
+      }
+      bodyFat = n;
+    }
+  }
+
+  let currentWeight;
+  if ('currentWeight' in body || 'weight' in body || 'Weight' in body) {
+    const raw = body.currentWeight !== undefined
+      ? body.currentWeight
+      : (body.weight !== undefined ? body.weight : body.Weight);
+    if (raw === null || raw === '') {
+      currentWeight = null;
+    } else {
+      const n = parseFloat(raw);
+      if (!Number.isFinite(n) || n < 20 || n > 300) {
+        throw new ValidationError(400, 'Invalid currentWeight. Must be a number between 20 and 300 kg.');
+      }
+      currentWeight = n;
+    }
+  }
+
   let timezoneIana;
   if ('timezone' in body || 'timezoneIana' in body || 'timezone_iana' in body) {
     const timezoneRaw = body.timezone !== undefined
@@ -103,8 +166,67 @@ export function validateUpdateProfile(body) {
     timezoneIana = validation.value;
   }
 
+  const parseMetric = (keys, bounds, label) => {
+    const present = keys.some((k) => k in body);
+    if (!present) return undefined;
+    const raw = keys.reduce((acc, k) => (acc !== undefined ? acc : body[k]), undefined);
+    const parsed = parseOptionalBodyMetric(raw, bounds);
+    if (!parsed.ok) throw new ValidationError(400, `Invalid ${label}. ${parsed.message}`);
+    return parsed.value;
+  };
+
+  const age = parseMetric(['age', 'Age'], { min: 1, max: 120, integer: true }, 'age');
+  const visceralFat = parseMetric(['visceralFat', 'VisceralFat', 'visceral_fat'], { min: 1, max: 59 }, 'visceralFat');
+  const bodyAge = parseMetric(['bodyAge', 'BodyAge', 'body_age'], { min: 1, max: 120 }, 'bodyAge');
+  const chestCm = parseMetric(['chestCm', 'ChestCm', 'chest_cm'], { min: 30, max: 200 }, 'chestCm');
+  const waistCm = parseMetric(['waistCm', 'WaistCm', 'waist_cm'], { min: 30, max: 200 }, 'waistCm');
+  const hipCm = parseMetric(['hipCm', 'HipCm', 'hip_cm'], { min: 30, max: 200 }, 'hipCm');
+
+  let recoveredHealthIssues;
+  if (
+    'recoveredHealthIssues' in body
+    || 'recovered_health_issues' in body
+    || 'medicalCondition' in body
+  ) {
+    recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
+  }
+
+  let transformationPhotos;
+  if ('transformationPhotos' in body || 'transformation_photos' in body) {
+    const raw = body.transformationPhotos !== undefined
+      ? body.transformationPhotos
+      : body.transformation_photos;
+    if (raw == null || raw === '') {
+      transformationPhotos = undefined;
+    } else if (typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new ValidationError(400, 'Invalid transformationPhotos. Must be an object with optional front, left, and right images.');
+    } else {
+      const normalized = {};
+      TRANSFORMATION_PHOTO_SLOTS.forEach((slot) => {
+        if (!(slot in raw)) return;
+        const value = raw[slot];
+        if (value == null || value === '') return;
+        if (!isStoredTransformationPhoto(value)) {
+          throw new ValidationError(400, `Invalid transformationPhotos.${slot}. Provide an image data URL.`);
+        }
+        normalized[slot] = String(value).trim();
+      });
+      transformationPhotos = hasTransformationPhotoUpdates(normalized) ? normalized : undefined;
+    }
+  }
+
+  // Complete Profile (BCM/BPC review) — optional; old clients omit it.
+  let bcmProfileReviewed;
+  if ('bcmProfileReviewed' in body || 'bcm_profile_reviewed' in body) {
+    const raw = body.bcmProfileReviewed !== undefined
+      ? body.bcmProfileReviewed
+      : body.bcm_profile_reviewed;
+    bcmProfileReviewed = raw === true || raw === 'true' || raw === 1 || raw === '1';
+  }
+
   return {
     email,
+    userId: resolvedUserId,
     name: body.name,
     height: body.height,
     bmr: body.bmr,
@@ -115,7 +237,18 @@ export function validateUpdateProfile(body) {
     weightGoalMode: weightGoalMode || undefined,
     physicalActivityLevel: physicalActivityLevel || undefined,
     communityId,
+    bodyFat,
+    currentWeight,
     timezoneIana,
+    age,
+    visceralFat,
+    bodyAge,
+    chestCm,
+    waistCm,
+    hipCm,
+    recoveredHealthIssues,
+    transformationPhotos,
+    bcmProfileReviewed,
   };
 }
 
@@ -182,9 +315,27 @@ export function validateSnooze(body) {
 }
 
 export function validateDeleteAccount(body) {
+  const confirmRaw = body?.confirmPhrase ?? body?.confirmWord ?? body?.confirmation;
+  const confirmPhrase = String(confirmRaw || '').trim().toUpperCase();
+  const userIdRaw = body?.userId ?? body?.UserId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
   const email = normalizeEmail(body?.email);
-  if (!email) throw new ValidationError(400, 'Missing required field: email');
-  return { email };
+
+  // New clients: userId + typed DELETE — no email OTP.
+  if (userId && Number.isFinite(userId) && userId > 0) {
+    if (confirmPhrase !== 'DELETE') {
+      throw new ValidationError(400, 'Type DELETE to confirm account deletion.');
+    }
+    return { mode: 'userId', userId, confirmPhrase, email: email || null };
+  }
+
+  // Legacy clients: email + recent email OTP gate (no confirmPhrase required here).
+  if (!email) {
+    throw new ValidationError(400, 'userId or email is required');
+  }
+  return { mode: 'legacyEmail', email, userId: null, confirmPhrase: null };
 }
 
 export function validateSkipSetup(body) {
@@ -195,8 +346,127 @@ export function validateSkipSetup(body) {
 
 export function validateStatus(query) {
   const email = normalizeEmail(query?.email);
-  if (!email) throw new ValidationError(400, 'Email is required');
-  return { email };
+  const userIdRaw = query?.userId ?? query?.UserId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
+  if ((!userId || !Number.isFinite(userId)) && !email) {
+    throw new ValidationError(400, 'email or userId is required');
+  }
+  return {
+    email: email || null,
+    userId: userId && Number.isFinite(userId) ? userId : null,
+  };
+}
+
+export function validateVerifySession(req) {
+  const isGet = req.method === 'GET';
+  const source = isGet ? req.query : req.body;
+  const email = source?.email ? normalizeEmail(source.email) : null;
+  const phoneRaw = source?.phone ?? source?.phoneNumber ?? source?.PhoneNumber;
+  const phone = phoneRaw != null && String(phoneRaw).trim() !== ''
+    ? String(phoneRaw).trim()
+    : null;
+  const userIdRaw = source?.userId ?? source?.UserId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? String(userIdRaw).trim()
+    : null;
+  if (!email && !phone && !userId) {
+    throw new ValidationError(400, 'At least one of userId, email, or phone is required');
+  }
+  const timezoneRaw = isGet
+    ? (source?.timezoneIana ?? source?.timezone)
+    : (source?.timezoneIana ?? source?.timezone);
+  return { userId, email, phone, timezoneIana: timezoneRaw };
+}
+
+export function validateCheckOnboardingEmail(body) {
+  const userIdRaw = body?.userId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
+  const email = normalizeEmail(body?.email);
+  if (!userId || !Number.isFinite(userId)) {
+    throw new ValidationError(400, 'userId is required');
+  }
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new ValidationError(400, 'A valid email address is required');
+  }
+  return { userId, email, sendOtp: body?.sendOtp === true };
+}
+
+export function validateVerifyOnboardingEmail(body) {
+  const { userId, email } = validateCheckOnboardingEmail(body);
+  const otp = body?.otp != null ? String(body.otp).trim() : '';
+  if (!otp || !/^\d{4}$/.test(otp)) {
+    throw new ValidationError(400, 'Enter the 4-digit code sent to your email');
+  }
+  const name = body?.name != null ? String(body.name).trim() : '';
+  return {
+    userId,
+    email,
+    otp,
+    name,
+    adoptExisting: body?.adoptExisting === true,
+  };
+}
+
+function parseProfileIdentity(body) {
+  const email = normalizeEmail(body?.email) || null;
+  const userIdRaw = body?.userId ?? body?.UserId;
+  const userId = userIdRaw != null && String(userIdRaw).trim() !== ''
+    ? Number(userIdRaw)
+    : null;
+  const resolvedUserId = userId && Number.isFinite(userId) && userId > 0 ? userId : null;
+  if (!email && !resolvedUserId) {
+    throw new ValidationError(400, 'Missing required field: email or userId');
+  }
+  return { email, userId: resolvedUserId };
+}
+
+export function validateCommunityIdRequest(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const raw = body.communityId !== undefined ? body.communityId : body.community_id;
+  const validation = validateCommunityId(raw);
+  if (!validation.valid) throw new ValidationError(400, validation.message);
+  if (!validation.value) {
+    throw new ValidationError(400, 'Community ID is required');
+  }
+  return {
+    ...identity,
+    communityId: validation.value,
+  };
+}
+
+export function validateCommunityIdVerify(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const otp = body?.otp != null ? String(body.otp).trim() : '';
+  if (!otp || !/^\d{4}$/.test(otp)) {
+    throw new ValidationError(400, 'Enter the 4-digit approval code from your sponsor');
+  }
+  return { ...identity, otp };
+}
+
+export function validateHeightChangeRequest(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const check = validateHeightCmInput(body.height ?? body.Height);
+  if (!check.valid) throw new ValidationError(400, check.message);
+  return { ...identity, height: check.value };
+}
+
+export function validateHeightChangeVerify(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const check = validateHeightCmInput(body.height ?? body.Height);
+  if (!check.valid) throw new ValidationError(400, check.message);
+  const otp = body?.otp != null ? String(body.otp).trim() : '';
+  if (!otp || !/^\d{4}$/.test(otp)) {
+    throw new ValidationError(400, 'Enter the 4-digit code sent to your email or phone');
+  }
+  return { ...identity, height: check.value, otp };
 }
 
 export { VALID_DIETS, VALID_GENDERS };

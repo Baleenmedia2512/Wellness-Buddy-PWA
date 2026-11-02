@@ -49,7 +49,6 @@ const ManualEducationEntryModal = ({
               formSubtitle={formSubtitle}
             />
             <EducationFormActions
-              onCancel={vm.handleCancel}
               onSave={vm.handleSave}
               isSaving={vm.isSaving}
             />

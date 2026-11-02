@@ -4,6 +4,7 @@ import {
   parseAnalysisData,
   deleteMealById,
 } from '../services/nutritionDashboard';
+import { invalidateMealDetail } from '../services/mealDetailCache';
 
 const DEFAULT_UNDO_SECONDS = 5;
 
@@ -100,6 +101,7 @@ export function useMealDeleteMutations({
 
     try {
       await deleteMealById({ apiBaseUrl, id: meal.ID, userId: user?.id });
+      invalidateMealDetail(user?.id, meal.ID);
       if (onMealDelete) onMealDelete(meal.ID);
       // Trigger global nutrition refresh (updates home cards)
       triggerRefresh({ immediate: true, source: 'meal-delete' });

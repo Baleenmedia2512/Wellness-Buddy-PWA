@@ -19,9 +19,11 @@ export function useWeightDashboard({
   user, apiBaseUrl, initialEntryId = null, selectedDate = null, refreshKey = 0,
   onDeleteWithUndo = null,
   onDeleteUndoCancel = null,
+  enabled = true,
+  timezoneIana: timezoneIanaProp = null,
 }) {
-  const data = useWeightHistoryData({ user, apiBaseUrl, refreshKey });
-  const timezoneIana = resolveBusinessTimezone(user);
+  const data = useWeightHistoryData({ user, apiBaseUrl, refreshKey, enabled });
+  const timezoneIana = timezoneIanaProp || resolveBusinessTimezone(user);
 
   const [weightTrendRangeDays, setWeightTrendRangeDays] = useState(7);
   const [activeWeightPanel, setActiveWeightPanel] = useState('summary');

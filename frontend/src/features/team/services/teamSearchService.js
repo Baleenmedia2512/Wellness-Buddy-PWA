@@ -3,7 +3,14 @@
  * Owns the network call(s) and any list normalisation. No React.
  */
 import { teamHierarchyService } from '../../../shared/services/teamHierarchyService';
+import cacheManager from '../../../shared/services/cacheManager.js';
 import { hasValidProfileName } from '../../user/domain/profileCompleteness';
+import { getProfile } from '../../user/services/user.api.js';
+
+import { resolveTypedSearchQuery } from './teamSearchQuery.js';
+
+// Export local binding so CRA/webpack lists this name on the barrel module.
+export { resolveTypedSearchQuery };
 
 /** Coach-like roles that may search/view other team members. */
 const COACH_ROLES = new Set(['coach', 'coccoach', 'upline', 'admin', 'developer']);
@@ -12,22 +19,50 @@ export function isCoachRole(role) {
   return COACH_ROLES.has(String(role || '').toLowerCase());
 }
 
-/** True when role grants search or user coaches at least one team_table row. */
+/**
+ * True when role grants search, or backend says the user has team UI:
+ * own downline and/or Sponsor/Co-Sponsor lead seat.
+ */
 export function canUseTeamSearch(role, hasTeamMembers) {
   return isCoachRole(role) || Boolean(hasTeamMembers);
 }
 
-/** Check team_table: does any user list this userId as their CoachId? */
+/**
+ * Backend /api/team/has-members — true only for own CoachId downline.
+ * Community ID / joint coach-team seats alone do not grant Sponsor UI.
+ * Gates Diary / Programs search and Activity Mine-Direct-Full elevation.
+ */
+/** Drop cached team-search payloads after Co-Sponsor / team-code profile saves. */
+export function invalidateHasTeamMembersCache(userId) {
+  if (userId == null || userId === '') return;
+  cacheManager.clear(cacheManager.generateKey('hasTeamMembers', String(userId)));
+  // Keys match teamHierarchyService.getTeamHierarchy (version + coachId + includeInactive + purpose).
+  const version = 'v6-purpose-search';
+  for (const includeInactive of [false, true]) {
+    for (const purpose of ['search', 'full']) {
+      cacheManager.clear(
+        cacheManager.generateKey('teamHierarchy', version, userId, includeInactive, purpose),
+      );
+    }
+  }
+}
+
 export async function fetchHasTeamMembers(userId) {
   if (!userId) return false;
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-  const res = await fetch(
-    `${apiBaseUrl}/api/team/has-members?userId=${encodeURIComponent(userId)}`,
-    { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
+  const key = cacheManager.generateKey('hasTeamMembers', String(userId));
+  return cacheManager.execute(
+    key,
+    async () => {
+      const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+      const res = await fetch(
+        `${apiBaseUrl}/api/team/has-members?userId=${encodeURIComponent(userId)}`,
+      );
+      if (!res.ok) return false;
+      const data = await res.json();
+      return Boolean(data?.hasTeamMembers);
+    },
+    cacheManager.ttls.hasTeamMembers,
   );
-  if (!res.ok) return false;
-  const data = await res.json();
-  return Boolean(data?.hasTeamMembers);
 }
 
 /**
@@ -35,25 +70,34 @@ export async function fetchHasTeamMembers(userId) {
  * Returns '' when missing or when UserName is a placeholder (email local-part / phone user_*).
  */
 export async function fetchSavedUserName(email) {
-  if (!email) return '';
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-  const cacheBuster = Date.now();
-  const res = await fetch(
-    `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(email)}&_t=${cacheBuster}`,
-    { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
-  );
-  if (!res.ok) return '';
-  const data = await res.json();
-  if (!data?.success || !data?.data) return '';
-  const name = String(data.data.userName || '').trim();
-  const profileEmail = data.data.email || email;
-  if (!hasValidProfileName(name, {
-    email: profileEmail,
-    phoneNumber: data.data.phoneNumber,
-  })) {
-    return '';
+  const profile = await fetchSavedSearchProfile(email);
+  return profile.userName;
+}
+
+/**
+ * Profile fields needed for team search (display name + Community ID).
+ * userName is '' when missing or a placeholder (email local-part / phone user_*).
+ */
+export async function fetchSavedSearchProfile(email) {
+  if (!email) return { userName: '', communityId: null };
+  try {
+    const data = await getProfile(email);
+    if (!data?.success || !data?.data) return { userName: '', communityId: null };
+    const name = String(data.data.userName || '').trim();
+    const profileEmail = data.data.email || email;
+    const communityId = data.data.communityId != null
+      ? String(data.data.communityId).trim() || null
+      : null;
+    if (!hasValidProfileName(name, {
+      email: profileEmail,
+      phoneNumber: data.data.phoneNumber,
+    })) {
+      return { userName: '', communityId };
+    }
+    return { userName: name, communityId };
+  } catch {
+    return { userName: '', communityId: null };
   }
-  return name;
 }
 
 /**
@@ -78,9 +122,41 @@ export function resolveTeamSearchDisplayName(savedUserName, user) {
   return '';
 }
 
+/**
+ * Attach each member's direct-coach Community ID for search display.
+ *
+ * Rule (downline search subtitle):
+ *   You (coach CID=C0)
+ *   ├── a1, a2, a3     → show C0 (their direct coach is You)
+ *   └── a2's children  → show a2's Community ID (their direct coach is a2)
+ *
+ * Own Community ID stays on `communityId`; display uses `directCoachCommunityId`.
+ */
+export function withDirectCoachCommunityIds(members) {
+  const cidByUserId = new Map();
+  for (const m of members) {
+    if (m?.userId == null) continue;
+    const cid = String(m.communityId || '').trim();
+    if (cid) cidByUserId.set(String(m.userId), cid);
+  }
+  return members.map((m) => {
+    if (m.isSelf) {
+      return { ...m, directCoachCommunityId: null };
+    }
+    const coachCid = m.coachId != null
+      ? (cidByUserId.get(String(m.coachId)) || null)
+      : null;
+    return { ...m, directCoachCommunityId: coachCid };
+  });
+}
+
 /** Fetch the coach's full team (Active members only) and prepend the coach themselves. */
-export async function fetchTeamMembers({ coachId, coachName, coachEmail, coachRole }) {
-  const flatList = await teamHierarchyService.getFlatTeamList(coachId);
+export async function fetchTeamMembers({
+  coachId, coachName, coachEmail, coachRole, coachCommunityId = null, coachPhone = null,
+}) {
+  const flatList = await teamHierarchyService.getFlatTeamList(coachId, {
+    purpose: 'search',
+  });
   // Defense-in-depth: backend already returns Active-only; drop any Inactive rows.
   const activeOnly = flatList.filter((m) => {
     if (m.userId === coachId) return true;
@@ -93,17 +169,33 @@ export async function fetchTeamMembers({ coachId, coachName, coachEmail, coachRo
       userId: coachId,
       userName: coachName || '',
       email: coachEmail,
+      communityId: coachCommunityId || null,
+      phoneNumber: coachPhone || null,
+      clubName: flatList.coachClubName || null,
       role: coachRole,
       status: 'Active',
       isSelf: true,
     },
     ...filtered,
   ];
-  return Array.from(new Map(withCoach.map((m) => [m.userId, m])).values());
+  const deduped = Array.from(new Map(withCoach.map((m) => [m.userId, m])).values());
+  return withDirectCoachCommunityIds(deduped);
 }
 
 /**
- * Case-insensitive name/email substring filter over the Active-only member list.
+ * Community ID shown on a search / downline row.
+ * Always the person's own ID (including downline coaches).
+ * Hidden on the searching coach's own "Me" row — never the direct coach's ID.
+ */
+export function subtitleCommunityId(member) {
+  if (!member || member.isSelf) return null;
+  const cid = String(member.communityId || '').trim();
+  return cid || null;
+}
+
+/**
+ * Case-insensitive name/email/communityId substring filter over the Active-only member list.
+ * Community ID matches the value shown in the subtitle (the member's own ID).
  * Empty query returns [] (dropdown stays closed until the user types).
  */
 export function filterMembers(members, query) {
@@ -112,19 +204,73 @@ export function filterMembers(members, query) {
   return members.filter(
     (m) =>
       (m.userName || '').toLowerCase().includes(q) ||
-      (m.email || '').toLowerCase().includes(q),
+      (m.email || '').toLowerCase().includes(q) ||
+      String(m.phoneNumber || m.PhoneNumber || '').toLowerCase().includes(q) ||
+      String(m.clubName || '').toLowerCase().includes(q) ||
+      String(subtitleCommunityId(m) || '').toLowerCase().includes(q),
   );
+}
+
+/**
+ * Second line for team search / downline rows:
+ * "email | communityId", or whichever side is present (never an empty "|").
+ * Callers pass the *member's own* Community ID (not the viewing coach's).
+ */
+export function formatMemberSubtitle(email, communityId) {
+  const mail = String(email || '').trim();
+  const cid = String(communityId || '').trim();
+  if (mail && cid) return `${mail} | ${cid}`;
+  if (mail) return mail;
+  if (cid) return cid;
+  return '';
+}
+
+/**
+ * Diary search row pieces: Name, Community ID, Club name, Email, Phone.
+ * Club name is uppercased. Empty parts are left out.
+ * Phone is marked so the diary header can start a call from that number alone.
+ * Email is marked so the diary header can open a mail composer for that address.
+ * @returns {Array<{ kind: 'text'|'phone'|'email', value: string }>}
+ */
+export function diarySearchDetailParts(member, { includeName = true } = {}) {
+  const club = String(member?.clubName || '').trim().toUpperCase();
+  const phone = String(member?.phoneNumber || member?.PhoneNumber || '').trim();
+  const email = String(member?.email || member?.Email || '').trim();
+  return [
+    includeName ? { kind: 'text', value: String(member?.userName || member?.name || '').trim() } : null,
+    { kind: 'text', value: String(member?.communityId || '').trim() },
+    { kind: 'text', value: club },
+    email ? { kind: 'email', value: email } : null,
+    phone ? { kind: 'phone', value: phone } : null,
+  ].filter((part) => part && part.value);
+}
+
+/**
+ * Diary search row: Name | Community ID | Club name | Email | Phone.
+ * Club name is uppercased. Empty parts are left out so the line never has a bare pipe.
+ * The email is the searched member's own email (never the logged-in user's).
+ */
+export function formatDiarySearchDetails(member, options) {
+  return diarySearchDetailParts(member, options).map((part) => part.value).join(' | ');
 }
 
 /** Map the slim DB shape into the user-object shape the rest of the app expects. */
 export function toSelectedUser(member) {
+  const timezone = member.timezone || member.timezoneIana || null;
   return {
     id: member.userId,
     userId: member.userId,
     name: member.userName,
     userName: member.userName,
     email: member.email,
+    communityId: member.communityId || null,
+    phoneNumber: member.phoneNumber || member.PhoneNumber || null,
+    clubName: member.clubName || null,
+    directCoachCommunityId: member.directCoachCommunityId || null,
+    coachId: member.coachId ?? null,
     role: member.role,
     isSelf: member.isSelf,
+    timezone,
+    timezoneIana: timezone,
   };
 }

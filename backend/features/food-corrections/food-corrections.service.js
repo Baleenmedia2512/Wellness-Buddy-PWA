@@ -14,12 +14,36 @@ import {
   listMasterSearchItems,
   NUTRITION_KEYS,
   pickNutrition,
+  foodNameMatchesQuery,
+  sortByFoodNameMatch,
 } from '../nutrition-knowledge/index.js';
 import logger from '../../shared/lib/logger.js';
+import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
+import { assertViewerCanAccessMember } from '../../utils/reportingHierarchyService.js';
 import {
   injectGlycemicIndexIntoAnalysisData,
   resolveGlycemicIndexForUpdate,
 } from './glycemicIndex.helpers.js';
+import { waitUntil } from '@vercel/functions';
+import {
+  emptyMealTotalsSeed,
+  addMealRowToTotals,
+  roundMealTotals,
+} from './domain/meal-totals.js';
+import { MAX_STATS_RANGE_DAYS } from './food-corrections.validators.js';
+import { isHerbalifeProductSuggestionName } from '../food-suggestions/domain/foodPairs.rules.js';
+
+function filterRegularFoodSearchItems(items) {
+  return (items || []).filter((item) => !isHerbalifeProductSuggestionName(item?.name));
+}
+
+function inclusiveDayCount(startDate, endDate) {
+  const a = Date.parse(`${startDate}T00:00:00Z`);
+  const b = Date.parse(`${endDate}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  return Math.floor((b - a) / 86_400_000) + 1;
+}
 
 // ─── list user corrections ──────────────────────────────────────────────────
 export async function listCorrections({ userId }) {
@@ -105,7 +129,7 @@ function extractMatchingItems(row, lowerTerm) {
     const analysis = typeof row.AnalysisData === 'string' ? JSON.parse(row.AnalysisData) : row.AnalysisData;
     const foods = analysis?.foods || [];
     return foods
-      .filter((f) => (f.name || '').toLowerCase().includes(lowerTerm))
+      .filter((f) => foodNameMatchesQuery(f.name || '', lowerTerm))
       .map((f) => {
         const nutrition = pickNutrition(f.nutrition || f);
         const weight_g = f.weight_g != null ? Math.round(f.weight_g) : 100;
@@ -118,11 +142,16 @@ function extractMatchingItems(row, lowerTerm) {
             ? Math.round(Number(nutrition[key]))
             : Number(nutrition[key]);
         }
+        const servingsRaw = Number(f.servings ?? f.servingCount);
+        const servings = Number.isFinite(servingsRaw) && servingsRaw > 0 ? servingsRaw : undefined;
+        const portion = f.portion || f.portion_label || undefined;
         return {
           name: (f.name || '').trim(),
           weight_g,
           source: 'history',
           ...flat,
+          ...(servings != null ? { servings } : {}),
+          ...(portion ? { portion } : {}),
           nutrition: Object.keys(nutrition).length ? nutrition : {
             calories: flat.calories ?? null,
             protein: flat.protein ?? null,
@@ -162,21 +191,63 @@ function dedupItems(rows, lowerTerm) {
 }
 
 export async function searchFoodHistory({ userId, searchTerm }) {
-  const lowerTerm = searchTerm.toLowerCase();
-  const [myRows, communityRows, masterItems] = await Promise.all([
-    repo.searchUserMeals(userId, searchTerm),
-    repo.searchCommunityMeals(userId, searchTerm),
+  const trimmed = String(searchTerm || '').trim();
+  const lowerTerm = trimmed.toLowerCase();
+
+  // Single-letter typeahead: master/seeds only. History ILIKE on AnalysisData
+  // JSON for "%y%" is slow and rarely useful for autocomplete.
+  if (trimmed.length === 1) {
+    const masterItems = isEnabled('ff.nutrition-knowledge')
+      ? await listMasterSearchItems(trimmed).catch(() => [])
+      : [];
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        masterItems: filterRegularFoodSearchItems(
+          sortByFoodNameMatch(masterItems || [], trimmed),
+        ),
+        myItems: [],
+        communityItems: [],
+      },
+    };
+  }
+
+  let [myRows, communityRows, masterItems] = await Promise.all([
+    repo.searchUserMeals(userId, trimmed),
+    repo.searchCommunityMeals(userId, trimmed),
     isEnabled('ff.nutrition-knowledge')
-      ? listMasterSearchItems(searchTerm).catch(() => [])
+      ? listMasterSearchItems(trimmed).catch(() => [])
       : Promise.resolve([]),
   ]);
+
+  // Typo recall: if exact ILIKE miss, re-query with a 2-char prefix and
+  // let foodNameMatchesQuery filter (e.g. "omlette" → "omelette").
+  if (
+    myRows.length === 0
+    && communityRows.length === 0
+    && trimmed.length >= 3
+  ) {
+    const prefix = trimmed.slice(0, 2);
+    [myRows, communityRows] = await Promise.all([
+      repo.searchUserMeals(userId, prefix),
+      repo.searchCommunityMeals(userId, prefix),
+    ]);
+  }
+
   return {
     httpStatus: 200,
     body: {
       success: true,
-      masterItems: masterItems || [],
-      myItems: dedupItems(myRows, lowerTerm),
-      communityItems: dedupItems(communityRows, lowerTerm),
+      masterItems: filterRegularFoodSearchItems(
+        sortByFoodNameMatch(masterItems || [], trimmed),
+      ),
+      myItems: filterRegularFoodSearchItems(
+        sortByFoodNameMatch(dedupItems(myRows, lowerTerm), trimmed),
+      ),
+      communityItems: filterRegularFoodSearchItems(
+        sortByFoodNameMatch(dedupItems(communityRows, lowerTerm), trimmed),
+      ),
     },
   };
 }
@@ -273,6 +344,17 @@ export async function updateAnalysis(input) {
   }
   cache.delete(cacheKeys.nutritionMeals(userId));
   await repo.touchLastActive(userId);
+
+  // Suggestion pair stats are best-effort and O(n²) in food count — do not block
+  // the meal-edit response (delete/edit one item felt like ~15s on large meals).
+  waitUntil(
+    import('../food-suggestions/index.js')
+      .then(({ recordMealFoodPairs }) => recordMealFoodPairs({ userId, analysisData }))
+      .catch((err) => {
+        logger.warn('updateAnalysis: food pair stats skipped', { err: err?.message, mealId: id });
+      }),
+  );
+
   return {
     httpStatus: 200,
     body: {
@@ -298,16 +380,97 @@ function demoStatsResponse() {
   };
 }
 
-export async function getStats({ userId, date, detailed }) {
+export async function getStats({
+  userId,
+  date,
+  detailed,
+  totalsOnly = false,
+  startDate = null,
+  endDate = null,
+  maxRangeDays = MAX_STATS_RANGE_DAYS,
+  viewerUserId = null,
+}) {
   if (userId === 'DEMO_USER') {
     return { httpStatus: 200, body: demoStatsResponse() };
   }
 
+  await assertViewerCanAccessMember(getMysqlClient(), viewerUserId, userId);
+
   const timezoneIana = await getUserTimezoneIana(userId);
+
+  // Inclusive range totals for home carousel / charts (1 HTTP instead of N days).
+  if (startDate && endDate && totalsOnly) {
+    const resolvedStart = resolveRequestedDateYmd(startDate, timezoneIana);
+    const resolvedEnd = resolveRequestedDateYmd(endDate, timezoneIana);
+    assertNotFutureDateYmd(resolvedEnd, timezoneIana);
+    if (resolvedStart > resolvedEnd) {
+      throw new ValidationError(400, 'startDate must be on or before endDate');
+    }
+    const dayCount = inclusiveDayCount(resolvedStart, resolvedEnd);
+    if (dayCount > maxRangeDays) {
+      throw new ValidationError(400, `Date range cannot exceed ${maxRangeDays} days`);
+    }
+
+    const totalRows = await repo.fetchMealTotalsForRange(
+      userId,
+      resolvedStart,
+      resolvedEnd,
+      timezoneIana,
+    );
+    const byDate = {};
+    for (const row of totalRows) {
+      let ymd;
+      try {
+        ymd = resolveFoodTimestamp(row.CreatedAt, timezoneIana).calendarYmd;
+      } catch {
+        continue;
+      }
+      if (!byDate[ymd]) byDate[ymd] = emptyMealTotalsSeed();
+      byDate[ymd] = addMealRowToTotals(byDate[ymd], row);
+    }
+    for (const ymd of Object.keys(byDate)) {
+      byDate[ymd] = roundMealTotals(byDate[ymd]);
+    }
+
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        data: [],
+        byDate,
+        queryInfo: {
+          userId,
+          startDate: resolvedStart,
+          endDate: resolvedEnd,
+          recordCount: totalRows.length,
+          dayCount,
+          totalsOnly: true,
+        },
+      },
+    };
+  }
 
   if (detailed && date) {
     const resolvedDate = resolveRequestedDateYmd(date, timezoneIana);
     assertNotFutureDateYmd(resolvedDate, timezoneIana);
+
+    // Calorie-trend / charts: numeric columns only — no AnalysisData or images
+    if (totalsOnly) {
+      const totalRows = await repo.fetchMealTotalsForDate(userId, resolvedDate, timezoneIana);
+      const dailyTotals = roundMealTotals(
+        totalRows.reduce((t, r) => addMealRowToTotals(t, r), emptyMealTotalsSeed()),
+      );
+      return {
+        httpStatus: 200,
+        body: {
+          success: true,
+          data: [],
+          dailyTotals,
+          queryInfo: { userId, date: resolvedDate, recordCount: totalRows.length, totalsOnly: true },
+        },
+      };
+    }
+
     const meals = await repo.fetchMealsForDate(userId, resolvedDate, timezoneIana);
     const filtered = meals.filter((record) => {
       try {
@@ -315,72 +478,16 @@ export async function getStats({ userId, date, detailed }) {
         return Array.isArray(data.foods) && data.foods.length > 0;
       } catch { return true; }
     });
-    // Source-of-truth list mirrors features/nutrition/domain/micronutrientRules.js.
-    // dailyTotals key (camelCase) ↔ DB column name (PascalCase).
-    const MICRO_TOTAL_FIELDS = [
-      ['totalVitaminA',   'TotalVitaminA'],
-      ['totalVitaminC',   'TotalVitaminC'],
-      ['totalVitaminD',   'TotalVitaminD'],
-      ['totalVitaminE',   'TotalVitaminE'],
-      ['totalVitaminK',   'TotalVitaminK'],
-      ['totalVitaminB1',  'TotalVitaminB1'],
-      ['totalVitaminB2',  'TotalVitaminB2'],
-      ['totalVitaminB3',  'TotalVitaminB3'],
-      ['totalVitaminB6',  'TotalVitaminB6'],
-      ['totalVitaminB9',  'TotalVitaminB9'],
-      ['totalVitaminB12', 'TotalVitaminB12'],
-      ['totalCalcium',    'TotalCalcium'],
-      ['totalIron',       'TotalIron'],
-      ['totalMagnesium',  'TotalMagnesium'],
-      ['totalPotassium',  'TotalPotassium'],
-      ['totalZinc',       'TotalZinc'],
-      ['totalPhosphorus', 'TotalPhosphorus'],
-    ];
-    const baseSeed = {
-      totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0, totalFiber: 0,
-      totalSugar: 0, totalSodium: 0, totalCholesterol: 0, mealCount: 0,
-    };
-    const microSeed = MICRO_TOTAL_FIELDS.reduce((s, [k]) => { s[k] = 0; return s; }, {});
-    const seed = { ...baseSeed, ...microSeed };
-    const dailyTotals = filtered.reduce((t, r) => {
-      const next = {
-        totalCalories:    t.totalCalories    + (r.TotalCalories    || 0),
-        totalProtein:     t.totalProtein     + (r.TotalProtein     || 0),
-        totalCarbs:       t.totalCarbs       + (r.TotalCarbs       || 0),
-        totalFat:         t.totalFat         + (r.TotalFat         || 0),
-        totalFiber:       t.totalFiber       + (r.TotalFiber       || 0),
-        totalSugar:       t.totalSugar       + (r.TotalSugar       || 0),
-        totalSodium:      t.totalSodium      + (r.TotalSodium      || 0),
-        totalCholesterol: t.totalCholesterol + (r.TotalCholesterol || 0),
-        mealCount:        t.mealCount + 1,
-      };
-      for (const [statKey, dbCol] of MICRO_TOTAL_FIELDS) {
-        next[statKey] = (t[statKey] || 0) + (r[dbCol] || 0);
-      }
-      return next;
-    }, seed);
-    const round2 = (n) => Math.round(n * 100) / 100;
-    const roundedMicros = MICRO_TOTAL_FIELDS.reduce((acc, [statKey]) => {
-      acc[statKey] = round2(dailyTotals[statKey] || 0);
-      return acc;
-    }, {});
+    const dailyTotals = roundMealTotals(
+      filtered.reduce((t, r) => addMealRowToTotals(t, r), emptyMealTotalsSeed()),
+    );
+
     return {
       httpStatus: 200,
       body: {
         success: true,
         data: filtered,
-        dailyTotals: {
-          ...dailyTotals,
-          totalCalories: round2(dailyTotals.totalCalories),
-          totalProtein: round2(dailyTotals.totalProtein),
-          totalCarbs: round2(dailyTotals.totalCarbs),
-          totalFat: round2(dailyTotals.totalFat),
-          totalFiber: round2(dailyTotals.totalFiber),
-          totalSugar: round2(dailyTotals.totalSugar),
-          totalSodium: round2(dailyTotals.totalSodium),
-          totalCholesterol: round2(dailyTotals.totalCholesterol),
-          ...roundedMicros,
-        },
+        dailyTotals,
         queryInfo: { userId, date: resolvedDate, recordCount: filtered.length },
       },
     };
@@ -425,6 +532,81 @@ export async function getStats({ userId, date, detailed }) {
       },
       weeklyNutrition, dailyNutrition,
       recentAnalyses: counts.recentAnalyses,
+    },
+  };
+}
+
+/**
+ * Single meal detail — full AnalysisData for one indexed row.
+ */
+export async function getMealDetail({ userId, id }) {
+  if (userId === 'DEMO_USER') {
+    return { httpStatus: 404, body: { success: false, message: 'Not found' } };
+  }
+  const row = await repo.fetchMealById(userId, id);
+  if (!row) {
+    return { httpStatus: 404, body: { success: false, message: 'Not found' } };
+  }
+  return {
+    httpStatus: 200,
+    body: { success: true, data: row },
+  };
+}
+
+/**
+ * Batch meal details — one indexed query for prefetch (ids capped in validator).
+ */
+export async function getMealsBatch({ userId, ids }) {
+  if (userId === 'DEMO_USER') {
+    return { httpStatus: 200, body: { success: true, data: [] } };
+  }
+  const rows = await repo.fetchMealsByIds(userId, ids);
+  return {
+    httpStatus: 200,
+    body: { success: true, data: rows },
+  };
+}
+
+/**
+ * Lazy meal photo — returns JSON { image } like weight/image for modal/card hydration.
+ * Prefer food.ImageKey; if missing, reuse captures_table.ImageKey (Manual Log promote
+ * often left food without a key after capture Base64 was cleared for R2).
+ */
+export async function getMealImage({ userId, id }) {
+  const row = await repo.getMealImageById(userId, id);
+  if (!row) {
+    return { httpStatus: 404, body: { success: false, message: 'Not found' } };
+  }
+  let imageKey = row.ImageKey || null;
+  if (!imageKey && row.CaptureID) {
+    try {
+      const { getStoredCaptureImageKey } = await import('../captures/capture-image-storage.service.js');
+      imageKey = await getStoredCaptureImageKey(row.CaptureID);
+      if (imageKey) {
+        // Best-effort heal so future reads hit food.ImageKey directly.
+        await repo.updateFoodImageKey(id, userId, imageKey).catch(() => {});
+      }
+    } catch {
+      imageKey = null;
+    }
+  }
+  let r2Url = null;
+  if (imageKey) {
+    try {
+      const { redirectUrlForImageKey } = await import('../../shared/lib/milesweb/storedImage.js');
+      r2Url = await redirectUrlForImageKey(imageKey, 'ff.r2-food-images');
+    } catch {
+      r2Url = null;
+    }
+  }
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      id: row.ID,
+      image: row.ImageBase64 || null,
+      imagePath: row.ImagePath || null,
+      r2Url,
     },
   };
 }

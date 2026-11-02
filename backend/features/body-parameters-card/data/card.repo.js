@@ -1,18 +1,86 @@
 /**
  * card.repo.js — Data layer for body_parameters_cards.
- * The ONLY place in this feature that talks to Supabase.
+ * Table access uses Prisma against MySQL (MYSQL_DATABASE_URL).
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
+import { getPrisma } from '../../../shared/lib/prisma.js';
+import { assertViewerCanAccessMember } from '../../../utils/reportingHierarchyService.js';
+import { randomUUID } from 'crypto';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { canonicalPhoneForStorage, buildPhoneLookupVariants } from '../../auth/domain/phone-identity.rules.js';
 import {
   buildTeamMemberInsert,
+  computeBmiFromHeightWeight,
   shouldClearBpcLeadCoachId,
+  isMemberActivatedForBcmExclusion,
+  BCM_ACTIVATED_MEMBER_MESSAGE,
+  canOverrideBcmForMember,
+  computeDefaultAppointmentDate,
+  buildNewCardShareDefaults,
 } from '../domain/card.rules.js';
+import { getLatestWeight, getLatestWeightBodyFat, getLatestWeightMetricsByUserIds } from '../../user/user.repository.js';
 import logger from '../../../shared/lib/logger.js';
+import { ValidationError } from '../../../shared/lib/ValidationError.js';
+import { mapTransformationPhotos } from '../../user/domain/transformationPhotos.rules.js';
 
 const TABLE = 'body_parameters_cards';
 const APPROVALS = 'approval_requests_table';
+
+function plainDb(value, kind) {
+  if (value == null) return null;
+  if (typeof value === 'bigint') {
+    const asNumber = Number(value);
+    return Number.isSafeInteger(asNumber) ? asNumber : value.toString();
+  }
+  if (value instanceof Date) {
+    if (kind === 'date') return value.toISOString().slice(0, 10);
+    return value.toISOString();
+  }
+  if (typeof value === 'object' && typeof value.toNumber === 'function') {
+    const asNumber = value.toNumber();
+    return Number.isFinite(asNumber) ? asNumber : value.toString();
+  }
+  return value;
+}
+
+function asCard(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    id: plainDb(row.id),
+    height_cm: plainDb(row.height_cm),
+    weight_kg: plainDb(row.weight_kg),
+    bmi: plainDb(row.bmi),
+    fat_percent: plainDb(row.fat_percent),
+    bmr: plainDb(row.bmr),
+    visceral_fat: plainDb(row.visceral_fat),
+    chest_cm: plainDb(row.chest_cm),
+    waist_cm: plainDb(row.waist_cm),
+    hip_cm: plainDb(row.hip_cm),
+    recorded_date: row.recorded_date == null ? null : plainDb(row.recorded_date, 'date'),
+    created_at: row.created_at == null ? null : plainDb(row.created_at),
+    updated_at: row.updated_at == null ? null : plainDb(row.updated_at),
+    share_expires_at: row.share_expires_at == null ? row.share_expires_at : plainDb(row.share_expires_at),
+  };
+}
+
+function toCardPk(id) {
+  return typeof id === 'bigint' ? id : BigInt(id);
+}
+
+function mysql() {
+  return getPrisma();
+}
+
+/** Prisma DateTime rejects `YYYY-MM-DD`. Store calendar dates at UTC midnight. */
+function asDbDate(value) {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) return value;
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return new Date(`${text}T00:00:00.000Z`);
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
 /**
  * Insert a new body-parameters card.
@@ -20,67 +88,97 @@ const APPROVALS = 'approval_requests_table';
  * @returns {object} inserted row
  */
 export async function insertCard(payload) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from(TABLE)
-    .insert({
-      created_by:   payload.createdBy,
-      user_id:      payload.userId,
-      name:         payload.name,
-      age:          payload.age,
-      gender:       payload.gender,
-      height_cm:    payload.heightCm,
-      weight_kg:    payload.weightKg,
-      bmi:          payload.bmi,
-      fat_percent:  payload.fatPercent,
-      bmr:          payload.bmr,
-      body_age:     payload.bodyAge,
-      visceral_fat: payload.visceralFat,
-      chest_cm:     payload.chestCm,
-      waist_cm:     payload.waistCm,
-      hip_cm:       payload.hipCm,
-      recorded_date: payload.recordedDate,
-      location_name: payload.locationName,
-    })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+  const locationName = payload.locationName != null && String(payload.locationName).trim() !== ''
+    ? String(payload.locationName).trim().substring(0, 200)
+    : null;
+
+  const share = buildNewCardShareDefaults({
+    now: new Date(nowUtc()),
+    token: randomUUID(),
+  });
+  const row = {
+    created_by:    payload.createdBy,
+    user_id:       payload.userId ?? null,
+    public_share_token: share.publicShareToken,
+    share_expires_at: share.shareExpiresAt,
+    name:          payload.name,
+    age:           payload.age ,
+    gender:        payload.gender ,
+    height_cm:     payload.heightCm ,
+    weight_kg:     payload.weightKg ,
+    bmi:           payload.bmi ,
+    fat_percent:   payload.fatPercent ,
+    bmr:           payload.bmr ,
+    body_age:      payload.bodyAge ,
+    visceral_fat:  payload.visceralFat ,
+    chest_cm:      payload.chestCm ,
+    waist_cm:      payload.waistCm ,
+    hip_cm:        payload.hipCm ,
+    location_name: locationName,
+    appointment_date: asDbDate(payload.appointmentDate),
+
+    recovered_health_issues: Array.isArray(payload.recoveredHealthIssues)
+      ? payload.recoveredHealthIssues
+      : [],
+  };
+  if (payload.recordedDate) {
+    row.recorded_date = asDbDate(payload.recordedDate);
+  }
+
+  const created = await mysql().body_parameters_cards.create({ data: row });
+  return { ...asCard(created), appointment_date: payload.appointmentDate || null };
 }
 
 /**
  * Update an existing body-parameters card by id.
  * @param {number} id
  * @param {object} payload - validated + coerced from validateUpdateCard
+ * @param {{ allowActivated?: boolean }} [opts]
  * @returns {object} updated row
  */
-export async function updateCard(id, payload) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from(TABLE)
-    .update({
-      name:          payload.name,
-      age:           payload.age,
-      gender:        payload.gender,
-      height_cm:     payload.heightCm,
-      weight_kg:     payload.weightKg,
-      bmi:           payload.bmi,
-      fat_percent:   payload.fatPercent,
-      bmr:           payload.bmr,
-      body_age:      payload.bodyAge,
-      visceral_fat:  payload.visceralFat,
-      chest_cm:      payload.chestCm,
-      waist_cm:      payload.waistCm,
-      hip_cm:        payload.hipCm,
-      recorded_date: payload.recordedDate,
-      location_name: payload.locationName,
-    })
-    .eq('id', id)
-    .eq('is_deleted', false)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+export async function updateCard(id, payload, opts = {}) {
+  const allowActivated = opts.allowActivated === true;
+  const existingRow = await mysql().body_parameters_cards.findFirst({
+    where: { id: toCardPk(id), is_deleted: false },
+    select: { id: true, user_id: true },
+  });
+  if (!existingRow) {
+    throw new ValidationError(404, 'Card not found');
+  }
+  if (!allowActivated && existingRow.user_id && await isUserActivatedForBcm(existingRow.user_id)) {
+    await rejectBcmForActivatedMember(existingRow.user_id);
+  }
+
+  const locationName = payload.locationName != null && String(payload.locationName).trim() !== ''
+    ? String(payload.locationName).trim().substring(0, 200)
+    : null;
+
+  const updated = await mysql().body_parameters_cards.update({
+    where: { id: existingRow.id },
+    data: {
+      name: payload.name,
+      age: payload.age ?? null,
+      gender: payload.gender ?? null,
+      height_cm: payload.heightCm ?? null,
+      weight_kg: payload.weightKg ?? null,
+      bmi: payload.bmi ?? null,
+      fat_percent: payload.fatPercent ?? null,
+      bmr: payload.bmr ?? null,
+      body_age: payload.bodyAge ?? null,
+      visceral_fat: payload.visceralFat ?? null,
+      chest_cm: payload.chestCm ?? null,
+      waist_cm: payload.waistCm ?? null,
+      hip_cm: payload.hipCm ?? null,
+      recorded_date: asDbDate(payload.recordedDate) ?? undefined,
+      appointment_date: asDbDate(payload.appointmentDate),
+      location_name: locationName,
+      recovered_health_issues: Array.isArray(payload.recoveredHealthIssues)
+        ? payload.recoveredHealthIssues
+        : [],
+      updated_at: new Date(),
+    },
+  });
+  return { ...asCard(updated), appointment_date: payload.appointmentDate || null };
 }
 
 /**
@@ -91,19 +189,10 @@ export async function updateCard(id, payload) {
  * @returns {object|null}
  */
 export async function findCardByToken(token) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select(
-      'id, created_by, user_id, public_share_token, share_expires_at, ' +
-      'name, age, gender, height_cm, weight_kg, bmi, fat_percent, bmr, ' +
-      'body_age, visceral_fat, chest_cm, waist_cm, hip_cm, recorded_date, location_name, created_at'
-    )
-    .eq('public_share_token', token)
-    .eq('is_deleted', false)
-    .maybeSingle();
-  if (error) throw error;
-  return data || null;
+  const row = await mysql().body_parameters_cards.findFirst({
+    where: { public_share_token: token, is_deleted: false },
+  });
+  return asCard(row);
 }
 
 /**
@@ -112,14 +201,11 @@ export async function findCardByToken(token) {
  * @returns {Promise<string|null>}
  */
 export async function findTeamPhoneByUserId(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('team_table')
-    .select('PhoneNumber')
-    .eq('UserId', userId)
-    .maybeSingle();
-  if (error) throw error;
-  const phone = data?.PhoneNumber;
+  const row = await mysql().team_table.findUnique({
+    where: { UserId: Number(userId) },
+    select: { PhoneNumber: true },
+  });
+  const phone = row?.PhoneNumber;
   return phone && String(phone).trim() ? String(phone).trim() : null;
 }
 
@@ -128,25 +214,133 @@ export async function findTeamPhoneByUserId(userId) {
  * @param {number} userId
  * @returns {Promise<boolean>}
  */
-async function hasApprovedCoachSelection(userId) {
+export async function hasApprovedCoachSelection(userId) {
   const uid = parseInt(userId, 10);
   if (!Number.isFinite(uid) || uid < 1) return false;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from(APPROVALS)
-    .select('"Id"')
-    .eq('"RequesterId"', uid)
-    .eq('"Status"', 'approved')
-    .limit(1);
-  if (error) {
+  try {
+    const row = await mysql().approval_requests_table.findFirst({
+      where: { RequesterId: uid, Status: 'approved' },
+      select: { Id: true },
+    });
+    return Boolean(row?.Id);
+  } catch (error) {
     logger.warn('[body-params-card] approved coach-selection lookup failed', {
       userId: uid,
       message: error.message,
     });
-    // Fail open for BPC cleanup — without OTP approval we must not keep CoachId.
     return false;
   }
-  return Boolean(data?.[0]?.Id);
+}
+
+/**
+ * Activated for BCM exclusion = approved coach/sponsor OTP (implies logged-in member).
+ * @param {number} userId
+ * @returns {Promise<boolean>}
+ */
+export async function isUserActivatedForBcm(userId) {
+  const approved = await hasApprovedCoachSelection(userId);
+  return isMemberActivatedForBcmExclusion({ hasApprovedCoachSelection: approved });
+}
+
+/**
+ * Hard-delete every body_parameters_cards row linked to this member (all creators).
+ * Activation lock remains via OTP approval — delete does not reopen BCM for the phone.
+ *
+ * @param {number} userId
+ * @returns {Promise<{ deleted: number, createdByIds: number[] }>}
+ */
+export async function hardDeleteCardsForUserId(userId) {
+  const uid = parseInt(userId, 10);
+  if (!Number.isFinite(uid) || uid < 1) return { deleted: 0, createdByIds: [] };
+
+  const rows = await mysql().body_parameters_cards.findMany({
+    where: { user_id: uid },
+    select: { id: true, created_by: true },
+  });
+  if (rows.length === 0) return { deleted: 0, createdByIds: [] };
+
+  const createdByIds = [
+    ...new Set(
+      rows
+        .map((r) => parseInt(r.created_by, 10))
+        .filter((n) => Number.isFinite(n) && n > 0),
+    ),
+  ];
+
+  await mysql().body_parameters_cards.deleteMany({ where: { user_id: uid } });
+
+  for (const coachId of createdByIds) {
+    invalidateBpcListCache(coachId);
+  }
+
+  logger.info('[body-params-card] hard-deleted BCM cards for activated member', {
+    userId: uid,
+    deleted: rows.length,
+    createdByIds,
+  });
+
+  return { deleted: rows.length, createdByIds };
+}
+
+/**
+ * After coach OTP approval: remove all BCM records for this member.
+ * Safe to call even when no cards exist.
+ *
+ * @param {number} userId
+ * @returns {Promise<{ deleted: number, createdByIds: number[] }>}
+ */
+export async function purgeBcmCardsForActivatedMember(userId) {
+  return hardDeleteCardsForUserId(userId);
+}
+
+/**
+ * @param {number[]} userIds
+ * @returns {Promise<Set<number>>} userIds that are activated for BCM exclusion
+ */
+async function findActivatedUserIdsAmong(userIds) {
+  const activated = new Set();
+  const ids = [...new Set(
+    (userIds || [])
+      .map((id) => parseInt(id, 10))
+      .filter((n) => Number.isFinite(n) && n > 0),
+  )];
+  if (ids.length === 0) return activated;
+
+  const CHUNK = 200;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    try {
+      const data = await mysql().approval_requests_table.findMany({
+        where: { RequesterId: { in: chunk }, Status: 'approved' },
+        select: { RequesterId: true },
+      });
+      for (const row of data) {
+        const rid = parseInt(row.RequesterId, 10);
+        if (Number.isFinite(rid) && rid > 0) activated.add(rid);
+      }
+    } catch (error) {
+      logger.warn('[body-params-card] batch activated lookup failed', {
+        message: error.message,
+      });
+    }
+  }
+  return activated;
+}
+
+/**
+ * Reject BCM when the phone belongs to an activated member: hard-delete cards, then throw.
+ * @param {number} userId
+ */
+async function rejectBcmForActivatedMember(userId) {
+  try {
+    await hardDeleteCardsForUserId(userId);
+  } catch (purgeErr) {
+    logger.error('[body-params-card] failed to purge cards before activated reject', {
+      userId,
+      message: purgeErr?.message,
+    });
+  }
+  throw new ValidationError(409, BCM_ACTIVATED_MEMBER_MESSAGE);
 }
 
 /**
@@ -160,13 +354,10 @@ export async function enforceBpcLeadNoCoachUntilOnboarding(userId) {
   const uid = parseInt(userId, 10);
   if (!Number.isFinite(uid) || uid < 1) return false;
 
-  const supabase = getSupabaseClient();
-  const { data: member, error } = await supabase
-    .from('team_table')
-    .select('"UserId", "CoachId", "EntryUser", "SetupSkipped"')
-    .eq('"UserId"', uid)
-    .maybeSingle();
-  if (error) throw error;
+  const member = await mysql().team_table.findUnique({
+    where: { UserId: uid },
+    select: { UserId: true, CoachId: true, EntryUser: true, SetupSkipped: true },
+  });
   if (!member) return false;
 
   const approved = await hasApprovedCoachSelection(uid);
@@ -182,19 +373,14 @@ export async function enforceBpcLeadNoCoachUntilOnboarding(userId) {
   }
 
   const previousCoachId = member.CoachId;
-  const { data: updated, error: updateErr } = await supabase
-    .from('team_table')
-    .update({ CoachId: null })
-    .eq('"UserId"', uid)
-    .select('"UserId", "CoachId", "EntryUser"')
-    .maybeSingle();
-  if (updateErr) throw updateErr;
-  if (!updated) {
-    throw new Error(`[bpc] CoachId clear affected 0 rows for UserId ${uid}`);
-  }
+  const updated = await mysql().team_table.update({
+    where: { UserId: uid },
+    data: { CoachId: null },
+    select: { UserId: true, CoachId: true, EntryUser: true },
+  });
   if (updated.CoachId != null && updated.CoachId !== '') {
     throw new Error(
-      `[bpc] CoachId still ${updated.CoachId} after clear for UserId ${uid} — check Supabase triggers on team_table / body_parameters_cards`,
+      `[bpc] CoachId still ${updated.CoachId} after clear for UserId ${uid} — check MySQL triggers on team_table / body_parameters_cards`,
     );
   }
 
@@ -211,13 +397,186 @@ export async function clearLegacyCounsellorCoachAssignment(userId, _counsellorId
 }
 
 /**
+ * Look up team_table UserId by phone (all variants). Lowest UserId wins.
+ * @param {string} phoneNumber
+ * @returns {Promise<number|null>}
+ */
+export async function findTeamMemberIdByPhone(phoneNumber) {
+  if (!phoneNumber || !String(phoneNumber).trim()) return null;
+  for (const variant of buildPhoneLookupVariants(phoneNumber)) {
+    const existing = await mysql().team_table.findFirst({
+      where: { PhoneNumber: variant },
+      orderBy: { UserId: 'asc' },
+      select: { UserId: true },
+    });
+    if (existing?.UserId) return existing.UserId;
+  }
+  return null;
+}
+
+/**
+ * Whether this coach may override this member's BCM.
+ * Override is only their own card, and only before the member starts the app.
+ * Another counsellor's card (including a co-sponsor) is never returned.
+ *
+ * @param {number} userId
+ * @param {{ coachId?: number|null, phoneNumber?: string|null }} [opts]
+ * @returns {Promise<{ activated: boolean, userId: number|null, existingCard: object|null, canOverride: boolean, counselledByOther: boolean }>}
+ */
+export async function getBcmMemberCounsellingAccess(userId, { coachId = null, phoneNumber = null } = {}) {
+  const uid = parseInt(userId, 10);
+  const empty = {
+    activated: false,
+    userId: null,
+    existingCard: null,
+    canOverride: false,
+    counselledByOther: false,
+  };
+  if (!Number.isFinite(uid) || uid < 1) return empty;
+
+  const activated = await isUserActivatedForBcm(uid);
+  const coachIdN = parseInt(coachId, 10);
+  const ownCard = Number.isFinite(coachIdN) && coachIdN > 0
+    ? await findLatestFullCardByUserIdAndCreatedBy(uid, coachIdN)
+    : null;
+
+  let counselledByOther = false;
+  if (!ownCard) {
+    const anyCard = await findLatestFullCardByUserId(uid);
+    const creator = parseInt(anyCard?.created_by, 10);
+    counselledByOther = Boolean(anyCard?.id) && creator !== coachIdN;
+  }
+
+  const counselledByViewer = Boolean(ownCard?.id);
+  return {
+    activated,
+    userId: uid,
+    existingCard: (!activated && ownCard)
+      ? mapFullCardRowToPrefill(ownCard, phoneNumber)
+      : null,
+    canOverride: canOverrideBcmForMember({ activated, counselledByViewer }),
+    counselledByOther: !activated && counselledByOther,
+  };
+}
+
+/**
+ * Whether this phone belongs to an activated member, and whether this coach
+ * counselled the BCM. Never returns another counsellor's card.
+ *
+ * @param {string} phoneNumber
+ * @param {{ coachId?: number|null }} [opts]
+ * @returns {Promise<{ activated: boolean, userId: number|null, existingCard: object|null, canOverride: boolean, counselledByOther: boolean }>}
+ */
+export async function getBcmPhoneActivationStatus(phoneNumber, { coachId = null } = {}) {
+  const userId = await findTeamMemberIdByPhone(phoneNumber);
+  if (!userId) {
+    return {
+      activated: false,
+      userId: null,
+      existingCard: null,
+      canOverride: false,
+      counselledByOther: false,
+    };
+  }
+  return getBcmMemberCounsellingAccess(userId, { coachId, phoneNumber });
+}
+
+function mapFullCardRowToPrefill(card, phoneNumber) {
+  if (!card?.id) return null;
+  const issues = Array.isArray(card.recovered_health_issues)
+    ? card.recovered_health_issues.filter((x) => typeof x === 'string' && x.trim())
+    : [];
+  return {
+    id: card.id,
+    name: card.name ?? '',
+    phoneNumber: phoneNumber || null,
+    age: card.age ?? null,
+    gender: card.gender ?? null,
+    heightCm: card.height_cm ?? null,
+    weightKg: card.weight_kg ?? null,
+    bmi: card.bmi ?? null,
+    fatPercent: card.fat_percent ?? null,
+    bmr: card.bmr ?? null,
+    bodyAge: card.body_age ?? null,
+    visceralFat: card.visceral_fat ?? null,
+    chestCm: card.chest_cm ?? null,
+    waistCm: card.waist_cm ?? null,
+    hipCm: card.hip_cm ?? null,
+    locationName: card.location_name ?? null,
+    recordedDate: card.recorded_date ?? null,
+    appointmentDate: card.appointment_date ?? null,
+    recoveredHealthIssues: issues,
+  };
+}
+
+const FULL_CARD_SELECT = {
+  id: true,
+  created_by: true,
+  user_id: true,
+  name: true,
+  age: true,
+  gender: true,
+  height_cm: true,
+  weight_kg: true,
+  bmi: true,
+  fat_percent: true,
+  bmr: true,
+  body_age: true,
+  visceral_fat: true,
+  chest_cm: true,
+  waist_cm: true,
+  hip_cm: true,
+  location_name: true,
+  recorded_date: true,
+  recovered_health_issues: true,
+  created_at: true,
+  updated_at: true,
+};
+
+/**
+ * Latest non-deleted card for member + creating coach (own list visibility).
+ * @param {number} userId
+ * @param {number} createdBy
+ * @returns {Promise<object|null>}
+ */
+export async function findLatestCardByUserIdAndCreatedBy(userId, createdBy) {
+  const row = await findLatestFullCardByUserIdAndCreatedBy(userId, createdBy);
+  return row ? { id: row.id } : null;
+}
+
+async function findLatestFullCardByUserIdAndCreatedBy(userId, createdBy) {
+  const uid = parseInt(userId, 10);
+  const cid = parseInt(createdBy, 10);
+  if (!Number.isFinite(uid) || uid < 1 || !Number.isFinite(cid) || cid < 1) return null;
+
+  const row = await mysql().body_parameters_cards.findFirst({
+    where: { user_id: uid, created_by: cid, is_deleted: false },
+    orderBy: { created_at: 'desc' },
+    select: FULL_CARD_SELECT,
+  });
+  return asCard(row);
+}
+
+async function findLatestFullCardByUserId(userId) {
+  const uid = parseInt(userId, 10);
+  if (!Number.isFinite(uid) || uid < 1) return null;
+
+  const row = await mysql().body_parameters_cards.findFirst({
+    where: { user_id: uid, is_deleted: false },
+    orderBy: { created_at: 'desc' },
+    select: FULL_CARD_SELECT,
+  });
+  return asCard(row);
+}
+
+/**
  * Create a new team_table row from the phone entered on the body-params form.
  * Checks if phone exists first; if yes, UPDATES the member (name/height/BMR only).
  * If no, creates a new member with CoachId left null — coach is chosen at onboarding.
  * Never assigns CoachId from the counsellor. May clear a legacy wrong assignment
  * when counsellorId matches CoachId and the member never completed coach selection.
  *
- * @param {{ name: string, phoneNumber: string, counsellorId?: number|null, heightCm?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null }} input
+ * @param {{ name: string, phoneNumber: string, counsellorId?: number|null, heightCm?: number|null, bmr?: number|null, weightKg?: number|null, fatPercent?: number|null, allowActivated?: boolean }} input
  * @returns {Promise<{ userId: number, isNew: boolean }>}
  */
 export async function createTeamMemberFromPhone({
@@ -228,37 +587,42 @@ export async function createTeamMemberFromPhone({
   bmr,
   weightKg,
   fatPercent,
+  allowActivated = false,
 }) {
-  const supabase = getSupabaseClient();
   const storedPhone = canonicalPhoneForStorage(phoneNumber);
 
-  // STEP 1: Check if phone number already exists (search all variants)
   let existingMember = null;
   for (const variant of buildPhoneLookupVariants(phoneNumber)) {
-    const { data: existing, error: lookupErr } = await supabase
-      .from('team_table')
-      .select('"UserId", "CoachId", "EntryUser", "SetupSkipped"')
-      .eq('PhoneNumber', variant)
-      .order('UserId', { ascending: true })
-      .limit(1);
-    
-    if (lookupErr) throw lookupErr;
-    
-    if (existing?.[0]?.UserId) {
-      existingMember = existing[0];
-      break; // Found existing member
+    const existing = await mysql().team_table.findFirst({
+      where: { PhoneNumber: variant },
+      orderBy: { UserId: 'asc' },
+      select: { UserId: true, CoachId: true, EntryUser: true, SetupSkipped: true },
+    });
+    if (existing?.UserId) {
+      existingMember = existing;
+      break;
     }
   }
 
   // STEP 2: If phone exists, UPDATE existing member (never assign coach from counsellor)
   if (existingMember) {
     const existingUserId = existingMember.UserId;
+    const approved = await hasApprovedCoachSelection(existingUserId);
+    if (
+      !allowActivated
+      && isMemberActivatedForBcmExclusion({ hasApprovedCoachSelection: approved })
+    ) {
+      logger.info('[body-params-card] blocking BCM for activated member', {
+        userId: existingUserId,
+      });
+      await rejectBcmForActivatedMember(existingUserId);
+    }
+
     const updatePatch = {};
     if (name && String(name).trim()) updatePatch.UserName = String(name).trim();
     if (heightCm != null) updatePatch.Height = heightCm;
     if (bmr != null) updatePatch.Bmr = bmr;
 
-    const approved = await hasApprovedCoachSelection(existingUserId);
     if (
       shouldClearBpcLeadCoachId({
         currentCoachId: existingMember.CoachId,
@@ -275,14 +639,15 @@ export async function createTeamMemberFromPhone({
     }
     
     if (Object.keys(updatePatch).length > 0) {
-      const { error: updateErr } = await supabase
-        .from('team_table')
-        .update(updatePatch)
-        .eq('UserId', existingUserId);
-      
-      if (updateErr) {
+      try {
+        await mysql().team_table.update({
+          where: { UserId: existingUserId },
+          data: updatePatch,
+        });
+      } catch (updateErr) {
         logger.warn('[body-params-card] failed to update existing member profile', {
-          userId: existingUserId, updateErr,
+          userId: existingUserId,
+          message: updateErr?.message,
         });
       }
     }
@@ -312,19 +677,19 @@ export async function createTeamMemberFromPhone({
     ...(memberFields.Bmr != null ? { Bmr: memberFields.Bmr } : {}),
   };
 
-  const { data, error } = await supabase
-    .from('team_table')
-    .insert(insertPayload)
-    .select('UserId')
-    .single();
+  const created = await mysql().$transaction(async (tx) => {
+    const max = await tx.team_table.aggregate({ _max: { UserId: true } });
+    const UserId = Number(max._max.UserId || 0) + 1;
+    return tx.team_table.create({
+      data: { ...insertPayload, UserId },
+      select: { UserId: true },
+    });
+  });
 
-  if (error) throw error;
+  await enforceBpcLeadNoCoachUntilOnboarding(created.UserId);
 
-  // Belt-and-suspenders: old API builds / DB defaults may still set CoachId on insert.
-  await enforceBpcLeadNoCoachUntilOnboarding(data.UserId);
-
-  logger.info('[body-params-card] created new team_table member', { userId: data.UserId });
-  return { userId: data.UserId, isNew: true };
+  logger.info('[body-params-card] created new team_table member', { userId: created.UserId });
+  return { userId: created.UserId, isNew: true };
 }
 
 /** @deprecated Use createTeamMemberFromPhone */
@@ -339,13 +704,10 @@ export const findOrCreateTeamMember = async (input) => {
  * @param {number} userId
  */
 export async function linkCardToUser(cardId, userId) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
-    .from(TABLE)
-    .update({ user_id: userId })
-    .eq('id', cardId)
-    .eq('is_deleted', false);
-  if (error) throw error;
+  await mysql().body_parameters_cards.updateMany({
+    where: { id: toCardPk(cardId), is_deleted: false },
+    data: { user_id: userId },
+  });
 }
 
 /**
@@ -386,49 +748,55 @@ export async function findLatestCardForProfileSync(userId) {
   const uid = parseInt(userId, 10);
   if (!Number.isFinite(uid) || uid < 1) return null;
 
-  const supabase = getSupabaseClient();
-  const cardSelect = 'id, name, height_cm, bmr, weight_kg, fat_percent, bmi, user_id, age, gender, visceral_fat, body_age, chest_cm, waist_cm, hip_cm';
+  const cardSelect = {
+    id: true,
+    name: true,
+    height_cm: true,
+    bmr: true,
+    weight_kg: true,
+    fat_percent: true,
+    bmi: true,
+    user_id: true,
+    age: true,
+    gender: true,
+    visceral_fat: true,
+    body_age: true,
+    chest_cm: true,
+    waist_cm: true,
+    hip_cm: true,
+  };
 
-  const { data: linkedRows, error: linkedErr } = await supabase
-    .from(TABLE)
-    .select(cardSelect)
-    .eq('user_id', uid)
-    .eq('is_deleted', false)
-    .order('created_at', { ascending: false })
-    .limit(1);
-  if (linkedErr) throw linkedErr;
-  if (linkedRows?.[0]) return linkedRows[0];
+  const linked = await mysql().body_parameters_cards.findFirst({
+    where: { user_id: uid, is_deleted: false },
+    orderBy: { created_at: 'desc' },
+    select: cardSelect,
+  });
+  if (linked) return asCard(linked);
 
-  const { data: member, error: memberErr } = await supabase
-    .from('team_table')
-    .select('"UserName", "CoachId"')
-    .eq('UserId', uid)
-    .maybeSingle();
-  if (memberErr) throw memberErr;
+  const member = await mysql().team_table.findUnique({
+    where: { UserId: uid },
+    select: { UserName: true, CoachId: true },
+  });
 
   const userName = member?.UserName ? String(member.UserName).trim() : '';
   if (!userName) return null;
 
-  let orphanQuery = supabase
-    .from(TABLE)
-    .select(cardSelect)
-    .is('user_id', null)
-    .eq('is_deleted', false)
-    .ilike('name', userName);
   const coachId = member?.CoachId != null ? parseInt(member.CoachId, 10) : null;
-  if (Number.isFinite(coachId) && coachId > 0) {
-    orphanQuery = orphanQuery.eq('created_by', coachId);
-  }
-  const { data: orphanRows, error: orphanErr } = await orphanQuery
-    .order('created_at', { ascending: false })
-    .limit(1);
-  if (orphanErr) throw orphanErr;
-
-  const orphan = orphanRows?.[0];
+  const orphan = await mysql().body_parameters_cards.findFirst({
+    where: {
+      user_id: null,
+      is_deleted: false,
+      name: userName,
+      ...(Number.isFinite(coachId) && coachId > 0 ? { created_by: coachId } : {}),
+    },
+    orderBy: { created_at: 'desc' },
+    select: cardSelect,
+  });
   if (!orphan) return null;
+  const plainOrphan = asCard(orphan);
 
-  await linkCardToUser(orphan.id, uid);
-  return { ...orphan, user_id: uid };
+  await linkCardToUser(plainOrphan.id, uid);
+  return { ...plainOrphan, user_id: uid };
 }
 
 /**
@@ -442,19 +810,28 @@ export async function findLatestLinkedBodyMetricsCard(userId) {
   const uid = parseInt(userId, 10);
   if (!Number.isFinite(uid) || uid < 1) return null;
 
-  const supabase = getSupabaseClient();
-  const cardSelect = 'id, user_id, age, gender, fat_percent, visceral_fat, bmi, body_age, chest_cm, waist_cm, hip_cm';
-
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select(cardSelect)
-    .eq('user_id', uid)
-    .eq('is_deleted', false)
-    .order('created_at', { ascending: false })
-    .limit(1);
-
-  if (error) throw error;
-  return data?.[0] ?? null;
+  const row = await mysql().body_parameters_cards.findFirst({
+    where: { user_id: uid, is_deleted: false },
+    orderBy: { created_at: 'desc' },
+    select: {
+      id: true,
+      user_id: true,
+      name: true,
+      age: true,
+      gender: true,
+      height_cm: true,
+      weight_kg: true,
+      fat_percent: true,
+      bmr: true,
+      visceral_fat: true,
+      bmi: true,
+      body_age: true,
+      chest_cm: true,
+      waist_cm: true,
+      hip_cm: true,
+    },
+  });
+  return asCard(row);
 }
 
 /**
@@ -464,23 +841,42 @@ export async function findLatestLinkedBodyMetricsCard(userId) {
  * @returns {Promise<Array<{ userId: number, userName: string, phoneNumber: string, heightCm: number|null, bmr: number|null }>>}
  */
 export async function searchTeamPhonesByPrefix({ prefix, coachId }) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('team_table')
-    .select('UserId, UserName, PhoneNumber, Height, Bmr')
-    .eq('CoachId', coachId)
-    .like('PhoneNumber', `${prefix}%`)
-    .eq('Status', 'Active')
-    .order('UserId', { ascending: true })
-    .limit(10);
+  const data = await mysql().team_table.findMany({
+    where: {
+      CoachId: Number(coachId),
+      PhoneNumber: { startsWith: prefix },
+      Status: 'Active',
+    },
+    orderBy: { UserId: 'asc' },
+    take: 10,
+    select: {
+      UserId: true,
+      UserName: true,
+      PhoneNumber: true,
+      Height: true,
+      Bmr: true,
+      Age: true,
+      VisceralFat: true,
+      BodyAge: true,
+      ChestCm: true,
+      WaistCm: true,
+      HipCm: true,
+      Gender: true,
+    },
+  });
+  if (!data.length) return [];
 
-  if (error) throw error;
-  if (!data) return [];
+  const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
 
-  // Deduplicate by PhoneNumber (keep lowest UserId)
+  // Deduplicate by PhoneNumber (keep lowest UserId); drop activated members (OTP approved).
+  const candidateIds = data.map((row) => row.UserId).filter(Boolean);
+  const activatedIds = await findActivatedUserIdsAmong(candidateIds);
+
   const seen = new Set();
   const results = [];
   for (const row of data) {
+    const uid = parseInt(row.UserId, 10);
+    if (Number.isFinite(uid) && activatedIds.has(uid)) continue;
     const phone = String(row.PhoneNumber || '').trim();
     if (!phone || seen.has(phone)) continue;
     seen.add(phone);
@@ -490,9 +886,141 @@ export async function searchTeamPhonesByPrefix({ prefix, coachId }) {
       phoneNumber: phone,
       heightCm:    row.Height ?? null,
       bmr:         row.Bmr    ?? null,
+      gender:      row.Gender ?? null,
+      age:         num(row.Age),
+      visceralFat: num(row.VisceralFat),
+      bodyAge:     num(row.BodyAge),
+      chestCm:     num(row.ChestCm),
+      waistCm:     num(row.WaistCm),
+      hipCm:       num(row.HipCm),
+      weightKg:    null,
+      fatPercent:  null,
+      bmi:         null,
     });
   }
+
+  const userIds = results.map((r) => r.userId).filter((id) => id != null);
+  if (userIds.length > 0) {
+    const weightByUser = await getLatestWeightMetricsByUserIds(userIds);
+    for (const r of results) {
+      const w = weightByUser.get(Number(r.userId));
+      if (!w) continue;
+      r.weightKg = w.weightKg;
+      r.fatPercent = w.fatPercent;
+      r.bmi = w.bmi;
+      if (r.bmr == null && w.bmr != null) r.bmr = w.bmr;
+    }
+  }
+
   return results;
+}
+
+/**
+ * Resolve weight / fat / BMI for one member (latest weight + any BodyFat row).
+ * @param {number} userId
+ * @param {number|null|undefined} heightCm
+ * @returns {Promise<{ weightKg: number|null, fatPercent: number|null, bmi: number|null, bmr: number|null }>}
+ */
+async function resolveMemberWeightMetrics(userId, heightCm) {
+  const empty = { weightKg: null, fatPercent: null, bmi: null, bmr: null };
+  const uid = Number(userId);
+  if (!Number.isFinite(uid) || uid < 1) return empty;
+
+  try {
+    const [latest, fatFromAny] = await Promise.all([
+      getLatestWeight(uid),
+      getLatestWeightBodyFat(uid),
+    ]);
+
+    const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
+    const weightKg = latest?.Weight != null ? num(latest.Weight) : null;
+    const fatPercent = num(latest?.BodyFat) ?? (fatFromAny != null ? num(fatFromAny) : null);
+    let bmi = latest?.Bmi != null ? num(latest.Bmi) : null;
+    if (bmi == null && weightKg != null && heightCm != null) {
+      bmi = computeBmiFromHeightWeight(heightCm, weightKg);
+    }
+    const bmr = latest?.Bmr != null ? num(latest.Bmr) : null;
+    return { weightKg, fatPercent, bmi, bmr };
+  } catch (err) {
+    logger.warn('[card.repo] resolveMemberWeightMetrics failed', {
+      userId: uid,
+      message: err?.message || String(err),
+    });
+    return empty;
+  }
+}
+
+/**
+ * Full BCM form prefill for a team member (team_table + latest weight).
+ * @param {number} userId
+ * @param {{ mapPhotos?: (raw: object|null) => Promise<object>|object }} [options]
+ * @returns {Promise<object|null>}
+ */
+export async function getMemberPrefillForCard(userId, options = {}) {
+  const uid = parseInt(userId, 10);
+  if (!Number.isFinite(uid) || uid < 1) return null;
+
+  const data = await mysql().team_table.findUnique({
+    where: { UserId: uid },
+    select: {
+      UserId: true,
+      UserName: true,
+      PhoneNumber: true,
+      Height: true,
+      Bmr: true,
+      Age: true,
+      VisceralFat: true,
+      BodyAge: true,
+      ChestCm: true,
+      WaistCm: true,
+      HipCm: true,
+      Gender: true,
+      DietType: true,
+      PhysicalActivityLevel: true,
+      recovered_health_issues: true,
+      transformation_photos: true,
+    },
+  });
+  if (!data) return null;
+
+  // Activated members may still be prefilled when the coach chose Override / New.
+  // Do not purge cards from a read path.
+
+  const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
+  const heightCm = data.Height != null ? Number(data.Height) : null;
+  const w = await resolveMemberWeightMetrics(uid, heightCm);
+  const transformationPhotos = options.mapPhotos
+    ? await options.mapPhotos(data.transformation_photos)
+    : mapTransformationPhotos(data.transformation_photos);
+  const hasAnyPhoto = Boolean(
+    transformationPhotos.front || transformationPhotos.left || transformationPhotos.right,
+  );
+
+  return {
+    userId: uid,
+    userName: data.UserName || '',
+    phoneNumber: data.PhoneNumber ? String(data.PhoneNumber).trim() : null,
+    heightCm,
+    bmr: data.Bmr != null ? Number(data.Bmr) : (w.bmr ?? null),
+    gender: data.Gender ?? null,
+    age: num(data.Age),
+    visceralFat: num(data.VisceralFat),
+    bodyAge: num(data.BodyAge),
+    chestCm: num(data.ChestCm),
+    waistCm: num(data.WaistCm),
+    hipCm: num(data.HipCm),
+    weightKg: w.weightKg ?? null,
+    fatPercent: w.fatPercent ?? null,
+    bmi: w.bmi ?? null,
+    dietType: data.DietType != null ? String(data.DietType).trim() || null : null,
+    physicalActivityLevel: data.PhysicalActivityLevel != null
+      ? String(data.PhysicalActivityLevel).trim() || null
+      : null,
+    recoveredHealthIssues: Array.isArray(data.recovered_health_issues)
+      ? data.recovered_health_issues.filter((x) => typeof x === 'string' && x.trim())
+      : [],
+    transformationPhotos: hasAnyPhoto ? transformationPhotos : null,
+  };
 }
 
 /**
@@ -502,18 +1030,13 @@ export async function searchTeamPhonesByPrefix({ prefix, coachId }) {
  */
 export async function findLatestCardByUserId(userId) {
   if (!userId) return null;
-  const supabase = getSupabaseClient();
-  const { data, error} = await supabase
-    .from(TABLE)
-    .select('id')
-    .eq('user_id', userId)
-    .eq('is_deleted', false)
-    .order('created_at', { ascending: false })
-    .limit(1);
-
-  if (error) throw error;
-  if (!data || data.length === 0) return null;
-  return data[0];
+  const row = await mysql().body_parameters_cards.findFirst({
+    where: { user_id: Number(userId), is_deleted: false },
+    orderBy: { created_at: 'desc' },
+    select: { id: true },
+  });
+  if (!row) return null;
+  return { id: plainDb(row.id) };
 }
 
 /**
@@ -526,20 +1049,27 @@ export async function findLatestCardByUserId(userId) {
  */
 export async function findPreviousCardByUserId(userId, excludeCardId) {
   if (!userId) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select('id, weight_kg, bmi, fat_percent, body_age, chest_cm, waist_cm, hip_cm, recorded_date')
-    .eq('user_id', userId)
-    .neq('id', excludeCardId)
-    .eq('is_deleted', false)
-    .order('created_at', { ascending: false })
-    .limit(1);
+  const row = asCard(await mysql().body_parameters_cards.findFirst({
+    where: {
+      user_id: Number(userId),
+      is_deleted: false,
+      NOT: { id: toCardPk(excludeCardId) },
+    },
+    orderBy: { created_at: 'desc' },
+    select: {
+      id: true,
+      weight_kg: true,
+      bmi: true,
+      fat_percent: true,
+      body_age: true,
+      chest_cm: true,
+      waist_cm: true,
+      hip_cm: true,
+      recorded_date: true,
+    },
+  }));
+  if (!row) return null;
 
-  if (error) throw error;
-  if (!data || data.length === 0) return null;
-
-  const row = data[0];
   return {
     id:           row.id,
     weightKg:     row.weight_kg     ?? null,
@@ -553,101 +1083,387 @@ export async function findPreviousCardByUserId(userId, excludeCardId) {
   };
 }
 
-/**
- * List all body parameter cards for a coach's team members
- * Returns cards sorted by created_at DESC (latest first)
- *
- * @param {string} coachId - UUID of the coach
- * @returns {Promise<Array>}
- */
-export async function listCardsForCoach(coachId) {
-  const supabase = getSupabaseClient();
-  
-  logger.info('[listCardsForCoach] 🔍 QUERYING DATABASE', { coachId, type: typeof coachId });
-  
-  // Directly query cards created by this coach
-  const { data: cards, error: cardsError } = await supabase
-    .from(TABLE)
-    .select('*')
-    .eq('created_by', coachId)
-    .eq('is_deleted', false)
-    .order('created_at', { ascending: false });
+/** Columns needed for the BCM grid list (no SELECT *). */
+const LIST_SUMMARY_COLS = [
+  'id',
+  'user_id',
+  'name',
+  'age',
+  'gender',
+  'height_cm',
+  'weight_kg',
+  'bmi',
+  'recorded_date',
+  'location_name',
+  'appointment_date',
+  'created_at',
+  'updated_at',
+  'created_by',
+].join(', ');
 
-  if (cardsError) {
-    logger.error('[listCardsForCoach] 💥 DATABASE ERROR:', cardsError);
-    throw cardsError;
-  }
-  if (!cards) {
-    logger.warn('[listCardsForCoach] ⚠️ No cards returned (null/undefined)');
-    return [];
-  }
-  
-  logger.info('[listCardsForCoach] 🎯 RAW QUERY RESULT', { 
-    coachId, 
-    cardCount: cards.length,
-    cards: cards.map(c => ({ 
-      id: c.id, 
-      name: c.name, 
-      created_by: c.created_by,
-      user_id: c.user_id,
-      visceral_fat: c.visceral_fat
-    }))
-  });
+/** Full card columns for edit / detail. */
+const LIST_DETAIL_COLS = [
+  'id',
+  'user_id',
+  'name',
+  'age',
+  'gender',
+  'height_cm',
+  'weight_kg',
+  'bmi',
+  'fat_percent',
+  'bmr',
+  'body_age',
+  'visceral_fat',
+  'chest_cm',
+  'waist_cm',
+  'hip_cm',
+  'recorded_date',
+  'location_name',
+  'appointment_date',
+  'recovered_health_issues',
+  'created_at',
+  'updated_at',
+  'created_by',
+].join(', ');
 
-  // Get team member info for phone numbers (optional - card has name already)
-  const userIds = cards.map(c => c.user_id).filter(Boolean);
-  let teamMembersMap = {};
-  
-  if (userIds.length > 0) {
-    logger.info('[listCardsForCoach] 📞 Fetching phone numbers for userIds:', userIds);
-    const { data: teamMembers } = await supabase
-      .from('team_table')
-      .select('UserId, PhoneNumber')
-      .in('UserId', userIds);
-    
-    if (teamMembers) {
-      for (const m of teamMembers) {
-        const key = String(m.UserId);
-        teamMembersMap[key] = m;
+const BPC_LIST_CACHE_TTL_MS = 20 * 1000;
+const bpcListCache = new Map();
+const bpcListInflight = new Map();
+
+function bpcListCacheKey(coachId) {
+  return `bpc:list:v3:${coachId}`;
+}
+
+function mapRecoveredHealthIssues(raw) {
+  if (Array.isArray(raw)) return raw.filter((x) => typeof x === 'string' && x.trim());
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((x) => typeof x === 'string' && x.trim());
       }
-      logger.info('[listCardsForCoach] ✅ Phone numbers fetched', { count: teamMembers.length });
+    } catch {
+      /* ignore */
     }
   }
+  return [];
+}
 
-  // Map cards with optional phone number from team_table
-  const mappedCards = cards.map(card => {
-    const member = teamMembersMap[String(card.user_id)];
-    const phone = member?.PhoneNumber && String(member.PhoneNumber).trim()
-      ? String(member.PhoneNumber).trim()
-      : null;
-    return {
-      id:           card.id,
-      userId:       card.user_id,
-      name:         card.name,
-      phoneNumber:  phone,
-      age:          card.age,
-      gender:       card.gender,
-      heightCm:     card.height_cm,
-      weightKg:     card.weight_kg,
-      bmi:          card.bmi,
-      fatPercent:   card.fat_percent,
-      bmr:          card.bmr,
-      bodyAge:      card.body_age,
-      visceralFat:  card.visceral_fat,
-      chestCm:      card.chest_cm,
-      waistCm:      card.waist_cm,
-      hipCm:        card.hip_cm,
-      recordedDate: card.recorded_date,
-      locationName: card.location_name,
-      createdAt:    card.created_at,
-      createdBy:    card.created_by,
-    };
+function resolveCardAppointmentDate(card) {
+  if (card?.appointment_date && String(card.appointment_date).trim()) {
+    return String(card.appointment_date).trim().slice(0, 10);
+  }
+  const baseDate = card?.created_at || card?.recorded_date || null;
+  return computeDefaultAppointmentDate(baseDate);
+}
+
+function mapCardSummary(card, memberMeta = null) {
+  const phone = memberMeta?.phoneNumber || null;
+  return {
+    id: card.id,
+    userId: card.user_id,
+    name: card.name,
+    phoneNumber: phone,
+    email: memberMeta?.email || null,
+    communityId: memberMeta?.communityId || null,
+    age: card.age,
+    gender: card.gender,
+    heightCm: card.height_cm,
+    weightKg: card.weight_kg,
+    bmi: card.bmi,
+    recordedDate: card.recorded_date,
+    locationName: card.location_name || null,
+    appointmentDate: resolveCardAppointmentDate(card),
+    createdAt: card.created_at,
+    updatedAt: card.updated_at ?? null,
+    createdBy: card.created_by,
+  };
+}
+
+function mapCardDetail(card, memberMeta = null) {
+  return {
+    ...mapCardSummary(card, memberMeta),
+    fatPercent: card.fat_percent,
+    bmr: card.bmr,
+    bodyAge: card.body_age,
+    visceralFat: card.visceral_fat,
+    chestCm: card.chest_cm,
+    waistCm: card.waist_cm,
+    hipCm: card.hip_cm,
+    locationName: card.location_name,
+    appointmentDate: resolveCardAppointmentDate(card),
+    recoveredHealthIssues: mapRecoveredHealthIssues(card.recovered_health_issues),
+  };
+}
+
+/**
+ * Dated body-parameter snapshots for one member (Reports Trend).
+ * Includes leftover cards when more than one still exists.
+ *
+ * @param {number} userId
+ * @returns {Promise<object[]>}
+ */
+function plainHistoryValue(value, kind) {
+  if (value == null) return null;
+  if (typeof value === 'bigint') {
+    const asNumber = Number(value);
+    return Number.isSafeInteger(asNumber) ? asNumber : value.toString();
+  }
+  if (value instanceof Date) {
+    if (kind === 'date') return value.toISOString().slice(0, 10);
+    return value.toISOString();
+  }
+  if (typeof value === 'object' && typeof value.toNumber === 'function') {
+    const asNumber = value.toNumber();
+    return Number.isFinite(asNumber) ? asNumber : value.toString();
+  }
+  return value;
+}
+
+function mapHistoryRow(row) {
+  return {
+    id: plainHistoryValue(row.id),
+    user_id: row.user_id,
+    name: row.name,
+    age: row.age,
+    gender: row.gender,
+    height_cm: plainHistoryValue(row.height_cm),
+    weight_kg: plainHistoryValue(row.weight_kg),
+    bmi: plainHistoryValue(row.bmi),
+    fat_percent: plainHistoryValue(row.fat_percent),
+    bmr: plainHistoryValue(row.bmr),
+    body_age: row.body_age,
+    visceral_fat: plainHistoryValue(row.visceral_fat),
+    chest_cm: plainHistoryValue(row.chest_cm),
+    waist_cm: plainHistoryValue(row.waist_cm),
+    hip_cm: plainHistoryValue(row.hip_cm),
+    recorded_date: plainHistoryValue(row.recorded_date, 'date'),
+    location_name: row.location_name,
+    recovered_health_issues: row.recovered_health_issues,
+    created_at: plainHistoryValue(row.created_at),
+    updated_at: plainHistoryValue(row.updated_at),
+    created_by: row.created_by,
+  };
+}
+
+export async function listCardHistoryByUserId(userId) {
+  const uid = parseInt(userId, 10);
+  if (!Number.isFinite(uid) || uid < 1) return [];
+  const prisma = getPrisma();
+  const rows = await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("SET time_zone = '+00:00'");
+    return tx.body_parameters_cards.findMany({
+      where: { user_id: uid, is_deleted: false },
+      orderBy: [{ recorded_date: 'asc' }, { created_at: 'asc' }],
+      select: {
+        id: true,
+        user_id: true,
+        name: true,
+        age: true,
+        gender: true,
+        height_cm: true,
+        weight_kg: true,
+        bmi: true,
+        fat_percent: true,
+        bmr: true,
+        body_age: true,
+        visceral_fat: true,
+        chest_cm: true,
+        waist_cm: true,
+        hip_cm: true,
+        recorded_date: true,
+        location_name: true,
+        recovered_health_issues: true,
+        created_at: true,
+        updated_at: true,
+        created_by: true,
+      },
+    });
   });
-  
-  logger.info('[listCardsForCoach] 📦 RETURNING MAPPED CARDS', { 
-    count: mappedCards.length,
-    sample: mappedCards[0] 
+  return rows.map((row) => mapCardDetail(mapHistoryRow(row)));
+}
+
+/**
+ * Hierarchy-gated card history. Same viewer rule as /api/weight/history.
+ *
+ * @param {number} userId
+ * @param {number|null} viewerUserId
+ * @returns {Promise<object[]>}
+ */
+export async function listVisibleCardHistoryByUserId(userId, viewerUserId) {
+  await assertViewerCanAccessMember(getMysqlClient(), viewerUserId, userId);
+  return listCardHistoryByUserId(userId);
+}
+
+async function fetchTeamMemberMetaByUserIds(userIds) {
+  const teamMembersMap = {};
+  if (!userIds.length) return teamMembersMap;
+
+  const CHUNK = 200;
+  for (let i = 0; i < userIds.length; i += CHUNK) {
+    const chunk = userIds.slice(i, i + CHUNK).map((id) => Number(id)).filter((id) => Number.isFinite(id));
+    const teamMembers = await mysql().team_table.findMany({
+      where: { UserId: { in: chunk } },
+      select: { UserId: true, PhoneNumber: true, Email: true, CommunityId: true },
+    });
+    for (const m of teamMembers) {
+      teamMembersMap[String(m.UserId)] = {
+        phoneNumber: m.PhoneNumber && String(m.PhoneNumber).trim()
+          ? String(m.PhoneNumber).trim()
+          : null,
+        email: m.Email && String(m.Email).trim() ? String(m.Email).trim() : null,
+        communityId: m.CommunityId && String(m.CommunityId).trim()
+          ? String(m.CommunityId).trim()
+          : null,
+      };
+    }
+  }
+  return teamMembersMap;
+}
+
+/** @deprecated use fetchTeamMemberMetaByUserIds */
+async function fetchPhonesByUserIds(_db, userIds) {
+  return fetchTeamMemberMetaByUserIds(userIds);
+}
+
+/**
+ * Soft-delete a body-parameters card owned by the coach.
+ * Sets `is_deleted = true`. Returns null when missing or not owned.
+ *
+ * @param {{ id: number, coachId: number }} opts
+ * @returns {Promise<{ id: number, created_by: number }|null>}
+ */
+export async function softDeleteCard({ id, coachId }) {
+  const existing = await mysql().body_parameters_cards.findFirst({
+    where: { id: toCardPk(id), created_by: Number(coachId), is_deleted: false },
+    select: { id: true, created_by: true },
   });
-  
-  return mappedCards;
+  if (!existing) return null;
+  await mysql().body_parameters_cards.update({
+    where: { id: existing.id },
+    data: { is_deleted: true },
+  });
+  return { id: plainDb(existing.id), created_by: existing.created_by };
+}
+
+/**
+ * Invalidate the slim list cache for a coach (call after create/update).
+ * @param {number|string} coachId
+ */
+export function invalidateBpcListCache(coachId) {
+  if (coachId == null) return;
+  bpcListCache.delete(bpcListCacheKey(coachId));
+}
+
+/**
+ * Load all slim summary cards for a coach (cached ~20s). Used for search + pagination.
+ * @param {number|string} coachId
+ * @returns {Promise<Array>}
+ */
+async function loadSlimCardsForCoach(coachId) {
+  const key = bpcListCacheKey(coachId);
+  const cached = bpcListCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.rows;
+  }
+
+  if (bpcListInflight.has(key)) {
+    return bpcListInflight.get(key);
+  }
+
+  const promise = (async () => {
+    logger.info('[listCardsForCoach] querying slim columns', { coachId });
+    const cards = await mysql().body_parameters_cards.findMany({
+      where: { created_by: Number(coachId), is_deleted: false },
+      orderBy: { created_at: 'desc' },
+      select: {
+        id: true,
+        user_id: true,
+        name: true,
+        age: true,
+        gender: true,
+        height_cm: true,
+        weight_kg: true,
+        bmi: true,
+        recorded_date: true,
+        location_name: true,
+        created_at: true,
+        updated_at: true,
+        created_by: true,
+      },
+    });
+    const rows = cards.map(asCard);
+    const userIds = [...new Set(rows.map((c) => c.user_id).filter(Boolean))];
+    // Only hide activated members from the list. Hard-delete happens on OTP approve /
+    // create reject — never purge here (non-activated BCM history must stay visible).
+    const activatedIds = await findActivatedUserIdsAmong(userIds);
+
+    const visibleRows = rows.filter((c) => {
+      const uid = parseInt(c.user_id, 10);
+      return !(Number.isFinite(uid) && activatedIds.has(uid));
+    });
+
+    const visibleUserIds = [...new Set(visibleRows.map((c) => c.user_id).filter(Boolean))];
+    const teamMembersMap = await fetchTeamMemberMetaByUserIds(visibleUserIds);
+
+    const mapped = visibleRows.map((card) => {
+      const member = teamMembersMap[String(card.user_id)] || null;
+      return mapCardSummary(card, member);
+    });
+
+    bpcListCache.set(key, { rows: mapped, expiresAt: Date.now() + BPC_LIST_CACHE_TTL_MS });
+    return mapped;
+  })().finally(() => {
+    bpcListInflight.delete(key);
+  });
+
+  bpcListInflight.set(key, promise);
+  return promise;
+}
+
+/**
+ * List body-parameter cards for a coach with server-side search + pagination.
+ * Returns only summary fields for the grid.
+ *
+ * @param {number|string} coachId
+ * @param {{ page?: number, limit?: number, search?: string }} [opts]
+ * @returns {Promise<{ cards: Array, pagination: object }>}
+ */
+export async function listCardsForCoach(coachId, opts = {}) {
+  const { paginateBpcListRecords } = await import('../domain/list.pagination.js');
+  const allCards = await loadSlimCardsForCoach(coachId);
+  const { records, pagination } = paginateBpcListRecords(allCards, opts);
+  logger.info('[listCardsForCoach] page ready', {
+    coachId,
+    total: pagination.totalRecords,
+    page: pagination.currentPage,
+    returned: records.length,
+  });
+  return { cards: records, pagination };
+}
+
+/**
+ * Full card detail for edit — single row, coach-scoped.
+ * @param {number|string} coachId
+ * @param {number|string} cardId
+ * @returns {Promise<object|null>}
+ */
+export async function getCardByIdForCoach(coachId, cardId) {
+  const card = asCard(await mysql().body_parameters_cards.findFirst({
+    where: {
+      id: toCardPk(cardId),
+      created_by: Number(coachId),
+      is_deleted: false,
+    },
+    select: FULL_CARD_SELECT,
+  }));
+  if (!card) return null;
+
+  let memberMeta = null;
+  if (card.user_id) {
+    const map = await fetchTeamMemberMetaByUserIds([card.user_id]);
+    memberMeta = map[String(card.user_id)] || null;
+  }
+  return mapCardDetail(card, memberMeta);
 }

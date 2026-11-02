@@ -3,19 +3,19 @@
  * Keep in sync with:
  *   backend/features/background-analysis/domain/stale-pending-captures.js
  *
- * Budget = 3 Phase-1 attempts (orchestratorService.js) + 15 s grace → Manual Log.
+ * Budget = 2 Phase-1 attempts (Flash→Pro) + 15 s grace → Manual Log.
  */
 
 /** Must match MAX_ATTEMPTS in orchestratorService.js */
-export const PHASE1_MAX_ATTEMPTS = 3;
+export const PHASE1_MAX_ATTEMPTS = 2;
 /** Must match REQUEST_TIMEOUT_MS in orchestratorService.js */
-export const PHASE1_REQUEST_TIMEOUT_MS = 40_000;
-/** Must match RETRY_DELAY_MS in orchestratorService.js (×1 then ×2 between retries) */
-export const PHASE1_RETRY_DELAYS_MS = 1_500 + 3_000;
+export const PHASE1_REQUEST_TIMEOUT_MS = 59_500;
+/** Must match RETRY_DELAY_MS in orchestratorService.js */
+export const PHASE1_RETRY_DELAYS_MS = 1_500;
 /** Grace after the last attempt before surfacing Manual Log */
 export const MANUAL_MODE_GRACE_MS = 15_000;
 
-/** 3 × 40 s + 4.5 s back-off + 15 s grace ≈ 139.5 s */
+/** 2 × 58 s + 1.5 s back-off + 15 s grace ≈ 132.5 s */
 export const STALE_PENDING_MS =
   PHASE1_MAX_ATTEMPTS * PHASE1_REQUEST_TIMEOUT_MS
   + PHASE1_RETRY_DELAYS_MS

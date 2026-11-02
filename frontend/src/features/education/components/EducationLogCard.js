@@ -15,6 +15,7 @@ const EducationLogCard = ({
   const { shareRef } = useEducationShare({
     educationData,
     imagePreview,
+    user,
     deps: [savedProfileImage, sharePhotoBase64],
   });
 

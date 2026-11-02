@@ -47,11 +47,8 @@ const CelebrationConfetti = ({ show, onComplete, message = '🎉 Great Progress!
   const [confettiParticles, setConfettiParticles] = useState([]);
 
   useEffect(() => {
-    console.log('🎉 [CelebrationConfetti] useEffect triggered, show:', show, 'message:', message);
     if (!show) return;
 
-    console.log('🎉 [CelebrationConfetti] SHOWING celebration! Playing sound and initializing confetti...');
-    
     // Play celebration sound
     if (playSound) {
       playCelebrationSound();

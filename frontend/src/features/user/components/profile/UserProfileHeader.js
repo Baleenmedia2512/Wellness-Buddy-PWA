@@ -1,44 +1,44 @@
-// Header bar with avatar, role badge, name, email, recrop link, close.
-import React from 'react';
-import { X, Camera, Crop, Loader } from 'lucide-react';
+// Header bar with avatar (ProfileImage), role badge, name, email, close.
+import React, { useState } from 'react';
+import { X } from 'lucide-react';
 import TouchFeedbackButton from '../../../../shared/components/TouchFeedbackButton';
+import { EmojiOrNative } from '../../../../shared/components/icons/EmojiImage';
+import BathroomScaleIcon from '../../../../shared/components/icons/BathroomScaleIcon';
+import ProfilePhotoViewer from '../picture/ProfilePhotoViewer';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 
 const initialOf = (name, email) => (name || email || 'U').charAt(0).toUpperCase();
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
 
-const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', user: 'User' };
+const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', user: 'Customer' };
 
 const UserProfileHeader = ({
-  user, name, userRole, profileImagePreview, faceStatus,
-  showRecrop, onPickImage, onRecrop, onClose, isSaving,
+  user, name, userRole, profileImagePreview,
+  onClose, isSaving,
   weightGoalMode,
 }) => {
+  const [showPhotoViewer, setShowPhotoViewer] = useState(false);
   const displayName = name || user?.displayName || user?.name || 'User';
-  const role = ROLE_LABELS[userRole] || 'User';
+  const role = ROLE_LABELS[userRole] || 'Customer';
   return (
     <div className="flex items-center justify-between p-6 bg-gradient-to-r from-green-500 to-green-600 rounded-t-2xl">
       <div className="flex items-center space-x-3">
-        <div onClick={onPickImage}
-          className="relative w-16 h-16 rounded-full border-2 border-white overflow-hidden cursor-pointer group">
-          {profileImagePreview ? (
+        {profileImagePreview ? (
+          <button
+            type="button"
+            className="relative w-16 h-16 rounded-full border-2 border-white overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            onClick={() => setShowPhotoViewer(true)}
+            aria-label={`View ${displayName}'s profile photo`}
+          >
             <img src={profileImagePreview} alt={displayName} className="w-full h-full object-cover"
               loading="lazy" decoding="async" referrerPolicy="no-referrer" />
-          ) : (
-            <div className={`w-full h-full flex items-center justify-center text-white font-bold text-2xl ${colorOf(name, user?.email)}`}>
-              {initialOf(name || user?.displayName || user?.name, user?.email)}
-            </div>
-          )}
-          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-            <Camera className="w-6 h-6 text-white" />
+          </button>
+        ) : (
+          <div className={`relative w-16 h-16 rounded-full border-2 border-white overflow-hidden flex items-center justify-center text-white font-bold text-2xl ${colorOf(name, user?.email)}`}>
+            {initialOf(name || user?.displayName || user?.name, user?.email)}
           </div>
-          {faceStatus === 'detecting' && (
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-              <Loader className="w-6 h-6 text-white animate-spin" />
-            </div>
-          )}
-        </div>
+        )}
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-xl font-bold text-white">{displayName}</h2>
@@ -47,12 +47,6 @@ const UserProfileHeader = ({
             </span>
           </div>
           <p className="text-sm text-green-50">{user?.email}</p>
-          <p className="text-xs text-green-100 mt-1">Click photo to change</p>
-          {showRecrop && (
-            <button onClick={onRecrop} className="inline-flex items-center gap-1 text-xs text-green-100 hover:text-white font-medium mt-0.5">
-              <Crop className="w-3 h-3" /> Re-crop
-            </button>
-          )}
         </div>
       </div>
       <div className="flex flex-col items-end gap-2">
@@ -66,9 +60,15 @@ const UserProfileHeader = ({
                 : 'bg-green-100 border-green-300 text-green-700'
               }`}
           >
-            <span className="text-sm">
-              {weightGoalMode === 'loss' ? '🔥' : weightGoalMode === 'gain' ? '💪' : '⚖️'}
-            </span>
+            {weightGoalMode === 'maintain' ? (
+              <BathroomScaleIcon className="w-3.5 h-3.5" alt="" />
+            ) : (
+              <EmojiOrNative
+                emoji={weightGoalMode === 'loss' ? '🔥' : '💪'}
+                className="w-3.5 h-3.5"
+                nativeClassName="text-sm leading-none"
+              />
+            )}
             <span>
               {weightGoalMode === 'loss' ? 'Loss Mode' : weightGoalMode === 'gain' ? 'Gain Mode' : 'Maintain'}
             </span>
@@ -79,6 +79,12 @@ const UserProfileHeader = ({
           <X className="w-5 h-5 text-white" />
         </TouchFeedbackButton>
       </div>
+      <ProfilePhotoViewer
+        isOpen={showPhotoViewer}
+        src={profileImagePreview}
+        alt={displayName}
+        onClose={() => setShowPhotoViewer(false)}
+      />
     </div>
   );
 };

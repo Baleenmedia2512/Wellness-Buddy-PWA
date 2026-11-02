@@ -3,8 +3,140 @@
  * Governs both the create (POST) and the public-resolve (GET) paths.
  */
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
+import { VALID_DIETS } from '../../user/user.validators.js';
+import { isValidPhysicalActivityLevel } from '../../../utils/tdeeCalculations.js';
+import {
+  TRANSFORMATION_PHOTO_SLOTS,
+  hasTransformationPhotoUpdates,
+  isStoredTransformationPhoto,
+} from '../../user/domain/transformationPhotos.rules.js';
 
 const VALID_GENDERS = ['Male', 'Female', 'Other'];
+
+/** Same limits as testimonials recoveredHealthIssues. */
+const MAX_HEALTH_ISSUES = 20;
+const MAX_ISSUE_LEN = 120;
+
+/**
+ * Optional diet preference — Profile source of truth (team_table.DietType).
+ * Not persisted on body_parameters_cards.
+ *
+ * @param {*} val
+ * @returns {string|null}
+ */
+function _optionalDietType(val) {
+  if (val === undefined || val === null || val === '') return null;
+  const s = String(val).trim();
+  if (!VALID_DIETS.includes(s)) {
+    throw new ValidationError(422, `dietType must be one of: ${VALID_DIETS.join(', ')}`);
+  }
+  return s;
+}
+
+/**
+ * Optional physical activity — Profile source of truth (team_table.PhysicalActivityLevel).
+ * Not persisted on body_parameters_cards.
+ *
+ * @param {*} val
+ * @returns {string|null}
+ */
+function _optionalPhysicalActivityLevel(val) {
+  if (val === undefined || val === null || val === '') return null;
+  const s = String(val).trim();
+  if (!isValidPhysicalActivityLevel(s)) {
+    throw new ValidationError(422, 'physicalActivityLevel is invalid');
+  }
+  return s;
+}
+
+/**
+ * Optional Left/Centre/Right photos — Profile SoT (team_table.transformation_photos).
+ * Not persisted on body_parameters_cards.
+ *
+ * @param {object} body
+ * @returns {object|null}
+ */
+function _optionalTransformationPhotos(body) {
+  if (!body || typeof body !== 'object') return null;
+  if (!('transformationPhotos' in body) && !('transformation_photos' in body)) return null;
+  const raw = body.transformationPhotos !== undefined
+    ? body.transformationPhotos
+    : body.transformation_photos;
+  if (raw == null) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new ValidationError(
+      422,
+      'transformationPhotos must be an object with optional front, left, and right images',
+    );
+  }
+  const normalized = {};
+  for (const slot of TRANSFORMATION_PHOTO_SLOTS) {
+    if (!(slot in raw)) continue;
+    const value = raw[slot];
+    if (value == null || value === '') continue;
+    if (!isStoredTransformationPhoto(value)) {
+      throw new ValidationError(
+        422,
+        `Invalid transformationPhotos.${slot}. Provide an image data URL.`,
+      );
+    }
+    normalized[slot] = String(value).trim();
+  }
+  return hasTransformationPhotoUpdates(normalized) ? normalized : null;
+}
+
+/**
+ * Optional recovered health issues (testimonials-compatible).
+ * Missing / null → []. Legacy medicalCondition string → single-item array.
+ *
+ * @param {object} body
+ * @returns {string[]}
+ */
+export function normalizeRecoveredHealthIssues(body) {
+  if (!body || typeof body !== 'object') return [];
+
+  let value = body.recoveredHealthIssues;
+  if (value === undefined) {
+    const legacy = body.medicalCondition;
+    if (legacy === undefined || legacy === null || legacy === '') return [];
+    if (Array.isArray(legacy)) value = legacy;
+    else if (typeof legacy === 'string') value = [legacy];
+    else return [];
+  }
+  if (value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new ValidationError(422, 'recoveredHealthIssues must be an array');
+  }
+  if (value.length > MAX_HEALTH_ISSUES) {
+    throw new ValidationError(
+      422,
+      `recoveredHealthIssues must have at most ${MAX_HEALTH_ISSUES} items`,
+    );
+  }
+
+  const seen = new Set();
+  const result = [];
+  for (const item of value) {
+    if (typeof item !== 'string') {
+      throw new ValidationError(422, 'Each recovered health issue must be a string');
+    }
+    const trimmed = item.trim();
+    if (!trimmed) {
+      throw new ValidationError(422, 'Recovered health issue labels cannot be empty');
+    }
+    if (trimmed.length > MAX_ISSUE_LEN) {
+      throw new ValidationError(
+        422,
+        `Each recovered health issue must be <= ${MAX_ISSUE_LEN} characters`,
+      );
+    }
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(trimmed);
+  }
+  return result;
+}
 
 /**
  * Validate the payload for POST /api/body-parameters-card/create.
@@ -19,7 +151,8 @@ export function validateCreateCard(body) {
 
   const { createdBy, userId, name, age, gender, heightCm, weightKg,
           bmi, fatPercent, bmr, bodyAge, visceralFat, chestCm, waistCm, hipCm,
-          recordedDate, locationName, phoneNumber, bmrManualOverride } = body;
+          recordedDate, appointmentDate, locationName, phoneNumber, bmrManualOverride,
+          dietType, physicalActivityLevel, phoneConflictAction } = body;
 
   if (!createdBy) throw new ValidationError(400, 'createdBy is required');
   const createdByN = parseInt(createdBy, 10);
@@ -36,7 +169,7 @@ export function validateCreateCard(body) {
   const bmiN      = _optionalFloat(bmi, 'bmi', 5, 70);
   const fatN      = _optionalFloat(fatPercent, 'fatPercent', 1, 70);
   const bmrN      = _optionalFloat(bmr, 'bmr', 500, 10000);
-  const visceralN = _optionalFloat(visceralFat, 'visceralFat', 0, 99); // No strict validation - allow any reasonable value
+  const visceralN = _optionalFloat(visceralFat, 'visceralFat', 0, 99);
   const chestN    = _optionalFloat(chestCm, 'chestCm', 20, 250);
   const waistN    = _optionalFloat(waistCm, 'waistCm', 20, 250);
   const hipN      = _optionalFloat(hipCm, 'hipCm', 20, 250);
@@ -45,7 +178,6 @@ export function validateCreateCard(body) {
     throw new ValidationError(422, `gender must be one of: ${VALID_GENDERS.join(', ')}`);
   }
 
-  // recordedDate: accept ISO date string or default to today
   let recordedDateVal = null;
   if (recordedDate) {
     const d = new Date(recordedDate);
@@ -53,7 +185,27 @@ export function validateCreateCard(body) {
     recordedDateVal = d.toISOString().substring(0, 10);
   }
 
+  let appointmentDateVal = null;
+  if (appointmentDate) {
+    const d = new Date(appointmentDate);
+    if (isNaN(d.getTime())) throw new ValidationError(422, 'appointmentDate must be a valid ISO date');
+    appointmentDateVal = d.toISOString().substring(0, 10);
+  }
+
   const phoneVal = _optionalPhone(phoneNumber);
+  const recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
+  const dietTypeVal = _optionalDietType(dietType);
+  const physicalActivityLevelVal = _optionalPhysicalActivityLevel(physicalActivityLevel);
+  const transformationPhotosVal = _optionalTransformationPhotos(body);
+
+  let phoneConflictActionVal = null;
+  if (phoneConflictAction != null && phoneConflictAction !== '') {
+    const action = String(phoneConflictAction).trim().toLowerCase();
+    if (action !== 'override' && action !== 'new') {
+      throw new ValidationError(422, 'phoneConflictAction must be override or new');
+    }
+    phoneConflictActionVal = action;
+  }
 
   return {
     createdBy: createdByN,
@@ -72,9 +224,15 @@ export function validateCreateCard(body) {
     waistCm:   waistN,
     hipCm:     hipN,
     recordedDate: recordedDateVal,
+    appointmentDate: appointmentDateVal,
     locationName: locationName ? String(locationName).trim().substring(0, 200) : null,
     phoneNumber: phoneVal,
     bmrManualOverride: bmrManualOverride === true || bmrManualOverride === 'true',
+    recoveredHealthIssues,
+    dietType: dietTypeVal,
+    physicalActivityLevel: physicalActivityLevelVal,
+    transformationPhotos: transformationPhotosVal,
+    phoneConflictAction: phoneConflictActionVal,
   };
 }
 
@@ -91,7 +249,8 @@ export function validateUpdateCard(body) {
 
   const { id, name, age, gender, heightCm, weightKg,
           bmi, fatPercent, bmr, bodyAge, visceralFat, chestCm, waistCm, hipCm,
-          recordedDate, locationName, phoneNumber, bmrManualOverride } = body;
+          recordedDate, appointmentDate, locationName, phoneNumber, bmrManualOverride,
+          dietType, physicalActivityLevel } = body;
 
   if (!id) throw new ValidationError(400, 'id is required');
   const idN = parseInt(id);
@@ -107,7 +266,7 @@ export function validateUpdateCard(body) {
   const bmiN      = _optionalFloat(bmi, 'bmi', 5, 70);
   const fatN      = _optionalFloat(fatPercent, 'fatPercent', 1, 70);
   const bmrN      = _optionalFloat(bmr, 'bmr', 500, 10000);
-  const visceralN = _optionalFloat(visceralFat, 'visceralFat', 0, 999); // No strict validation - allow any reasonable value
+  const visceralN = _optionalFloat(visceralFat, 'visceralFat', 0, 999);
   const chestN    = _optionalFloat(chestCm, 'chestCm', 20, 250);
   const waistN    = _optionalFloat(waistCm, 'waistCm', 20, 250);
   const hipN      = _optionalFloat(hipCm, 'hipCm', 20, 250);
@@ -123,7 +282,18 @@ export function validateUpdateCard(body) {
     recordedDateVal = d.toISOString().substring(0, 10);
   }
 
+  let appointmentDateVal = null;
+  if (appointmentDate) {
+    const d = new Date(appointmentDate);
+    if (isNaN(d.getTime())) throw new ValidationError(422, 'appointmentDate must be a valid ISO date');
+    appointmentDateVal = d.toISOString().substring(0, 10);
+  }
+
   const phoneVal = _optionalPhone(phoneNumber);
+  const recoveredHealthIssues = normalizeRecoveredHealthIssues(body);
+  const dietTypeVal = _optionalDietType(dietType);
+  const physicalActivityLevelVal = _optionalPhysicalActivityLevel(physicalActivityLevel);
+  const transformationPhotosVal = _optionalTransformationPhotos(body);
 
   return {
     id:          idN,
@@ -141,9 +311,14 @@ export function validateUpdateCard(body) {
     waistCm:     waistN,
     hipCm:       hipN,
     recordedDate: recordedDateVal,
+    appointmentDate: appointmentDateVal,
     locationName: locationName ? String(locationName).trim().substring(0, 200) : null,
     phoneNumber: phoneVal,
     bmrManualOverride: bmrManualOverride === true || bmrManualOverride === 'true',
+    recoveredHealthIssues,
+    dietType: dietTypeVal,
+    physicalActivityLevel: physicalActivityLevelVal,
+    transformationPhotos: transformationPhotosVal,
   };
 }
 
@@ -186,6 +361,32 @@ function _optionalPhone(val) {
 }
 
 /**
+ * Validate the payload for DELETE /api/body-parameters-card/delete.
+ * Requires card `id` and owning coach (`coachId` or `createdBy`).
+ *
+ * @param {object} body
+ * @returns {{ id: number, coachId: number }}
+ * @throws {ValidationError}
+ */
+export function validateDeleteCard(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+
+  const { id, coachId, createdBy } = body;
+  if (!id) throw new ValidationError(400, 'id is required');
+  const idN = parseInt(id, 10);
+  if (isNaN(idN) || idN < 1) throw new ValidationError(422, 'id must be a positive integer');
+
+  const rawCoach = coachId ?? createdBy;
+  if (!rawCoach) throw new ValidationError(400, 'coachId is required');
+  const coachIdN = parseInt(rawCoach, 10);
+  if (isNaN(coachIdN) || coachIdN < 1) {
+    throw new ValidationError(400, 'coachId must be a valid UserId');
+  }
+
+  return { id: idN, coachId: coachIdN };
+}
+
+/**
  * Validate the query params for GET /api/body-parameters-card/phone-search.
  *
  * @param {{ prefix: string, coachId: string }} query
@@ -211,4 +412,53 @@ export function validatePhoneSearchQuery(query) {
   }
 
   return { prefix: cleanPrefix, coachId: coachIdN };
+}
+
+/**
+ * Validate GET /api/body-parameters-card/phone-status query.
+ *
+ * @param {{ phoneNumber?: string, phone?: string, coachId?: string }} query
+ * @returns {{ phoneNumber: string, coachId: number }}
+ */
+export function validatePhoneStatusQuery(query) {
+  if (!query) throw new ValidationError(400, 'Query params missing');
+  const rawPhone = query.phoneNumber ?? query.phone;
+  const { coachId } = query;
+
+  if (!rawPhone || String(rawPhone).trim() === '') {
+    throw new ValidationError(400, 'phoneNumber is required');
+  }
+  const phoneNumber = String(rawPhone).trim().replace(/[\s\-()]/g, '');
+  if (!/^\+?[0-9]{10,15}$/.test(phoneNumber)) {
+    throw new ValidationError(422, 'phoneNumber must be 10–15 digits (optional + prefix)');
+  }
+
+  if (!coachId) throw new ValidationError(400, 'coachId is required');
+  const coachIdN = parseInt(coachId, 10);
+  if (isNaN(coachIdN) || coachIdN < 1) {
+    throw new ValidationError(400, 'coachId must be a valid UserId');
+  }
+
+  return { phoneNumber, coachId: coachIdN };
+}
+
+/**
+ * Validate GET member-prefill query.
+ * @param {{ userId?: string, coachId?: string }} query
+ * @returns {{ userId: number, coachId: number }}
+ */
+export function validateMemberPrefillQuery(query) {
+  if (!query) throw new ValidationError(400, 'Query is required');
+  const { userId, coachId } = query;
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  if (!coachId) throw new ValidationError(400, 'coachId is required');
+  const userIdN = parseInt(userId, 10);
+  const coachIdN = parseInt(coachId, 10);
+  if (isNaN(userIdN) || userIdN < 1) {
+    throw new ValidationError(400, 'userId must be a valid UserId');
+  }
+  if (isNaN(coachIdN) || coachIdN < 1) {
+    throw new ValidationError(400, 'coachId must be a valid UserId');
+  }
+  return { userId: userIdN, coachId: coachIdN };
 }

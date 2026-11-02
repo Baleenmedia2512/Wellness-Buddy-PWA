@@ -29,6 +29,7 @@ create a real composition layer rather than annotating exceptions.
 | File | Role | Imports features |
 |---|---|---|
 | `components/Dashboard.js` | The unified tab shell that mounts NutritionDashboard / WeightDashboard / EducationDashboard (and, after PR-C, DiaryFeed). Owns the in-shell date state and the `TeamMemberSearch` header. | `team`, `nutrition`, `weight`, `education`, `diary` (post-PR-C) |
+| `components/AdminConfigSetup.jsx` | Admin hub with tabs for Wellness Score Setup, Activity Time Setup, and AI Configuration Setup. | `wellness-score-sheet`, `ai-credits` + shared time-windows modal |
 
 ## Planned residents
 

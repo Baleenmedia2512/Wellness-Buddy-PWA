@@ -11,9 +11,13 @@ import TeamSearchInput from './TeamSearchInput';
 import TeamSearchResults from './TeamSearchResults';
 import { useTeamSearch } from '../hooks/useTeamSearch';
 
-const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) => {
-  const vm = useTeamSearch({ user, userRole, selectedMember, onMemberSelect });
-  const [showProfileModal, setShowProfileModal] = useState(false);
+const TeamMemberSearch = ({
+  user, userRole, selectedMember, onMemberSelect, refreshKey = 0, resultVariant = 'default',
+}) => {
+  const vm = useTeamSearch({
+    user, userRole, selectedMember, onMemberSelect, refreshKey,
+  });
+  const [profileMember, setProfileMember] = useState(null);
 
   if (!vm.isCoach) return null;
 
@@ -26,7 +30,7 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
             value={vm.inputValue}
             searchQuery={vm.searchQuery}
             onChange={vm.handleQueryChange}
-            onFocus={() => vm.setIsOpen(true)}
+            onFocus={vm.handleFocus}
             onClear={vm.clearQuery}
             showViewMine={Boolean(selectedMember && !selectedMember.isSelf)}
             onClearSelection={vm.clearSelection}
@@ -36,19 +40,24 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
             <TeamSearchResults
               dropdownRef={vm.dropdownRef}
               loading={vm.loading}
+              loadError={vm.loadError}
+              rosterReady={vm.rosterReady}
               suggestions={vm.suggestions}
               selectedMemberId={selectedMember?.userId}
               onSelect={vm.selectMember}
+              onViewProfile={setProfileMember}
+              resultVariant={resultVariant}
             />
           )}
         </div>
       </div>
 
-      {selectedMember && !selectedMember.isSelf && (
+      {profileMember && !profileMember.isSelf && (
         <TeamMemberProfileModal
-          isOpen={showProfileModal}
-          onClose={() => setShowProfileModal(false)}
-          memberEmail={selectedMember.email}
+          isOpen={Boolean(profileMember)}
+          onClose={() => setProfileMember(null)}
+          memberEmail={profileMember.email}
+          memberUserId={profileMember.userId}
         />
       )}
     </>

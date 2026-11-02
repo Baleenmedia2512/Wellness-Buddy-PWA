@@ -1,48 +1,37 @@
 /**
- * Post-capture navigation: Phase 1 success opens Manual Entry (no auto-AI).
+ * manualEntryNav.test.js — Food tap AI uses admin availability windows only
+ * (decideLunchAutoAi) — App does not start AI on upload.
  * Run: node --test frontend/src/shell/__tests__/manualEntryNav.test.js
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import {
+  decideLunchAutoAi,
+} from '../../features/ai-credits/domain/lunchAutoAi.rules.js';
 
-/**
- * Pure decision used after Phase 1 capture persist succeeds.
- * Auto-AI / orchestrate must not run; Manual Entry opens with capture payload.
- */
-export function buildPostCaptureNavigation({ captureId, imageBase64, userId }) {
-  if (!captureId || !imageBase64) {
-    return { openManualEntry: false, runAutoAi: false, payload: null };
-  }
-  return {
-    openManualEntry: true,
-    runAutoAi: false,
-    payload: { captureId, imageBase64, userId: userId ?? null },
+describe('Food AI eligibility after Manual Entry opens', () => {
+  const lunchNow = new Date('2026-08-20T07:30:00.000Z'); // 13:00 IST
+  const creditsOk = {
+    enabled: true,
+    dailyLimit: 3,
+    used: 0,
+    pending: 0,
+    remaining: 3,
+    availableInWindow: true,
+    availabilityWindows: {
+      breakfast: { enabled: false, start: '05:30:00', end: '08:30:00' },
+      lunch: { enabled: true, start: '12:00:00', end: '16:00:00' },
+      dinner: { enabled: true, start: '17:30:00', end: '20:30:00' },
+    },
   };
-}
 
-describe('buildPostCaptureNavigation', () => {
-  it('opens Manual Entry and never auto-AI after Phase 1', () => {
-    const nav = buildPostCaptureNavigation({
-      captureId: 42,
-      imageBase64: 'data:image/jpeg;base64,abc',
-      userId: 7,
+  it('Food tap may start AI when admin window + credits say yes', () => {
+    const d = decideLunchAutoAi({
+      now: lunchNow,
+      creditsFlagEnabled: true,
+      creditStatus: creditsOk,
     });
-    assert.equal(nav.openManualEntry, true);
-    assert.equal(nav.runAutoAi, false);
-    assert.deepEqual(nav.payload, {
-      captureId: 42,
-      imageBase64: 'data:image/jpeg;base64,abc',
-      userId: 7,
-    });
-  });
-
-  it('skips when capture missing', () => {
-    const nav = buildPostCaptureNavigation({
-      captureId: null,
-      imageBase64: 'x',
-      userId: 1,
-    });
-    assert.equal(nav.openManualEntry, false);
-    assert.equal(nav.runAutoAi, false);
+    assert.equal(d.hideAiButton, true);
+    assert.equal(d.shouldAutoAi, true);
   });
 });

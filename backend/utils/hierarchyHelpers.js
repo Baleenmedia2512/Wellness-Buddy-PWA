@@ -299,22 +299,22 @@ export function buildDataMap(records, userIdField = 'UserId', transformFn = null
  * This keeps the database hierarchy intact but resolves to active coaches at runtime.
  * 
  * @param {string} userId - The user's UserId
- * @param {Object} supabase - Supabase client instance
+ * @param {Object} db - MySQL client instance
  * @returns {Promise<{coachId: string|null, coachName: string|null, isOriginalCoach: boolean}>}
  * 
  * @example
  * // Member1's coach is Ramesh (inactive), Ramesh's coach is Yasheer (active)
- * const result = await resolveActiveCoach('member1_id', supabase);
+ * const result = await resolveActiveCoach('member1_id', db);
  * // => { coachId: 'yasheer_id', coachName: 'Yasheer', isOriginalCoach: false }
  */
-export async function resolveActiveCoach(userId, supabase) {
+export async function resolveActiveCoach(userId, db) {
   const MAX_DEPTH = 10; // Prevent infinite loops
   let currentUserId = userId;
   let depth = 0;
   
   while (depth < MAX_DEPTH) {
     // Get the coach for the current user
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('team_table')
       .select('CoachId, Status, UserName')
       .eq('UserId', currentUserId)
@@ -326,7 +326,7 @@ export async function resolveActiveCoach(userId, supabase) {
     }
     
     // Get the coach's details
-    const { data: coachData, error: coachError } = await supabase
+    const { data: coachData, error: coachError } = await db
       .from('team_table')
       .select('UserId, Status, UserName')
       .eq('UserId', data.CoachId)

@@ -4,6 +4,7 @@
  */
 import { CapacitorHttp } from '@capacitor/core';
 import { getApiBaseUrl } from '../../../config/api.config.js';
+import { getAppVersionHeaders } from '../../../shared/services/apiFetch.js';
 
 /**
  * Create a new body-parameters card.
@@ -92,30 +93,176 @@ export async function searchPhonesByPrefix({ prefix, coachId }) {
 }
 
 /**
- * List all body parameter cards for a coach's team
- * @param {string} coachId - UUID of the coach
- * @returns {Promise<Array>} Array of body parameter cards
+ * Check whether a phone belongs to an activated member (BCM blocked).
+ * Called as soon as a complete phone is typed (does not wait for Save).
+ *
+ * @param {{ phoneNumber: string, coachId: number|string }} opts
+ * @returns {Promise<{ activated: boolean, message: string|null, userId: number|null, exists: boolean, canOverride: boolean, counselledByOther: boolean, existingCard: object|null }>}
  */
-export async function listBodyParamsCards(coachId) {
-  const url = `${getApiBaseUrl()}/api/body-parameters-card/list?coachId=${encodeURIComponent(coachId)}`;
-  console.log('🌐 [API] listBodyParamsCards - Request URL:', url);
-  console.log('🌐 [API] listBodyParamsCards - CoachId:', coachId, 'Type:', typeof coachId);
-  
+export async function fetchPhoneBcmStatus({ phoneNumber, coachId }) {
+  const response = await CapacitorHttp.get({
+    url: `${getApiBaseUrl()}/api/body-parameters-card/phone-status`
+      + `?phoneNumber=${encodeURIComponent(phoneNumber)}`
+      + `&coachId=${encodeURIComponent(coachId)}`,
+    headers: { 'Cache-Control': 'no-cache', ...getAppVersionHeaders() },
+  });
+  let result = response?.data;
+  if (typeof result === 'string') {
+    try { result = JSON.parse(result); } catch { /* keep */ }
+  }
+  const status = Number(response?.status) || 0;
+  if (status >= 400) {
+    throw new Error(result?.error?.message || result?.message || `Phone status check failed (${status})`);
+  }
+  if (!result?.ok) throw new Error(result?.error?.message || 'Phone status check failed');
+  const rawUserId = result.data?.userId;
+  const userIdN = rawUserId != null ? Number(rawUserId) : NaN;
+  return {
+    activated: Boolean(result.data?.activated),
+    message: result.data?.message || null,
+    userId: Number.isFinite(userIdN) && userIdN > 0 ? userIdN : null,
+    exists: Boolean(
+      result.data?.exists
+      ?? (Number.isFinite(userIdN) && userIdN > 0),
+    ),
+    canOverride: result.data?.canOverride === true,
+    counselledByOther: result.data?.counselledByOther === true,
+    existingCard: result.data?.existingCard || null,
+  };
+}
+
+/**
+ * Prefill BCM fields from a member's profile + latest weight.
+ * @param {{ userId: string|number, coachId: string|number }} opts
+ * @returns {Promise<object>}
+ */
+export async function fetchMemberPrefill({ userId, coachId }) {
+  const response = await CapacitorHttp.get({
+    url: `${getApiBaseUrl()}/api/body-parameters-card/member-prefill?userId=${encodeURIComponent(userId)}&coachId=${encodeURIComponent(coachId)}`,
+    headers: { 'Cache-Control': 'no-cache', ...getAppVersionHeaders() },
+  });
+  const result = response?.data;
+  if (response?.status && response.status >= 400) {
+    throw new Error(result?.error?.message || result?.message || `Member prefill failed (${response.status})`);
+  }
+  if (!result?.ok) throw new Error(result?.error?.message || 'Member prefill failed');
+  return absolutizePrefillPhotos(result.data || {});
+}
+
+function absolutizePrefillPhotos(data) {
+  const photos = data?.transformationPhotos;
+  if (!photos || typeof photos !== 'object') return data;
+  const apiBase = getApiBaseUrl();
+  const next = { ...photos };
+  for (const slot of ['front', 'left', 'right']) {
+    const url = next[slot];
+    if (typeof url === 'string' && url.startsWith('/api/')) {
+      next[slot] = `${apiBase}${url}`;
+    }
+  }
+  return { ...data, transformationPhotos: next };
+}
+
+/**
+ * Soft-delete a body-parameters card owned by the coach.
+ * @param {{ id: string|number, coachId: string|number }} opts
+ * @returns {Promise<{ id: number }>}
+ */
+export async function deleteBodyParamsCard({ id, coachId }) {
+  const response = await CapacitorHttp.delete({
+    url: `${getApiBaseUrl()}/api/body-parameters-card/delete`,
+    headers: { 'Content-Type': 'application/json' },
+    data: { id, coachId },
+  });
+  const result = response.data;
+  if (!result?.success) {
+    throw new Error(result?.message || result?.error?.message || 'Failed to delete card');
+  }
+  return result.data;
+}
+
+/**
+ * List body parameter cards for a coach (paginated).
+ * @param {string|number} coachId
+ * @param {{ page?: number, limit?: number, search?: string, signal?: AbortSignal }} [opts]
+ * @returns {Promise<{ cards: Array, pagination: object }>}
+ */
+export async function listBodyParamsCards(coachId, opts = {}) {
+  const page = opts.page ?? 1;
+  const limit = opts.limit ?? 20;
+  const search = opts.search ? String(opts.search).trim() : '';
+  const params = new URLSearchParams({
+    coachId: String(coachId),
+    page: String(page),
+    limit: String(limit),
+  });
+  if (search) params.set('search', search);
+
+  const url = `${getApiBaseUrl()}/api/body-parameters-card/list?${params}`;
   const response = await CapacitorHttp.get({
     url,
     headers: { 'Cache-Control': 'no-cache' },
   });
-  
-  console.log('🌐 [API] listBodyParamsCards - Response status:', response.status);
-  console.log('🌐 [API] listBodyParamsCards - Response data:', JSON.stringify(response.data, null, 2));
-  
+
   const result = response.data;
   if (!result?.ok) {
-    console.error('❌ [API] listBodyParamsCards - API returned error:', result?.error);
     throw new Error(result?.error?.message || 'Failed to list cards');
   }
-  
+
   const cards = Array.isArray(result.data) ? result.data : [];
-  console.log('✅ [API] listBodyParamsCards - Returning', cards.length, 'cards');
-  return cards;
+  const pagination = result.pagination || {
+    totalRecords: cards.length,
+    totalPages: 1,
+    currentPage: page,
+    pageSize: limit,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  };
+  return { cards, pagination };
+}
+
+/**
+ * Fetch a single full card for edit (all metric fields).
+ * @param {string|number} coachId
+ * @param {string|number} cardId
+ * @returns {Promise<object>}
+ */
+export async function getBodyParamsCard(coachId, cardId) {
+  const params = new URLSearchParams({
+    coachId: String(coachId),
+    cardId: String(cardId),
+  });
+  const response = await CapacitorHttp.get({
+    url: `${getApiBaseUrl()}/api/body-parameters-card/list?${params}`,
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  const result = response.data;
+  if (!result?.ok) {
+    throw new Error(result?.error?.message || 'Failed to load card');
+  }
+  return result.data;
+}
+
+/**
+ * Dated body-parameter snapshots for Reports Trend.
+ * @param {string|number} userId
+ * @param {{ viewerUserId?: string|number }} [opts]
+ * @returns {Promise<{ ok: boolean, status: number, data: object }>}
+ */
+export async function fetchBodyParamsCardHistory(userId, { viewerUserId } = {}) {
+  const params = new URLSearchParams({ userId: String(userId) });
+  params.set('_t', String(Date.now()));
+  if (viewerUserId != null && viewerUserId !== '') {
+    params.set('viewerUserId', String(viewerUserId));
+  }
+  const response = await CapacitorHttp.get({
+    url: `${getApiBaseUrl()}/api/body-parameters-card/history?${params}`,
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  const result = response.data;
+  return {
+    ok: response.status >= 200 && response.status < 300 && result?.ok === true,
+    status: response.status,
+    data: result,
+  };
 }

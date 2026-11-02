@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   filterWatchCalorieRowsForDate,
+  groupWatchCaloriesByDate,
   maxStepCaloriesFromRows,
   maxWatchCaloriesFromRows,
   parseWatchKcalFromTopic,
@@ -69,6 +70,21 @@ describe('filterWatchCalorieRowsForDate', () => {
     const filtered = filterWatchCalorieRowsForDate(rows, '2026-07-23', IANA_IST);
     assert.equal(filtered.length, 1);
     assert.equal(filtered[0].Topic, 'Calories Burned: 200 kcal');
+  });
+});
+
+describe('groupWatchCaloriesByDate', () => {
+  it('takes max kcal per day across the range', () => {
+    const rows = [
+      { Topic: 'Calories Burned: 150 kcal', CreatedAt: '2026-07-23 10:00:00.000' },
+      { Topic: 'Calories Burned: 300 kcal', CreatedAt: '2026-07-23 18:00:00.000' },
+      { Topic: 'Calories Burned: 100 kcal', CreatedAt: '2026-07-22 12:00:00.000' },
+      { Topic: 'Calories Burned: 50 kcal', CreatedAt: '2026-07-21 12:00:00.000' },
+    ];
+    const byDate = groupWatchCaloriesByDate(rows, '2026-07-22', '2026-07-23', IANA_IST);
+    assert.equal(byDate['2026-07-23'], 300);
+    assert.equal(byDate['2026-07-22'], 100);
+    assert.equal(byDate['2026-07-21'], undefined);
   });
 });
 

@@ -2,7 +2,7 @@ import { computeKatchMcArdleBmr, resolveBmrForSave } from '../../../utils/bmrCal
 
 /**
  * card.rules.js — Pure business logic for Body Parameters Card.
- * No I/O. No imports from axios, pg, supabase, or react.
+ * No I/O. No imports from axios, pg, db, or react.
  */
 
 export const SHARE_TTL_DAYS = 30;
@@ -111,6 +111,68 @@ export function shouldClearBpcLeadCoachId({
 }
 
 /**
+ * Message when BCM is blocked for an activated member (coach OTP approved).
+ * Approved coach/sponsor selection only happens after the member signed in and
+ * selected a coach — that is the product definition of "activated".
+ * Activated members are not shown for edit and cannot be overridden.
+ */
+export const BCM_ACTIVATED_MEMBER_MESSAGE = 'User already exists';
+
+/**
+ * Another counsellor (including a co-sponsor) already saved this BCM.
+ * Only the counsellor who created it may override, and only before activation.
+ */
+export const BCM_COUNSELLED_BY_OTHER_MESSAGE =
+  'This person was counselled by someone else. You cannot override it.';
+
+/** Coach choice when the typed phone already has a card this coach created. */
+export const BCM_PHONE_CONFLICT_ACTIONS = Object.freeze(['override', 'new']);
+
+/**
+ * Activated members are never created or updated from BCM, including Override / New.
+ * @param {string|null|undefined} _phoneConflictAction
+ * @returns {boolean}
+ */
+export function allowsActivatedBcmCreate(_phoneConflictAction) {
+  return false;
+}
+
+/**
+ * Override is allowed only when this coach counselled the BCM and the member
+ * has not started using the app.
+ *
+ * @param {{ activated?: boolean, counselledByViewer?: boolean }} input
+ * @returns {boolean}
+ */
+export function canOverrideBcmForMember({
+  activated = false,
+  counselledByViewer = false,
+} = {}) {
+  if (activated) return false;
+  return counselledByViewer === true;
+}
+
+/**
+ * True when create must insert a new card even if this coach already has one.
+ * @param {string|null|undefined} phoneConflictAction
+ * @returns {boolean}
+ */
+export function shouldForceNewBcmCard(phoneConflictAction) {
+  return phoneConflictAction === 'new';
+}
+
+/**
+ * True when this member must be excluded from BCM create/list.
+ * Gate: approved coach/sponsor OTP selection (`hasApprovedCoachSelection`).
+ *
+ * @param {{ hasApprovedCoachSelection?: boolean }} input
+ * @returns {boolean}
+ */
+export function isMemberActivatedForBcmExclusion({ hasApprovedCoachSelection = false } = {}) {
+  return hasApprovedCoachSelection === true;
+}
+
+/**
  * @deprecated Prefer shouldClearBpcLeadCoachId — kept for callers that only
  * detached when counsellorId matched CoachId.
  */
@@ -146,6 +208,28 @@ export function shouldDetachCounsellorCoachAssignment({
 export function isCardShareValid(shareExpiresAt, now = new Date()) {
   if (!shareExpiresAt) return false;
   return new Date(shareExpiresAt) > now;
+}
+
+/**
+ * Prisma/MySQL create cannot use MariaDB uuid() / interval defaults.
+ * Callers pass a 36-char token (crypto.randomUUID). Clock is injectable.
+ *
+ * @param {{ now?: Date, token: string }} input
+ * @returns {{ publicShareToken: string, shareExpiresAt: Date }}
+ */
+export function buildNewCardShareDefaults({ now = new Date(), token } = {}) {
+  const trimmed = typeof token === 'string' ? token.trim() : '';
+  if (trimmed.length !== 36) {
+    throw new Error('buildNewCardShareDefaults: 36-character token required');
+  }
+  const base = now instanceof Date ? now : new Date(now);
+  if (Number.isNaN(base.getTime())) {
+    throw new Error('buildNewCardShareDefaults: valid now required');
+  }
+  return {
+    publicShareToken: trimmed,
+    shareExpiresAt: new Date(base.getTime() + SHARE_TTL_DAYS * 24 * 60 * 60 * 1000),
+  };
 }
 
 /**
@@ -253,8 +337,8 @@ export function classifyFatPercent(fatPercent, gender) {
  * phone-search endpoint. Only populates fields that are present and non-null.
  * Caller must merge this onto the existing form state (do not replace).
  *
- * @param {{ userId: number, userName: string, heightCm: number|null, bmr: number|null }} member
- * @returns {{ name: string, heightCm: string, bmr: string }}
+ * @param {object} member
+ * @returns {object}
  */
 export function buildFormPrefillFromMember(member) {
   if (!member) return {};
@@ -268,5 +352,72 @@ export function buildFormPrefillFromMember(member) {
   if (member.bmr != null && !isNaN(Number(member.bmr))) {
     patch.bmr = String(member.bmr);
   }
+  if (member.gender === 'Male' || member.gender === 'Female' || member.gender === 'Other') {
+    patch.gender = member.gender;
+  }
+  const copyNum = (key, dest = key) => {
+    if (member[key] != null && !isNaN(Number(member[key]))) {
+      patch[dest] = String(member[key]);
+    }
+  };
+  copyNum('age');
+  copyNum('visceralFat');
+  copyNum('bodyAge');
+  copyNum('chestCm');
+  copyNum('waistCm');
+  copyNum('hipCm');
+  copyNum('fatPercent');
+  copyNum('bmi');
+  copyNum('weightKg');
+  if (member.dietType && String(member.dietType).trim()) {
+    patch.dietType = String(member.dietType).trim();
+  }
+  if (member.physicalActivityLevel && String(member.physicalActivityLevel).trim()) {
+    patch.physicalActivityLevel = String(member.physicalActivityLevel).trim();
+  }
+  if (Array.isArray(member.recoveredHealthIssues) && member.recoveredHealthIssues.length) {
+    patch.recoveredHealthIssues = member.recoveredHealthIssues
+      .filter((x) => typeof x === 'string' && x.trim())
+      .map((x) => x.trim());
+  }
   return patch;
+}
+
+/**
+ * Compute default appointment date for BCM card:
+ * - Next day (+1 day)
+ * - Sunday rule: if next day is Sunday, roll forward to Monday (+2 days)
+ *
+ * @param {string|Date|null|undefined} baseDate
+ * @returns {string|null} YYYY-MM-DD
+ */
+export function computeDefaultAppointmentDate(baseDate) {
+  if (!baseDate) return null;
+  let y;
+  let m;
+  let d;
+  if (typeof baseDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(baseDate)) {
+    const parts = baseDate.substring(0, 10).split('-');
+    y = parseInt(parts[0], 10);
+    m = parseInt(parts[1], 10) - 1;
+    d = parseInt(parts[2], 10);
+  } else {
+    const dt = baseDate instanceof Date ? baseDate : new Date(baseDate);
+    if (Number.isNaN(dt.getTime())) return null;
+    y = dt.getFullYear();
+    m = dt.getMonth();
+    d = dt.getDate();
+  }
+
+  // Next day (+1 day)
+  const target = new Date(y, m, d + 1);
+  // Sunday is 0: if target day falls on Sunday, roll forward to Monday (+1 more day)
+  if (target.getDay() === 0) {
+    target.setDate(target.getDate() + 1);
+  }
+
+  const resY = target.getFullYear();
+  const resM = String(target.getMonth() + 1).padStart(2, '0');
+  const resD = String(target.getDate()).padStart(2, '0');
+  return `${resY}-${resM}-${resD}`;
 }

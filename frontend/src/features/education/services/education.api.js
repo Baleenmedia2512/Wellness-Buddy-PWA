@@ -1,12 +1,17 @@
 import { getApiBaseUrl } from '../../../config/api.config.js';
+import { toStorageThumbnail } from '../../../shared/utils/storageThumbnail.js';
 
 const base = () => getApiBaseUrl();
 
 export async function saveLog(payload) {
+  const next = { ...payload };
+  if (next.imageBase64) {
+    next.imageBase64 = await toStorageThumbnail(next.imageBase64);
+  }
   const res = await fetch(`${base()}/api/education/logs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(next),
   });
   return res.json();
 }
@@ -19,9 +24,8 @@ export async function getLogs(userId, opts = {}) {
   return res.json();
 }
 
-export async function getLogImage(logId, userId) {
-  const res = await fetch(`${base()}/api/education/log-image?logId=${encodeURIComponent(logId)}&userId=${encodeURIComponent(userId)}`);
-  return res.json();
+export function getLogImageUrl(logId, userId) {
+  return `${base()}/api/education/log-image?logId=${encodeURIComponent(logId)}&userId=${encodeURIComponent(userId)}`;
 }
 
 export async function getSummary(userId, opts = {}) {

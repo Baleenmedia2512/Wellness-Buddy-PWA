@@ -2,7 +2,7 @@
  * Shared UTC datetime utilities (Luxon-backed).
  *
  * Canonical source for new timestamp generation and timezone-aware day bounds.
- * Legacy IST helpers remain in utils/supabaseClient.js until repository migration.
+ * Legacy IST helpers remain in utils/mysqlClient.js until repository migration.
  */
 import { DateTime } from 'luxon';
 export const IANA_IST = 'Asia/Kolkata';
@@ -250,6 +250,35 @@ export function filterRowsByCalendarDateRange(
       const utcIso = normalizeStoredTimestampToUtcIso(raw, IANA_IST);
       const ymd = timestampToCalendarYmd(utcIso, timezoneIana);
       return ymd >= startDate && ymd <= endDate;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
+ * Keep rows whose timestamp column falls on or before `dateYmd` in `timezoneIana`.
+ *
+ * @param {object[]} rows
+ * @param {string} dateYmd - `YYYY-MM-DD` (inclusive upper bound)
+ * @param {string} [timezoneIana=IANA_IST]
+ * @param {string} [column='CreatedAt']
+ * @returns {object[]}
+ */
+export function filterRowsOnOrBeforeCalendarDay(
+  rows,
+  dateYmd,
+  timezoneIana = IANA_IST,
+  column = 'CreatedAt',
+) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  return rows.filter((row) => {
+    const raw = row?.[column];
+    if (raw == null) return false;
+    try {
+      const utcIso = normalizeStoredTimestampToUtcIso(raw, IANA_IST);
+      const ymd = timestampToCalendarYmd(utcIso, timezoneIana);
+      return ymd <= dateYmd;
     } catch {
       return false;
     }

@@ -74,32 +74,79 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.4.0',
+  VERSION: '3.5.5',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
   // NOTE: versionCode must never decrease for Play Store compatibility.
-  VERSION_CODE: 59,
+  VERSION_CODE: 84,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
-  IOS_BUILD_NUMBER: 60,
+  IOS_BUILD_NUMBER: 79,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version  3.4.0',
+  RELEASE_NAME: 'Version  3.5.5',
   
   // Build date
-  BUILD_DATE: '2026-08-04',
+  BUILD_DATE: '2026-10-31',
   
   // Platform release notes..
   PLATFORMS: {
-    ANDROID: { versionCode: 59, versionName: '3.4.0' },
-    IOS: { buildNumber: 60, versionName: '3.4.0' },
+    ANDROID: { versionCode: 84, versionName: '3.5.5' },
+    IOS: { buildNumber: 79, versionName: '3.5.5' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
  * 
+ * Version 3.5.5 (Code 84 / iOS build 79) - 2026-10-31 [ANDROID + iOS — not yet released]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.5.4 (Code 83 / iOS build 78) - 2026-10-29 [ANDROID + iOS — not yet released]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.5.3 (Code 74 / iOS build 76) - 2026-10-21 [ANDROID + iOS — not yet released]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.5.2 (Code 73 / iOS build 75) - 2026-10-04 [ANDROID + iOS — not yet released]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.5.1 (Code 72 / iOS build 74) - 2026-09-26 [ANDROID + iOS — not yet released]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.5.0 (Code 71 / iOS build 73) - 2026-09-10 [ANDROID + iOS RELEASE]
+ *   🚀 Minor version bump — version sync across all platforms
+ *   ✨ Community ID create / co-sponsor via 24h sponsor OTP (ADR-0013)
+ *
+ * Version 3.4.9 (Code 69 / iOS build 70) - 2026-09-02 [ANDROID + iOS RELEASE]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * 
+ * Version 3.4.8 (Code 68 / iOS build 69) - 2026-08-26 [ANDROID + iOS RELEASE]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.4.7 (Code 67 / iOS build 68) - 2026-08-24 [ANDROID + iOS RELEASE]
+ *   🐛 Patch — profile open soft-gate fix, BCM share path, wellness score display, idle-return dedupe
+ *
+ * Version 3.4.6 (Code 66 / iOS build 67) - 2026-08-20 [ANDROID + iOS RELEASE]
+ *   🐛 Patch — BCM health issues, transformation submit/contacts, venue short contact names
+ *
+ * Version 3.4.5 (Code 64 / iOS build 65) - 2026-08-14 [ANDROID + iOS RELEASE]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.4.4 (Code 63 / iOS build 64) - 2026-08-13 [ANDROID + iOS RELEASE]
+ *   🐛 Patch — Gemini Flash→Pro retry ownership, timeout/telemetry, credit-after-save
+ *
+ * Version 3.4.3 (Code 62 / iOS build 63) - 2026-08-10 [ANDROID + iOS RELEASE]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.4.2 (Code 61 / iOS build 62) - 2026-08-07 [ANDROID + iOS RELEASE]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.4.1 (Code 60 / iOS build 61) - 2026-08-06 [ANDROID + iOS RELEASE]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
  * Version 3.4.0 (Code 59 / iOS build 60) - 2026-08-04 [ANDROID + iOS RELEASE]
  *   🚀 Minor version bump — version sync across all platforms
  *
@@ -193,7 +240,7 @@ export const APP_VERSION = {
  *   🎓 Wellness University - Per-program enrollment date/time stored and displayed in IST
  *   🗺️ Enrollment Map Format - EnrolledPrograms now stored as { programName: isoDate } map for individual timestamps
  *   🔒 Date Preservation - Re-saving enrollments preserves original enrollment dates per program
- *   🔧 JSONB Fix - Fixed Supabase JSONB auto-parse causing enrollment dates to reset on update
+ *   🔧 JSONB Fix - Fixed MySQL JSONB auto-parse causing enrollment dates to reset on update
  *   🚫 AI Unavailable Modal - Removed "LOG SOMETHING ELSE" alt buttons (Food/Education) from all modals
  *   🚫 Manual Weight Modal - Disabled ManualWeightEntryModal to prevent unwanted popups
  *   🧹 Code Cleanup - Removed unused altButtons logic from AI Unavailable handler

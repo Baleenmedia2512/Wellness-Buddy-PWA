@@ -3,14 +3,29 @@ import * as Session from '../../../shared/services/sessionStorage';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone.js';
+import { apiFetch } from '../../../shared/services/apiFetch.js';
+import { handlePossibleAppUpdateRequired } from '../../../shared/services/appVersionEnforce.client.js';
+import { buildClientDeviceInfo, CURRENT_CONSENT_VERSION } from '../domain/consent.js';
+
 const post = async (path, body) => {
   const apiBase = getApiBaseUrl();
   const payload = body && typeof body === 'object' ? body : {};
-  const res = await fetch(`${apiBase}${path}`, {
+  const res = await apiFetch(`${apiBase}${path}`, {
     method: 'POST',
+    cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  // Dev-mode trace for failed API calls (e.g. 404 on send-otp → API base URL/port points
+  // at the wrong host). NODE_ENV !== "production" only; no-op in production builds.
+  if (!res.ok) {
+    debugLog('[OTP/SMS] send-otp request failed', {
+      apiBase,
+      path,
+      httpStatus: res.status,
+      ok: res.ok,
+    });
+  }
   const rawText = await res.text();
   let data = {};
   try {
@@ -35,6 +50,7 @@ const post = async (path, body) => {
       _httpStatus: res.status,
     };
   }
+  handlePossibleAppUpdateRequired(res, data);
   const hasOtpField = Object.prototype.hasOwnProperty.call(data || {}, 'otp');
   const logPayload = {
     apiBase,
@@ -57,11 +73,10 @@ const post = async (path, body) => {
   }
   return { ...data, _httpStatus: res.status };
 };
-
 export const sendOtp = (recipient, contactType = 'email') =>
   post('/api/auth/send-otp', { recipient, contactType });
 
-export const verifyOtp = (recipient, otp, purpose, contactType = 'email') => {
+export const verifyOtp = (recipient, otp, purpose, contactType = 'email', extra = {}) => {
   const body = {
     recipient,
     otp,
@@ -69,14 +84,29 @@ export const verifyOtp = (recipient, otp, purpose, contactType = 'email') => {
     timezoneIana: getDeviceTimezoneIana() ?? '',
   };
   if (purpose) body.purpose = purpose;
+  if (extra?.consentAccepted === true) {
+    body.consentAccepted = true;
+    body.consentVersion = CURRENT_CONSENT_VERSION;
+    body.deviceInfo = buildClientDeviceInfo();
+  }
   return post('/api/auth/verify-otp', body);
 };
 
-export const deleteAccountRequest = async (email) => {
+export const deleteAccountRequest = async ({ userId, confirmPhrase = 'DELETE', email } = {}) => {
+  const body = {};
+  if (userId != null && String(userId).trim() !== '') {
+    body.userId = userId;
+    body.confirmPhrase = confirmPhrase;
+  } else if (email) {
+    // Legacy path for older callers — email + prior OTP verify.
+    body.email = email;
+  } else {
+    throw new Error('userId is required to delete account.');
+  }
   const res = await fetch(`${getApiBaseUrl()}/api/user/account`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
+    body: JSON.stringify(body),
   });
   return res.json();
 };

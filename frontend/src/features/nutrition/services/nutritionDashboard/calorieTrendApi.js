@@ -1,22 +1,17 @@
 // Calorie trend (multi-day total calories chart data).
-import { parseAnalysisData, toLocalDateString } from './analysisHelpers';
+import { toLocalDateString } from './analysisHelpers';
 
-const sumDayCalories = (list) =>
-  list.reduce((sum, analysis) => {
-    if (analysis.isUndoPlaceholder) return sum;
-    const foodData = parseAnalysisData(analysis.AnalysisData);
-    const n = foodData.nutrition || {};
-    return sum + (n.calories || analysis.TotalCalories || 0);
-  }, 0);
-
-const fetchOneDay = async (apiBaseUrl, userId, dateString) => {
+const fetchOneDayTotals = async (apiBaseUrl, userId, dateString) => {
   const cacheBuster = Date.now() + Math.random();
   const res = await fetch(
-    `${apiBaseUrl}/api/food-corrections/stats?userId=${userId}&date=${dateString}&detailed=true&_t=${cacheBuster}`,
+    `${apiBaseUrl}/api/food-corrections/stats?userId=${userId}&date=${dateString}&detailed=true&totalsOnly=true&_t=${cacheBuster}`,
     { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
   );
   const data = await res.json();
-  return data?.success ? (data.data || []) : [];
+  if (!data?.success) return { calories: 0, hasData: false };
+  const calories = Math.round(data.dailyTotals?.totalCalories || 0);
+  const mealCount = data.dailyTotals?.mealCount || data.queryInfo?.recordCount || 0;
+  return { calories, hasData: mealCount > 0 || calories > 0 };
 };
 
 /** Returns array of { key, date, label, calories, hasData, target } points. */
@@ -34,13 +29,13 @@ export async function fetchCalorieTrend({ apiBaseUrl, userId, selectedDate, days
     return await Promise.all(
       dates.map(async (d) => {
         const dateString = toLocalDateString(d);
-        const list = await fetchOneDay(apiBaseUrl, userId, dateString);
+        const { calories, hasData } = await fetchOneDayTotals(apiBaseUrl, userId, dateString);
         return {
           key: dateString,
           date: d,
           label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          calories: Math.round(sumDayCalories(list)),
-          hasData: list.some((a) => !a.isUndoPlaceholder),
+          calories,
+          hasData,
           target: calorieTarget,
         };
       }),

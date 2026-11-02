@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import logger from '../../../shared/lib/logger.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import {
@@ -7,34 +7,70 @@ import {
 } from '../domain/credits.rules.js';
 
 export async function getLatestConfig() {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('ai_credits_config_table')
-    .select('id, daily_ai_credits, ai_mode_enabled, updated_at, updated_by_user_id')
+    .select('id, daily_ai_credits, ai_mode_enabled, availability_windows, updated_at, updated_by_user_id')
     .order('id', { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) {
+    // Column may not exist until migration runs — retry without it.
+    if (/availability_windows/i.test(error.message || '')) {
+      const fallback = await db
+        .from('ai_credits_config_table')
+        .select('id, daily_ai_credits, ai_mode_enabled, updated_at, updated_by_user_id')
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (fallback.error) {
+        logger.error('[ai-credits.repo] config fetch failed', { err: fallback.error.message });
+        return null;
+      }
+      return fallback.data;
+    }
     logger.error('[ai-credits.repo] config fetch failed', { err: error.message });
     return null;
   }
   return data;
 }
 
-export async function insertConfig({ dailyAiCredits, aiModeEnabled, updatedByUserId }) {
-  const supabase = getSupabaseClient();
+export async function insertConfig({
+  dailyAiCredits,
+  aiModeEnabled,
+  availabilityWindows,
+  updatedByUserId,
+}) {
+  const db = getMysqlClient();
   const now = nowUtc();
-  const { data, error } = await supabase
+  const row = {
+    daily_ai_credits: dailyAiCredits,
+    ai_mode_enabled: aiModeEnabled,
+    updated_at: now,
+    updated_by_user_id: updatedByUserId ?? null,
+  };
+  if (availabilityWindows != null) {
+    row.availability_windows = availabilityWindows;
+  }
+  const { data, error } = await db
     .from('ai_credits_config_table')
-    .insert({
-      daily_ai_credits: dailyAiCredits,
-      ai_mode_enabled: aiModeEnabled,
-      updated_at: now,
-      updated_by_user_id: updatedByUserId ?? null,
-    })
-    .select('id, daily_ai_credits, ai_mode_enabled, updated_at, updated_by_user_id')
+    .insert(row)
+    .select('id, daily_ai_credits, ai_mode_enabled, availability_windows, updated_at, updated_by_user_id')
     .single();
-  if (error) throw error;
+  if (error) {
+    // Pre-migration DB: insert without the new column.
+    if (/availability_windows/i.test(error.message || '')) {
+      const { availability_windows: _omit, ...legacyRow } = row;
+      const legacy = await db
+        .from('ai_credits_config_table')
+        .insert(legacyRow)
+        .select('id, daily_ai_credits, ai_mode_enabled, updated_at, updated_by_user_id')
+        .single();
+      if (legacy.error) throw legacy.error;
+      return legacy.data;
+    }
+    throw error;
+  }
   return data;
 }
 
@@ -42,6 +78,7 @@ export function configOrDefault(row) {
   return {
     dailyAiCredits: row?.daily_ai_credits ?? DEFAULT_DAILY_AI_CREDITS,
     aiModeEnabled: row?.ai_mode_enabled ?? DEFAULT_AI_MODE_ENABLED,
+    availabilityWindows: row?.availability_windows ?? null,
     updatedAt: row?.updated_at ?? null,
     updatedByUserId: row?.updated_by_user_id ?? null,
   };
@@ -50,8 +87,8 @@ export function configOrDefault(row) {
 export async function getUsageRow(userId, usageDate) {
   const uid = Number.parseInt(String(userId), 10);
   if (!Number.isFinite(uid) || uid <= 0) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('ai_credits_daily_usage_table')
     .select('id, user_id, usage_date, credits_used, credits_limit_snapshot, updated_at')
     .eq('user_id', uid)
@@ -75,9 +112,9 @@ export async function ensureUsageRow(userId, usageDate, limitSnapshot) {
     return existing;
   }
   const uid = Number.parseInt(String(userId), 10);
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const now = nowUtc();
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('ai_credits_daily_usage_table')
     .insert({
       user_id: uid,
@@ -90,7 +127,7 @@ export async function ensureUsageRow(userId, usageDate, limitSnapshot) {
     .single();
   if (error) {
     // Race: another request inserted — re-fetch
-    if (String(error.code) === '23505' || /duplicate/i.test(error.message || '')) {
+    if (String(error.code) === '1062' || /duplicate/i.test(error.message || '')) {
       return getUsageRow(userId, usageDate);
     }
     throw error;
@@ -101,9 +138,9 @@ export async function ensureUsageRow(userId, usageDate, limitSnapshot) {
 /** Update credits_limit_snapshot when admin config changes mid-day. */
 export async function updateUsageLimitSnapshot(usageRowId, limitSnapshot) {
   if (!usageRowId) return null;
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const now = nowUtc();
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('ai_credits_daily_usage_table')
     .update({
       credits_limit_snapshot: limitSnapshot,
@@ -119,10 +156,31 @@ export async function updateUsageLimitSnapshot(usageRowId, limitSnapshot) {
   return data;
 }
 
+export async function expireStalePendingReservations(userId, usageDate, maxAgeMs) {
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid <= 0) return 0;
+  const ageMs = Math.max(60_000, Number(maxAgeMs) || 0);
+  const cutoff = new Date(Date.now() - ageMs).toISOString();
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from('ai_credits_reservations_table')
+    .update({ status: 'released', resolved_at: nowUtc() })
+    .eq('user_id', uid)
+    .eq('usage_date', usageDate)
+    .eq('status', 'pending')
+    .lt('created_at', cutoff)
+    .select('id');
+  if (error) {
+    logger.error('[ai-credits.repo] stale pending release failed', { err: error.message });
+    return 0;
+  }
+  return data?.length || 0;
+}
+
 export async function countPendingReservations(userId, usageDate) {
   const uid = Number.parseInt(String(userId), 10);
-  const supabase = getSupabaseClient();
-  const { count, error } = await supabase
+  const db = getMysqlClient();
+  const { count, error } = await db
     .from('ai_credits_reservations_table')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', uid)
@@ -137,9 +195,9 @@ export async function countPendingReservations(userId, usageDate) {
 
 export async function createReservation({ userId, usageDate }) {
   const uid = Number.parseInt(String(userId), 10);
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const now = nowUtc();
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('ai_credits_reservations_table')
     .insert({
       user_id: uid,
@@ -155,8 +213,8 @@ export async function createReservation({ userId, usageDate }) {
 
 export async function getReservation(reservationId) {
   if (!reservationId) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('ai_credits_reservations_table')
     .select('id, user_id, usage_date, status, created_at, resolved_at')
     .eq('id', reservationId)
@@ -169,9 +227,9 @@ export async function getReservation(reservationId) {
 }
 
 export async function resolveReservation(reservationId, status) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const now = nowUtc();
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('ai_credits_reservations_table')
     .update({ status, resolved_at: now })
     .eq('id', reservationId)
@@ -185,10 +243,10 @@ export async function resolveReservation(reservationId, status) {
 export async function incrementCreditsUsed(userId, usageDate) {
   const row = await getUsageRow(userId, usageDate);
   if (!row) throw new Error('Usage row missing');
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const now = nowUtc();
   const next = (row.credits_used || 0) + 1;
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('ai_credits_daily_usage_table')
     .update({ credits_used: next, updated_at: now })
     .eq('id', row.id)

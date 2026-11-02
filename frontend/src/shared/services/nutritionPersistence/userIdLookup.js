@@ -1,9 +1,11 @@
 // Resolve an email/userId to the team_table UserID required by the API.
+import { getApiBaseUrl } from '../../../config/api.config.js';
+import { apiFetch } from '../apiFetch.js';
 
 export async function lookupUserId(email) {
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  const apiBaseUrl = getApiBaseUrl();
   try {
-    const res = await fetch(`${apiBaseUrl}/api/user/lookup`, {
+    const res = await apiFetch(`${apiBaseUrl}/api/user/lookup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),

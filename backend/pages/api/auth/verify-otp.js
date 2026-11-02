@@ -4,6 +4,7 @@ import { validateVerifyOtp } from '../../../features/auth/auth.validators.js';
 import { verifyOtp } from '../../../features/auth/auth.service.js';
 import logger from '../../../shared/lib/logger.js';
 import { buildConsentDeviceInfo, extractClientIp } from '../../../shared/lib/clientMeta.js';
+import { rejectIfAppVersionTooOld } from '../../../features/app-version/api/enforce-api.handler.js';
 
 export const config = {
   api: { bodyParser: false },
@@ -12,6 +13,7 @@ export const config = {
 export default async function handler(req, res) {
   if (applyCors(req, res, 'POST, OPTIONS')) return;
   if (req.method !== 'POST') return methodNotAllowed(res);
+  if (rejectIfAppVersionTooOld(req, res)) return;
 
   const parsed = await readJsonBody(req);
   if (!parsed.ok) {
@@ -24,6 +26,8 @@ export default async function handler(req, res) {
     ipAddress: extractClientIp(req),
     deviceInfo: buildConsentDeviceInfo(req, parsed.body?.deviceInfo),
   };
+  req.body = body;
+  if (rejectIfAppVersionTooOld(req, res)) return;
 
   return runService(res, () => verifyOtp(validateVerifyOtp(body)));
 }

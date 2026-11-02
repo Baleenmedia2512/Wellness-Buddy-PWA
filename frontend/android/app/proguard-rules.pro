@@ -34,6 +34,11 @@
 # Keep Capacitor plugins
 -keep class com.getcapacitor.** { *; }
 -keep class com.capacitorjs.plugins.** { *; }
+-keep class com.wellnessvalley.app.plugins.** { *; }
+
+# Cashfree native UPI Intent (release minify)
+-keep class com.cashfree.** { *; }
+-dontwarn com.cashfree.**
 
 # Keep WebView JavaScript interface
 -keepclassmembers class * {

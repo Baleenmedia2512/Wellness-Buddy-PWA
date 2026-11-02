@@ -7,6 +7,11 @@ import {
   isBusinessYesterday,
   DEFAULT_BUSINESS_TIMEZONE,
 } from '../../../shared/utils/datetimeUtils';
+import {
+  fetchEducationLogImage,
+  peekEducationLogImage,
+} from '../services/educationImageCache';
+import { activityPhotoTemplate, handleActivityPhotoError } from '../../../shared/assets/activityPhotoTemplates';
 
 const MAX_SWIPE_DISTANCE = 140;
 const DELETE_THRESHOLD = 100;
@@ -100,26 +105,34 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
     return () => observer.disconnect();
   }, []);
 
-  // Lazy-load thumbnail: fetch full image from API and use it as thumbnail
+  // Lazy-load thumbnail: fetch full image from API (shared cache with detail modal)
   useEffect(() => {
     if (!imageVisible) return;
     if (!data?.hasFullImage || !apiBaseUrl || !userId || !data?.Id) return;
     if (thumbnailSrc) return;
 
+    const cached = peekEducationLogImage(apiBaseUrl, userId, data.Id);
+    if (cached) {
+      setThumbnailSrc(cached);
+      return undefined;
+    }
+
     let cancelled = false;
-    fetch(`${apiBaseUrl}/api/education/log-image?logId=${data.Id}&userId=${userId}`)
-      .then((r) => r.json())
-      .then((res) => {
-        if (cancelled) return;
-        if (res.success && res.imageBase64) {
-          const src = res.imageBase64.startsWith('data:')
-            ? res.imageBase64
-            : `data:image/jpeg;base64,${res.imageBase64}`;
-          setThumbnailSrc(src);
-        }
+    const controller = new AbortController();
+    fetchEducationLogImage({
+      apiBaseUrl,
+      userId,
+      logId: data.Id,
+      signal: controller.signal,
+    })
+      .then((src) => {
+        if (!cancelled && src) setThumbnailSrc(src);
       })
       .catch(() => {/* silently ignore */});
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [imageVisible, data?.Id, data?.hasFullImage, apiBaseUrl, userId, thumbnailSrc]);
 
   if (!data || !data.CreatedAt) {
@@ -308,19 +321,14 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
 
         <div className="flex items-center gap-2 xs:gap-3 sm:gap-4 p-2.5 xs:p-3 sm:p-4">
           {/* Screenshot Image or Platform Icon */}
-          {thumbnailSrc ? (
+          {thumbnailSrc || data.hasFullImage ? (
             <div ref={imgWrapRef} className="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden shadow-md">
               <img
-                src={thumbnailSrc}
+                src={thumbnailSrc || activityPhotoTemplate('education')}
                 alt={data.Topic || 'Meeting Screenshot'}
                 className="w-full h-full object-cover"
-                onError={(e) => { e.target.style.display = 'none'; }}
+                onError={(e) => handleActivityPhotoError(e, 'education')}
               />
-            </div>
-          ) : data.hasFullImage ? (
-            // Image exists but not yet loaded — show a placeholder gradient
-            <div ref={imgWrapRef} className={`flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg bg-gradient-to-br ${platformColor} flex items-center justify-center text-white shadow-md animate-pulse`}>
-              {platformIcon}
             </div>
           ) : (
             <div ref={imgWrapRef} className={`flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg bg-gradient-to-br ${platformColor} flex items-center justify-center text-white shadow-md`}>

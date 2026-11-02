@@ -46,29 +46,25 @@ export function useWeightForm({
     setUnit((u) => (u === 'kg' ? 'lbs' : 'kg'));
   }, []);
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(() => {
     setError('');
     const v = validateManualEntry({ weight, unit, bmr });
     if (!v.valid) {
       setError(v.error);
       return;
     }
-    setIsSaving(true);
-    try {
-      await onSave?.({
-        weightValue: v.weightValue,
-        unit,
-        bmr: v.bmrValue,
-      });
-      reset();
-      if (onClose) onClose();
-    } catch (err) {
+    // Hand off without awaiting network — parent closes classify and saves in background.
+    const payload = {
+      weightValue: v.weightValue,
+      unit,
+      bmr: v.bmrValue,
+    };
+    reset();
+    if (onClose) onClose();
+    void Promise.resolve(onSave?.(payload)).catch((err) => {
       // eslint-disable-next-line no-console -- FSM / lifecycle code — must reach crash reporters before logger is ready
       console.error('❌ Manual entry error:', err);
-      setError(err.message || 'Failed to save weight');
-    } finally {
-      setIsSaving(false);
-    }
+    });
   }, [weight, unit, bmr, onSave, onClose, reset]);
 
   return {

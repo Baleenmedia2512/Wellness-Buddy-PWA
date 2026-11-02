@@ -73,6 +73,112 @@ describe('buildTeamTableDiff', () => {
     );
     assert.deepEqual(diff, {});
   });
+
+  it('syncs optional body metrics when they differ', () => {
+    const diff = buildTeamTableDiff(
+      {
+        name: 'Ada',
+        height_cm: 170,
+        bmr: 1500,
+        age: 35,
+        visceral_fat: 8,
+        body_age: 32,
+        chest_cm: 94,
+        waist_cm: 80,
+        hip_cm: 98,
+      },
+      {
+        userName: 'Ada',
+        height: 170,
+        bmr: 1500,
+        age: 30,
+        visceralFat: 5,
+      },
+    );
+    assert.equal(diff.Age, 35);
+    assert.equal(diff.VisceralFat, 8);
+    assert.equal(diff.BodyAge, 32);
+    assert.equal(diff.ChestCm, 94);
+    assert.equal(diff.WaistCm, 80);
+    assert.equal(diff.HipCm, 98);
+  });
+
+  it('skips optional metrics that already match', () => {
+    const diff = buildTeamTableDiff(
+      {
+        name: 'Ada',
+        height_cm: 170,
+        bmr: 1500,
+        age: 35,
+        visceral_fat: 8,
+        body_age: 32,
+        chest_cm: 94,
+        waist_cm: 80,
+        hip_cm: 98,
+      },
+      {
+        userName: 'Ada',
+        height: 170,
+        bmr: 1500,
+        age: 35,
+        visceralFat: 8,
+        bodyAge: 32,
+        chestCm: 94,
+        waistCm: 80,
+        hipCm: 98,
+      },
+    );
+    assert.deepEqual(diff, {});
+  });
+
+  it('syncs diet and physical activity from profileExtras', () => {
+    const diff = buildTeamTableDiff(
+      { name: 'Ada', height_cm: 170, bmr: 1500 },
+      { userName: 'Ada', height: 170, bmr: 1500, dietType: null, physicalActivityLevel: null },
+      { dietType: 'Vegetarian', physicalActivityLevel: 'moderate' },
+    );
+    assert.equal(diff.DietType, 'Vegetarian');
+    assert.equal(diff.PhysicalActivityLevel, 'moderate');
+  });
+
+  it('syncs recovered health issues onto team_table', () => {
+    const diff = buildTeamTableDiff(
+      {
+        name: 'Ada',
+        height_cm: 170,
+        bmr: 1500,
+        recovered_health_issues: ['Diabetes'],
+      },
+      {
+        userName: 'Ada',
+        height: 170,
+        bmr: 1500,
+        recoveredHealthIssues: [],
+      },
+    );
+    assert.deepEqual(diff.recovered_health_issues, ['Diabetes']);
+  });
+
+  it('skips invalid diet or activity extras', () => {
+    const diff = buildTeamTableDiff(
+      { name: 'Ada', height_cm: 170, bmr: 1500 },
+      { userName: 'Ada', height: 170, bmr: 1500 },
+      { dietType: 'Keto', physicalActivityLevel: 'superhero' },
+    );
+    assert.deepEqual(diff, {});
+  });
+
+  it('syncs transformation photos onto team_table and ProfileImage', () => {
+    const front = 'data:image/jpeg;base64,AAA';
+    const diff = buildTeamTableDiff(
+      { name: 'Ada', height_cm: 170, bmr: 1500 },
+      { userName: 'Ada', height: 170, bmr: 1500, transformationPhotos: null },
+      { transformationPhotos: { front, left: null, right: null } },
+    );
+    assert.equal(diff.transformation_photos.front, front);
+    assert.equal(diff.ProfileImage, front);
+    assert.equal(diff.profile_pic_snooze, null);
+  });
 });
 
 describe('buildWeightInsertIfChanged', () => {
@@ -190,10 +296,26 @@ describe('buildCardPatchFromProfile', () => {
     const patch = buildCardPatchFromProfile(card, {
       name: 'Ada',
       gender: 'Other',
-      age: 30,
-      chest: 90,
     });
     assert.deepEqual(patch, {});
+  });
+
+  it('patches age and circumferences when changed', () => {
+    const patch = buildCardPatchFromProfile(
+      { ...card, age: 30, chest_cm: 90 },
+      { age: 32, chestCm: 94, visceralFat: 7 },
+    );
+    assert.equal(patch.age, 32);
+    assert.equal(patch.chest_cm, 94);
+    assert.equal(patch.visceral_fat, 7);
+  });
+
+  it('patches recovered health issues when changed', () => {
+    const patch = buildCardPatchFromProfile(
+      { ...card, recovered_health_issues: ['Diabetes'] },
+      { recoveredHealthIssues: ['Diabetes', 'Hypertension'] },
+    );
+    assert.deepEqual(patch.recovered_health_issues, ['Diabetes', 'Hypertension']);
   });
 });
 

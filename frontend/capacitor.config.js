@@ -7,6 +7,8 @@ const config = {
   // ✅ ANDROID PERFORMANCE: Optimize for fast image loading
   android: {
     allowMixedContent: true,
+    // Give WebView focus on launch so login phone autofocus can open the IME.
+    initialFocus: true,
     // Must stay false: captureInput=true replaces the WebView IME with a generic
     // BaseInputConnection, which always shows QWERTY and ignores type="tel"/inputmode.
     captureInput: false,
@@ -40,9 +42,11 @@ const config = {
       '*.firebaseapp.com',
       '*.firebaseio.com',
       'share.wellnessvalley.app',
-      '*.wellnessvalley.app'
+      '*.wellnessvalley.app',
+      'wellnessvalley.in',
+      'test.wellnessvalley.in',
     ],
-    cleartext: false
+    cleartext: true
   },
   
   // ✅ iOS configuration
@@ -51,10 +55,16 @@ const config = {
     allowsLinkPreview: false,
     scrollEnabled: true,
     backgroundColor: '#ffffff',
-    limitsNavigationsToAppBoundDomains: false
+    limitsNavigationsToAppBoundDomains: false,
+    // Allow login/OTP autofocus to open the number pad without an extra tap.
+    // (Capacitor Bridge also sets keyboardShouldRequireUserInteraction=false.)
+    initialFocus: true,
   },
   
   plugins: {
+    CapacitorHttp: {
+      enabled: true,
+    },
     GoogleAuth: {
       scopes: ['profile', 'email'],
       serverClientId: '499376291787-gkivhgcdsc3tep13m6a3khlgtgksfuq8.apps.googleusercontent.com',

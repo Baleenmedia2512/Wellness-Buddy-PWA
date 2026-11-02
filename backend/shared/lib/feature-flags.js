@@ -11,13 +11,28 @@
  *                         (90 days after full rollout per §3.5).
  *   - `description`     : one-line product intent.
  *   - `defaultEnabled`  : value when the env override is absent.
+ *   - `minAppVersion`   : (optional) semver — when set, use
+ *                         `isEnabledForAppVersion` so only clients at/above
+ *                         this version get the new behaviour.
+ *
+ * Release rule (app version policy)
+ *   New backend behaviour that older supported apps cannot handle MUST
+ *   ship behind a flag default OFF. After the supporting AAB is live on
+ *   Play Store, enable the flag and set minAppVersion (or
+ *   FF_<FLAG>_MIN_APP_VERSION) to that build. Never enable such behaviour
+ *   globally while older versions remain in the supported window.
+ *   See backend/features/app-version/README.md.
  *
  * Runtime resolution
  *   `isEnabled(name)` reads `process.env.FF_<UPPER_SNAKE>` first; if the
  *   env var is `'true'` or `'false'` (case-insensitive) that wins;
  *   otherwise the registered `defaultEnabled` is returned. Reads are
- *   pure — no caching, no Supabase calls — so tests can flip the env
+ *   pure — no caching, no MySQL calls — so tests can flip the env
  *   var between cases without bookkeeping.
+ *
+ *   `isEnabledForAppVersion(name, clientVersion)` applies the global flag
+ *   first, then the optional minAppVersion gate (fail closed when the
+ *   gate is configured but clientVersion is missing/invalid).
  *
  * Stale-flag enforcement
  *   `findStaleFlags(now)` returns every registered flag whose `removeBy`
@@ -26,6 +41,11 @@
  *   throws at registration time so unmaintainable flags can never land.
  */
 
+import {
+  isAtLeastVersion,
+  parseSemver,
+} from '../../features/app-version/domain/version.rules.js';
+
 const REGISTRY = Object.create(null);
 
 function envKeyFor(flagName) {
@@ -33,11 +53,18 @@ function envKeyFor(flagName) {
   return `FF_${flagName.replace(/^ff\./, '').replace(/-/g, '_').toUpperCase()}`;
 }
 
+function minAppVersionEnvKeyFor(flagName) {
+  // ff.diary-feed → FF_DIARY_FEED_MIN_APP_VERSION
+  return `${envKeyFor(flagName)}_MIN_APP_VERSION`;
+}
+
 function registerFlag(spec) {
   if (!spec || typeof spec !== 'object') {
     throw new Error('feature-flags: spec object required');
   }
-  const { name, owner, createdAt, removeBy, description, defaultEnabled } = spec;
+  const {
+    name, owner, createdAt, removeBy, description, defaultEnabled, minAppVersion,
+  } = spec;
   if (!name || !/^ff\.[a-z][a-z0-9-]*$/.test(name)) {
     throw new Error(`feature-flags: invalid flag name '${name}' (must match ff.<kebab-case>)`);
   }
@@ -51,12 +78,19 @@ function registerFlag(spec) {
   if (typeof defaultEnabled !== 'boolean') {
     throw new Error(`feature-flags: '${name}' defaultEnabled must be boolean`);
   }
+  if (minAppVersion != null && minAppVersion !== '') {
+    if (!parseSemver(minAppVersion)) {
+      throw new Error(
+        `feature-flags: '${name}' minAppVersion must be a semver string (got '${minAppVersion}')`,
+      );
+    }
+  }
   REGISTRY[name] = Object.freeze({ ...spec });
   return REGISTRY[name];
 }
 
 /**
- * Resolve a flag for the current request.
+ * Resolve a flag for the current request (global on/off only).
  * @param {string} name
  * @returns {boolean}
  */
@@ -80,8 +114,49 @@ export function isEnabled(name) {
 }
 
 /**
+ * Effective min app version for a flag: env override wins, else registry.
+ * @param {string} name
+ * @returns {string|null}
+ */
+export function getMinAppVersion(name) {
+  const spec = REGISTRY[name];
+  if (!spec) return null;
+  const envMin = process.env[minAppVersionEnvKeyFor(name)];
+  if (envMin != null && String(envMin).trim() !== '') {
+    const trimmed = String(envMin).trim();
+    return parseSemver(trimmed) ? trimmed : null;
+  }
+  if (spec.minAppVersion != null && String(spec.minAppVersion).trim() !== '') {
+    return String(spec.minAppVersion).trim();
+  }
+  return null;
+}
+
+/**
+ * Version-aware flag resolution for behaviour that older apps cannot handle.
+ *
+ * 1) if !isEnabled(name) → false
+ * 2) if no minAppVersion configured → true (legacy / fully rolled-out flags)
+ * 3) if clientVersion missing/invalid → false (fail closed)
+ * 4) if clientVersion < minAppVersion → false
+ * 5) else → true
+ *
+ * @param {string} name
+ * @param {string|null|undefined} clientVersion
+ * @returns {boolean}
+ */
+export function isEnabledForAppVersion(name, clientVersion) {
+  if (!isEnabled(name)) return false;
+  const minVersion = getMinAppVersion(name);
+  if (!minVersion) return true;
+  const meets = isAtLeastVersion(clientVersion, minVersion);
+  if (meets === null) return false;
+  return meets === true;
+}
+
+/**
  * Test-only — peek at the registered spec. Production code MUST go
- * through `isEnabled`.
+ * through `isEnabled` / `isEnabledForAppVersion`.
  */
 export function getSpec(name) {
   return REGISTRY[name] || null;
@@ -109,6 +184,14 @@ export function __resetRegistry() {
   for (const key of Object.keys(REGISTRY)) {
     delete REGISTRY[key];
   }
+}
+
+/**
+ * Test-only — register a flag after `__resetRegistry`.
+ * @internal
+ */
+export function __registerFlag(spec) {
+  return registerFlag(spec);
 }
 
 // ─── Registered flags ───────────────────────────────────────────────────────
@@ -158,7 +241,7 @@ registerFlag({
   owner:          '@reports-team',
   createdAt:      '2026-07-06',
   removeBy:       '2026-12-31',
-  description:    'Reports module: coach/upline analytics starting with the direct-downline weight status report (current vs BMI 19–23 ideal range). Tab visible only to coach/upline/admin/developer roles.',
+  description:    'Reports module: coach/upline analytics — Ideal Weight status report and Wellness Score Report (weights + persisted daily score + sponsor/coach). Tab visible only to coach/upline/admin/developer roles.',
   defaultEnabled: true,
 });
 
@@ -167,7 +250,7 @@ registerFlag({
   owner:          '@wellness-score-team',
   createdAt:      '2026-07-08',
   removeBy:       '2027-01-08',
-  description:    'Wellness Score home tile, daily score API, and admin Wellness Score Setup configuration.',
+  description:    'Wellness Score home tile, daily score API, admin Wellness Score Setup, and Wellness Score Report dashboard.',
   defaultEnabled: true,
 });
 
@@ -195,5 +278,131 @@ registerFlag({
   createdAt:      '2026-07-31',
   removeBy:       '2027-01-31',
   description:    'ADR-0006 — User Consent Form gate: require Agree before OTP/Google account creation; no team_table insert without consent; existing users blocked until accepted.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.good-habit',
+  owner:          '@principal-eng',
+  createdAt:      '2026-08-16',
+  removeBy:       '2027-02-16',
+  description:    'ADR-0008 — Manual Log Good Habit tile: single photo. New good_habits_table; Diary kind good-habit; wellness-score good_habit_post. Does not change food logging or capture state machine.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.meal-builder',
+  owner:          '@nutrition-team',
+  createdAt:      '2026-08-22',
+  removeBy:       '2027-02-22',
+  description:    'Meal Builder multi-add tray + bottom sheet + voice insert in SmartFoodSearchModal (replaces cart UX). Frontend-primary; backend flag for registry parity.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.r2-avatars',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-03',
+  removeBy:       '2027-03-03',
+  description:    'ADR-0009 — store custom profile avatars in Cloudflare R2; /api/user/avatar 302s to R2. Kill switch; no-ops when R2 env is missing. Does not omit Base64 from GET /api/user/profile.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.r2-food-images',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-05',
+  removeBy:       '2027-03-05',
+  description:    'ADR-0010 — store meal photos in Cloudflare R2 at ≤22 KB; meal-image 302s to R2. Kill switch; no-ops when R2 env is missing. Does not omit ImageBase64 from meal-image ?format=json.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.r2-activity-images',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-05',
+  removeBy:       '2027-03-05',
+  description:    'ADR-0011 — store weight, education, and good-habit photos in Cloudflare R2 at ≤22 KB. Kill switch; no-ops when R2 env is missing. JSON image APIs still return Base64 (no 302).',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.r2-captures',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-05',
+  removeBy:       '2027-03-05',
+  description:    'ADR-0012 — store capture photos once in Cloudflare R2; feature tables pointer to the same key. Kill switch; no-ops when R2 env is missing. Diary capture image 302s; format=json still returns Base64.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.r2-transformation-photos',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-22',
+  removeBy:       '2027-03-22',
+  description:    'Dual-write Left/Centre/Right transformation_photos to R2 keys; keep base64 in JSONB for live apps. GET profile returns R2 URLs for app ≥3.5.1; older/missing get base64. Kill switch when R2 env missing.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.nav-page-access',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-17',
+  removeBy:       '2027-03-17',
+  description:    'DB-driven main-nav page access by role (Customer/Sponsor/Admin/Developer). Matrix in nav_page_access_config_table; Admin Config editor. When OFF, all main tabs visible (legacy).',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.community-id-otp',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-18',
+  removeBy:       '2027-03-18',
+  description:    'ADR-0013 — Profile Community ID create/co-sponsor requires 24h sponsor OTP. Kill switch; version routing (3.5.0+) skips immediate Community ID apply on profile save. Live 3.4.9 stays on legacy profile save.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.height-change-otp',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-25',
+  removeBy:       '2027-03-25',
+  description:    'Profile height: first save free; later changes need the coach (CoachId) to approve by email. Kill switch; version routing (3.5.0+) strips differing height on profile save.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.broadcast',
+  owner:          '@principal-eng',
+  createdAt:      '2026-09-29',
+  removeBy:       '2027-03-29',
+  description:    'BroadCast paid screen: how-to video and payment entry. Upload and Burst stay locked until recharge. Kill switch hides the tab.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.go-premium',
+  owner:          '@principal-eng',
+  createdAt:      '2026-10-28',
+  removeBy:       '2027-04-28',
+  description:    'Profile Go Premium opens Cashfree checkout. Kill switch hides the row and the create-order API.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.create-event',
+  owner:          '@principal-eng',
+  createdAt:      '2026-10-30',
+  removeBy:       '2027-04-30',
+  description:    'Create Event page: name, organizer, place, seating, plus update, delete, postpone, and cancel.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.wallet',
+  owner:          '@principal-eng',
+  createdAt:      '2026-10-30',
+  removeBy:       '2027-04-30',
+  description:    'Unique per-user wallet. Cash-in after OTP emailed to a selected Wellness Valley person. Kill switch hides the Profile row and wallet APIs.',
   defaultEnabled: true,
 });

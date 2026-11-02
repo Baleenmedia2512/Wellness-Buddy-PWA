@@ -65,12 +65,14 @@ export const clearCurrentPage = () => safeRemove("currentPage");
 // Local copy lets us bypass the wizard before the API responds (faster cold start).
 export const isSetupSkipped = () => safeGet("setupSkipped") === "true";
 export const markSetupSkipped = () => safeSet("setupSkipped", "true");
+export const clearSetupSkipped = () => safeRemove("setupSkipped");
 
 // ─── coachOtpVerified ──────────────────────────────────────────────────────
 // "true" once the coach-upline OTP modal completed in this install.
 // Suppresses re-prompting on subsequent setup-status checks within the session.
 export const isCoachOtpVerified = () => safeGet("coachOtpVerified") === "true";
 export const markCoachOtpVerified = () => safeSet("coachOtpVerified", "true");
+export const clearCoachOtpVerified = () => safeRemove("coachOtpVerified");
 
 // ─── userSignedOut ─────────────────────────────────────────────────────────
 // CRITICAL iOS GATE — DO NOT REMOVE.
@@ -170,6 +172,23 @@ export const clearProfileComplete = (email) => {
   safeRemove("profileComplete_v2_" + email);
 };
 
+// ─── bcmProfileReviewed_<userId> ───────────────────────────────────────────
+// Device cache for BCM Complete Profile review. Source of truth is
+// team_table.BcmProfileReviewedAt (GET profile → bcmProfileReviewed).
+// Cleared on APK reinstall — server flag prevents re-prompt after reinstall.
+export const isBcmProfileReviewed = (userId) => {
+  if (userId == null || String(userId).trim() === "") return false;
+  return safeGet("bcmProfileReviewed_" + String(userId)) === "true";
+};
+export const markBcmProfileReviewed = (userId) => {
+  if (userId == null || String(userId).trim() === "") return;
+  safeSet("bcmProfileReviewed_" + String(userId), "true");
+};
+export const clearBcmProfileReviewed = (userId) => {
+  if (userId == null || String(userId).trim() === "") return;
+  safeRemove("bcmProfileReviewed_" + String(userId));
+};
+
 // ─── profilePictureUploaded_<email> ────────────────────────────────────────
 // Per-email "true" flag set when a valid profile picture (custom upload OR
 // Google photo URL) is detected by `checkProfilePicture`, AND when the
@@ -254,3 +273,31 @@ export const markPendingClassifyAwaitingShare = () => {
   setPendingClassifyCapture({ ...existing, awaitingShare: true });
 };
 export const clearPendingClassifyCapture = () => safeRemove("pendingClassifyCapture");
+
+/**
+ * Tab nav must stay locked while Classify / Manual Entry is open OR while a
+ * pendingClassifyCapture snapshot exists (including the race before the
+ * deferred idle write lands). Used by navigateTo / showDashboardPage.
+ *
+ * @param {boolean} [showManualEntry=false]
+ * @returns {boolean}
+ */
+export const isClassifyCaptureNavLocked = (showManualEntry = false) => {
+  if (showManualEntry) return true;
+  return !!getPendingClassifyCapture()?.captureId;
+};
+
+/**
+ * Guard for deferred pendingClassifyCapture writes (requestIdleCallback).
+ * After Cancel/leave, App marks the classify session abandoned; a late idle
+ * callback must not resurrect the tab-nav lock.
+ *
+ * @param {{ clientKey?: string|null, abandoned?: boolean }|null|undefined} session
+ * @param {string|null|undefined} clientKey  classify session token for this upload
+ * @returns {boolean}
+ */
+export const shouldPersistPendingClassifyCapture = (session, clientKey) => {
+  if (clientKey == null || clientKey === '') return false;
+  if (session?.clientKey === clientKey && session?.abandoned === true) return false;
+  return true;
+};

@@ -139,7 +139,7 @@ const LeaderboardSettingsModal = ({ isOpen, onClose, onSettingsChange }) => {
           {/* Info Message */}
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
             <p className="text-xs text-yellow-800">
-              <strong>Note:</strong> Leaderboard displays users with weight records for both today and yesterday with weight loss &gt; 0.
+              <strong>Note:</strong> Leaderboard ranks users in your hierarchy (upline, sibling peers, and own downline) who have weight records for both today and yesterday with weight loss &gt; 0.
             </p>
           </div>
         </div>

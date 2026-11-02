@@ -24,10 +24,16 @@ const EducationDashboard = ({
   openRef = null,
   // Called after the detail modal is closed so the timeline can refresh.
   onAfterModalClose = null,
+  /** Timeline modal-host: skip logs/summary until first open. */
+  deferDataFetch = false,
+  timezoneIana = null,
 }) => {
+  const [dataFetchEnabled, setDataFetchEnabled] = useState(!deferDataFetch);
   const vm = useEducationDashboard({
     user, apiBaseUrl, refreshKey, selectedDate,
     onDeleteWithUndo, onDeleteUndoCancel,
+    enabled: dataFetchEnabled,
+    timezoneIana,
   });
   const [selectedLog, setSelectedLog] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
@@ -49,6 +55,9 @@ const EducationDashboard = ({
   // Imperative open handle for the timeline shell (ff.diary-timeline).
   if (openRef) {
     openRef.current = (entryOrId) => {
+      if (deferDataFetch && !dataFetchEnabled) {
+        setDataFetchEnabled(true);
+      }
       if (
         entryOrId
         && typeof entryOrId === 'object'
@@ -103,6 +112,7 @@ const EducationDashboard = ({
       isDeleting={deletingId === selectedLog?.Id}
       apiBaseUrl={vm.apiBaseUrl}
       userId={vm.userIdRef.current}
+      timezoneIana={vm.timezoneIana}
     />
   ) : null;
 

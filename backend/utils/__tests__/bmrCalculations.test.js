@@ -9,6 +9,7 @@ import {
   computeKatchMcArdleBmr,
   resolveBmrFromBodyMetrics,
   resolveBmrForSave,
+  resolveBmrForDisplay,
   isValidWeightKg,
   isValidBodyFatPercent,
 } from '../bmrCalculations.js';
@@ -72,6 +73,60 @@ describe('resolveBmrForSave', () => {
     assert.equal(
       resolveBmrForSave({ weightKg: 80, bodyFatPercent: 20, manualBmr: null }),
       1752,
+    );
+  });
+});
+
+describe('resolveBmrForDisplay', () => {
+  it('prefers stored team_table BMR', () => {
+    assert.equal(
+      resolveBmrForDisplay({
+        storedBmr: 1600,
+        weightKg: 80,
+        bodyFatPercent: 20,
+        cardBmr: 1500,
+      }),
+      1600,
+    );
+  });
+
+  it('calculates from weight log when stored BMR is missing', () => {
+    assert.equal(
+      resolveBmrForDisplay({
+        storedBmr: null,
+        weightKg: 80,
+        bodyFatPercent: 20,
+      }),
+      1752,
+    );
+  });
+
+  it('falls back to body-parameters card metrics then card.bmr', () => {
+    assert.equal(
+      resolveBmrForDisplay({
+        storedBmr: null,
+        weightKg: 80,
+        bodyFatPercent: null,
+        cardWeightKg: 80,
+        cardFatPercent: 20,
+      }),
+      1752,
+    );
+    assert.equal(
+      resolveBmrForDisplay({
+        storedBmr: null,
+        weightKg: 80,
+        bodyFatPercent: null,
+        cardBmr: 1490,
+      }),
+      1490,
+    );
+  });
+
+  it('returns null when no BMR source is available', () => {
+    assert.equal(
+      resolveBmrForDisplay({ storedBmr: null, weightKg: 80, bodyFatPercent: null }),
+      null,
     );
   });
 });

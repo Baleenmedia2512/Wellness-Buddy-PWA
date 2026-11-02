@@ -3,10 +3,12 @@
  * and Profile (team_table + latest weight_records_table).
  *
  * Syncable intersection (fields that exist in both modules):
- *   Name, Height, BMR, Gender → team_table
+ *   Name, Height, BMR, Gender, Age, VisceralFat, BodyAge, Chest/Waist/Hip,
+ *   recovered_health_issues → team_table
  *   Weight, Fat %, BMI        → weight_records_table (latest)
  *
- * Card-only (Age, Visceral Fat, Body Age, Chest, Waist, Hip) stay on the card.
+ * Profile-only fields edited on BCM (not stored on body_parameters_cards):
+ *   DietType, PhysicalActivityLevel, transformation_photos — via profileExtras
  *
  * No I/O. Callers must skip the reciprocal sync path (write via repo, not
  * through the other feature's update pipeline) to prevent circular updates.
@@ -16,8 +18,33 @@ import {
   isPersistableBmi,
   resolveSyncedBmrFromCard,
 } from './card.rules.js';
+import { VALID_DIETS } from '../../user/user.validators.js';
+import { isValidPhysicalActivityLevel } from '../../../utils/tdeeCalculations.js';
+import {
+  hasTransformationPhotoUpdates,
+  mergeTransformationPhotos,
+  isStoredTransformationPhoto,
+} from '../../user/domain/transformationPhotos.rules.js';
 
 const PROFILE_GENDERS = ['Male', 'Female'];
+
+/**
+ * Compare recovered-health-issue arrays (order-insensitive).
+ * @param {*} a
+ * @param {*} b
+ * @returns {boolean}
+ */
+export function syncHealthIssuesEqual(a, b) {
+  const norm = (v) => (Array.isArray(v) ? v : [])
+    .map((x) => String(x || '').trim())
+    .filter(Boolean)
+    .map((x) => x.toLowerCase())
+    .sort();
+  const aa = norm(a);
+  const bb = norm(b);
+  if (aa.length !== bb.length) return false;
+  return aa.every((v, i) => v === bb[i]);
+}
 
 /**
  * Normalize gender for team_table (Male | Female only).
@@ -89,10 +116,29 @@ export function resolveCardBmiForPatch(card, diff = {}) {
  * Build a team_table patch from a card row, including only changed fields.
  *
  * @param {object} card - body_parameters_cards row (snake_case)
- * @param {{ userName?: string|null, height?: number|null, bmr?: number|null, gender?: string|null }} currentProfile
- * @returns {{ UserName?: string, Height?: number, Bmr?: number, Gender?: string }}
+ * @param {{
+ *   userName?: string|null,
+ *   height?: number|null,
+ *   bmr?: number|null,
+ *   gender?: string|null,
+ *   age?: number|null,
+ *   visceralFat?: number|null,
+ *   bodyAge?: number|null,
+ *   chestCm?: number|null,
+ *   waistCm?: number|null,
+ *   hipCm?: number|null,
+ *   dietType?: string|null,
+ *   physicalActivityLevel?: string|null,
+ *   recoveredHealthIssues?: string[]|null,
+ * }} currentProfile
+ * @param {{
+ *   dietType?: string|null,
+ *   physicalActivityLevel?: string|null,
+ *   transformationPhotos?: { front?: string|null, left?: string|null, right?: string|null }|null,
+ * }} [profileExtras] - Profile fields edited on BCM but not stored on the card table
+ * @returns {object}
  */
-export function buildTeamTableDiff(card, currentProfile = {}) {
+export function buildTeamTableDiff(card, currentProfile = {}, profileExtras = {}) {
   if (!card) return {};
 
   const nextName = card.name != null && String(card.name).trim()
@@ -101,6 +147,24 @@ export function buildTeamTableDiff(card, currentProfile = {}) {
   const nextHeight = card.height_cm ?? null;
   const nextBmr = resolveSyncedBmrFromCard(card);
   const nextGender = normalizeSyncGender(card.gender);
+  const nextAge = card.age != null && Number.isFinite(Number(card.age)) ? Number(card.age) : null;
+  const nextVisceral = card.visceral_fat != null && Number.isFinite(Number(card.visceral_fat))
+    ? Number(card.visceral_fat) : null;
+  const nextBodyAge = card.body_age != null && Number.isFinite(Number(card.body_age))
+    ? Number(card.body_age) : null;
+  const nextChest = card.chest_cm != null && Number.isFinite(Number(card.chest_cm))
+    ? Number(card.chest_cm) : null;
+  const nextWaist = card.waist_cm != null && Number.isFinite(Number(card.waist_cm))
+    ? Number(card.waist_cm) : null;
+  const nextHip = card.hip_cm != null && Number.isFinite(Number(card.hip_cm))
+    ? Number(card.hip_cm) : null;
+
+  const rawDiet = profileExtras.dietType != null ? String(profileExtras.dietType).trim() : '';
+  const nextDiet = rawDiet && VALID_DIETS.includes(rawDiet) ? rawDiet : null;
+  const rawPal = profileExtras.physicalActivityLevel != null
+    ? String(profileExtras.physicalActivityLevel).trim()
+    : '';
+  const nextPal = rawPal && isValidPhysicalActivityLevel(rawPal) ? rawPal : null;
 
   const diff = {};
   if (nextName != null && !syncValuesEqual(nextName, currentProfile.userName)) {
@@ -115,6 +179,57 @@ export function buildTeamTableDiff(card, currentProfile = {}) {
   if (nextGender != null && !syncValuesEqual(nextGender, currentProfile.gender)) {
     diff.Gender = nextGender;
   }
+  if (nextAge != null && !syncValuesEqual(nextAge, currentProfile.age)) {
+    diff.Age = nextAge;
+  }
+  if (nextVisceral != null && !syncValuesEqual(nextVisceral, currentProfile.visceralFat)) {
+    diff.VisceralFat = nextVisceral;
+  }
+  if (nextBodyAge != null && !syncValuesEqual(nextBodyAge, currentProfile.bodyAge)) {
+    diff.BodyAge = nextBodyAge;
+  }
+  if (nextChest != null && !syncValuesEqual(nextChest, currentProfile.chestCm)) {
+    diff.ChestCm = nextChest;
+  }
+  if (nextWaist != null && !syncValuesEqual(nextWaist, currentProfile.waistCm)) {
+    diff.WaistCm = nextWaist;
+  }
+  if (nextHip != null && !syncValuesEqual(nextHip, currentProfile.hipCm)) {
+    diff.HipCm = nextHip;
+  }
+  if (nextDiet != null && !syncValuesEqual(nextDiet, currentProfile.dietType)) {
+    diff.DietType = nextDiet;
+  }
+  if (nextPal != null && !syncValuesEqual(nextPal, currentProfile.physicalActivityLevel)) {
+    diff.PhysicalActivityLevel = nextPal;
+  }
+
+  // Always consider recovered issues when the card column is present (incl. empty clear).
+  if (Object.prototype.hasOwnProperty.call(card, 'recovered_health_issues')) {
+    const nextIssues = Array.isArray(card.recovered_health_issues)
+      ? card.recovered_health_issues
+        .filter((x) => typeof x === 'string' && x.trim())
+        .map((x) => x.trim())
+      : [];
+    if (!syncHealthIssuesEqual(nextIssues, currentProfile.recoveredHealthIssues)) {
+      diff.recovered_health_issues = nextIssues;
+    }
+  }
+
+  if (hasTransformationPhotoUpdates(profileExtras.transformationPhotos)) {
+    const merged = mergeTransformationPhotos(
+      currentProfile.transformationPhotos,
+      profileExtras.transformationPhotos,
+    );
+    diff.transformation_photos = merged;
+    // Centre slot also drives ProfileImage (same as Profile module).
+    const front = merged?.front;
+    if (isStoredTransformationPhoto(front) && front.startsWith('data:image/')) {
+      diff.ProfileImage = front;
+      diff.profile_pic_snooze = null;
+    }
+  }
+
   return diff;
 }
 
@@ -162,7 +277,22 @@ export function buildWeightInsertIfChanged(card, userId, latestWeight = null) {
  * Only includes keys that differ from the current card.
  *
  * @param {object} card - latest body_parameters_cards row (snake_case)
- * @param {{ name?: string|null, height?: number|null, bmr?: number|null, gender?: string|null, weightKg?: number|null, fatPercent?: number|null, bmi?: number|null }} profile
+ * @param {{
+ *   name?: string|null,
+ *   height?: number|null,
+ *   bmr?: number|null,
+ *   gender?: string|null,
+ *   weightKg?: number|null,
+ *   fatPercent?: number|null,
+ *   bmi?: number|null,
+ *   age?: number|null,
+ *   visceralFat?: number|null,
+ *   bodyAge?: number|null,
+ *   chestCm?: number|null,
+ *   waistCm?: number|null,
+ *   hipCm?: number|null,
+ *   recoveredHealthIssues?: string[]|null,
+ * }} profile
  * @returns {object} snake_case patch for body_parameters_cards
  */
 export function buildCardPatchFromProfile(card, profile = {}) {
@@ -192,6 +322,30 @@ export function buildCardPatchFromProfile(card, profile = {}) {
     diff.fat_percent = Number(profile.fatPercent);
   }
 
+  const copyNum = (profileKey, cardKey) => {
+    if (profile[profileKey] == null || profile[profileKey] === '') return;
+    const n = Number(profile[profileKey]);
+    if (!Number.isFinite(n)) return;
+    if (!syncValuesEqual(n, card[cardKey])) diff[cardKey] = n;
+  };
+  copyNum('age', 'age');
+  copyNum('visceralFat', 'visceral_fat');
+  copyNum('bodyAge', 'body_age');
+  copyNum('chestCm', 'chest_cm');
+  copyNum('waistCm', 'waist_cm');
+  copyNum('hipCm', 'hip_cm');
+
+  if (Object.prototype.hasOwnProperty.call(profile, 'recoveredHealthIssues')) {
+    const nextIssues = Array.isArray(profile.recoveredHealthIssues)
+      ? profile.recoveredHealthIssues
+        .filter((x) => typeof x === 'string' && x.trim())
+        .map((x) => x.trim())
+      : [];
+    if (!syncHealthIssuesEqual(nextIssues, card.recovered_health_issues)) {
+      diff.recovered_health_issues = nextIssues;
+    }
+  }
+
   const nextBmi = resolveCardBmiForPatch(card, diff);
   if (nextBmi === null) {
     if (card.bmi != null) diff.bmi = null;
@@ -205,12 +359,28 @@ export function buildCardPatchFromProfile(card, profile = {}) {
 /**
  * Build the Profile → Card sync payload from profile save input and snapshots.
  *
- * @param {{ name?: string|null, height?: number|string|null, bmr?: number|string|null, gender?: string|null }} profileInput
+ * @param {{
+ *   name?: string|null,
+ *   height?: number|string|null,
+ *   bmr?: number|string|null,
+ *   gender?: string|null,
+ *   age?: number|string|null,
+ *   visceralFat?: number|string|null,
+ *   bodyAge?: number|string|null,
+ *   chestCm?: number|string|null,
+ *   waistCm?: number|string|null,
+ *   hipCm?: number|string|null,
+ *   recoveredHealthIssues?: string[]|null,
+ * }} profileInput
  * @param {{ savedBmr?: number|null, latestWeight?: { Weight?: number|string|null, BodyFat?: number|string|null, Bmi?: number|string|null }|null }} snapshots
- * @returns {{ name?: string, height?: number, bmr?: number, gender?: string, weightKg?: number, fatPercent?: number, bmi?: number }}
+ * @returns {object}
  */
 export function buildProfileCardSyncPayload(profileInput = {}, { savedBmr = null, latestWeight = null } = {}) {
-  const { name, height, bmr, gender } = profileInput;
+  const {
+    name, height, bmr, gender,
+    age, visceralFat, bodyAge, chestCm, waistCm, hipCm,
+    recoveredHealthIssues,
+  } = profileInput;
   const cardSync = {};
 
   if (name != null && String(name).trim() !== '') {
@@ -228,6 +398,24 @@ export function buildProfileCardSyncPayload(profileInput = {}, { savedBmr = null
 
   const nextGender = normalizeSyncGender(gender);
   if (nextGender) cardSync.gender = nextGender;
+
+  const copyNum = (raw, key) => {
+    if (raw == null || raw === '') return;
+    const n = parseFloat(raw);
+    if (!Number.isNaN(n)) cardSync[key] = n;
+  };
+  copyNum(age, 'age');
+  copyNum(visceralFat, 'visceralFat');
+  copyNum(bodyAge, 'bodyAge');
+  copyNum(chestCm, 'chestCm');
+  copyNum(waistCm, 'waistCm');
+  copyNum(hipCm, 'hipCm');
+
+  if (recoveredHealthIssues !== undefined) {
+    cardSync.recoveredHealthIssues = Array.isArray(recoveredHealthIssues)
+      ? recoveredHealthIssues.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim())
+      : [];
+  }
 
   if (latestWeight?.Weight != null) {
     const w = parseFloat(latestWeight.Weight);

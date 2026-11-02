@@ -18,9 +18,20 @@ import NativeInput from '../../../shared/components/NativeInput.jsx';
 /**
  * @param {{ value, onChange, suggestions, onSelect, isLoading, inputRef, onEnter }} props
  */
-const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoading = false, inputRef, onEnter }) => {
+const PhoneAutocomplete = ({
+  value,
+  onChange,
+  suggestions = [],
+  onSelect,
+  isLoading = false,
+  inputRef,
+  onEnter,
+  error = '',
+  onBlur,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef(null);
+  const lastSelectAtRef = useRef(0);
 
   // Open dropdown when suggestions arrive, close when empty.
   useEffect(() => {
@@ -48,6 +59,17 @@ const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoad
     setIsOpen(false);
   };
 
+  const handleSuggestionPointer = (e, suggestion) => {
+    // preventDefault stops input blur from racing ahead of select (esp. mobile).
+    e.preventDefault();
+    e.stopPropagation();
+    const now = Date.now();
+    // Touch can fire touchend + click; only accept one select.
+    if (now - lastSelectAtRef.current < 400) return;
+    lastSelectAtRef.current = now;
+    handleSelect(suggestion);
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && onEnter && !isOpen) {
       e.preventDefault();
@@ -59,10 +81,14 @@ const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoad
     if (suggestions.length > 0) setIsOpen(true);
   };
 
+  const borderClass = error
+    ? 'border-red-400 focus:ring-red-400'
+    : 'border-indigo-200 focus:ring-indigo-400';
+
   return (
     <div ref={wrapperRef} className="relative flex flex-col gap-1">
       <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">
-        Phone Number
+        Phone Number <span className="normal-case font-normal text-gray-400">(optional)</span>
       </label>
       <div className="relative">
         <NativeInput
@@ -74,10 +100,12 @@ const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoad
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
-          placeholder="Client phone — creates team member"
+          onBlur={onBlur}
+          placeholder="Client phone (optional)"
           maxLength={10}
-          className="w-full border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white pr-8"
+          className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-white pr-8 ${borderClass}`}
           autoComplete="off"
+          aria-invalid={Boolean(error)}
         />
         {isLoading && (
           <span className="absolute right-2 top-1/2 -translate-y-1/2 text-indigo-400 text-xs animate-pulse">
@@ -86,12 +114,21 @@ const PhoneAutocomplete = ({ value, onChange, suggestions = [], onSelect, isLoad
         )}
       </div>
 
+      {error ? (
+        <p className="text-xs text-red-600 font-medium mt-0.5" role="alert">
+          {error}
+        </p>
+      ) : null}
+
       {isOpen && suggestions.length > 0 && (
         <ul className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-indigo-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
           {suggestions.map((s) => (
             <li
-              key={s.userId}
-              onMouseDown={(e) => { e.preventDefault(); handleSelect(s); }}
+              key={s.userId || s.phoneNumber}
+              role="option"
+              onMouseDown={(e) => handleSuggestionPointer(e, s)}
+              onTouchEnd={(e) => handleSuggestionPointer(e, s)}
+              onClick={(e) => handleSuggestionPointer(e, s)}
               className="px-3 py-2 cursor-pointer hover:bg-indigo-50 transition-colors"
             >
               <div className="text-sm font-medium text-gray-800">{s.phoneNumber}</div>

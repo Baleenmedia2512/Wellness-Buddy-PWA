@@ -6,6 +6,7 @@ import { SplashScreen } from '@capacitor/splash-screen';
 import { Capacitor } from '@capacitor/core';
 import { debugLog } from './shared/utils/logger.js';
 import { installNativeInputModeSync } from './shared/utils/nativeInputMode.js';
+import { installSelectAllOnTextFocus, installDisableNonEditableSelection } from './shared/utils/textSelectionFix.js';
 
 // ✅ PERFORMANCE: Suppress all console output in production
 // In iOS WKWebView, every console.log bridges to native — very expensive
@@ -25,6 +26,10 @@ if (Capacitor.isNativePlatform()) {
 
 // Sync type="tel" + inputmode onto DOM before mobile IME opens.
 installNativeInputModeSync();
+// Text / search / numeric fields: tap → select full value (type over easily).
+installSelectAllOnTextFocus();
+// Android: hide Copy / Select all on dashboard text; keep paste in inputs.
+installDisableNonEditableSelection();
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 
@@ -39,9 +44,29 @@ if (process.env.NODE_ENV === 'production') {
   );
 }
 
-// ✅ PWA: Register service worker with update detection
-// Works in both web and Android (when built with 'npm run build')
-if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
+// Native WebView keeps one origin across APK updates. A service worker from
+// an older install serves cached JS and leaves a white page after the splash.
+// The website still registers the worker below.
+if (Capacitor.isNativePlatform() && 'serviceWorker' in navigator) {
+  const clearNativeServiceWorkers = async () => {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(registrations.map((registration) => registration.unregister()));
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    }
+    if (
+      navigator.serviceWorker.controller &&
+      sessionStorage.getItem('wvNativeSwCleared') !== '1'
+    ) {
+      sessionStorage.setItem('wvNativeSwCleared', '1');
+      window.location.reload();
+    }
+  };
+  clearNativeServiceWorkers().catch((error) => {
+    console.error('Native service worker cleanup failed:', error);
+  });
+} else if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
   window.addEventListener('load', () => {
     debugLog('🔧 [PWA] Environment:', {
       isNative: Capacitor.isNativePlatform(),

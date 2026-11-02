@@ -13,6 +13,7 @@ import {
 import { validateAndCorrectWeight, deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { computeKatchMcArdleBmr } from '../../utils/bmrCalculations.js';
 import { touchUserActivity, invalidateUserProfileCache } from '../../shared/lib/userActivity.js';
+import { bustRaceLeaderboardCaches } from '../../utils/cache.js';
 import * as repo from './weight.repository.js';
 import * as userRepo from '../user/user.repository.js';
 // PR 6 — captures_table is canonical for the at-capture-time write. The
@@ -25,6 +26,9 @@ import { mergeLocationWithCapture } from '../captures/domain/location.fields.js'
 import logger from '../../shared/lib/logger.js';
 import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
+import { assertViewerCanAccessMember } from '../../utils/reportingHierarchyService.js';
+import { resolveMarathonWeightComparison } from '../marathon/domain/marathonWeightComparison.service.js';
 
 function toNumberOrNull(v) {
   if (v === undefined || v === null || v === '') return null;
@@ -189,11 +193,14 @@ export async function saveWeight(input) {
 
   await touchUserActivity(userId);
   await invalidateUserProfileCache(userId);
+  bustRaceLeaderboardCaches();
 
+  let profileHeightCm = null;
   try {
     const profileRow = await userRepo.findByUserId(parseInt(userId, 10), '"Height"');
+    profileHeightCm = profileRow?.Height ? parseFloat(profileRow.Height) : null;
     const derivedGoalMode = deriveWeightGoalMode({
-      heightCm: profileRow?.Height ? parseFloat(profileRow.Height) : null,
+      heightCm: profileHeightCm,
       currentWeightKg: weight,
     });
     if (derivedGoalMode) {
@@ -204,6 +211,26 @@ export async function saveWeight(input) {
       userId: String(userId),
       err: goalModeErr?.message,
     });
+  }
+
+  // First ideal-weight milestone (BMI 19–23) + sponsor email. Best-effort; never fails save.
+  if (!entryId) {
+    try {
+      const { maybeRecordIdealWeightMilestone } = await import('./ideal-weight-milestone.service.js');
+      await maybeRecordIdealWeightMilestone({
+        userId,
+        weightKg: weight,
+        heightCm: profileHeightCm,
+        isNewInsert: true,
+        newEntryId: data?.ID || data?.id || null,
+        newEntryCreatedAt: data?.CreatedAt ?? createdAtLegacy,
+      });
+    } catch (milestoneErr) {
+      logger.warn('weight.saveWeight: ideal milestone skipped', {
+        userId: String(userId),
+        err: milestoneErr?.message,
+      });
+    }
   }
 
   // PR 6 — promote the capture pending → weight. Best-effort: the weight row
@@ -227,6 +254,20 @@ export async function saveWeight(input) {
     confirmPersisted(captureId, { weightRowId: data?.ID || data?.id });
   }
 
+  const weightRowId = data?.ID || data?.id;
+  if (weightRowId && (imageBase64ToSave || captureId)) {
+    try {
+      const { persistWeightImageKey } = await import('../../shared/lib/r2/activity-image-storage.service.js');
+      await persistWeightImageKey(userId, weightRowId, imageBase64ToSave, { captureId });
+    } catch (err) {
+      logger.warn('weight.saveWeight: R2 persist skipped', {
+        userId: String(userId),
+        recordId: weightRowId,
+        message: err?.message || String(err),
+      });
+    }
+  }
+
   return {
     httpStatus: 200,
     body: {
@@ -246,33 +287,24 @@ export async function saveWeight(input) {
         bmr: bmrValue,
         bmrCalculated: calculatedBmr !== null,
         bmrPreserved: !bmr && bmrValue ? true : false,
-        imageBase64: imageBase64ToSave,
+        imageBase64: null,
         timestamp: nowUtc(),
       },
     },
   };
 }
 
-export async function getHistory({ userId, includeImage, limit = null, offset = 0 }) {
+export async function getHistory({ userId, includeImage, limit = null, offset = 0, viewerUserId = null }) {
+  await assertViewerCanAccessMember(getMysqlClient(), viewerUserId, userId);
   const useLimit = Number.isFinite(limit) && limit > 0;
   const timezoneIana = await getUserTimezoneIana(userId);
 
   // Step 1: lightweight rows (no image when not requested)
   const rows = await repo.listHistory(userId, false, { limit, offset });
 
-  // Step 2: latest 10 image map (only when client wants images)
-  let imageMap = {};
-  if (includeImage) {
-    const imageRows = await repo.listLatestImages(userId, 10);
-    imageRows.forEach((r) => {
-      if (r.WeightImageBase64) imageMap[r.ID] = r.WeightImageBase64;
-    });
-  }
-
-  // Step 3: merge image into rows
   const merged = rows.map((row) => ({
     ...row,
-    WeightImageBase64: imageMap[row.ID] || null,
+    WeightImageBase64: null,
   }));
 
   // Step 4: format CreatedAt
@@ -348,9 +380,23 @@ export async function getImage({ userId, id }) {
   if (!row) {
     return { httpStatus: 404, body: { success: false, message: 'Not found' } };
   }
+  let r2Url = null;
+  if (row.WeightImageKey) {
+    try {
+      const { redirectUrlForImageKey } = await import('../../shared/lib/milesweb/storedImage.js');
+      r2Url = await redirectUrlForImageKey(row.WeightImageKey, 'ff.r2-activity-images');
+    } catch {
+      r2Url = null;
+    }
+  }
   return {
     httpStatus: 200,
-    body: { success: true, id: row.ID, image: row.WeightImageBase64 || null },
+    body: {
+      success: true,
+      id: row.ID,
+      r2Url,
+      image: row.WeightImageBase64 || null,
+    },
   };
 }
 
@@ -385,5 +431,30 @@ export async function undoDeleteWeight({ id, userId }) {
   return {
     httpStatus: 200,
     body: { success: true, message: 'Weight entry restored successfully', restoredId: id },
+  };
+}
+
+/**
+ * Marathon Day 0 weight comparison for WhatsApp shares and profile.
+ * @param {{ userId: string|number, todayYmd?: string|null, currentDay0Weight?: number|null }} input
+ */
+export async function getMarathonWeightComparison({
+  userId,
+  todayYmd = null,
+  currentDay0Weight = null,
+}) {
+  const timezoneIana = await getUserTimezoneIana(userId);
+  const comparison = await resolveMarathonWeightComparison({
+    userId,
+    timezoneIana,
+    todayYmd,
+    currentMarathonDay0WeightOverride: currentDay0Weight,
+  });
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      data: comparison,
+    },
   };
 }

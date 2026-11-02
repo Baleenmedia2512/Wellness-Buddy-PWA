@@ -1,11 +1,11 @@
 /**
  * idle-repo.js — Data layer for idle user detection and bulk operations.
- * Per claude.md §3.1: data layer is the only place that talks to Supabase/Postgres.
+ * Per claude.md §3.1: data layer is the only place that talks to MySQL/Postgres.
  * 
  * @module backend/features/idle-cleanup/data/idle-repo
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { getInactivityCutoff } from '../domain/inactivity-rules.js';
 import logger from '../../../shared/lib/logger.js';
 
@@ -16,8 +16,8 @@ import logger from '../../../shared/lib/logger.js';
  * @returns {Promise<Array<{UserId: string, CoachId: string}>>}
  */
 async function findMembersUnderCoach(coachId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('UserId, CoachId')
     .eq('CoachId', coachId);
@@ -41,8 +41,8 @@ async function findMembersUnderCoach(coachId) {
  * @returns {Promise<string|null>} - The parent CoachId or null if no parent
  */
 async function findParentCoach(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('CoachId')
     .eq('UserId', userId)
@@ -92,8 +92,8 @@ async function reassignMembersToParentCoach(inactiveCoachId, correlationId) {
     }
     
     // Reassign all members to the parent coach
-    const supabase = getSupabaseClient();
-    const { error } = await supabase
+    const db = getMysqlClient();
+    const { error } = await db
       .from('team_table')
       .update({ CoachId: parentCoachId })
       .eq('CoachId', inactiveCoachId);
@@ -155,10 +155,10 @@ export async function findIdleUsers(options = {}) {
   const startTime = Date.now();
 
   try {
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
     
     // Query: Active users with LastActiveAt < cutoff OR LastActiveAt IS NULL
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('team_table')
       .select('UserId, Email, LastActiveAt')
       .eq('Status', 'Active')

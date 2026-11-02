@@ -1,6 +1,6 @@
 import * as repo from './education.repository.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
-import { getTimeWindows } from '../../utils/disciplineCalculationsSupabase.js';
+import { getTimeWindows } from '../../utils/disciplineCalculationsQuery.js';
 // PR 6 — captures_table is canonical for the at-capture-time write. The
 // education save endpoint promotes the linked capture pending → education
 // when `captureId` is supplied. Best-effort: a captures-side failure is
@@ -109,6 +109,20 @@ export async function saveLog(input) {
     confirmPersisted(captureId, { logId: data?.Id || data?.id || data?.ID });
   }
 
+  const educationLogId = data?.Id || data?.id || data?.ID;
+  if (educationLogId && (imageBase64ToSave || captureId)) {
+    try {
+      const { persistEducationImageKey } = await import('../../shared/lib/r2/activity-image-storage.service.js');
+      await persistEducationImageKey(userId, educationLogId, imageBase64ToSave, { captureId });
+    } catch (err) {
+      logger.warn('education.saveLog: R2 persist skipped', {
+        userId: userId?.toString(),
+        logId: educationLogId,
+        message: err?.message || String(err),
+      });
+    }
+  }
+
   return {
     httpStatus: 200,
     body: {
@@ -131,19 +145,11 @@ export async function saveLog(input) {
 export async function listLogs({ userId, limit = null, offset = 0, includeImage = true }) {
   const useLimit = Number.isFinite(limit) && limit > 0;
   const fromIdx = Number.isFinite(offset) && offset >= 0 ? offset : 0;
-  const logs = await repo.listLogs(userId, { limit, offset: fromIdx, includeImage });
-  const THUMB_CHARS = 5000;
+  const logs = await repo.listLogs(userId, { limit, offset: fromIdx, includeImage: false });
   const trimmedLogs = logs.map((log) => ({
     ...log,
-    ImageBase64: includeImage
-      ? (log.ImageBase64
-          ? (log.ImageBase64.length > THUMB_CHARS ? log.ImageBase64.slice(0, THUMB_CHARS) : log.ImageBase64)
-          : null)
-      : null,
-    // When image data is omitted from SELECT, assume true so the card lazy-fetches
-    hasFullImage: includeImage
-      ? !!(log.ImageBase64 && log.ImageBase64.length > 0)
-      : true,
+    ImageBase64: null,
+    hasFullImage: true,
   }));
   let pagination = null;
   if (useLimit) {
@@ -163,9 +169,22 @@ export async function listLogs({ userId, limit = null, offset = 0, includeImage 
 export async function getLogImage({ logId, userId }) {
   const data = await repo.getLogImage(logId, userId);
   if (!data) return { httpStatus: 404, body: { success: false, message: 'Log not found' } };
+  let r2Url = null;
+  if (data.ImageKey) {
+    try {
+      const { redirectUrlForImageKey } = await import('../../shared/lib/milesweb/storedImage.js');
+      r2Url = await redirectUrlForImageKey(data.ImageKey, 'ff.r2-activity-images');
+    } catch {
+      r2Url = null;
+    }
+  }
   return {
     httpStatus: 200,
-    body: { success: true, imageBase64: data.ImageBase64 || null },
+    body: {
+      success: true,
+      r2Url,
+      image: data.ImageBase64 || null,
+    },
   };
 }
 

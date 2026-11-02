@@ -2,8 +2,15 @@
  * Resolve Activity Report audience by team scope (mine / direct / full).
  *
  * Active downline via indexed reporting hierarchy (matches Ideal Weight / Reports).
+ * Sponsor / Co-Sponsor leads keep Mine/Direct/Full UI even with 0 own members
+ * (shared-team partner roster may still populate).
  */
-import { buildActivityReportCoachScope } from './activity-report.hierarchy.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
+import { resolveLeadSeatForUser } from '../../../utils/coachTeamSeats.js';
+import {
+  buildActivityReportCoachScope,
+  selfActivityReportMemberMeta,
+} from './activity-report.hierarchy.js';
 
 export const TEAM_SCOPES = Object.freeze({
   MINE: 'mine',
@@ -23,12 +30,30 @@ export function normalizeTeamScope(teamScope) {
   return TEAM_SCOPES.FULL;
 }
 
-function buildTeamScopeCounts(directIds, fullIds) {
+/**
+ * Full Team includes the viewer (level 0) plus every Active downline.
+ * @param {number} userId
+ * @param {Array<number|string>} fullIds
+ * @returns {number[]}
+ */
+export function mergeViewerIntoFullTeamIds(userId, fullIds = []) {
+  const rootId = Number(userId);
+  const downline = (Array.isArray(fullIds) ? fullIds : [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id !== rootId);
+  if (!Number.isFinite(rootId)) return downline;
+  return [rootId, ...downline];
+}
+
+function buildTeamScopeCounts(directIds, fullIds, { isSharedLead = false } = {}) {
+  const hasRoster = directIds.length > 0 || fullIds.length > 0;
+  const hasTeam = hasRoster || isSharedLead;
   return {
     mine: 1,
     direct: directIds.length,
-    full: fullIds.length,
-    hasTeam: directIds.length > 0 || fullIds.length > 0,
+    // Full Team badge = viewer (level 0) + Active downline.
+    full: hasTeam ? fullIds.length + 1 : 0,
+    hasTeam,
   };
 }
 
@@ -36,11 +61,17 @@ function buildTeamScopeCounts(directIds, fullIds) {
  * Coach / upline / admin — same dual-coaching tree (Active downline only).
  */
 async function resolveTeamScope(userId) {
-  const { directIds, fullIds } = await buildActivityReportCoachScope(userId);
+  const db = getMysqlClient();
+  const [{ directIds, fullIds, memberMeta }, seat] = await Promise.all([
+    buildActivityReportCoachScope(userId),
+    resolveLeadSeatForUser(db, userId),
+  ]);
+  const isSharedLead = seat.seat === 'sponsor' || seat.seat === 'co-sponsor';
   return {
     directIds,
     fullIds,
-    teamScopeCounts: buildTeamScopeCounts(directIds, fullIds),
+    memberMeta,
+    teamScopeCounts: buildTeamScopeCounts(directIds, fullIds, { isSharedLead }),
   };
 }
 
@@ -48,7 +79,12 @@ async function resolveTeamScope(userId) {
  * User IDs whose activity rows belong in the report for the selected scope.
  *
  * @param {{ userId: number, role: string, teamScope?: string }} params
- * @returns {Promise<{ userIds: number[], teamScope: string, teamScopeCounts: object }>}
+ * @returns {Promise<{
+ *   userIds: number[],
+ *   teamScope: string,
+ *   teamScopeCounts: object,
+ *   memberMeta: { levelByUserId: Map<number, number>, memberTypeByUserId: Map<number, string> },
+ * }>}
  */
 export async function resolveActivityReportUserIds({ userId, role, teamScope }) {
   let scope = normalizeTeamScope(teamScope);
@@ -58,22 +94,28 @@ export async function resolveActivityReportUserIds({ userId, role, teamScope }) 
       userIds: [userId],
       teamScope: TEAM_SCOPES.MINE,
       teamScopeCounts: { mine: 1, direct: 0, full: 0, hasTeam: false },
+      memberMeta: selfActivityReportMemberMeta(userId),
     };
   }
 
-  const { directIds, fullIds, teamScopeCounts } = await resolveTeamScope(userId);
+  const { directIds, fullIds, teamScopeCounts, memberMeta } = await resolveTeamScope(userId);
 
   if (!teamScopeCounts.hasTeam) {
     scope = TEAM_SCOPES.MINE;
   }
 
   if (scope === TEAM_SCOPES.MINE) {
-    return { userIds: [userId], teamScope: scope, teamScopeCounts };
+    return { userIds: [userId], teamScope: scope, teamScopeCounts, memberMeta };
   }
 
   if (scope === TEAM_SCOPES.DIRECT) {
-    return { userIds: directIds, teamScope: scope, teamScopeCounts };
+    return { userIds: directIds, teamScope: scope, teamScopeCounts, memberMeta };
   }
 
-  return { userIds: fullIds, teamScope: scope, teamScopeCounts };
+  return {
+    userIds: mergeViewerIntoFullTeamIds(userId, fullIds),
+    teamScope: scope,
+    teamScopeCounts,
+    memberMeta,
+  };
 }

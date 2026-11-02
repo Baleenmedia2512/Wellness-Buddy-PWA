@@ -6,10 +6,11 @@
  */
 
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import nodemailer from 'nodemailer';
 import logger from '../../../shared/lib/logger.js';
+import { applyCors } from '../../../shared/lib/handler.js';
 
 // ── Email helper (non-fatal — same pattern as enroll.js / upline/request.js) ─
 async function sendUpdateNotification({ coachEmail, coachName, memberName, memberEmail, programs }) {
@@ -19,7 +20,9 @@ async function sendUpdateNotification({ coachEmail, coachName, memberName, membe
       service: 'gmail',
       auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
     });
-    const programList = programs.map((p) => `<li>${p}</li>`).join('');
+    const programList = programs.length
+      ? programs.map((p) => `<li>${p}</li>`).join('')
+      : '<li>No programs selected</li>';
     await transporter.sendMail({
       from: '"Wellness Valley" <easy2work.india@gmail.com>',
       to: coachEmail,
@@ -53,18 +56,7 @@ async function sendUpdateNotification({ coachEmail, coachName, memberName, membe
 }
 
 export default async function handler(req, res) {
-  // Handle CORS
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.status(200).end();
-    return;
-  }
-
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (applyCors(req, res, 'POST, OPTIONS')) return;
 
   // Only allow POST requests
   if (req.method !== 'POST') {
@@ -86,19 +78,20 @@ export default async function handler(req, res) {
       });
     }
 
-    if (!programs || !Array.isArray(programs) || programs.length === 0) {
+    // Empty array is allowed on update so the user can uncheck every program.
+    if (!Array.isArray(programs)) {
       return res.status(400).json({
         success: false,
-        message: 'Please select at least one program',
+        message: 'Programs must be an array',
       });
     }
 
     logger.debug('✏️ [update-enrollment] Update request:', { email, userId, programCount: programs.length });
 
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
 
     // Look up user by userId (preferred — works even when email is empty) or email.
-    const { data: user, error: userError } = await supabase
+    const { data: user, error: userError } = await db
       .from('team_table')
       .select('"UserId", "UserName", "Email", "CoachId"')
       .eq(userId ? '"UserId"' : '"Email"', userId || email)
@@ -122,7 +115,7 @@ export default async function handler(req, res) {
     const updateTime = nowUtc();
 
     // Fetch existing record to get current program dates
-    const { data: existing } = await supabase
+    const { data: existing } = await db
       .from('wellness_university_enrollments_table')
       .select('"EnrolledPrograms"')
       .eq('"UserId"', user.UserId)
@@ -132,7 +125,7 @@ export default async function handler(req, res) {
     let existingMap = {};
     if (existing?.EnrolledPrograms) {
       try {
-        // Supabase may return JSONB as already-parsed object, or as a JSON string
+        // MySQL may return JSONB as already-parsed object, or as a JSON string
         const parsed = typeof existing.EnrolledPrograms === 'string'
           ? JSON.parse(existing.EnrolledPrograms)
           : existing.EnrolledPrograms;
@@ -159,7 +152,7 @@ export default async function handler(req, res) {
     let enrollment;
     if (existing) {
       // Update existing record
-      const { data: updatedEnrollment, error: updateError } = await supabase
+      const { data: updatedEnrollment, error: updateError } = await db
         .from('wellness_university_enrollments_table')
         .update({
           EnrolledPrograms: programsJson,
@@ -177,7 +170,7 @@ export default async function handler(req, res) {
       enrollment = updatedEnrollment;
     } else {
       // Insert new record
-      const { data: newEnrollment, error: insertError } = await supabase
+      const { data: newEnrollment, error: insertError } = await db
         .from('wellness_university_enrollments_table')
         .insert({
           UserId: user.UserId,
@@ -203,25 +196,8 @@ export default async function handler(req, res) {
 
     logger.debug('✅ [update-enrollment] Enrollment upserted successfully:', { enrollmentId: enrollment.Id });
 
-    // Notify coach via email (non-fatal)
-    if (user.CoachId) {
-      const { data: coachRow } = await supabase
-        .from('team_table')
-        .select('"UserName", "Email", "CoachName"')
-        .eq('UserId', user.CoachId)
-        .maybeSingle();
-      if (coachRow?.Email) {
-        await sendUpdateNotification({
-          coachEmail: coachRow.Email,
-          coachName: coachRow.CoachName || coachRow.UserName,
-          memberName: user.UserName,
-          memberEmail: user.Email,
-          programs: Object.keys(newMap),
-        });
-      }
-    }
-
-    return res.status(200).json({
+    // Respond immediately — coach email must not block the client (~2–4s SMTP).
+    res.status(200).json({
       success: true,
       message: 'Enrollment updated successfully',
       enrollment: {
@@ -229,6 +205,28 @@ export default async function handler(req, res) {
         programs: Object.keys(newMap),
       },
     });
+
+    if (user.CoachId) {
+      void (async () => {
+        try {
+          const { data: coachRow } = await db
+            .from('team_table')
+            .select('"UserName", "Email", "CoachName"')
+            .eq('UserId', user.CoachId)
+            .maybeSingle();
+          if (!coachRow?.Email) return;
+          await sendUpdateNotification({
+            coachEmail: coachRow.Email,
+            coachName: coachRow.CoachName || coachRow.UserName,
+            memberName: user.UserName,
+            memberEmail: user.Email,
+            programs: Object.keys(newMap),
+          });
+        } catch (err) {
+          logger.warn('[update-enrollment] Background coach notify failed:', err?.message || err);
+        }
+      })();
+    }
   } catch (error) {
     console.error('❌ [update-enrollment] Server error:', error);
     return res.status(500).json({

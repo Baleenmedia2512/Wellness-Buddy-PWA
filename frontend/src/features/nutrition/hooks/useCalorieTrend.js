@@ -15,6 +15,7 @@ export function useCalorieTrend({
   apiBaseUrl,
   resolveUserId,
   calorieTarget,
+  enabled = true,
 }) {
   const [calorieTrendData, setCalorieTrendData] = useState([]);
   const [trendLoading, setTrendLoading] = useState(false);
@@ -22,7 +23,7 @@ export function useCalorieTrend({
 
   const refetch = useCallback(
     async (days) => {
-      if (!user) return;
+      if (!user || !enabled) return;
       setTrendLoading(true);
       try {
         const userId = await resolveUserId();
@@ -45,20 +46,21 @@ export function useCalorieTrend({
         setTrendLoading(false);
       }
     },
-    [user, resolveUserId, selectedDate, apiBaseUrl, calorieTarget],
+    [user, resolveUserId, selectedDate, apiBaseUrl, calorieTarget, enabled],
   );
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !enabled) return;
     refetch(trendRangeDays);
-  }, [user, selectedDate, trendRangeDays, refetch]);
+  }, [user, selectedDate, trendRangeDays, refetch, enabled]);
 
   // Brief delay so the card animates in cleanly when data refreshes.
   useEffect(() => {
+    if (!enabled) return undefined;
     setShowTrendCard(false);
     const timer = setTimeout(() => setShowTrendCard(true), 40);
     return () => clearTimeout(timer);
-  }, [calorieTrendData, trendRangeDays]);
+  }, [calorieTrendData, trendRangeDays, enabled]);
 
   return { calorieTrendData, trendLoading, showTrendCard };
 }

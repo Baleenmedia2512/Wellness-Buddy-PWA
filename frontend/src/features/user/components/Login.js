@@ -1,7 +1,7 @@
 // src/features/user/components/Login.js
 // Orchestrator — wires useAuthFlow + useOtpInput + useResendCountdown.
-// Enterprise consent flow: Phone → OTP (identify user) → Consent Form in App.js
-// (bound to userId). Consent is NOT asked before identity is known.
+// Signup consent: checkbox + Terms / Privacy links before OTP.
+// Acceptance is sent with verify-otp and stored on the new account.
 import React, { useEffect, useState } from 'react';
 import TermsAndConditions from '../../../shared/components/TermsAndConditions';
 import PrivacyPolicy from '../../../shared/components/PrivacyPolicy';
@@ -9,13 +9,15 @@ import wellnessValleyIcon from '../../../assets/wellness-valley-icon.png';
 import useAuthFlow from '../hooks/useAuthFlow';
 import useOtpInput from '../hooks/useOtpInput';
 import useResendCountdown from '../hooks/useResendCountdown';
+import { SMS_OTP_LENGTH } from '../domain/otpLength';
+import { DEMO_LOGIN_OTP, isDemoPhone } from '../domain/demoAccount';
 import LoginBlobs from './login/LoginBlobs';
 import LoginEmailEntry from './login/LoginEmailEntry';
 import LoginOtpEntry from './login/LoginOtpEntry';
 
 const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }) => {
   const auth = useAuthFlow({ onOtpVerified });
-  const otpCtl = useOtpInput(6);
+  const otpCtl = useOtpInput(SMS_OTP_LENGTH);
   const resend = useResendCountdown(60, auth.otpSent);
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
@@ -24,6 +26,17 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
     if (forceOtpVerification) { auth.setOtpSent(true); }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [forceOtpVerification]);
+
+  // Cashfree / demo phone: auto-fill fixed OTP so reviewers are not blocked by SMS.
+  useEffect(() => {
+    if (!auth.otpSent) return;
+    if (!isDemoPhone(auth.email, auth.countryDial)) return;
+    const timer = setTimeout(() => {
+      otpCtl.fillAll(DEMO_LOGIN_OTP);
+    }, 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fill once when OTP step opens
+  }, [auth.otpSent]);
 
   const handleSendOtp = async () => {
     const ok = await auth.sendOtp();
@@ -59,7 +72,9 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
             </h1>
             <p className="text-sm xs:text-base text-gray-500">
               {auth.otpSent
-                ? `We've sent a 6-digit code via SMS to your phone`
+                ? (isDemoPhone(auth.email, auth.countryDial)
+                  ? 'Verification code will fill automatically'
+                  : `We've sent a ${SMS_OTP_LENGTH}-digit code via SMS to your phone`)
                 : 'Enter your mobile number to continue'}
             </p>
           </div>
@@ -67,7 +82,11 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
             <LoginEmailEntry email={auth.email} setEmail={auth.setEmail}
               countryDial={auth.countryDial} setCountryDial={auth.setCountryDial}
               onSubmit={handleSendOtp} loading={auth.loading}
-              errorMessage={auth.errorMessage} />
+              errorMessage={auth.errorMessage}
+              termsAccepted={auth.termsAccepted}
+              setTermsAccepted={auth.setTermsAccepted}
+              onOpenTerms={() => setShowTerms(true)}
+              onOpenPrivacy={() => setShowPrivacy(true)} />
           ) : (
             <LoginOtpEntry otpCtl={otpCtl} onVerify={auth.verifyOtp}
               loading={auth.loading} verified={auth.verified}
@@ -75,12 +94,6 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
               countdown={resend.countdown} canResend={resend.canResend}
               onResend={handleResendOtp} onBack={handleBackToEmail} />
           )}
-          <p className="mt-6 text-center text-xs text-gray-400">
-            By continuing, you agree to our{' '}
-            <button onClick={() => setShowTerms(true)} className="text-green-500 hover:text-green-600 underline">Terms</button>{' '}
-            and{' '}
-            <button onClick={() => setShowPrivacy(true)} className="text-green-500 hover:text-green-600 underline">Privacy Policy</button>
-          </p>
         </div>
       </div>
       {showTerms && <TermsAndConditions onClose={() => setShowTerms(false)} />}

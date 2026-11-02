@@ -2,17 +2,23 @@
  * User feature — repository layer. Owns team_table + cross-cutting deletes
  * needed for account removal.
  */
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
-import { nowUtc } from '../../shared/lib/datetime/index.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
+import { nowUtc, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { buildCardPatchFromProfile } from '../body-parameters-card/domain/sync.rules.js';
 import { findLatestCardForProfileSync } from '../body-parameters-card/data/card.repo.js';
+import { buildAdoptProfileMetricsPatch } from './domain/onboardingEmail.rules.js';
+import logger from '../../shared/lib/logger.js';
 
 const TEAM = 'team_table';
 const APPROVALS = 'approval_requests_table';
 
+function legacyIstWallNow() {
+  return utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST);
+}
+
 export async function findByEmail(email, columns = '"UserId", "UserName", "Email"') {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select(columns)
     .ilike('Email', email)
@@ -22,8 +28,8 @@ export async function findByEmail(email, columns = '"UserId", "UserName", "Email
 }
 
 export async function findByExactEmail(email, columns) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select(columns)
     .eq('"Email"', email)
@@ -51,8 +57,8 @@ export async function findByEmailExcludingUserId(
   const uid = Number(excludeUserId);
   if (!Number.isFinite(uid) || uid < 1) return null;
 
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select(columns)
     .ilike('Email', normalized)
@@ -69,8 +75,8 @@ export async function findByEmailExcludingUserId(
 export async function findByUserId(userId, columns = '"UserId", "Role"') {
   const uid = Number.parseInt(String(userId), 10);
   if (!Number.isFinite(uid) || uid <= 0) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select(columns)
     .eq('"UserId"', uid)
@@ -80,8 +86,8 @@ export async function findByUserId(userId, columns = '"UserId", "Role"') {
 }
 
 export async function findByUsername(username) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select('"UserId"')
     .eq('"UserName"', username)
@@ -91,38 +97,472 @@ export async function findByUsername(username) {
 }
 
 export async function getProfile(email) {
-  // Consent columns are optional until migration is applied — never block profile load.
+  // Consent / optional body-metric columns are optional until migrations are applied.
+  // Body fat is stored on weight_records_table, not team_table.
+  const withPhotos =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues, transformation_photos';
+  const withKeyAndPhotos = `"ProfileImageKey", ${withPhotos}`;
+  const fullCols =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
+  const withMetricsNoHealth =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm"';
+  const withConsentNoMetrics =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion"';
+  const noConsentCols =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana';
+
+  async function load(cols) {
+    return findByEmail(email, cols);
+  }
+
   try {
-    return await findByEmail(
-      email,
-      '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion"',
-    );
+    return await load(withKeyAndPhotos);
+  } catch (errKey) {
+    const msgKey = String(errKey?.message || errKey || '');
+    if (!/column/i.test(msgKey)) throw errKey;
+    if (!/ProfileImageKey|transformation_photos/i.test(msgKey)) throw errKey;
+  }
+
+  try {
+    return await load(withPhotos);
+  } catch (errPhotos) {
+    const msgPhotos = String(errPhotos?.message || errPhotos || '');
+    if (!/column/i.test(msgPhotos)) throw errPhotos;
+    if (!/transformation_photos/i.test(msgPhotos)) throw errPhotos;
+  }
+
+  try {
+    return await load(fullCols);
   } catch (err) {
-    const msg = String(err?.message || err || '');
-    if (!/ConsentAcceptedAt|ConsentVersion|column/i.test(msg)) throw err;
-    return findByEmail(
-      email,
-      '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana',
-    );
+    let current = err;
+    const msg = String(current?.message || current || '');
+    if (!/column/i.test(msg)) throw current;
+    if (/recovered_health_issues/i.test(msg)) {
+      try {
+        return await load(withMetricsNoHealth);
+      } catch (errHealth) {
+        const msgH = String(errHealth?.message || errHealth || '');
+        if (!/column/i.test(msgH)) throw errHealth;
+        current = errHealth;
+      }
+    }
+    const msg2 = String(current?.message || current || '');
+    const missingMetrics = /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg2);
+    if (missingMetrics) {
+      try {
+        return await load(withConsentNoMetrics);
+      } catch (err2) {
+        const msg3 = String(err2?.message || err2 || '');
+        if (!/column/i.test(msg3)) throw err2;
+        return load(noConsentCols);
+      }
+    }
+    const missingConsent = /ConsentAcceptedAt|ConsentVersion/i.test(msg2);
+    if (missingConsent) return load(noConsentCols);
+    throw current;
   }
 }
 
+/** Same columns as getProfile, resolved by UserId (phone / pre-email onboarding). */
+export async function getProfileByUserId(userId) {
+  const withPhotos =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues, transformation_photos';
+  const withKeyAndPhotos = `"ProfileImageKey", ${withPhotos}`;
+  const fullCols =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
+  const withMetricsNoHealth =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm"';
+  const withConsentNoMetrics =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion"';
+  const noConsentCols =
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana';
+
+  async function load(cols) {
+    return findByUserId(userId, cols);
+  }
+
+  try {
+    return await load(withKeyAndPhotos);
+  } catch (errKey) {
+    const msgKey = String(errKey?.message || errKey || '');
+    if (!/column/i.test(msgKey)) throw errKey;
+    if (!/ProfileImageKey|transformation_photos/i.test(msgKey)) throw errKey;
+  }
+
+  try {
+    return await load(withPhotos);
+  } catch (errPhotos) {
+    const msgPhotos = String(errPhotos?.message || errPhotos || '');
+    if (!/column/i.test(msgPhotos)) throw errPhotos;
+    if (!/transformation_photos/i.test(msgPhotos)) throw errPhotos;
+  }
+
+  try {
+    return await load(fullCols);
+  } catch (err) {
+    let current = err;
+    const msg = String(current?.message || current || '');
+    if (!/column/i.test(msg)) throw current;
+    if (/recovered_health_issues/i.test(msg)) {
+      try {
+        return await load(withMetricsNoHealth);
+      } catch (errHealth) {
+        const msgH = String(errHealth?.message || errHealth || '');
+        if (!/column/i.test(msgH)) throw errHealth;
+        current = errHealth;
+      }
+    }
+    const msg2 = String(current?.message || current || '');
+    const missingMetrics = /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg2);
+    if (missingMetrics) {
+      try {
+        return await load(withConsentNoMetrics);
+      } catch (err2) {
+        const msg3 = String(err2?.message || err2 || '');
+        if (!/column/i.test(msg3)) throw err2;
+        return load(noConsentCols);
+      }
+    }
+    const missingConsent = /ConsentAcceptedAt|ConsentVersion/i.test(msg2);
+    if (missingConsent) return load(noConsentCols);
+    throw current;
+  }
+}
+
+/** Team Code / shared-team fields for profile Team Code card. */
+export async function getTeamCodeFields(userId) {
+  return findByUserId(userId, '"UserId", "TeamId", "CoachTeamId", "CoachId", "Role", "CommunityId"');
+}
+
+/**
+ * Avatar route source — same fields My Profile uses for display:
+ * ProfileImageKey / ProfileImage + centre transformation photo fallback.
+ */
+export async function getAvatarSource(userId) {
+  const withKeyAndPhotos = '"UserId", "ProfileImageKey", "ProfileImage", transformation_photos';
+  const withPhotos = '"UserId", "ProfileImage", transformation_photos';
+  const withKey = '"UserId", "ProfileImageKey", "ProfileImage"';
+  const basic = '"UserId", "ProfileImage"';
+
+  try {
+    return await findByUserId(userId, withKeyAndPhotos);
+  } catch (errKeyPhotos) {
+    if (!isMissingColumn(errKeyPhotos, 'ProfileImageKey')
+      && !isMissingColumn(errKeyPhotos, 'transformation_photos')) {
+      throw errKeyPhotos;
+    }
+  }
+
+  try {
+    const row = await findByUserId(userId, withPhotos);
+    return row ? { ...row, ProfileImageKey: null } : null;
+  } catch (errPhotos) {
+    if (!isMissingColumn(errPhotos, 'transformation_photos')) throw errPhotos;
+  }
+
+  try {
+    const row = await findByUserId(userId, withKey);
+    return row ? { ...row, transformation_photos: null } : null;
+  } catch (errKey) {
+    if (!isMissingColumn(errKey, 'ProfileImageKey')) throw errKey;
+  }
+
+  const row = await findByUserId(userId, basic);
+  return row ? { ...row, ProfileImageKey: null, transformation_photos: null } : null;
+}
+
+/**
+ * Custom data-URI avatars that have not been copied to R2 yet.
+ * @param {{ from: number, to: number }} range inclusive MySQL .range()
+ */
+export async function listPendingAvatarBackfill({ from = 0, to = 49 } = {}) {
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from(TEAM)
+    .select('"UserId", "ProfileImage", "ProfileImageKey"')
+    .is('ProfileImageKey', null)
+    .like('ProfileImage', 'data:image%')
+    .order('UserId', { ascending: true })
+    .range(from, to);
+  if (error) {
+    if (isMissingColumn(error, 'ProfileImageKey')) {
+      throw new Error('Run migration add_profile_image_key_to_team_table.sql before backfill');
+    }
+    throw error;
+  }
+  return data || [];
+}
+
+/**
+ * Custom data-URI avatars already copied to R2 (recompress pass).
+ * @param {{ from: number, to: number }} range inclusive MySQL .range()
+ */
+export async function listAvatarsForRecompress({ from = 0, to = 49 } = {}) {
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from(TEAM)
+    .select('"UserId", "ProfileImage", "ProfileImageKey"')
+    .not('ProfileImageKey', 'is', null)
+    .like('ProfileImage', 'data:image%')
+    .order('UserId', { ascending: true })
+    .range(from, to);
+  if (error) {
+    if (isMissingColumn(error, 'ProfileImageKey')) {
+      throw new Error('Run migration add_profile_image_key_to_team_table.sql before backfill');
+    }
+    throw error;
+  }
+  return data || [];
+}
+
+/**
+ * Rows with transformation_photos JSONB (filter in script for pending R2 keys).
+ * @param {{ from: number, to: number }} range inclusive MySQL .range()
+ */
+export async function listTransformationPhotosForBackfill({ from = 0, to = 49 } = {}) {
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from(TEAM)
+    .select('"UserId", transformation_photos')
+    .not('transformation_photos', 'is', null)
+    .order('UserId', { ascending: true })
+    .range(from, to);
+  if (error) {
+    if (isMissingColumn(error, 'transformation_photos')) {
+      throw new Error('transformation_photos column missing — run its migration before backfill');
+    }
+    throw error;
+  }
+  return data || [];
+}
+
+/**
+ * All persisted R2 keys (any ProfileImage type). Used to avoid deleting live avatars.
+ * @param {{ from: number, to: number }} range inclusive MySQL .range()
+ */
+export async function listProfileImageKeysPage({ from = 0, to = 199 } = {}) {
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from(TEAM)
+    .select('"UserId", "ProfileImageKey"')
+    .not('ProfileImageKey', 'is', null)
+    .order('UserId', { ascending: true })
+    .range(from, to);
+  if (error) {
+    if (isMissingColumn(error, 'ProfileImageKey')) {
+      throw new Error('Run migration add_profile_image_key_to_team_table.sql before backfill');
+    }
+    throw error;
+  }
+  return data || [];
+}
+
+function isMissingColumn(error, columnName) {
+  const msg = String(error?.message || error || '');
+  return /column/i.test(msg) && new RegExp(columnName, 'i').test(msg);
+}
+
+function isMissingIsDeletedColumn(error) {
+  const msg = String(error?.message || error || '');
+  return /IsDeleted/i.test(msg) && /column/i.test(msg) && /does not exist|not find|unknown/i.test(msg);
+}
+
+/**
+ * Latest weight metrics for many users (one row each — most recent CreatedAt).
+ * @param {Array<number|string>} userIds
+ * @returns {Promise<Map<number, { weightKg: number|null, fatPercent: number|null, bmi: number|null, bmr: number|null }>>}
+ */
+export async function getLatestWeightMetricsByUserIds(userIds) {
+  const out = new Map();
+  const ids = [...new Set(
+    (userIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0),
+  )];
+  if (ids.length === 0) return out;
+
+  const db = getMysqlClient();
+  const selectCols = 'UserId, Weight, BodyFat, Bmi, Bmr, CreatedAt';
+  const chunkSize = 100;
+
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const run = (withDeletedFilter) => {
+      let q = db
+        .from('weight_records_table')
+        .select(selectCols)
+        .in('UserId', chunk)
+        .order('CreatedAt', { ascending: false });
+      if (withDeletedFilter) {
+        q = q.or('IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0');
+      }
+      return q;
+    };
+
+    let { data, error } = await run(true);
+    if (error && isMissingIsDeletedColumn(error)) {
+      ({ data, error } = await run(false));
+    }
+    if (error) {
+      console.warn('[user.repo] getLatestWeightMetricsByUserIds failed:', error.message);
+      continue;
+    }
+
+    const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
+    for (const row of data || []) {
+      const uid = Number(row.UserId);
+      if (!Number.isFinite(uid) || out.has(uid)) continue;
+      out.set(uid, {
+        weightKg: num(row.Weight),
+        fatPercent: num(row.BodyFat),
+        bmi: num(row.Bmi),
+        bmr: num(row.Bmr),
+      });
+    }
+  }
+
+  return out;
+}
+
 export async function getLatestWeight(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid < 1) return null;
+
+  const db = getMysqlClient();
+  const selectCols = 'ID, Weight, BodyFat, Bmi, Bmr, CreatedAt';
+
+  let query = db
     .from('weight_records_table')
-    .select('"Weight", "BodyFat", "Bmi", "CreatedAt"')
-    .eq('"UserId"', userId)
-    .or('"IsDeleted".is.null,"IsDeleted".eq.false,"IsDeleted".eq.0')
-    .order('"CreatedAt"', { ascending: false })
+    .select(selectCols)
+    .eq('UserId', uid)
+    .or('IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0')
+    .order('CreatedAt', { ascending: false })
     .limit(1);
-  if (error) return null;
+
+  let { data, error } = await query;
+  if (error && isMissingIsDeletedColumn(error)) {
+    console.warn('[user.repo] getLatestWeight: IsDeleted missing — retrying without soft-delete filter');
+    ({ data, error } = await db
+      .from('weight_records_table')
+      .select(selectCols)
+      .eq('UserId', uid)
+      .order('CreatedAt', { ascending: false })
+      .limit(1));
+  }
+  if (error) {
+    console.warn('[user.repo] getLatestWeight failed:', error.message);
+    return null;
+  }
   return Array.isArray(data) && data.length > 0 ? data[0] : null;
 }
 
+/**
+ * First (oldest) weight record for a user — becomes their Initial Weight.
+ * Later uploads must not change this value.
+ * @param {number|string} userId
+ * @returns {Promise<object|null>}
+ */
+export async function getInitialWeight(userId) {
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid < 1) return null;
+
+  const db = getMysqlClient();
+  const selectCols = 'ID, Weight, CreatedAt';
+
+  let { data, error } = await db
+    .from('weight_records_table')
+    .select(selectCols)
+    .eq('UserId', uid)
+    .or('IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0')
+    .order('CreatedAt', { ascending: true })
+    .limit(1);
+
+  if (error && isMissingIsDeletedColumn(error)) {
+    console.warn('[user.repo] getInitialWeight: IsDeleted missing — retrying without soft-delete filter');
+    ({ data, error } = await db
+      .from('weight_records_table')
+      .select(selectCols)
+      .eq('UserId', uid)
+      .order('CreatedAt', { ascending: true })
+      .limit(1));
+  }
+  if (error) {
+    console.warn('[user.repo] getInitialWeight failed:', error.message);
+    return null;
+  }
+  return Array.isArray(data) && data.length > 0 ? data[0] : null;
+}
+
+/**
+ * Latest non-null BodyFat % from any weight record (most recent first).
+ * @param {number|string} userId
+ * @returns {Promise<number|null>}
+ */
+export async function getLatestWeightBodyFat(userId) {
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid < 1) return null;
+
+  const db = getMysqlClient();
+  const run = (withDeletedFilter) => {
+    let q = db
+      .from('weight_records_table')
+      .select('BodyFat')
+      .eq('UserId', uid)
+      .not('BodyFat', 'is', null);
+    if (withDeletedFilter) {
+      q = q.or('IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0');
+    }
+    return q.order('CreatedAt', { ascending: false }).limit(1).maybeSingle();
+  };
+
+  let { data, error } = await run(true);
+  if (error && isMissingIsDeletedColumn(error)) {
+    ({ data, error } = await run(false));
+  }
+  if (error || data?.BodyFat == null) return null;
+  const bf = parseFloat(data.BodyFat);
+  return Number.isFinite(bf) ? bf : null;
+}
+
+/**
+ * Persist body fat % onto the user's latest weight record.
+ * @param {number|string} userId
+ * @param {number} bodyFat
+ * @param {number|null} [bmr]
+ * @returns {Promise<{ ID: number, Weight: *, BodyFat: *, Bmr: * }|null>}
+ */
+export async function updateLatestWeightBodyFat(userId, bodyFat, bmr = null) {
+  const uid = Number.parseInt(String(userId), 10);
+  if (!Number.isFinite(uid) || uid < 1) return null;
+
+  const latest = await getLatestWeight(uid);
+  if (!latest?.ID) return null;
+
+  const updates = { BodyFat: bodyFat, UpdatedAt: legacyIstWallNow() };
+  if (bmr != null) updates.Bmr = bmr;
+
+  const db = getMysqlClient();
+  const runUpdate = (withDeletedFilter) => {
+    let q = db
+      .from('weight_records_table')
+      .update(updates)
+      .eq('ID', latest.ID)
+      .eq('UserId', uid);
+    if (withDeletedFilter) {
+      q = q.or('IsDeleted.is.null,IsDeleted.eq.false,IsDeleted.eq.0');
+    }
+    return q.select('ID, Weight, BodyFat, Bmr').maybeSingle();
+  };
+
+  let { data, error } = await runUpdate(true);
+  if (error && isMissingIsDeletedColumn(error)) {
+    ({ data, error } = await runUpdate(false));
+  }
+  if (error) throw error;
+  return data || null;
+}
+
 export async function updateUserByEmail(email, updateData) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .update(updateData)
     .eq('Email', email)
@@ -132,17 +572,150 @@ export async function updateUserByEmail(email, updateData) {
 }
 
 export async function updateUserById(userId, updateData) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from(TEAM)
     .update(updateData)
     .eq('UserId', userId);
   if (error) throw error;
 }
 
+/**
+ * Soft-load EntryUser + BcmProfileReviewedAt (column may be missing pre-migration).
+ * @returns {Promise<{ EntryUser?: string|null, BcmProfileReviewedAt?: string|null }|null>}
+ */
+export async function getBcmReviewFields(userId) {
+  try {
+    return await findByUserId(userId, '"EntryUser", "BcmProfileReviewedAt"');
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/BcmProfileReviewedAt/i.test(msg)) {
+      try {
+        return await findByUserId(userId, '"EntryUser"');
+      } catch (err2) {
+        const msg2 = String(err2?.message || err2 || '');
+        if (/EntryUser|column/i.test(msg2)) return null;
+        throw err2;
+      }
+    }
+    if (/EntryUser|column/i.test(msg)) return null;
+    throw err;
+  }
+}
+
+/**
+ * Set BcmProfileReviewedAt once (idempotent). No-ops if column missing.
+ * @returns {Promise<boolean>} true when recorded (or already set)
+ */
+export async function markBcmProfileReviewedIfNeeded(userId, reviewedAt) {
+  try {
+    const row = await findByUserId(userId, '"BcmProfileReviewedAt"');
+    if (row?.BcmProfileReviewedAt) return true;
+    await updateUserById(userId, { BcmProfileReviewedAt: reviewedAt });
+    return true;
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/BcmProfileReviewedAt|column/i.test(msg)) return false;
+    throw err;
+  }
+}
+
+/**
+ * After email-adopt: move BCM cards + copy empty profile metrics from the
+ * phone stub onto the recovered email account so Complete Profile prefills.
+ *
+ * @param {number} fromUserId - deactivated BCM / phone stub
+ * @param {number} toUserId - adopted email account
+ * @returns {Promise<{ cardsMoved: number, metricsCopied: string[] }>}
+ */
+export async function migrateBcmLeadToAdoptedUser(fromUserId, toUserId) {
+  const fromId = parseInt(fromUserId, 10);
+  const toId = parseInt(toUserId, 10);
+  if (!Number.isFinite(fromId) || fromId < 1 || !Number.isFinite(toId) || toId < 1) {
+    return { cardsMoved: 0, metricsCopied: [] };
+  }
+  if (fromId === toId) return { cardsMoved: 0, metricsCopied: [] };
+
+  const db = getMysqlClient();
+  const metricCols =
+    '"UserId", "Height", "Bmr", "Gender", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", "DietType", "PhysicalActivityLevel", recovered_health_issues, transformation_photos';
+
+  let fromRow = null;
+  let toRow = null;
+  try {
+    const [{ data: fromData }, { data: toData }] = await Promise.all([
+      db.from(TEAM).select(metricCols).eq('UserId', fromId).maybeSingle(),
+      db.from(TEAM).select(metricCols).eq('UserId', toId).maybeSingle(),
+    ]);
+    fromRow = fromData;
+    toRow = toData;
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (!/column|recovered_health|transformation_photos/i.test(msg)) throw err;
+    const basic = '"UserId", "Height", "Bmr", "Gender", "Age", "DietType", "PhysicalActivityLevel"';
+    const [{ data: fromData }, { data: toData }] = await Promise.all([
+      db.from(TEAM).select(basic).eq('UserId', fromId).maybeSingle(),
+      db.from(TEAM).select(basic).eq('UserId', toId).maybeSingle(),
+    ]);
+    fromRow = fromData;
+    toRow = toData;
+  }
+
+  const { buildAdoptProfileMetricsPatch } = await import('./domain/onboardingEmail.rules.js');
+  const metricsPatch = buildAdoptProfileMetricsPatch(fromRow, toRow);
+  if (Object.keys(metricsPatch).length > 0) {
+    await updateUserById(toId, metricsPatch);
+  }
+
+  let cardsMoved = 0;
+  const { data: moved, error: cardErr } = await db
+    .from('body_parameters_cards')
+    .update({ user_id: toId })
+    .eq('user_id', fromId)
+    .eq('is_deleted', false)
+    .select('id');
+  if (cardErr) {
+    logger.warn('[migrateBcmLead] card reassign failed', { message: cardErr.message });
+  } else {
+    cardsMoved = Array.isArray(moved) ? moved.length : 0;
+  }
+
+  // If adopted account has no weight row, copy the stub's latest weight.
+  const { data: toWeights } = await db
+    .from('weight_records_table')
+    .select('"ID"')
+    .eq('UserId', toId)
+    .or('"IsDeleted".is.null,"IsDeleted".eq.0,"IsDeleted".eq.false')
+    .limit(1);
+  if (!toWeights?.length) {
+    const { data: fromWeights } = await db
+      .from('weight_records_table')
+      .select('"Weight", "Bmi", "BodyFat", "Bmr", "CreatedAt", "UpdatedAt"')
+      .eq('UserId', fromId)
+      .or('"IsDeleted".is.null,"IsDeleted".eq.0,"IsDeleted".eq.false')
+      .order('"CreatedAt"', { ascending: false })
+      .limit(1);
+    const w = fromWeights?.[0];
+    if (w?.Weight != null) {
+      await db.from('weight_records_table').insert({
+        UserId: toId,
+        Weight: w.Weight,
+        Bmi: w.Bmi ?? null,
+        BodyFat: w.BodyFat ?? null,
+        Bmr: w.Bmr ?? null,
+        CreatedAt: w.CreatedAt,
+        UpdatedAt: w.UpdatedAt,
+      });
+    }
+  }
+
+  return { cardsMoved, metricsCopied: Object.keys(metricsPatch) };
+}
+
+
 export async function verifyProfile(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select('UserId, Height, DietType, PhoneNumber, "Gender", "CommunityId", timezone_iana')
     .eq('UserId', userId)
@@ -152,8 +725,8 @@ export async function verifyProfile(userId) {
 }
 
 export async function insertUser(payload) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .insert(payload)
     .select()
@@ -162,8 +735,8 @@ export async function insertUser(payload) {
 }
 
 export async function setUserStatus(userId, status) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from(TEAM)
     .update({ Status: status })
     .eq('"UserId"', userId);
@@ -174,9 +747,13 @@ export async function getStatusFields(email) {
   return findByEmail(email, '"UserId", "TeamId", "CoachId", "Role", "SetupSkipped", "Status"');
 }
 
+export async function getStatusFieldsByUserId(userId) {
+  return findByUserId(userId, '"UserId", "TeamId", "CoachId", "Role", "SetupSkipped", "Status"');
+}
+
 export async function getPendingApproval(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(APPROVALS)
     .select('"Id", "UplineCoachId", "Status", "OtpExpiresAt", "RequestedAt"')
     .eq('"RequesterId"', userId)
@@ -191,8 +768,8 @@ export async function getPendingApproval(userId) {
 }
 
 export async function deleteApproval(id) {
-  const supabase = getSupabaseClient();
-  await supabase.from(APPROVALS).delete().eq('"Id"', id);
+  const db = getMysqlClient();
+  await db.from(APPROVALS).delete().eq('"Id"', id);
 }
 
 /**
@@ -200,8 +777,8 @@ export async function deleteApproval(id) {
  * Returns null when the user is not found or on error (non-fatal).
  */
 export async function findPublicProfileById(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select('"UserName", "ProfileImage"')
     .eq('"UserId"', userId)
@@ -211,8 +788,8 @@ export async function findPublicProfileById(userId) {
 }
 
 export async function getSnoozeRow(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select('profile_pic_snooze')
     .eq('UserId', userId)
@@ -222,8 +799,8 @@ export async function getSnoozeRow(userId) {
 }
 
 export async function setSnooze(userId, newSnooze) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from(TEAM)
     .update({ profile_pic_snooze: newSnooze })
     .eq('UserId', userId);
@@ -235,25 +812,30 @@ export async function setSnooze(userId, newSnooze) {
  * caller can log them.
  */
 export async function purgeUserData(userId, normalizedEmail) {
-  const supabase = getSupabaseClient();
-  const results = await Promise.allSettled([
-    supabase.from('food_nutrition_data_table').delete().eq('"UserID"', userId.toString()),
-    supabase.from('weight_records_table').delete().eq('UserId', userId),
-    supabase.from('education_logs_table').delete().eq('UserId', userId),
-    supabase.from('daily_step_activity').delete().eq('UserId', userId),
-    supabase.from('wellness_university_enrollments_table').delete().eq('UserId', userId),
-    supabase.from('wellness_counselling_assessments').delete().eq('UserId', userId),
-    supabase.from('otp_tokens_table').delete().ilike('recipient', normalizedEmail),
+  const db = getMysqlClient();
+  const tasks = [
+    db.from('food_nutrition_data_table').delete().eq('"UserID"', userId.toString()),
+    db.from('weight_records_table').delete().eq('UserId', userId),
+    db.from('education_logs_table').delete().eq('UserId', userId),
+    db.from('daily_step_activity').delete().eq('UserId', userId),
+    db.from('wellness_university_enrollments_table').delete().eq('UserId', userId),
+    db.from('wellness_counselling_assessments').delete().eq('UserId', userId),
     // Null-out ownership before team_table row is removed — prevents the FK
     // constraint violation on nutrition_centers_table.owner_user_id.
-    supabase.from('nutrition_centers_table').update({ owner_user_id: null }).eq('owner_user_id', userId),
-  ]);
+    db.from('nutrition_centers_table').update({ owner_user_id: null }).eq('owner_user_id', userId),
+  ];
+  if (normalizedEmail) {
+    tasks.push(
+      db.from('otp_tokens_table').delete().ilike('recipient', normalizedEmail),
+    );
+  }
+  const results = await Promise.allSettled(tasks);
   return results;
 }
 
 export async function deleteTeamRow(userId) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from(TEAM)
     .delete()
     .eq('UserId', userId);
@@ -285,8 +867,8 @@ export async function syncProfileToLatestBodyParamsCard(userId, fields = {}) {
     return { synced: false, fields: [] };
   }
 
-  const supabase = getSupabaseClient();
-  const { error: updateErr } = await supabase
+  const db = getMysqlClient();
+  const { error: updateErr } = await db
     .from('body_parameters_cards')
     .update(patch)
     .eq('id', card.id)
@@ -300,25 +882,25 @@ export async function syncProfileToLatestBodyParamsCard(userId, fields = {}) {
 
 /** Fetch raw food correction / nutrition data needed by user context. */
 export async function getUserContextData(userId) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   return Promise.all([
-    supabase
+    db
       .from('food_corrections_table')
       .select('"AiDetected", "UserCorrected", "TimesCorrected"')
       .eq('"UserId"', userId)
       .order('"TimesCorrected"', { ascending: false })
       .order('"LastCorrected"', { ascending: false })
       .limit(10),
-    supabase
+    db
       .from('food_corrections_table')
       .select('"AiDetected", "UserCorrected", "UserId", "TimesCorrected", "LastCorrected"')
       .order('"LastCorrected"', { ascending: false }),
-    supabase
+    db
       .from(TEAM)
       .select('"DietType"')
       .eq('"UserId"', userId)
       .maybeSingle(),
-    supabase
+    db
       .from('food_nutrition_data_table')
       .select('"AnalysisData", "CreatedAt"')
       .eq('"UserId"', userId)

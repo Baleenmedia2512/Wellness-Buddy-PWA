@@ -1,5 +1,5 @@
 /**
- * Unit tests for wellness score domain rules (34 individual parameters).
+ * Unit tests for wellness score domain rules (35 individual parameters).
  * Run: node --test backend/features/wellness-score/__tests__/score.rules.test.js
  */
 import { describe, it } from 'node:test';
@@ -19,6 +19,7 @@ import {
   calculateWeightImprovement,
   calculatePhysicalActivity,
   calculateWellnessScore,
+  calculateGoodHabitPost,
   aggregateDailyFoodStats,
 } from '../domain/score.rules.js';
 import { computeNutritionTargets } from '../domain/nutrition-targets.js';
@@ -37,6 +38,34 @@ describe('logging parameters', () => {
     });
     assert.equal(r.earnedPoints, 100);
     assert.equal(r.key, 'edu_post');
+  });
+
+  it('education post — driver Z on 07:33 wall stays inside 7:15–8:45', () => {
+    const r = calculateEducationPost({
+      maxPoints: 100,
+      educationLogs: [{
+        CreatedAt: '2026-10-28T07:33:00.000Z',
+        Topic: 'Daily Education',
+        Platform: 'Zoom',
+      }],
+      window: { start: '07:15:00', end: '08:45:00' },
+    });
+    assert.equal(r.earnedPoints, 100);
+    assert.match(r.calculationReason, /allowed time/i);
+  });
+
+  it('education post — real afternoon wall time stays late', () => {
+    const r = calculateEducationPost({
+      maxPoints: 100,
+      educationLogs: [{
+        CreatedAt: '2026-10-28T13:03:00',
+        Topic: 'Daily Education',
+        Platform: 'Zoom',
+      }],
+      window: { start: '07:15:00', end: '08:45:00' },
+    });
+    assert.equal(r.earnedPoints, 0);
+    assert.match(r.calculationReason, /Late/i);
   });
 
   it('education post — 0 when late', () => {
@@ -81,6 +110,22 @@ describe('logging parameters', () => {
       window: EDU,
     });
     assert.equal(r.earnedPoints, 100);
+  });
+
+  it('good habit post — full points any time today', () => {
+    const r = calculateGoodHabitPost({
+      maxPoints: 100,
+      habitLogs: [{ CreatedAt: '2026-07-08T23:30:00' }],
+    });
+    assert.equal(r.key, 'good_habit_post');
+    assert.equal(r.earnedPoints, 100);
+    assert.match(r.calculationReason, /Done today/i);
+  });
+
+  it('good habit post — 0 when missing', () => {
+    const r = calculateGoodHabitPost({ maxPoints: 100, habitLogs: [] });
+    assert.equal(r.earnedPoints, 0);
+    assert.match(r.calculationReason, /Not completed/i);
   });
 
   it('weight post — 0 when late', () => {
@@ -148,6 +193,12 @@ describe('nutrition parameters', () => {
   it('protein — proportional below target', () => {
     const r = calculateProtein({ maxPoints: 100, consumed: 80, target: 100 });
     assert.equal(r.earnedPoints, 80);
+  });
+
+  it('protein — status text uses whole grams', () => {
+    const r = calculateProtein({ maxPoints: 50, consumed: 27.73, target: 113 });
+    assert.equal(r.calculationReason, '28g / 113g');
+    assert.equal(r.earnedPoints, 12);
   });
 
   it('vitamin E — rounds floating-point consumed values in status text', () => {
@@ -231,6 +282,33 @@ describe('progress parameters', () => {
     assert.equal(r.scoringMode, 'progress');
   });
 
+  it('weight improvement — maintain mode always full points', () => {
+    const flat = calculateWeightImprovement({
+      maxPoints: 100,
+      currentWeight: 65,
+      previousWeight: 65,
+      goalMode: 'maintain',
+    });
+    assert.equal(flat.earnedPoints, 100);
+    assert.match(flat.calculationReason, /maintenance/i);
+
+    const up = calculateWeightImprovement({
+      maxPoints: 100,
+      currentWeight: 66,
+      previousWeight: 65,
+      goalMode: 'maintain',
+    });
+    assert.equal(up.earnedPoints, 100);
+
+    const noPrev = calculateWeightImprovement({
+      maxPoints: 100,
+      currentWeight: 65,
+      previousWeight: null,
+      goalMode: 'maintain',
+    });
+    assert.equal(noPrev.earnedPoints, 100);
+  });
+
   it('weight improvement — 0 without previous weight', () => {
     const r = calculateWeightImprovement({
       maxPoints: 100,
@@ -248,8 +326,27 @@ describe('progress parameters', () => {
   });
 });
 
+describe('aggregateDailyFoodStats', () => {
+  it('includes beverage-only meals in nutrient totals', () => {
+    const stats = aggregateDailyFoodStats([
+      {
+        AnalysisData: { foods: [{ name: 'Filter Coffee with milk' }] },
+        TotalProtein: 3,
+        TotalCalories: 40,
+      },
+      {
+        AnalysisData: { foods: [{ name: 'Herbalife Shake' }] },
+        TotalProtein: 25,
+        TotalCalories: 200,
+      },
+    ]);
+    assert.equal(stats.totalProtein, 28);
+    assert.equal(stats.totalCalories, 240);
+  });
+});
+
 describe('calculateWellnessScore', () => {
-  it('returns 34 individual parameter scores', () => {
+  it('returns 35 individual parameter scores', () => {
     const nutritionTargets = computeNutritionTargets({ bmr: 1500, weightKg: 70 });
     const dailyStats = aggregateDailyFoodStats([
       {
@@ -264,6 +361,7 @@ describe('calculateWellnessScore', () => {
     const r = calculateWellnessScore({
       parameterConfig: DEFAULT_PARAMETER_CONFIG,
       educationLogs: [{ CreatedAt: '2026-07-08T07:00:00', Topic: 'Edu' }],
+      habitLogs: [{ CreatedAt: '2026-07-08T23:30:00' }],
       weightRecords: [{ CreatedAt: '2026-07-08T06:00:00', Weight: 69 }],
       foodRecords: [{
         CreatedAt: '2026-07-08T07:00:00',
@@ -290,7 +388,7 @@ describe('calculateWellnessScore', () => {
       bmr: 1500,
     });
 
-    assert.equal(r.parameters.length, 34);
+    assert.equal(r.parameters.length, 35);
     assert.ok(r.totalPossible > 0);
     assert.ok(r.percentage >= 0 && r.percentage <= 100);
 
@@ -298,6 +396,8 @@ describe('calculateWellnessScore', () => {
     assert.ok(keys.has('protein'));
     assert.ok(keys.has('vitamin_c'));
     assert.ok(keys.has('physical_activity'));
+    assert.ok(keys.has('good_habit_post'));
+    assert.equal(r.parameters.find((p) => p.key === 'good_habit_post')?.earnedPoints, 100);
     assert.equal(keys.has('nutrition'), false);
     assert.equal(keys.has('foodDiary'), false);
   });
@@ -322,7 +422,7 @@ describe('calculateWellnessScore', () => {
       exerciseCalories: 0,
       bmr: 1500,
     });
-    assert.equal(r.parameters.length, 33);
+    assert.equal(r.parameters.length, 34);
     assert.ok(!r.parameters.some((p) => p.key === 'calories'));
   });
 });

@@ -2,45 +2,127 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
   forwardRef,
   useImperativeHandle,
 } from 'react';
-import { Award, Star } from 'lucide-react';
+import { Trophy } from 'lucide-react';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
+import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
+import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js';
+import TeamMemberProfileModal from '../../../shared/components/TeamMemberProfileModal';
+import LeaderboardAvatar from './LeaderboardAvatar.js';
+import LeaderboardAvatarViewer from './LeaderboardAvatarViewer.js';
+import LeaderboardRankBadge from './LeaderboardRankBadge.js';
+import {
+  buildUserAvatarUrl,
+  getAvatarDisplayVersion,
+} from '../../user/services/avatarDisplayVersion';
+import { sortLeaderboardByRankAsc } from '../utils/leaderboardOrder.js';
+import {
+  hasValidProfileName,
+  isPlaceholderUserName,
+} from '../../user/domain/profileCompleteness';
+import { subscribeDailyWellnessScoreSeed } from '../../wellness-score-sheet/services/dailyWellnessScoreCache';
+import { LEADERBOARD_CONFIG } from '../../../config/leaderboardConfig.js';
+import { useRaceLeaderboardRealtime } from '../hooks/useRaceLeaderboardRealtime.js';
 
-const CACHE_TTL = 5 * 60 * 1000;
-const readCache = () => {
+const CACHE_TTL = 15 * 1000;
+// Keep a short poll even when Realtime is configured — subscribe can fail
+// silently (missing env / blocked WS), and a 60s backup felt "not live".
+const POLL_MS = LEADERBOARD_CONFIG.REFRESH_INTERVAL;
+// v6: overlay chosen display name when DB still has user_<phone>
+const CACHE_KEY_PREFIX = 'wv.lb.wellness.v7.';
+const LEGACY_CACHE_KEYS = [
+  'wv.lb.wellness',
+  'wv.lb.wellness.v2',
+  'wv.lb.wellness.v3',
+  'wv.lb.wellness.v4',
+  'wv.lb.wellness.v5',
+  'wv.lb.wellness.v6',
+];
+
+function displayLeaderboardName(entry, viewerUserId, viewerName) {
+  const stored = String(entry?.userName || '').trim();
+  const isViewer = Number(entry?.userId) === Number(viewerUserId);
+  if (
+    isViewer
+    && hasValidProfileName(viewerName)
+    && isPlaceholderUserName(stored)
+  ) {
+    return String(viewerName).trim();
+  }
+  return stored || 'Unknown';
+}
+
+const cacheKeyFor = (userId) => `${CACHE_KEY_PREFIX}${userId || 'anon'}`;
+
+const stripAvatars = (data) =>
+  (data || []).map(({ profileImage, ...rest }) => rest);
+
+/** Home strip order: #1, #2, … #N (best first). */
+const toAscendingRankOrder = (data) => sortLeaderboardByRankAsc(data);
+
+const readCache = (userId) => {
   try {
-    const raw = localStorage.getItem('wv.lb.wellness');
+    LEGACY_CACHE_KEYS.forEach((k) => localStorage.removeItem(k));
+    const raw = localStorage.getItem(cacheKeyFor(userId));
     if (!raw) return null;
     const c = JSON.parse(raw);
-    return Date.now() - c.ts < CACHE_TTL ? c.data : null;
+    return Date.now() - c.ts < CACHE_TTL ? toAscendingRankOrder(c.data) : null;
   } catch { return null; }
 };
-const writeCache = (data) => {
+const writeCache = (userId, data) => {
   try {
-    localStorage.setItem('wv.lb.wellness', JSON.stringify({ data, ts: Date.now() }));
-  } catch { /* ignore */ }
+    // Do not cache base64 avatars — quota blows and leaves stale null-avatar data.
+    localStorage.setItem(
+      cacheKeyFor(userId),
+      JSON.stringify({ data: stripAvatars(toAscendingRankOrder(data)), ts: Date.now() }),
+    );
+  } catch {
+    try { localStorage.removeItem(cacheKeyFor(userId)); } catch { /* ignore */ }
+  }
 };
 
 /**
- * Top wellness scores for today (IST) — marquee strip on Home.
+ * Top wellness scores for today (IST).
+ * @param {'strip'|'tile'} variant - strip = auto-scroll headline (legacy); tile = static card list
  */
-const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
-  const [leaderboardData, setLeaderboardData] = useState(() => readCache() ?? []);
-  const [isVisible, setIsVisible] = useState(() => (readCache()?.length ?? 0) > 0);
-  const [isPaused, setIsPaused] = useState(false);
+const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, viewerName, email, variant = 'strip' }, ref) => {
+  const [leaderboardData, setLeaderboardData] = useState(() => readCache(userId) ?? []);
+  const [isVisible, setIsVisible] = useState(() => (readCache(userId)?.length ?? 0) > 0);
+  const [hasEntered, setHasEntered] = useState(() => (readCache(userId)?.length ?? 0) > 0);
+  const [expandedAvatar, setExpandedAvatar] = useState(null);
+  const [profileMember, setProfileMember] = useState(null);
+  const isTile = variant === 'tile';
+  const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
+    enabled: !isTile && isVisible && leaderboardData.length > 0,
+  });
+
+  const fetchInFlightRef = useRef(false);
 
   const fetchLeaderboard = useCallback(async () => {
+    const emailTrim = String(email || '').trim();
+    if ((userId == null || userId === '') && !emailTrim) {
+      setLeaderboardData([]);
+      setIsVisible(false);
+      return;
+    }
+    if (fetchInFlightRef.current) return;
+    fetchInFlightRef.current = true;
     try {
+      const params = new URLSearchParams({
+        topN: String(topN),
+      });
+      if (userId != null && userId !== '') params.set('userId', String(userId));
+      if (emailTrim) params.set('email', emailTrim);
       const response = await fetch(
-        `${apiBaseUrl}/api/leaderboard/get-wellness-score-leaderboard?topN=${topN}&t=${Date.now()}`,
+        `${apiBaseUrl}/api/leaderboard/get-wellness-score-leaderboard?${params}`,
         {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
           },
         },
       );
@@ -48,9 +130,10 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
       const result = await response.json();
 
       if (result.success && result.data?.length > 0) {
-        setLeaderboardData(result.data);
+        const ordered = toAscendingRankOrder(result.data);
+        setLeaderboardData(ordered);
         setIsVisible(true);
-        writeCache(result.data);
+        writeCache(userId, ordered);
       } else {
         debugLog('[WELLNESS-LB] No data:', result.message || 'Empty');
         setLeaderboardData([]);
@@ -60,102 +143,154 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
       console.error('[WELLNESS-LB] Error fetching data:', error);
       setLeaderboardData([]);
       setIsVisible(false);
+    } finally {
+      fetchInFlightRef.current = false;
     }
-  }, [apiBaseUrl, topN]);
+  }, [apiBaseUrl, topN, userId, email]);
 
   useImperativeHandle(ref, () => ({
     refresh: fetchLeaderboard,
   }));
 
+  useRaceLeaderboardRealtime(fetchLeaderboard);
+
   useEffect(() => {
+    const cached = readCache(userId);
+    if (cached?.length) {
+      setLeaderboardData(cached);
+      setIsVisible(true);
+    }
     fetchLeaderboard();
-    const refreshInterval = setInterval(fetchLeaderboard, 5 * 60 * 1000);
-    return () => clearInterval(refreshInterval);
+    const retryEmpty = setTimeout(() => {
+      if (userId == null || userId === '') return;
+      if (!readCache(userId)?.length) fetchLeaderboard();
+    }, 1600);
+    const stopInterval = setVisibilityAwareInterval(fetchLeaderboard, POLL_MS);
+    return () => {
+      clearTimeout(retryEmpty);
+      stopInterval();
+    };
+  }, [fetchLeaderboard, userId]);
+
+  useEffect(() => {
+    return subscribeDailyWellnessScoreSeed(() => {
+      // Any local score seed — refresh Top 10 immediately (race scoreboard).
+      fetchLeaderboard();
+    });
   }, [fetchLeaderboard]);
 
-  const getAvatar = (email, userName, profileImage) => {
-    if (profileImage) {
-      return (
-        <img
-          src={profileImage}
-          alt={userName || 'User'}
-          className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover shadow-md border-2 border-white"
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-        />
-      );
+  // Smooth enter once data is ready
+  useEffect(() => {
+    if (!isVisible || leaderboardData.length === 0) {
+      setHasEntered(false);
+      return undefined;
     }
+    const id = requestAnimationFrame(() => setHasEntered(true));
+    return () => cancelAnimationFrame(id);
+  }, [isVisible, leaderboardData.length]);
 
-    const initial = userName
-      ? userName.charAt(0).toUpperCase()
-      : email
-        ? email.charAt(0).toUpperCase()
-        : '?';
-
-    const colors = [
-      'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500',
-      'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500',
-    ];
-    const colorIndex = (userName || email || '').length % colors.length;
-
-    return (
-      <div
-        className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full ${colors[colorIndex]} flex items-center justify-center text-white font-bold text-sm sm:text-base shadow-md`}
-      >
-        {initial}
-      </div>
-    );
-  };
-
-  const getRankColor = (pct) => {
-    if (pct >= 90) return 'bg-gradient-to-r from-yellow-400 to-yellow-600 text-white';
-    if (pct >= 80) return 'bg-gradient-to-r from-gray-300 to-gray-400 text-gray-800';
-    if (pct >= 70) return 'bg-gradient-to-r from-orange-400 to-orange-600 text-white';
-    return 'bg-gradient-to-r from-green-500 to-green-600 text-white';
-  };
-
-  const getStarIcon = (pct) => {
-    if (pct >= 90) {
-      return <Star className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-yellow-500 fill-yellow-500" />;
-    }
-    if (pct >= 80) {
-      return <Star className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-gray-400 fill-gray-400" />;
-    }
-    if (pct >= 70) {
-      return <Star className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-orange-500 fill-orange-500" />;
-    }
-    return <Award className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-green-500" />;
+  const getRankColor = (rank) => {
+    // Gold / silver / bronze by place (1 / 2 / 3), not by score %.
+    if (rank === 1) return 'bg-gradient-to-br from-yellow-400 to-yellow-600 text-white';
+    if (rank === 2) return 'bg-gradient-to-br from-gray-300 to-gray-500 text-gray-900';
+    if (rank === 3) return 'bg-gradient-to-br from-orange-400 to-orange-600 text-white';
+    return 'bg-gradient-to-br from-green-500 to-green-700 text-white';
   };
 
   if (!isVisible || leaderboardData.length === 0) {
     return null;
   }
 
-  const renderLeaderboardCard = (user, key) => (
+  const openExpandedAvatar = (user, shownName) => {
+    setExpandedAvatar({
+      src: buildUserAvatarUrl(apiBaseUrl, user.userId, getAvatarDisplayVersion()),
+      name: shownName,
+      email: user.email,
+      userId: user.userId,
+    });
+  };
+
+  const openProfile = (user) => {
+    const memberEmail = String(user?.email || '').trim();
+    const memberUserId = user?.userId ?? user?.UserId;
+    if (memberEmail || memberUserId != null) {
+      setProfileMember({ email: memberEmail || null, userId: memberUserId ?? null });
+    }
+  };
+
+  const renderTappableAvatar = (user, shownName) => (
+    <button
+      type="button"
+      className="flex-shrink-0 rounded-full p-0 m-0 border-0 bg-transparent cursor-pointer appearance-none leading-none"
+      onClick={(e) => {
+        e.stopPropagation();
+        openExpandedAvatar(user, shownName);
+      }}
+      aria-label={`View ${shownName}'s photo`}
+    >
+      <LeaderboardAvatar
+        apiBaseUrl={apiBaseUrl}
+        userId={user.userId}
+        email={user.email}
+        userName={shownName}
+        profileImage={user.profileImage}
+        interactive={false}
+      />
+    </button>
+  );
+
+  const avatarViewer = (
+    <LeaderboardAvatarViewer
+      isOpen={Boolean(expandedAvatar)}
+      src={expandedAvatar?.src}
+      name={expandedAvatar?.name}
+      onClose={() => setExpandedAvatar(null)}
+      onViewProfile={(expandedAvatar?.email || expandedAvatar?.userId != null) ? () => {
+        setExpandedAvatar(null);
+        openProfile(expandedAvatar);
+      } : undefined}
+    />
+  );
+
+  const profileViewer = (
+    <TeamMemberProfileModal
+      isOpen={Boolean(profileMember)}
+      onClose={() => setProfileMember(null)}
+      memberEmail={profileMember?.email}
+      memberUserId={profileMember?.userId}
+      apiBaseUrl={apiBaseUrl}
+    />
+  );
+
+  const renderLeaderboardCard = (user, key) => {
+    const shownName = displayLeaderboardName(user, userId, viewerName);
+    return (
     <div
       key={key}
       className="inline-flex items-center gap-1.5 sm:gap-2 md:gap-3 mx-2 sm:mx-3 md:mx-4 flex-shrink-0"
     >
-      <div className="inline-flex flex-col items-center justify-center gap-0.5 flex-shrink-0 w-8 sm:w-10 md:w-12">
-        {getStarIcon(user.wellnessPercentage)}
-        <div
-          className={`px-1 sm:px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] md:text-[10px] font-bold leading-none ${getRankColor(
-            user.wellnessPercentage,
-          )}`}
-        >
-          #{user.rank}
-        </div>
-      </div>
+      <LeaderboardRankBadge
+        rank={user.rank}
+        colorClass={getRankColor(user.rank)}
+      />
 
       <div className="flex-shrink-0">
-        {getAvatar(user.email, user.userName, user.profileImage)}
+        {renderTappableAvatar(user, shownName)}
       </div>
 
       <div className="flex flex-col justify-center flex-shrink-0 min-w-0 max-w-[120px] sm:max-w-[150px] md:max-w-[180px]">
-        <span className="font-bold text-gray-800 text-xs sm:text-sm md:text-base truncate leading-tight">
-          {user.userName}
-        </span>
+        <button
+          type="button"
+          className="truncate text-left font-bold text-gray-800 text-xs sm:text-sm md:text-base leading-tight hover:underline focus:outline-none focus-visible:underline"
+          onClick={(event) => {
+            event.stopPropagation();
+            openProfile(user);
+          }}
+          disabled={!user.email && user.userId == null}
+          aria-label={`View ${shownName}'s profile`}
+        >
+          {shownName}
+        </button>
         {(() => {
           const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
           if (!sponsorName && !idealCoachName) return null;
@@ -178,30 +313,100 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
         </span>
       </div>
     </div>
-  );
+    );
+  };
+
+  const renderTileRow = (user) => {
+    const shownName = displayLeaderboardName(user, userId, viewerName);
+    return (
+      <li key={user.userId} className="flex items-center gap-2.5 py-2.5">
+        <LeaderboardRankBadge
+          rank={user.rank}
+          colorClass={getRankColor(user.rank)}
+        />
+        {renderTappableAvatar(user, shownName)}
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            className="block max-w-full truncate text-left text-sm font-semibold text-gray-800 hover:underline focus:outline-none focus-visible:underline"
+            onClick={() => openProfile(user)}
+            disabled={!user.email && user.userId == null}
+            aria-label={`View ${shownName}'s profile`}
+          >
+            {shownName}
+          </button>
+          {(() => {
+            const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
+            if (!sponsorName && !idealCoachName) return null;
+            return (
+              <p className="truncate text-[10px] text-gray-500">
+                {[sponsorName && `Sponsor: ${sponsorName}`, idealCoachName && `Coach: ${idealCoachName}`]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            );
+          })()}
+        </div>
+        <span className="shrink-0 rounded-lg bg-violet-50 px-2 py-1 text-xs font-bold text-violet-700">
+          {Math.round(user.totalEarned ?? 0)}/{Math.round(user.totalPossible ?? 0)}
+        </span>
+      </li>
+    );
+  };
+
+  if (isTile) {
+    return (
+      <section
+        className={`mx-1 rounded-2xl border border-violet-100 bg-white p-3 shadow-sm transition-opacity duration-500 ease-out ${
+          hasEntered ? 'opacity-100' : 'opacity-0'
+        }`}
+        aria-label={`Top ${topN} Wellness Score`}
+      >
+        <header className="mb-1 flex items-center gap-2 border-b border-violet-50 pb-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100" aria-hidden>
+            <Trophy className="h-4 w-4 text-violet-700" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-violet-900">Top {topN} Wellness Score</h3>
+            <p className="text-[11px] text-violet-700/80">Today&apos;s ranking</p>
+          </div>
+        </header>
+        <ul className="divide-y divide-violet-50">
+          {leaderboardData.map(renderTileRow)}
+        </ul>
+        {avatarViewer}
+        {profileViewer}
+      </section>
+    );
+  }
 
   return (
-    <div className="w-full bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 shadow-sm">
+    <div
+      className={`w-full bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 shadow-sm transition-opacity duration-500 ease-out ${
+        hasEntered ? 'opacity-100' : 'opacity-0'
+      }`}
+    >
       <div className="py-0 px-0">
-        <div className="relative h-[56px] sm:h-[60px] overflow-hidden">
-          <div className="absolute inset-y-0 left-0 z-10 pointer-events-none">
-            <div className="flex h-full w-[68px] sm:w-[72px] items-center justify-center border-r border-gray-200 bg-white shadow-sm px-1.5 text-center text-[9px] sm:text-[10px] font-medium leading-tight text-purple-700">
-              Top {topN}<br />Score
+        <div className="relative h-[76px] sm:h-[84px] overflow-hidden">
+          <div className="absolute inset-y-0 left-0 z-10 pointer-events-none flex items-stretch">
+            <div
+              className="flex h-full w-[60px] sm:w-[64px] items-center justify-center rounded-r-md bg-white px-1 py-2 text-center text-[9px] sm:text-[10px] font-semibold leading-[1.2] text-purple-700 shadow-sm"
+              aria-label={`Top ${topN} Wellness Score`}
+            >
+              Top {topN}<br />Wellness<br />Score
             </div>
           </div>
 
           <div
-            className="h-full overflow-hidden cursor-pointer"
-            onClick={() => setIsPaused(!isPaused)}
+            ref={viewportRef}
+            className="h-full overflow-hidden pl-[58px] sm:pl-[62px] cursor-pointer"
+            style={{ touchAction: 'pan-y' }}
+            {...interactionHandlers}
           >
             <div
-              className="animate-smooth-marquee whitespace-nowrap inline-flex items-center h-full"
-              style={{
-                animationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
-                animationPlayState: isPaused ? 'paused' : 'running',
-                WebkitAnimationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
-                WebkitAnimationPlayState: isPaused ? 'paused' : 'running',
-              }}
+              ref={trackRef}
+              className="whitespace-nowrap inline-flex items-center h-full will-change-transform"
+              style={{ transform: 'translate3d(0,0,0)', backfaceVisibility: 'hidden' }}
             >
               {leaderboardData.map((user) =>
                 renderLeaderboardCard(user, `first-${user.userId}`),
@@ -213,6 +418,8 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => 
           </div>
         </div>
       </div>
+      {avatarViewer}
+      {profileViewer}
     </div>
   );
 });

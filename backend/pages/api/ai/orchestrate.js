@@ -43,7 +43,10 @@ import logger from '../../../shared/lib/logger.js';
 import { withTempFileCleanup } from '../../../shared/lib/gemini/tempFileCleanup.js';
 import { analyse } from '../../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
-import { assertReservationValid } from '../../../features/ai-credits/ai-credits.service.js';
+import {
+  assertReservationValid,
+  assertAiFoodAnalysisAccess,
+} from '../../../features/ai-credits/ai-credits.service.js';
 
 
 // Hardcoded enum to avoid importing the browser-only ai-token-monitor SDK
@@ -110,10 +113,13 @@ export default async function handler(req, res) {
     const userId     = sanitiseString(fields.userId);
     const userName   = sanitiseString(fields.userName);
     const userEmail  = sanitiseString(fields.userEmail);
+    const appVersion = sanitiseString(fields.appVersion) || sanitiseString(req.headers['x-app-version']);
     const foodRowId  = sanitiseInt(fields.foodRowId);
-    // modelTier: 'pro' signals the frontend is on its 3rd (escalation) attempt
-    // and wants Gemini Pro instead of Flash for better accuracy.
+    // modelTier: 'pro' = frontend escalation after Flash failed (attempt 2).
     const modelTier  = sanitiseString(fields.modelTier);
+    // fresh=1 bypasses idempotency so retries with the same captureId re-run AI.
+    const fresh = sanitiseString(fields.fresh) === '1'
+      || sanitiseString(fields.fresh) === 'true';
     // Credit gate: when ff.ai-credits is ON and client sends creditGated=1,
     // require a valid pending reservationId (never trust client dailyLimit).
     const creditGated = sanitiseString(fields.creditGated) === '1'
@@ -122,6 +128,7 @@ export default async function handler(req, res) {
     // Food-capture analysis is the only supported journey for this endpoint.
     const module = ANALYSIS_MODULES.FOOD_IMAGE_ANALYSIS;
 
+    // Credit gate + leaf/window access (version-routed).
     if (isEnabled('ff.ai-credits') && creditGated) {
       try {
         await assertReservationValid({ userId, reservationId });
@@ -135,6 +142,20 @@ export default async function handler(req, res) {
           },
         });
       }
+    }
+
+    // Leaf downline + 12–4 window — never trust client role (§5.1 dual-path inside).
+    try {
+      await assertAiFoodAnalysisAccess({ userId, appVersion });
+    } catch (accessErr) {
+      const status = accessErr.status ?? 403;
+      return res.status(status).json({
+        ok: false,
+        error: {
+          code: accessErr.code ?? 'AI_FOOD_ACCESS_DENIED',
+          message: accessErr.message ?? 'AI food analysis not allowed',
+        },
+      });
     }
 
     // Read image into buffer; keep base64 for enrichment job queue
@@ -165,6 +186,8 @@ export default async function handler(req, res) {
     }
 
     const mimeType = imageFile.mimetype ?? 'image/jpeg';
+    const reqStarted = Date.now();
+    const resolvedTier = modelTier === 'pro' ? 'pro' : 'flash';
 
     logger.info('orchestrate: request received', {
       captureId: captureId ?? null,
@@ -172,6 +195,9 @@ export default async function handler(req, res) {
       userName:  userName  ?? null,
       userEmail: userEmail ?? null,
       foodRowId: foodRowId ?? null,
+      reservationId: reservationId ?? null,
+      modelTier: resolvedTier,
+      fresh,
       mimeType,
       sizeBytes: imageBuffer.length,
     });
@@ -184,10 +210,27 @@ export default async function handler(req, res) {
         userId,
         userName,
         userEmail,
+        appVersion,
         imageBase64,
         foodRowId,
-        usePro: modelTier === 'pro',
+        usePro: resolvedTier === 'pro',
+        fresh,
         module,
+      });
+
+      logger.info('orchestrate: request complete', {
+        captureId: captureId ?? null,
+        reservationId: reservationId ?? null,
+        modelTier: resolvedTier,
+        fresh,
+        traceId: result.traceId ?? null,
+        imageType: result.imageType ?? null,
+        defaulted: result.defaulted === true,
+        analysisStatus: result.analysisStatus ?? null,
+        durationMs: Date.now() - reqStarted,
+        status: result.defaulted === true || result.analysisStatus === 'FAILED'
+          ? 'FAIL'
+          : 'SUCCESS',
       });
 
       return res.status(200).json({ ok: true, ...result });
@@ -197,6 +240,9 @@ export default async function handler(req, res) {
         code:      err.code  ?? null,
         status:    err.status ?? null,
         captureId: captureId ?? null,
+        reservationId: reservationId ?? null,
+        modelTier: resolvedTier,
+        durationMs: Date.now() - reqStarted,
       });
 
       const status = err.status ?? 500;

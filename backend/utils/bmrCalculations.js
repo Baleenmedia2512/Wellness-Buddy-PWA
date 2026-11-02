@@ -98,3 +98,44 @@ export function resolveBmrForSave({ weightKg, bodyFatPercent, manualBmr = null }
   if (manual !== null) return Math.round(manual);
   return computeKatchMcArdleBmr(weightKg, bodyFatPercent);
 }
+
+/**
+ * Prefer stored BMR; otherwise derive via Katch-McArdle from the best available
+ * weight + body-fat pair (weight log, then body-parameters card); finally card.bmr.
+ *
+ * Used by Wellness Score Physical Activity and profile display when team_table.Bmr
+ * was never synced (weight-only logs, BPC present but profile BMR null).
+ *
+ * @param {{
+ *   storedBmr?: unknown,
+ *   weightKg?: unknown,
+ *   bodyFatPercent?: unknown,
+ *   cardWeightKg?: unknown,
+ *   cardFatPercent?: unknown,
+ *   cardBmr?: unknown,
+ * }} input
+ * @returns {number|null}
+ */
+export function resolveBmrForDisplay({
+  storedBmr = null,
+  weightKg = null,
+  bodyFatPercent = null,
+  cardWeightKg = null,
+  cardFatPercent = null,
+  cardBmr = null,
+} = {}) {
+  const stored = toPositiveNumber(storedBmr);
+  if (stored !== null) return Math.round(stored);
+
+  const fromWeightLog = computeKatchMcArdleBmr(weightKg, bodyFatPercent);
+  if (fromWeightLog !== null) return fromWeightLog;
+
+  const fromCardMetrics = computeKatchMcArdleBmr(
+    cardWeightKg != null && cardWeightKg !== '' ? cardWeightKg : weightKg,
+    cardFatPercent,
+  );
+  if (fromCardMetrics !== null) return fromCardMetrics;
+
+  const fromCardStored = toPositiveNumber(cardBmr);
+  return fromCardStored !== null ? Math.round(fromCardStored) : null;
+}

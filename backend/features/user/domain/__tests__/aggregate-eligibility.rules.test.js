@@ -55,6 +55,33 @@ describe('aggregate-eligibility.rules (production)', () => {
     );
   });
 
+  it('keeps developers visible for admin/developer operator viewers', () => {
+    const users = [
+      { UserId: 1, Role: 'developer' },
+      { UserId: 2, Role: 'user' },
+      { UserId: 3, Role: 'developer' },
+    ];
+    assert.deepEqual(
+      filterPublicAggregateUsers(users, { viewerUserId: 339, viewerRole: 'admin' }).map((u) => u.UserId),
+      [1, 2, 3],
+    );
+    assert.deepEqual(
+      filterPublicAggregateUsers(users, { viewerUserId: 10, viewerRole: 'developer' }).map((u) => u.UserId),
+      [1, 2, 3],
+    );
+    assert.deepEqual(
+      filterPublicAggregateUsers(users, { viewerUserId: 50, viewerRole: 'coach' }).map((u) => u.UserId),
+      [2],
+    );
+    assert.equal(
+      shouldExcludeDeveloperFromAggregates(
+        { UserId: 1, Role: 'developer' },
+        { viewerUserId: 339, viewerRole: 'admin' },
+      ),
+      false,
+    );
+  });
+
   it('skips developer ancestors for ideal coach in production', () => {
     const roleByUserId = new Map([
       ['10', 'developer'],
@@ -99,5 +126,21 @@ describe('aggregate-eligibility.rules (production)', () => {
     });
     assert.equal(selfViewDeveloper.sponsorName, 'Dev Sponsor');
     assert.equal(selfViewDeveloper.idealCoachName, 'Dev Coach');
+  });
+
+  it('keeps the developer-bot sponsor label visible for onboarding tests', () => {
+    const roleByUserId = new Map([['10', 'developer']]);
+    const kept = sanitizeSponsorCoachLabels({
+      sponsorId: '10',
+      sponsorName: 'developer bot',
+      idealCoachId: null,
+      idealCoachName: null,
+    }, {
+      memberUserId: 99,
+      viewerUserId: 99,
+      roleByUserId,
+    });
+    assert.equal(kept.sponsorName, 'developer bot');
+    assert.equal(kept.sponsorId, '10');
   });
 });

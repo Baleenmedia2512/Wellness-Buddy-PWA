@@ -43,12 +43,13 @@ export class TraceContext {
    * @param {string} [opts.userId]     Caller user ID (will be stringified).
    * @param {string} [opts.traceId]    Override the auto-generated UUID (useful for replay).
    */
-  constructor({ captureId = null, userId = null, traceId = null, module = null, userName = null, userEmail = null } = {}) {
+  constructor({ captureId = null, userId = null, traceId = null, module = null, userName = null, userEmail = null, appVersion = null } = {}) {
     this.traceId      = traceId ?? randomUUID();
     this.captureId    = captureId   ? String(captureId)   : null;
     this.userId       = userId      ? String(userId)       : null;
     this.userName     = userName    ? String(userName)     : null;
     this.userEmail    = userEmail   ? String(userEmail)    : null;
+    this.appVersion   = appVersion  ? String(appVersion)   : null;
     this.module       = module      ? String(module)       : null;
     this.startTime    = Date.now();
 

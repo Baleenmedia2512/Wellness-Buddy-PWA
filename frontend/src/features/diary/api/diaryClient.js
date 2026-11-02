@@ -12,26 +12,39 @@ import axios from 'axios';
 import { getApiBaseUrl } from '../../../config/api.config';
 import { debugLog } from '../../../shared/utils/logger';
 
+/** Default page size — must match backend DIARY_LIST_DEFAULT_LIMIT. */
+export const DIARY_PAGE_SIZE = 20;
+
 /**
- * Fetch the diary feed for one owner + one business calendar day.
+ * Fetch one page of the diary feed for an owner + business calendar day.
  *
  * @param {Object} params
  * @param {string} params.ownerUserId   the diary subject (owner)
  * @param {string} params.viewerUserId  the authenticated session user
  * @param {string} params.date          YYYY-MM-DD business calendar date
+ * @param {number} [params.limit=20]    page size
+ * @param {number} [params.offset=0]    skip N merged entries
  * @param {AbortSignal} [params.signal] optional cancellation signal
  * @returns {Promise<{
  *   date: string,
  *   ownerUserId: string,
  *   isSelf: boolean,
  *   includesUnknown: boolean,
+ *   pagination: { limit: number, offset: number, total: number, hasMore: boolean, nextOffset: number|null },
  *   entries: Array<{ kind, capturedAt, capture, payload }>,
  * }>}
  *
  * @throws Error on 401/403/404/500. Callers should catch and surface
  *         `err.response?.status` to the UI.
  */
-export async function fetchDiary({ ownerUserId, viewerUserId, date, signal } = {}) {
+export async function fetchDiary({
+  ownerUserId,
+  viewerUserId,
+  date,
+  limit = DIARY_PAGE_SIZE,
+  offset = 0,
+  signal,
+} = {}) {
   if (!ownerUserId)  throw new Error('fetchDiary: ownerUserId required');
   if (!viewerUserId) throw new Error('fetchDiary: viewerUserId required');
   if (!date)         throw new Error('fetchDiary: date required (YYYY-MM-DD)');
@@ -41,10 +54,22 @@ export async function fetchDiary({ ownerUserId, viewerUserId, date, signal } = {
     ownerUserId: String(ownerUserId),
     viewerUserId: String(viewerUserId),
     date,
+    limit: String(limit),
+    offset: String(offset),
+    // Android WebView can reuse the previous GET. A new photo must not
+    // come back as the list from before that save.
+    _t: String(Date.now()),
   };
 
   debugLog('[diary] fetchDiary →', params);
-  const res = await axios.get(url, { params, signal });
+  const res = await axios.get(url, {
+    params,
+    signal,
+    headers: {
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache',
+    },
+  });
   // Backend envelope: { ok: true, data: {...} }. We unwrap to data so
   // the hook stays focused on UI state, not transport plumbing.
   const body = res?.data;

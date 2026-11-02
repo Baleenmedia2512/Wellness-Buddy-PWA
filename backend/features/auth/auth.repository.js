@@ -1,11 +1,14 @@
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import { DateTime } from 'luxon';
-import { buildPhoneLookupVariants } from './domain/phone-identity.rules.js';
+import {
+  buildPhoneLookupVariants,
+  pickBestPhoneLookupCandidate,
+} from './domain/phone-identity.rules.js';
 
 export async function deactivateActiveOtps(recipient, contactType) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from('otp_tokens_table')
     .update({ IsActive: false })
     .eq('"Recipient"', recipient)
@@ -15,14 +18,14 @@ export async function deactivateActiveOtps(recipient, contactType) {
 }
 
 export async function insertOtpToken(payload) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase.from('otp_tokens_table').insert(payload);
+  const db = getMysqlClient();
+  const { error } = await db.from('otp_tokens_table').insert(payload);
   if (error) throw error;
 }
 
 export async function fetchActiveOtp(recipient, contactType) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('otp_tokens_table')
     .select('"ID", "OTPHash", "ExpiresAt"')
     .eq('"Recipient"', recipient)
@@ -40,12 +43,12 @@ export async function fetchActiveOtp(recipient, contactType) {
  * flow was completed server-side before data destruction.
  */
 export async function fetchRecentlyVerifiedOtp(recipient, contactType) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   // CreatedAt is stored as UTC (nowUtc). Compare against a UTC cutoff — the old
   // IST-offset hack made fresh verifications look older than the cutoff window.
   const cutoffUtc = DateTime.utc().minus({ minutes: 15 }).toISO();
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('otp_tokens_table')
     .select('"ID"')
     .eq('"Recipient"', recipient)
@@ -58,8 +61,8 @@ export async function fetchRecentlyVerifiedOtp(recipient, contactType) {
 }
 
 export async function markOtpVerified(id) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from('otp_tokens_table')
     .update({ Verified: true, IsActive: false })
     .eq('"ID"', id);
@@ -67,8 +70,8 @@ export async function markOtpVerified(id) {
 }
 
 export async function findUserByEmail(recipient) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('*')
     .ilike('Email', recipient)
@@ -78,8 +81,8 @@ export async function findUserByEmail(recipient) {
 }
 
 export async function findUserByEmailLite(recipient) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"UserId", "UserName", "Email", "Status"')
     .ilike('Email', recipient)
@@ -89,34 +92,36 @@ export async function findUserByEmailLite(recipient) {
 }
 
 // Phone-based lookups — team_table.PhoneNumber (legacy 10-digit or E.164).
+// Collect all variant matches, then prefer Active BCM leads with profile data.
 export async function findUserByPhone(phone) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const variants = buildPhoneLookupVariants(phone);
+  const matches = [];
 
   for (const variant of variants) {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('team_table')
       .select('*')
       .eq('PhoneNumber', variant)
       .order('UserId', { ascending: true })
-      .limit(1);
+      .limit(5);
     if (error) throw error;
-    if (data && data.length > 0) return data[0];
+    if (data?.length) matches.push(...data);
   }
 
-  return null;
+  return pickBestPhoneLookupCandidate(matches);
 }
 
 export async function insertUser(payload) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.from('team_table').insert(payload).select().single();
+  const db = getMysqlClient();
+  const { data, error } = await db.from('team_table').insert(payload).select().single();
   if (error) throw error;
   return data;
 }
 
 export async function updateUserConsent(userId, fields) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from('team_table')
     .update(fields)
     .eq('UserId', userId);
@@ -130,19 +135,19 @@ export async function updateUserConsent(userId, fields) {
  * requests for the same new number both find null, then both attempt to insert,
  * and the second insert hits the UNIQUE index on PhoneNumber (migration 0013).
  *
- * This function converts that constraint error (PostgreSQL code 23505) into a
+ * This function converts that constraint error (MySQL code 1062) into a
  * transparent re-fetch, so callers always receive a stable row regardless of
  * which request won the race.
  *
  * Returns { row: teamTableRow, isNewUser: boolean }.
  */
 export async function findOrInsertUserByPhone(payload, phone) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.from('team_table').insert(payload).select().single();
+  const db = getMysqlClient();
+  const { data, error } = await db.from('team_table').insert(payload).select().single();
   if (!error) return { row: data, isNewUser: true };
 
   // Unique constraint violation — a concurrent request just created this row.
-  if (error.code === '23505') {
+  if (error.code === '1062') {
     const existing = await findUserByPhone(phone);
     if (existing) return { row: existing, isNewUser: false };
     // Extremely rare: constraint hit but row not found (e.g. partial index edge case).

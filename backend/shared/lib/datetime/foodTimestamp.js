@@ -2,9 +2,13 @@
  * Canonical food_nutrition_data_table.CreatedAt interpretation.
  *
  * Storage contract: timezone-less CreatedAt digits are legacy IST (Asia/Kolkata)
- * wall-clock. Drivers / timestamptz sessions sometimes append a spurious
- * `Z` / `+00:00` while leaving IST digits intact — that must NOT shift the
- * meal into the next calendar day.
+ * wall-clock. Drivers sometimes append a spurious `Z` / `+00:00` while leaving
+ * IST digits intact — that must NOT shift a daytime meal by +5:30 (lunch into
+ * dinner) or into the next calendar day.
+ *
+ * A clock earlier than 05:30 is a real UTC instant, with or without a `Z`.
+ * Those digits were written by `now()` / a Date under `time_zone = '+00:00'`,
+ * so 02:16 is 7:46 AM in India, not 2:16 AM. 05:30 and later stay IST wall.
  *
  * Display contract: after converting storage → UTC instant (always via IST),
  * calendar day and local time-of-day are derived in the owner's
@@ -25,17 +29,29 @@ import {
 /** Legacy food/weight/education CreatedAt wall-clock zone (write path). */
 export const LEGACY_STORAGE_TIMEZONE = IANA_IST;
 
-const DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})/;
 const UTC_OR_ZERO_OFFSET_RE = /(?:Z|[+]00:?00)$/i;
 const NON_UTC_OFFSET_RE = /[+-]\d{2}:?\d{2}$/;
+const CLOCK_RE = /(?:T|\s)(\d{2}):(\d{2})(?::\d{2})?/;
+/** IST is UTC+5:30. A UTC mark on an earlier clock is a real UTC instant. */
+const IST_OFFSET_MINUTES = (5 * 60) + 30;
 
 /**
  * @param {string} raw
- * @returns {string|null}
+ * @returns {number|null} minutes since midnight of the clock digits
  */
-function extractDatePrefix(raw) {
-  const match = String(raw).trim().match(DATE_PREFIX_RE);
-  return match ? match[1] : null;
+function clockMinutes(raw) {
+  const match = CLOCK_RE.exec(String(raw));
+  if (!match) return null;
+  return (Number(match[1]) * 60) + Number(match[2]);
+}
+
+/**
+ * @param {string} raw
+ * @returns {boolean}
+ */
+function isUtcClockBeforeIstOffset(raw) {
+  const minutes = clockMinutes(raw);
+  return minutes != null && minutes < IST_OFFSET_MINUTES;
 }
 
 /**
@@ -60,11 +76,12 @@ function hasNonUtcExplicitOffset(raw) {
  * Normalize food CreatedAt to a UTC ISO instant.
  *
  * Rules:
- * - Timezone-less → IST wall-clock (legacy storage), never the display zone
+ * - Timezone-less at 05:30 or later → IST wall-clock, never the display zone
  * - Explicit non-UTC offset (e.g. +05:30) → absolute instant
- * - `Z` / `+00:00` → absolute UTC, unless the UTC→IST calendar day
- *   disagrees with the embedded date prefix (spurious driver Z on legacy
- *   IST wall) — then reinterpret wall digits as IST
+ * - Clock before 05:30 → real UTC digits, even when the driver dropped `Z`
+ *   (02:16 is 7:46 AM IST, not 2:16 AM).
+ * - `Z` / `+00:00` at 05:30 or later → driver-added mark on IST wall
+ *   digits. 14:49 stays 2:49 PM lunch, not 8:19 PM dinner.
  *
  * @param {string|Date} raw
  * @param {string} [_ignoredTimezoneIana] Kept for call-site compatibility; storage is always IST
@@ -75,30 +92,24 @@ export function normalizeFoodCreatedAt(raw, _ignoredTimezoneIana = IANA_IST) {
   const storageTz = LEGACY_STORAGE_TIMEZONE;
   assertIanaTimezone(storageTz);
 
-  if (raw instanceof Date) {
-    return normalizeStoredTimestampToUtcIso(raw, storageTz);
-  }
-  if (raw == null || String(raw).trim() === '') {
+  if (raw == null || (!(raw instanceof Date) && String(raw).trim() === '')) {
     throw new RangeError('Invalid food CreatedAt: empty');
   }
 
-  const s = String(raw).trim();
+  const s = raw instanceof Date ? raw.toISOString() : String(raw).trim();
 
   if (hasNonUtcExplicitOffset(s)) {
     return normalizeStoredTimestampToUtcIso(s, storageTz);
   }
 
+  if (isUtcClockBeforeIstOffset(s)) {
+    const stripped = s.replace(UTC_OR_ZERO_OFFSET_RE, '');
+    return normalizeStoredTimestampToUtcIso(stripped, 'UTC');
+  }
+
   if (hasUtcOrZeroOffset(s)) {
-    const asUtc = normalizeStoredTimestampToUtcIso(s, storageTz);
-    // Spurious-Z detection must use IST calendar day (storage), not display TZ.
-    const istCalendarYmd = timestampToCalendarYmd(asUtc, storageTz);
-    const prefix = extractDatePrefix(s);
-    if (prefix && prefix !== istCalendarYmd) {
-      // Legacy IST wall digits with driver-added Z/+00:00
-      const stripped = s.replace(UTC_OR_ZERO_OFFSET_RE, '');
-      return normalizeStoredTimestampToUtcIso(stripped, storageTz);
-    }
-    return asUtc;
+    const stripped = s.replace(UTC_OR_ZERO_OFFSET_RE, '');
+    return normalizeStoredTimestampToUtcIso(stripped, storageTz);
   }
 
   return normalizeStoredTimestampToUtcIso(s, storageTz);

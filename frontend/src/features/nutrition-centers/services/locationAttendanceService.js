@@ -225,10 +225,10 @@ class LocationAttendanceService {
    */
   async fetchNutritionCenters(apiBaseUrl, userId) {
     try {
-      // Use scope=all to fetch ALL clubs globally for GPS-based attendance detection
-      // This allows users to check in at ANY club, not just their team's clubs
+      // GPS check-in only needs lat/lng. metrics=0 skips team hierarchy +
+      // per-center attendance queries (those caused ~5s TTFB for a tiny body).
       const response = await fetch(
-        `${apiBaseUrl}/api/nutrition-centers?userId=${userId}&teamFilter=full&scope=all`,
+        `${apiBaseUrl}/api/nutrition-centers?userId=${userId}&scope=all&metrics=0`,
         {
           cache: 'no-store',
           headers: {

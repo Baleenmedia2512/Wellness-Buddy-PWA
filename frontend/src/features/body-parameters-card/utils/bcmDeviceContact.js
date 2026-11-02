@@ -1,0 +1,306 @@
+/**
+ * bcmDeviceContact.js
+ * Create or overwrite coach device contacts for BCM members.
+ * Display name: "{name} {venueShort} WV {yymmdd}" e.g. "praveen slc WV 260820"
+ *
+ * Plugin has no updateContact — overwrite = delete prior BCM contact + create.
+ * Only deletes contacts we created (stored id / note marker / BCM name pattern).
+ *
+ * Permission: prefer app-entry grant; else request on save.
+ * If still denied → ask Enable / Don't need (+ optional Don't ask again).
+ * Never blocks WhatsApp share.
+ */
+import { Capacitor } from '@capacitor/core';
+import { Contacts, PhoneType } from '@capacitor-community/contacts';
+import { debugLog } from '../../../shared/utils/logger.js';
+import { buildBcmContactDisplayName } from '../domain/bcmContactName.rules.js';
+import { normalizePhoneDigits } from '../domain/bcmContactPhone.rules.js';
+import * as PermissionManager from '../../../shared/services/permissionManager.js';
+import BcmContacts from '../../../shared/plugins/bcmContactsPlugin.js';
+import {
+  isBcmContactsNeverAsk,
+  promptBcmContactsEnable,
+} from './bcmContactsEnablePrompt.js';
+
+
+export { buildBcmContactDisplayName, formatBcmContactDate } from '../domain/bcmContactName.rules.js';
+export { normalizePhoneDigits, phonesMatch } from '../domain/bcmContactPhone.rules.js';
+
+const BCM_CONTACT_NOTE = 'Wellness Valley BCM';
+const CONTACT_ID_PREFIX = 'wv.bcm.contactId.';
+
+function contactIdStorageKey(phone) {
+  const digits = normalizePhoneDigits(phone);
+  const key = digits.length >= 10 ? digits.slice(-10) : digits;
+  return key ? `${CONTACT_ID_PREFIX}${key}` : null;
+}
+
+function readStoredContactId(phone) {
+  try {
+    const key = contactIdStorageKey(phone);
+    if (!key || typeof localStorage === 'undefined') return null;
+    return localStorage.getItem(key) || null;
+  } catch {
+    return null;
+  }
+}
+
+/** True when this phone was written to the device address book on this device. */
+export function isBcmDeviceContactSaved(phone) {
+  return Boolean(readStoredContactId(phone));
+}
+
+function writeStoredContactId(phone, contactId) {
+  try {
+    const key = contactIdStorageKey(phone);
+    if (!key || !contactId || typeof localStorage === 'undefined') return;
+    localStorage.setItem(key, contactId);
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function clearStoredContactId(phone) {
+  try {
+    const key = contactIdStorageKey(phone);
+    if (!key || typeof localStorage === 'undefined') return;
+    localStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+}
+
+function digitsOnlyPhone(phone) {
+  const raw = String(phone || '').trim();
+  if (!raw) return '';
+  const hasPlus = raw.startsWith('+');
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return '';
+  return hasPlus ? `+${digits}` : digits;
+}
+
+/** Pull message/code from Capacitor / plugin Error shapes. */
+function formatCreateContactError(err) {
+  const message = err?.message || String(err);
+  const code = err?.code ?? err?.errorCode ?? err?.error_code ?? null;
+  let raw = '';
+  try {
+    raw = JSON.stringify(err, Object.getOwnPropertyNames(err || {}));
+  } catch {
+    raw = String(err);
+  }
+  return {
+    message,
+    code: code != null ? String(code) : '(none)',
+    name: err?.name || '(none)',
+    raw,
+  };
+}
+
+/**
+ * Best-effort OS prompt. Do not gate only on canRequest
+ * (Android first-install often reports denied).
+ */
+async function ensureContactsPermission() {
+  const nativeOk = await PermissionManager.isContactsNativeAvailable();
+  if (!nativeOk) {
+    return false;
+  }
+  const { granted, status } = await PermissionManager.checkPermission('contacts');
+  if (granted || status === 'limited') return true;
+  const { granted: nowGranted, status: nowStatus } = await PermissionManager.requestPermission('contacts');
+  return Boolean(nowGranted || nowStatus === 'limited');
+}
+
+/**
+ * When Contacts is still denied: ask user to Enable (or Don't need / never ask).
+ * @returns {Promise<boolean>} true if permission is granted and save may proceed
+ */
+async function resolveContactsPermissionWithPrompt() {
+  if (isBcmContactsNeverAsk()) {
+    console.warn('[BCM contact] skipped — user chose Don\'t ask me again');
+    return false;
+  }
+
+  let allowed = await ensureContactsPermission();
+  if (allowed) return true;
+
+  const decision = await promptBcmContactsEnable();
+  if (decision.neverAsk || decision.action === 'dismiss') {
+    console.warn('[BCM contact] skipped — user declined Contacts enable', {
+      neverAsk: Boolean(decision.neverAsk),
+    });
+    return false;
+  }
+
+  if (decision.granted) return true;
+
+  // Enable path already tried request + Settings; re-check once more.
+  const { granted, status } = await PermissionManager.checkPermission('contacts');
+  return Boolean(granted || status === 'limited');
+}
+
+/**
+ * Find existing BCM-managed contact ids for this phone.
+ * Fast path: use the id we stored on last save (no full address-book scan).
+ * Full scan only when we have no stored id — that scan is slow on large books.
+ * @param {string} phone
+ * @returns {Promise<string[]>}
+ */
+async function findBcmContactIds(phone) {
+  const stored = readStoredContactId(phone);
+  if (stored) {
+    return [stored];
+  }
+
+  // First save for this phone — nothing to overwrite; skip getContacts entirely.
+  // (Scanning the whole address book was the main delay on Override / re-save.)
+  return [];
+}
+
+/**
+ * Android: OEM-safe native insert. iOS: community Contacts plugin.
+ */
+async function createBcmDeviceContact({ displayName, phone }) {
+  if (Capacitor.getPlatform() === 'android') {
+    return BcmContacts.createContact({
+      displayName,
+      phone,
+      note: BCM_CONTACT_NOTE,
+    });
+  }
+  return Contacts.createContact({
+    contact: {
+      name: { given: displayName },
+      note: BCM_CONTACT_NOTE,
+      phones: [{ type: PhoneType?.Mobile ?? 'mobile', number: phone }],
+    },
+  });
+}
+
+/**
+ * Create or overwrite device contact for a BCM member (venue/name/date changes).
+ * @param {{
+ *   name?: string|null,
+ *   venue?: string|null,
+ *   recordedDate?: string|null,
+ *   phoneNumber?: string|null,
+ * }} opts
+ * @returns {Promise<{ ok: boolean, skipped?: boolean, reason?: string, updated?: boolean }>}
+ */
+export async function upsertBcmMemberToDeviceContacts(opts = {}) {
+  if (!Capacitor.isNativePlatform()) {
+    console.warn('[BCM contact] skipped — not a native app (web)');
+    return { ok: false, skipped: true, reason: 'web' };
+  }
+
+  const phone = digitsOnlyPhone(opts.phoneNumber);
+  const displayName = buildBcmContactDisplayName({
+    name: opts.name,
+    venue: opts.venue,
+    recordedDate: opts.recordedDate,
+  });
+  if (!phone || !displayName) {
+    console.warn('[BCM contact] skipped — missing phone or display name', {
+      hasPhone: Boolean(phone),
+      hasName: Boolean(displayName),
+    });
+    return { ok: false, skipped: true, reason: 'missing-fields' };
+  }
+
+  try {
+    const nativeOk = await PermissionManager.isContactsNativeAvailable();
+    if (!nativeOk && Capacitor.getPlatform() !== 'android') {
+      console.error(
+        '[BCM contact] Native Contacts plugin missing — rebuild iOS after: npx cap sync ios && pod install',
+      );
+      return { ok: false, skipped: true, reason: 'plugin-missing' };
+    }
+
+    const allowed = await resolveContactsPermissionWithPrompt();
+    if (!allowed) {
+      console.warn(
+        '[BCM contact] Contacts not granted — skipped save (user declined or never-ask)',
+      );
+      return { ok: false, skipped: true, reason: 'permission' };
+    }
+
+    const existingIds = await findBcmContactIds(phone);
+    let updated = existingIds.length > 0;
+
+    let createResult;
+    try {
+      createResult = await createBcmDeviceContact({ displayName, phone });
+    } catch (createErr) {
+      const formatted = formatCreateContactError(createErr);
+      console.warn('[BCM contact] upsert failed', formatted.message, formatted);
+      debugLog('📱 [BCM contact] upsert failed', formatted);
+      const denied = /permission|denied|not authorized|access|WRITE_CONTACTS/i.test(formatted.message);
+      return {
+        ok: false,
+        skipped: true,
+        reason: denied ? 'permission' : (formatted.message || 'error'),
+      };
+    }
+
+    if (createResult?.openedEditor) {
+      console.warn('[BCM contact] opened system contact editor', {
+        displayName,
+        phoneTail: phone.slice(-4),
+        permissionGranted: allowed,
+      });
+      return { ok: true, updated, openedEditor: true };
+    }
+
+    const contactId = createResult?.contactId;
+    if (!contactId) {
+      console.warn('[BCM contact] createContact returned no contactId', {
+        displayName,
+        phoneTail: phone.slice(-4),
+        permissionGranted: allowed,
+        createResult,
+      });
+      return {
+        ok: false,
+        skipped: true,
+        reason: allowed ? 'create-failed' : 'permission',
+      };
+    }
+
+    for (const oldId of existingIds) {
+      if (String(oldId) === String(contactId)) continue;
+      try {
+        await Contacts.deleteContact({ contactId: oldId });
+      } catch (err) {
+        console.warn('[BCM contact] delete failed', oldId, err?.message || err);
+      }
+    }
+    if (existingIds.length) clearStoredContactId(phone);
+    writeStoredContactId(phone, contactId);
+
+    console.warn('[BCM contact] saved', {
+      displayName,
+      phoneTail: phone.slice(-4),
+      updated,
+      contactId,
+      permissionGranted: allowed,
+    });
+    debugLog('📱 [BCM contact] upserted', { displayName, phone, updated, contactId });
+    return { ok: true, updated };
+  } catch (err) {
+    const formatted = formatCreateContactError(err);
+    console.warn('[BCM contact] upsert failed', formatted.message, formatted);
+    debugLog('📱 [BCM contact] upsert failed', formatted);
+    const denied = /permission|denied|not authorized|access|WRITE_CONTACTS/i.test(formatted.message);
+    return {
+      ok: false,
+      skipped: true,
+      reason: denied ? 'permission' : (formatted.message || 'error'),
+    };
+  }
+}
+
+/** @deprecated Use upsertBcmMemberToDeviceContacts */
+export async function saveBcmMemberToDeviceContacts(opts) {
+  return upsertBcmMemberToDeviceContacts(opts);
+}

@@ -77,7 +77,6 @@ const ENDPOINTS = [
   ['GET',  '/api/activity/watch-calories'],
   ['GET',  '/api/water/intake'],
   ['GET',  '/api/weight/history'],
-  ['GET',  '/api/leaderboard/get-discipline-leaderboard'],
   ['GET',  '/api/leaderboard/get-global-leaderboard'],
   ['GET',  '/api/user/lookup'],
   ['POST', '/api/nutrition-centers', {}],

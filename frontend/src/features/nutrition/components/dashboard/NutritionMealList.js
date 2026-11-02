@@ -29,6 +29,7 @@ const NutritionMealList = ({
   handleOptimisticDelete,
   isIOS,
   user,
+  apiBaseUrl,
   timezoneIana: timezoneIanaProp,
   setAnalyses,
   setUndoState,
@@ -125,6 +126,8 @@ const NutritionMealList = ({
                       foodData={foodData}
                       mealTime={mealTime}
                       calories={calories}
+                      userId={user?.id || user?.userId || user?.UserId}
+                      apiBaseUrl={apiBaseUrl}
                       onDelete={handleOptimisticDelete}
                       onClick={(m) => setSelectedMeal(m)}
                     />

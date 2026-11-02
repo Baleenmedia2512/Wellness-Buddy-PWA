@@ -19,6 +19,7 @@ import { nowUtc, addUtcDays, parseClientTimestampToUtc, normalizeStoredTimestamp
 import logger from '../../shared/lib/logger.js';
 import { computeMealGlycemicIndex } from '../food-corrections/mealGlycemicIndex.js';
 import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
+import { resolveNutritionSource } from './domain/nutrition-source.js';
 
 const convertConfidenceToNumeric = (confidence) => {
   if (typeof confidence === 'number') return confidence;
@@ -50,7 +51,7 @@ function generateShareCode(length = DEFAULT_SHARE_CODE_LENGTH) {
 
 function isDuplicateShareCodeError(err) {
   const msg = `${err?.message || ''} ${err?.details || ''} ${err?.hint || ''}`;
-  return msg.toLowerCase().includes('sharecode') && (msg.toLowerCase().includes('duplicate') || err?.code === '23505');
+  return msg.toLowerCase().includes('sharecode') && (msg.toLowerCase().includes('duplicate') || err?.code === '1062');
 }
 
 function extractNutrition(analysisResult, deviceInfo) {
@@ -60,6 +61,7 @@ function extractNutrition(analysisResult, deviceInfo) {
   let totalGlycemicIndex = null;
   let micronutrients = {};
   let processedBy = 'manual_app';
+  let source = null;
 
   // Source-of-truth list mirrors features/nutrition/domain/micronutrientRules.js
   // Maps the AI JSON snake_case keys → DB PascalCase column names.
@@ -110,7 +112,7 @@ function extractNutrition(analysisResult, deviceInfo) {
         ?? (analysis.total.glycemic_index != null ? analysis.total.glycemic_index : null);
       micronutrients = pickMicros(analysis.total);
       confidenceScore = convertConfidenceToNumeric(analysis.confidence);
-      processedBy = deviceInfo && deviceInfo.includes('Android Background Service')
+      processedBy = typeof deviceInfo === 'string' && deviceInfo.includes('Android Background Service')
         ? 'background_service' : 'manual_app';
     } else if (analysis.nutrition) {
       totalCalories = analysis.nutrition.calories || null;
@@ -143,6 +145,13 @@ function extractNutrition(analysisResult, deviceInfo) {
       confidenceScore = convertConfidenceToNumeric(firstFood.confidence || analysis.confidence);
       processedBy = 'background_service';
     }
+
+    // Client may send an explicit preset (water_preset, afresh_preset, shake_calculator).
+    // Must override device-derived manual_app / background_service for report beverage pills.
+    if (analysis?.processedBy) {
+      processedBy = String(analysis.processedBy).toLowerCase().trim();
+    }
+    source = resolveNutritionSource(analysis, processedBy);
   } catch (err) {
     logger.warn('extractNutrition: failed to parse analysisResult', { error: err?.message });
   }
@@ -151,7 +160,7 @@ function extractNutrition(analysisResult, deviceInfo) {
     totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
     totalSugar, totalSodium, totalCholesterol, totalGlycemicIndex,
     micronutrients,
-    confidenceScore, processedBy,
+    confidenceScore, processedBy, source,
   };
 }
 
@@ -222,7 +231,7 @@ export async function save(input) {
     totalCalories, totalProtein, totalCarbs, totalFat, totalFiber,
     totalSugar, totalSodium, totalCholesterol, totalGlycemicIndex,
     micronutrients,
-    confidenceScore, processedBy,
+    confidenceScore, processedBy, source,
   } = nutrition;
 
   const imageBase64ToSave = ImageBase64 && ImageBase64.trim() !== '' ? ImageBase64 : null;
@@ -280,11 +289,12 @@ export async function save(input) {
     // ImageType was dropped from food_nutrition_data_table by
     // drop_legacy_share_columns_from_food.sql (PR 5). The type discriminator
     // now lives on captures_table and is promoted via captures.updateTypeById
-    // below. Including it here would cause Supabase to reject the INSERT/UPDATE.
+    // below. Including it here would cause MySQL to reject the INSERT/UPDATE.
     ProcessedBy: processedBy,
     DeviceInfo: deviceInfo
       || (processedBy === 'background_service' ? 'Android Background Service' : 'Wellness Valley Web App'),
     ImageBase64: imageBase64ToSave,
+    ...(source ? { Source: source } : {}),
   };
 
   // PR 6 — idempotent upsert keyed by CaptureID. The speculative pre-insert
@@ -345,7 +355,7 @@ export async function save(input) {
       errorMessage = 'Database connection was terminated. Retrying...';
     } else if (error.code === 'ECONNREFUSED') {
       errorMessage = 'Database connection refused. Please check if database is accessible.';
-    } else if (error.code === '23505') {
+    } else if (error.code === '1062') {
       errorMessage = 'Duplicate key error: The database sequence needs to be reset. Please contact support.';
     }
 
@@ -412,6 +422,24 @@ export async function save(input) {
   await repo.touchLastActive(userId);
   cache.delete(cacheKeys.nutritionMeals(userId));
 
+  // Prefer dual-write to R2 even when request ImageBase64 is empty: Manual Log /
+  // promoteUnknownToFood often runs after capture R2 persist has cleared
+  // captures_table.ImageBase64 and only ImageKey remains. Weight/education still
+  // send client bytes; food promote only passes capture.ImageBase64.
+  if (data?.ID && (imageBase64ToSave || captureId)) {
+    try {
+      const { persistFoodImageKey } = await import('../food-corrections/food-image-storage.service.js');
+      await persistFoodImageKey(userId.toString(), data.ID, imageBase64ToSave, { captureId });
+    } catch (err) {
+      logger.warn('analysis.save: food R2 persist skipped', {
+        userId: userId?.toString(),
+        mealId: data.ID,
+        captureId: captureId ?? null,
+        message: err?.message || String(err),
+      });
+    }
+  }
+
   // ADR-0005 — grow master nutrition catalog from successful AI / saved foods.
   try {
     const parsed = typeof analysisResult === 'string'
@@ -423,6 +451,23 @@ export async function save(input) {
     }
   } catch (err) {
     logger.warn('analysis.save: nutrition-knowledge candidate skipped', {
+      err: err?.message,
+      userId: userId?.toString(),
+    });
+  }
+
+  // Meal Builder pair stats (frequency-v1) — never fails the meal save.
+  try {
+    const { recordMealFoodPairs } = await import('../food-suggestions/index.js');
+    const parsedForPairs = typeof analysisResult === 'string'
+      ? JSON.parse(analysisResult)
+      : analysisResult;
+    await recordMealFoodPairs({
+      userId: userId?.toString(),
+      analysisData: parsedForPairs,
+    });
+  } catch (err) {
+    logger.warn('analysis.save: food pair stats skipped', {
       err: err?.message,
       userId: userId?.toString(),
     });

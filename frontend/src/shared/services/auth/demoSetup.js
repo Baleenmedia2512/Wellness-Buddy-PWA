@@ -10,10 +10,10 @@
  *   - Same three sequential backend calls in the same order:
  *       1. GET  /api/users/search?q=Yasheer+J&email=…
  *       2. POST /api/upline/request          { coachId, email }
- *       3. POST /api/upline/validate-otp     { otp: '000000', email }
+ *       3. POST /api/upline/validate-otp     { otp: '0000', email }
  *   - Same coach-name match: case-insensitive `.includes('yasheer')` on the
  *     userName, scanning `searchData.coaches`.
- *   - Same fixed OTP: '000000' (backend hashes server-side).
+ *   - Same fixed OTP: '0000' (backend hashes server-side).
  *   - Same Session.markCoachOtpVerified() write on success.
  *   - Same fail-soft semantics: any throw is logged and `false` is returned;
  *     no exception propagates to the caller.
@@ -61,18 +61,18 @@ export const silentlyCompleteDemoSetup = async (userEmail, opts = {}) => {
       return false;
     }
 
-    // 2. Send upline request (backend auto-hashes OTP 000000)
+    // 2. Send upline request (backend auto-hashes OTP 0000)
     await fetch(`${API_BASE}/api/upline/request`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ coachId: yasheer.userId, email: userEmail }),
     });
 
-    // 3. Validate with fixed OTP 000000
+    // 3. Validate with fixed OTP 0000
     await fetch(`${API_BASE}/api/upline/validate-otp`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ otp: "000000", email: userEmail }),
+      body: JSON.stringify({ otp: "0000", email: userEmail }),
     });
 
     Session.markCoachOtpVerified();

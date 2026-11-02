@@ -7,10 +7,22 @@
  * Rendered off-screen so html2canvas can export it as a JPEG.
  */
 import React from 'react';
+import {
+  evaluateChestCm,
+  evaluateHipCm,
+  evaluateWaistCm,
+  getChestCmReference,
+  getHipCmReference,
+  getWaistCmReference,
+} from '../domain/bodyMetricReferences.js';
+import {
+  formatBcmShareCardDateTime,
+  resolveBcmCardDisplayTimestamp,
+  resolveBcmCardAppointmentDate,
+} from '../domain/bcmCardDateTime.rules.js';
 
 const G          = '#16a34a';
 const DARK_GREEN = '#166534';
-const BLUE       = '#3b82f6';
 const RED        = '#ef4444';
 const INK        = '#1a1a2e';
 const OUTER_BG   = '#f5f0e8';
@@ -121,15 +133,15 @@ const InfoRow = ({ icon, label, value, extra, extraColor }) => (
       {icon}
     </div>
     <div style={{
-      width: 105, fontSize: 16, fontWeight: 800, color: '#6b7280',
-      textTransform: 'uppercase', letterSpacing: 0.7, flexShrink: 0,
+      width: 140, fontSize: 16, fontWeight: 800, color: '#6b7280',
+      textTransform: 'uppercase', letterSpacing: 0.5, flexShrink: 0,
     }}>
       {label}
     </div>
-    <div style={{ width: 22, fontSize: 16, color: '#9ca3af', textAlign: 'center', flexShrink: 0 }}>
+    <div style={{ width: 18, fontSize: 16, color: '#9ca3af', textAlign: 'center', flexShrink: 0 }}>
       :
     </div>
-    <div style={{ flex: 1, fontSize: 18, fontWeight: 800, color: INK, lineHeight: 1.25 }}>
+    <div style={{ flex: 1, fontSize: 18, fontWeight: 800, color: INK, lineHeight: 1.25, paddingLeft: 4 }}>
       {value}
     </div>
     {extra ? (
@@ -174,13 +186,13 @@ const BodyAgeCircle = ({ value, color }) => {
 };
 
 /* ── Circle ring for metric values ──────────────────────────────────────────
-   outOfRange (fresh user)  → RED ring (overweight/high) or BLUE ring (underweight/low), dark text
+   outOfRange (fresh user)  → RED ring for both under-range and over-range, dark text
    greenRing  (existing)    → GREEN ring, green text
    neither                  → no ring at all (plain text)
 */
-const MetricCircle = ({ value, outOfRange, greenRing, isUnderweight }) => {
+const MetricCircle = ({ value, greenRing }) => {
   const size = 64, r = 28, cx = 32, cy = 32;
-  const stroke    = greenRing ? G : (isUnderweight ? BLUE : RED);
+  const stroke    = greenRing ? G : RED;
   const sw        = greenRing ? 2.5 : 1.5;
   const textColor = greenRing ? G : INK;
   return (
@@ -203,16 +215,15 @@ const MetricCircle = ({ value, outOfRange, greenRing, isUnderweight }) => {
    isExistingUser = true  → 3 columns: CURRENT | PREV | REFERENCE
                             ring is always green (tracking mode)
    isExistingUser = false → 2 columns: CURRENT | REFERENCE
-                            red ring for overweight/high, blue ring for underweight/low
+                            red ring whenever the value is under or over the reference range
 */
 const MetricRow = ({
   icon, iconBg, label, value,
   rangeLabel, status, bodyAgeMode, bodyAgeVal, oval, rangeNote,
-  prevValue, isExistingUser, isUnderweight,
+  prevValue, isExistingUser,
 }) => {
   const isOutOfRange  = status && status.bg === RED;
-  const showRedRing   = !isExistingUser && oval && isOutOfRange && !isUnderweight;
-  const showBlueRing  = !isExistingUser && oval && isUnderweight;
+  const showRedRing   = !isExistingUser && oval && isOutOfRange;
   const showGreenRing = isExistingUser && oval;
   const hasRef        = rangeLabel || (bodyAgeMode && bodyAgeVal != null);
 
@@ -255,9 +266,7 @@ const MetricRow = ({
         display: 'flex', alignItems: 'center',
       }}>
         {showRedRing ? (
-          <MetricCircle value={value} outOfRange />
-        ) : showBlueRing ? (
-          <MetricCircle value={value} outOfRange isUnderweight />
+          <MetricCircle value={value} />
         ) : showGreenRing ? (
           <MetricCircle value={value} greenRing />
         ) : (
@@ -305,28 +314,28 @@ const MetricRow = ({
 };
 
 /* ─────────────────────────────── main component ── */
-const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, ref) => {
+const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null, timezoneIana }, ref) => {
   const isExistingUser = Boolean(previousCard);
   const fmt = (v, unit) => {
     const u = unit || '';
     return v !== null && v !== undefined && v !== '' ? (v + u) : '—';
   };
 
-  const fmtDate = (v) => {
-    if (!v) return '—';
-    const str = String(v);
-    if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
-    if (/^\d{8}$/.test(str))
-      return str.slice(0, 4) + '-' + str.slice(4, 6) + '-' + str.slice(6, 8);
-    return str;
-  };
+  const fmtDate = (recordedDate, cardRow) =>
+    formatBcmShareCardDateTime(
+      recordedDate,
+      resolveBcmCardDisplayTimestamp(cardRow),
+      timezoneIana,
+    );
+
+  const appointmentDate = resolveBcmCardAppointmentDate(card);
 
   /* ── Status helpers ── */
   const bmiVal = parseFloat(card.bmi);
   const bmiStatus = !isNaN(bmiVal)
-    ? bmiVal < 18.5 ? { label: 'UNDERWEIGHT', bg: RED, isUnderweight: true  }
-    : bmiVal > 23 ? { label: 'OVERWEIGHT',  bg: RED, isUnderweight: false }
-    :               { label: 'NORMAL',       bg: G, isUnderweight: false }
+    ? bmiVal < 18.5 ? { label: 'UNDERWEIGHT', bg: RED }
+    : bmiVal > 23 ? { label: 'OVERWEIGHT',  bg: RED }
+    :               { label: 'NORMAL',       bg: G }
     : null;
   const bmiRangeColor = bmiStatus ? bmiStatus.bg : null;
 
@@ -365,12 +374,22 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
   }());
   const weightStatus = idealWeightRange && !isNaN(weightVal)
     ? (weightVal < idealWeightRange.lo || weightVal > idealWeightRange.hi)
-      ? { label: weightVal < idealWeightRange.lo ? 'UNDERWEIGHT' : 'OVERWEIGHT', bg: RED, isUnderweight: weightVal < idealWeightRange.lo }
-      : { label: 'NORMAL', bg: G, isUnderweight: false }
+      ? { label: weightVal < idealWeightRange.lo ? 'UNDERWEIGHT' : 'OVERWEIGHT', bg: RED }
+      : { label: 'NORMAL', bg: G }
     : null;
   const idealWeightHint = idealWeightRange
     ? idealWeightRange.lo + ' to ' + idealWeightRange.hi + ' kg'
     : null;
+
+  const waistEval = evaluateWaistCm(card.waistCm, card.gender);
+  const waistStatus = waistEval?.isOutOfRange ? { isOutOfRange: true, bg: RED } : null;
+  const chestEval = evaluateChestCm(card.chestCm, card.gender);
+  const chestStatus = chestEval?.isOutOfRange ? { isOutOfRange: true, bg: RED } : null;
+  const hipEval = evaluateHipCm(card.hipCm, card.gender);
+  const hipStatus = hipEval?.isOutOfRange ? { isOutOfRange: true, bg: RED } : null;
+  const waistRangeLabel = getWaistCmReference(card.gender);
+  const chestRangeLabel = getChestCmReference(card.gender);
+  const hipRangeLabel = getHipCmReference(card.gender);
 
   return (
     <div
@@ -437,10 +456,16 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
         {/* ═══ PERSONAL STATS SECTION ═══ */}
         <div style={{ background: '#fff', padding: '18px 22px 12px' }}>
 
-          <InfoRow icon="📅" label="Date"     value={fmtDate(card.recordedDate)} />
+          <InfoRow icon="📅" label="Date"     value={fmtDate(card.recordedDate, card)} />
+          {card.locationName ? (
+            <InfoRow icon="📍" label="Venue" value={card.locationName} />
+          ) : null}
+          {appointmentDate ? (
+            <InfoRow icon="🗓️" label="Appointment" value={appointmentDate} />
+          ) : null}
+          <InfoRow icon={<HeightIcon />} label="Height"   value={fmt(card.heightCm, ' cm')} />
           <InfoRow icon="👤" label="Name"     value={(card.name || '—').toUpperCase()} />
           <InfoRow icon="🎂" label="Age"      value={card.age ? card.age + ' Yrs' : '—'} />
-          <InfoRow icon={<HeightIcon />} label="Height"   value={fmt(card.heightCm, ' cm')} />
           {card.phoneNumber ? (
             <InfoRow icon="📞" label="Phone" value={card.phoneNumber} />
           ) : null}
@@ -503,7 +528,6 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
               oval
               prevValue={previousCard?.weightKg != null ? previousCard.weightKg + ' kg' : '—'}
               isExistingUser={isExistingUser}
-              isUnderweight={weightStatus?.isUnderweight}
             />
           )}
           {card.bmi != null && card.bmi !== '' && (
@@ -516,7 +540,6 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
               oval
               prevValue={previousCard?.bmi != null ? String(previousCard.bmi) : '—'}
               isExistingUser={isExistingUser}
-              isUnderweight={bmiStatus?.isUnderweight}
             />
           )}
           {card.fatPercent != null && card.fatPercent !== '' && (
@@ -528,18 +551,6 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
               status={fatStatus}
               oval
               prevValue={previousCard?.fatPercent != null ? previousCard.fatPercent + '%' : '—'}
-              isExistingUser={isExistingUser}
-            />
-          )}
-          {card.visceralFat != null && card.visceralFat !== '' && (
-            <MetricRow
-              icon="🫀" iconBg="#fef9c3"
-              label="V-Fat"
-              value={String(card.visceralFat)}
-              rangeLabel="≤ 9"
-              status={parseFloat(card.visceralFat) > 9 ? { isOutOfRange: true, bg: RED } : null}
-              oval
-              prevValue={previousCard?.visceralFat != null ? String(previousCard.visceralFat) : '—'}
               isExistingUser={isExistingUser}
             />
           )}
@@ -562,6 +573,9 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
               icon={<ChestMeasureIcon />} iconBg="#f0fdf4"
               label="Chest"
               value={fmt(card.chestCm, ' cm')}
+              rangeLabel={chestRangeLabel}
+              status={chestStatus}
+              oval
               prevValue={previousCard?.chestCm != null ? previousCard.chestCm + ' cm' : '—'}
               isExistingUser={isExistingUser}
             />
@@ -571,6 +585,9 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
               icon={<WaistMeasureIcon />} iconBg="#f0fdf4"
               label="Waist"
               value={fmt(card.waistCm, ' cm')}
+              rangeLabel={waistRangeLabel}
+              status={waistStatus}
+              oval
               prevValue={previousCard?.waistCm != null ? previousCard.waistCm + ' cm' : '—'}
               isExistingUser={isExistingUser}
             />
@@ -580,9 +597,51 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null }, r
               icon={<HipMeasureIcon />} iconBg="#f0fdf4"
               label="Hip"
               value={fmt(card.hipCm, ' cm')}
+              rangeLabel={hipRangeLabel}
+              status={hipStatus}
+              oval
               prevValue={previousCard?.hipCm != null ? previousCard.hipCm + ' cm' : '—'}
               isExistingUser={isExistingUser}
             />
+          )}
+
+          {Array.isArray(card.recoveredHealthIssues) && card.recoveredHealthIssues.filter(Boolean).length > 0 && (
+            <div style={{
+              marginTop: 12,
+              paddingTop: 10,
+              borderTop: '1px dashed #bbf7d0',
+              textAlign: 'center',
+            }}>
+              <p style={{
+                margin: '0 0 8px',
+                fontSize: 10,
+                fontWeight: 700,
+                color: '#9ca3af',
+                letterSpacing: '0.2px',
+              }}>
+                Health Issues while joining this community
+              </p>
+              {card.recoveredHealthIssues.filter(Boolean).map((issue) => (
+                <span
+                  key={issue}
+                  style={{
+                    display: 'inline-block',
+                    margin: '0 4px 4px',
+                    background: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    borderRadius: 20,
+                    padding: '5px 14px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    lineHeight: '16px',
+                    color: '#991b1b',
+                    textAlign: 'center',
+                  }}
+                >
+                  {issue}
+                </span>
+              ))}
+            </div>
           )}
 
           {/* Footer brand */}

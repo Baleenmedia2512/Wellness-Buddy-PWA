@@ -10,6 +10,10 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { Play, Video, X } from 'lucide-react';
+import {
+  getCachedVideoThumbnail,
+  setCachedVideoThumbnail,
+} from '../utils/videoThumbnailCache';
 
 // ─── Full-screen player (reused from CoachTestimonialsPage pattern) ───────────
 
@@ -17,11 +21,20 @@ function VideoPlayerModal({ url, title, onClose }) {
   const videoRef = useRef(null);
 
   useEffect(() => {
-    videoRef.current?.play().catch(() => {/* autoplay blocked — user will tap play */});
+    const node = videoRef.current;
+    if (!node || !url) return undefined;
+    const tryPlay = () => {
+      node.play().catch(() => {/* autoplay blocked — user will tap play */});
+    };
+    node.addEventListener('loadeddata', tryPlay);
+    tryPlay();
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
+    return () => {
+      node.removeEventListener('loadeddata', tryPlay);
+      window.removeEventListener('keydown', handler);
+    };
+  }, [onClose, url]);
 
   return (
     <div
@@ -55,6 +68,7 @@ function VideoPlayerModal({ url, title, onClose }) {
           controls
           playsInline
           autoPlay
+          preload="none"
           className="max-h-full max-w-full object-contain rounded-xl"
           style={{ maxHeight: 'calc(100vh - 120px)' }}
         />
@@ -132,33 +146,89 @@ export default function VideoThumbnailCard({
   className = '',
   compact = false,
   localPreviewUrl = null,
+  onNeedUrl = null,
 }) {
-  const [thumbnail, setThumbnail] = useState(null);
-  const [loading,   setLoading]   = useState(true);
-  const [playing,   setPlaying]   = useState(false);
-
   const videoUrl = localPreviewUrl || url;
+  const [thumbnail, setThumbnail] = useState(() => getCachedVideoThumbnail(videoUrl));
+  const [loading, setLoading] = useState(() => Boolean(videoUrl) && !getCachedVideoThumbnail(videoUrl));
+  const [playing, setPlaying] = useState(false);
+  const [playUrl, setPlayUrl] = useState(videoUrl);
+  const [visible, setVisible] = useState(() => Boolean(getCachedVideoThumbnail(videoUrl)));
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    setPlayUrl(videoUrl);
+  }, [videoUrl]);
+
+  const handlePlay = async (event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    let next = playUrl || videoUrl;
+    if (!next && typeof onNeedUrl === 'function') {
+      setLoading(true);
+      try {
+        next = await onNeedUrl();
+      } catch {
+        next = null;
+      } finally {
+        setLoading(false);
+      }
+    }
+    if (!next) return;
+    setPlayUrl(next);
+    setPlaying(true);
+  };
+
+  // Only generate thumbnails when the card is near the viewport.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || !videoUrl) return undefined;
+    if (getCachedVideoThumbnail(videoUrl)) {
+      setVisible(true);
+      return undefined;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '200px', threshold: 0 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [videoUrl]);
 
   useEffect(() => {
     if (!videoUrl) {
       setLoading(false);
-      return;
+      return undefined;
     }
+    if (!visible) return undefined;
+
+    const cached = getCachedVideoThumbnail(videoUrl);
+    if (cached) {
+      setThumbnail(cached);
+      setLoading(false);
+      return undefined;
+    }
+
     let cancelled = false;
     setLoading(true);
     setThumbnail(null);
 
     captureVideoThumbnail(videoUrl).then((dataUrl) => {
-      if (!cancelled) {
-        setThumbnail(dataUrl);
-        setLoading(false);
-      }
+      if (cancelled) return;
+      if (dataUrl) setCachedVideoThumbnail(videoUrl, dataUrl);
+      setThumbnail(dataUrl);
+      setLoading(false);
     });
 
     return () => { cancelled = true; };
-  }, [videoUrl]);
+  }, [videoUrl, visible]);
 
-  if (!videoUrl) {
+  if (!videoUrl && !onNeedUrl) {
     if (compact) {
       return (
         <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 rounded-full text-[11px] text-gray-400 font-medium">
@@ -173,8 +243,9 @@ export default function VideoThumbnailCard({
     return (
       <>
         <button
+          ref={rootRef}
           type="button"
-          onClick={() => setPlaying(true)}
+          onClick={handlePlay}
           className={`relative inline-flex items-center gap-1.5 overflow-hidden rounded-xl border border-gray-200 bg-gray-900 shadow-sm hover:shadow transition-all active:scale-95 ${className}`}
           style={{ width: 80, height: 56 }}
           aria-label={`Play ${label}`}
@@ -190,7 +261,9 @@ export default function VideoThumbnailCard({
             </div>
           </div>
         </button>
-        {playing && <VideoPlayerModal url={videoUrl} title={label} onClose={() => setPlaying(false)} />}
+        {playing && playUrl && (
+          <VideoPlayerModal url={playUrl} title={label} onClose={() => setPlaying(false)} />
+        )}
       </>
     );
   }
@@ -198,8 +271,9 @@ export default function VideoThumbnailCard({
   return (
     <>
       <button
+        ref={rootRef}
         type="button"
-        onClick={() => setPlaying(true)}
+        onClick={handlePlay}
         className={`relative w-full overflow-hidden rounded-xl border border-gray-200 bg-gray-900 shadow-sm hover:shadow-md transition-all active:scale-[0.98] group ${className}`}
         style={{ aspectRatio: '16/9' }}
         aria-label={`Play ${label}`}
@@ -232,7 +306,9 @@ export default function VideoThumbnailCard({
           <p className="text-white text-[11px] font-semibold truncate">{label}</p>
         </div>
       </button>
-      {playing && <VideoPlayerModal url={videoUrl} title={label} onClose={() => setPlaying(false)} />}
+      {playing && playUrl && (
+        <VideoPlayerModal url={playUrl} title={label} onClose={() => setPlaying(false)} />
+      )}
     </>
   );
 }

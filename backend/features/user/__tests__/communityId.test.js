@@ -8,6 +8,8 @@ import {
   COMMUNITY_ID_MAX_LENGTH,
   normalizeCommunityId,
   validateCommunityId,
+  validateCommunityIdRequest,
+  validateCommunityIdVerify,
   validateUpdateProfile,
 } from '../user.validators.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
@@ -26,10 +28,16 @@ describe('normalizeCommunityId', () => {
 });
 
 describe('validateCommunityId', () => {
-  it('accepts alphanumeric values up to max length', () => {
+  it('accepts alphanumeric values of 4 or more characters', () => {
     const result = validateCommunityId('124141244');
     assert.equal(result.valid, true);
     assert.equal(result.value, '124141244');
+  });
+
+  it('rejects values shorter than 4 characters', () => {
+    const result = validateCommunityId('AB1');
+    assert.equal(result.valid, false);
+    assert.match(result.message, /at least 4 characters/i);
   });
 
   it('accepts letters and numbers mixed', () => {
@@ -89,5 +97,34 @@ describe('validateUpdateProfile communityId', () => {
   it('omits communityId when not provided', () => {
     const parsed = validateUpdateProfile(baseBody);
     assert.equal(parsed.communityId, undefined);
+  });
+});
+
+describe('validateCommunityIdRequest', () => {
+  it('requires a Community ID', () => {
+    assert.throws(
+      () => validateCommunityIdRequest({ userId: 1, communityId: '' }),
+      (err) => err instanceof ValidationError && err.status === 400,
+    );
+  });
+
+  it('accepts userId and a valid code', () => {
+    const parsed = validateCommunityIdRequest({ userId: 9, communityId: 'wb1234' });
+    assert.equal(parsed.userId, 9);
+    assert.equal(parsed.communityId, 'wb1234');
+  });
+});
+
+describe('validateCommunityIdVerify', () => {
+  it('requires a 4-digit OTP', () => {
+    assert.throws(
+      () => validateCommunityIdVerify({ userId: 1, otp: '12' }),
+      (err) => err instanceof ValidationError && err.status === 400,
+    );
+  });
+
+  it('accepts a 4-digit code', () => {
+    const parsed = validateCommunityIdVerify({ email: 'a@b.com', otp: '1234' });
+    assert.equal(parsed.otp, '1234');
   });
 });

@@ -106,6 +106,14 @@ function projectRecentMeals(rows) {
 }
 
 export async function getContext({ userId }) {
+  const accountRow = await repo.findByUserId(userId, '"UserId"');
+  if (!accountRow) {
+    return {
+      httpStatus: 404,
+      body: { success: false, userNotFound: true, message: 'Account not found' },
+    };
+  }
+
   const startTime = Date.now();
   const [userCorrectionsResult, globalPatternsResult, userProfileResult, recentMealsResult] =
     await repo.getUserContextData(userId);

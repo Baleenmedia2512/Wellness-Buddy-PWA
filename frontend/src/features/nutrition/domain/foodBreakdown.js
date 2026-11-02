@@ -1,0 +1,270 @@
+/**
+ * Food-breakdown helpers for nutrient contribution modals.
+ * Shared by Home NutritionCarousel and Reports NutritionSectionStack.
+ * Behavior preserved from the original carousel implementations.
+ */
+
+function parseAnalysisData(raw) {
+  if (!raw) return {};
+  if (typeof raw === 'object') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+function nutrientKeyWithoutTotal(nutrient) {
+  if (!nutrient) return '';
+  return nutrient.startsWith('total')
+    ? nutrient.charAt(5).toLowerCase() + nutrient.slice(6)
+    : nutrient;
+}
+
+/**
+ * Decimal places for modal display. Sub-mg vitamins (B1 ~0.4mg) must keep
+ * fractions — whole-number rounding made them look like "0mg / No foods".
+ * Mirrors wellness-score NUTRIENT_CONTRIBUTION_MAP decimals.
+ */
+export function getNutrientDecimals(nutrient) {
+  const key = nutrientKeyWithoutTotal(nutrient).toLowerCase();
+  const decimalsByKey = {
+    vitaminb1: 2, vitaminb2: 2, vitaminb6: 2, vitaminb12: 2,
+    vitaminb3: 1, vitamind: 1, vitamine: 1, iron: 1, zinc: 1,
+  };
+  return decimalsByKey[key] ?? 0;
+}
+
+/** True when the amount would display as 0 with the nutrient's decimal places. */
+export function roundsToZeroDisplay(amount, decimals = 0) {
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n <= 0) return true;
+  if (decimals > 0) return Number(n.toFixed(decimals)) === 0;
+  return Math.round(n) === 0;
+}
+
+/** Collapse case, wrapping stars, and punctuation so the same food groups together. */
+function normalizeFoodIdentityName(name) {
+  return String(name || '')
+    .toLowerCase()
+    .replace(/^\*+|\*+$/g, '')
+    .replace(/[-–—_()[\]{}*]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function foodIdentityKey(food, foodName) {
+  const id = food?.profileId ?? food?.foodId ?? food?.id ?? food?.food_id;
+  if (id != null && String(id).trim() !== '') return `id:${String(id).trim()}`;
+  return `name:${normalizeFoodIdentityName(foodName || food?.name || food?.foodName || '')}`;
+}
+
+function groupedMealName(foods, fallbackCategory) {
+  const fl = foods || [];
+  if (fl.length === 1) return fl[0].name || fl[0].foodName || 'Meal';
+  if (fl.length > 1) return `${fl[0].name || fl[0].foodName || 'Meal'} (+${fl.length - 1} more)`;
+  return fallbackCategory || 'Meal';
+}
+
+/** One row per food. Repeated logs in the range are summed at full precision. */
+function groupContributionRows(rows) {
+  const groups = new Map();
+  rows.forEach((row) => {
+    const key = row.identityKey || `name:${normalizeFoodIdentityName(row.foodName)}`;
+    const existing = groups.get(key);
+    if (!existing) {
+      groups.set(key, { foodName: row.foodName, amount: row.amount });
+      return;
+    }
+    existing.amount += row.amount;
+  });
+  return Array.from(groups.values());
+}
+
+/**
+ * Extract foods and their nutrient contributions from analyses.
+ * Supports: macros, micros, calories, sodium, cholesterol, sugar, fiber, vitamins, minerals.
+ */
+export function extractFoodContributions(analyses, nutrientKey) {
+  const foods = [];
+  let total = 0;
+
+  // Strip "total" prefix if present (e.g., totalVitaminA -> vitaminA)
+  const normalizedKey = nutrientKeyWithoutTotal(nutrientKey);
+
+  // DB column name for meal-level fallback (e.g., totalVitaminA -> TotalVitaminA)
+  const dbColKey = nutrientKey.startsWith('total')
+    ? nutrientKey.charAt(0).toUpperCase() + nutrientKey.slice(1)
+    : null;
+
+  const decimals = getNutrientDecimals(nutrientKey);
+
+  (analyses || []).forEach((analysis) => {
+    if (analysis.isUndoPlaceholder) return;
+    const data = parseAnalysisData(analysis.AnalysisData);
+    const foodList = data.foods || [];
+
+    let mealFoodTotal = 0;
+    const mealFoods = [];
+
+    foodList.forEach((food) => {
+      const nutrition = food.nutrition || {};
+      let amount = 0;
+
+      if (normalizedKey === 'protein') amount = nutrition.protein || 0;
+      else if (normalizedKey === 'fat') amount = nutrition.fat || 0;
+      else if (normalizedKey === 'carbs') amount = nutrition.carbs || 0;
+      else if (normalizedKey === 'calories') amount = nutrition.calories || 0;
+      else if (normalizedKey === 'sodium') amount = nutrition.sodium || 0;
+      else if (normalizedKey === 'cholesterol') amount = nutrition.cholesterol || 0;
+      else if (normalizedKey === 'sugar') amount = nutrition.sugar || 0;
+      else if (normalizedKey === 'fiber') amount = nutrition.fiber || 0;
+      else if (normalizedKey === 'vitaminA') amount = nutrition.vitamin_a || nutrition.vitaminA || 0;
+      else if (normalizedKey === 'vitaminC') amount = nutrition.vitamin_c || nutrition.vitaminC || 0;
+      else if (normalizedKey === 'vitaminD') amount = nutrition.vitamin_d || nutrition.vitaminD || 0;
+      else if (normalizedKey === 'vitaminE') amount = nutrition.vitamin_e || nutrition.vitaminE || 0;
+      else if (normalizedKey === 'vitaminK') amount = nutrition.vitamin_k || nutrition.vitaminK || 0;
+      else if (normalizedKey === 'vitaminB1' || normalizedKey === 'thiamin') amount = nutrition.vitamin_b1 || nutrition.vitaminB1 || nutrition.thiamin || 0;
+      else if (normalizedKey === 'vitaminB2' || normalizedKey === 'riboflavin') amount = nutrition.vitamin_b2 || nutrition.vitaminB2 || nutrition.riboflavin || 0;
+      else if (normalizedKey === 'vitaminB3' || normalizedKey === 'niacin') amount = nutrition.vitamin_b3 || nutrition.vitaminB3 || nutrition.niacin || 0;
+      else if (normalizedKey === 'vitaminB6') amount = nutrition.vitamin_b6 || nutrition.vitaminB6 || 0;
+      else if (normalizedKey === 'vitaminB9' || normalizedKey === 'folate') amount = nutrition.vitamin_b9 || nutrition.vitaminB9 || nutrition.folate || 0;
+      else if (normalizedKey === 'vitaminB12') amount = nutrition.vitamin_b12 || nutrition.vitaminB12 || 0;
+      else if (normalizedKey === 'calcium') amount = nutrition.calcium || 0;
+      else if (normalizedKey === 'iron') amount = nutrition.iron || 0;
+      else if (normalizedKey === 'magnesium') amount = nutrition.magnesium || 0;
+      else if (normalizedKey === 'potassium') amount = nutrition.potassium || 0;
+      else if (normalizedKey === 'zinc') amount = nutrition.zinc || 0;
+      else if (normalizedKey === 'phosphorus') amount = nutrition.phosphorus || 0;
+
+      // Hide rows that would display as 0 at this nutrient's precision (not whole mg).
+      if (!roundsToZeroDisplay(amount, decimals)) {
+        const foodName = food.name || food.foodName || 'Unknown food';
+        mealFoods.push({
+          foodName,
+          amount,
+          identityKey: foodIdentityKey(food, foodName),
+        });
+        mealFoodTotal += amount;
+      }
+    });
+
+    if (mealFoods.length > 0) {
+      // Per-food amounts only. The meal column is the same nutrient, not an extra share.
+      mealFoods.forEach((f) => foods.push(f));
+      total += mealFoodTotal;
+    } else if (dbColKey) {
+      const mealTotal = Number(analysis[dbColKey]) || 0;
+      if (!roundsToZeroDisplay(mealTotal, decimals)) {
+        const fl = data.foods || [];
+        const mealName = groupedMealName(fl, data.total?.category);
+        const identityKey = fl.length === 1
+          ? foodIdentityKey(fl[0], mealName)
+          : `meal:${normalizeFoodIdentityName(mealName)}`;
+        foods.push({ foodName: mealName, amount: mealTotal, identityKey });
+        total += mealTotal;
+      }
+    }
+  });
+
+  const grouped = groupContributionRows(foods);
+  total = grouped.reduce((sum, food) => sum + food.amount, 0);
+
+  const breakdown = grouped
+    .map((f) => ({
+      foodName: f.foodName,
+      amount: f.amount,
+      percentage: total > 0 ? (f.amount / total) * 100 : 0,
+    }))
+    .sort((a, b) => b.amount - a.amount);
+
+  return { breakdown, total };
+}
+
+export function getNutrientDisplayName(nutrient) {
+  const key = nutrient?.startsWith('total') ? nutrient.slice(5) : nutrient;
+
+  const names = {
+    protein: 'Protein', fat: 'Fat', carbs: 'Carbs', calories: 'Calories',
+    sodium: 'Sodium', cholesterol: 'Cholesterol', sugar: 'Sugar', fiber: 'Fiber',
+    VitaminA: 'Vitamin A', VitaminC: 'Vitamin C', VitaminD: 'Vitamin D',
+    VitaminE: 'Vitamin E', VitaminK: 'Vitamin K',
+    VitaminB1: 'Vitamin B1', VitaminB2: 'Vitamin B2', VitaminB3: 'Vitamin B3',
+    VitaminB6: 'Vitamin B6', VitaminB9: 'Vitamin B9', VitaminB12: 'Vitamin B12',
+    Calcium: 'Calcium', Iron: 'Iron', Magnesium: 'Magnesium',
+    Potassium: 'Potassium', Zinc: 'Zinc', Phosphorus: 'Phosphorus',
+  };
+  return names[key] || '';
+}
+
+export function getNutrientUnit(nutrient) {
+  const key = nutrient?.startsWith('total') ? nutrient.slice(5).toLowerCase() : nutrient;
+
+  if (['protein', 'fat', 'carbs', 'sugar', 'fiber'].includes(key)) return 'g';
+  if (['sodium', 'cholesterol', 'calcium', 'magnesium', 'potassium', 'phosphorus', 'vitaminc', 'vitaminb1', 'vitaminb2', 'vitaminb3', 'vitaminb6', 'iron'].includes(key)) return 'mg';
+  if (['vitamina', 'vitamind', 'vitamine', 'vitamink', 'vitaminb9', 'vitaminb12', 'zinc'].includes(key)) return 'µg';
+  if (key === 'calories') return 'kcal';
+  return '';
+}
+
+export function getNutrientTotal(nutrient, dailyStats, calCard, heartCard, lowCarbCard) {
+  const key = nutrient?.startsWith('total') ? nutrient.slice(5).toLowerCase() : nutrient?.toLowerCase();
+
+  if (key === 'protein') return dailyStats?.totalProtein || 0;
+  if (key === 'fat') return dailyStats?.totalFat || 0;
+  if (key === 'carbs') return dailyStats?.totalCarbs || 0;
+  if (key === 'calories') return calCard?.consumed || 0;
+  if (key === 'sodium') return heartCard?.sodium?.consumed || 0;
+  if (key === 'cholesterol') return heartCard?.cholesterol?.consumed || 0;
+  if (key === 'sugar') return lowCarbCard?.sugar?.consumed || 0;
+  if (key === 'fiber') return lowCarbCard?.fiber?.consumed || 0;
+  if (key === 'vitamina') return dailyStats?.totalVitaminA || 0;
+  if (key === 'vitaminc') return dailyStats?.totalVitaminC || 0;
+  if (key === 'vitamind') return dailyStats?.totalVitaminD || 0;
+  if (key === 'vitamine') return dailyStats?.totalVitaminE || 0;
+  if (key === 'vitamink') return dailyStats?.totalVitaminK || 0;
+  if (key === 'vitaminb1') return dailyStats?.totalVitaminB1 || 0;
+  if (key === 'vitaminb2') return dailyStats?.totalVitaminB2 || 0;
+  if (key === 'vitaminb3') return dailyStats?.totalVitaminB3 || 0;
+  if (key === 'vitaminb6') return dailyStats?.totalVitaminB6 || 0;
+  if (key === 'vitaminb9') return dailyStats?.totalVitaminB9 || 0;
+  if (key === 'vitaminb12') return dailyStats?.totalVitaminB12 || 0;
+  if (key === 'calcium') return dailyStats?.totalCalcium || 0;
+  if (key === 'iron') return dailyStats?.totalIron || 0;
+  if (key === 'magnesium') return dailyStats?.totalMagnesium || 0;
+  if (key === 'potassium') return dailyStats?.totalPotassium || 0;
+  if (key === 'zinc') return dailyStats?.totalZinc || 0;
+  if (key === 'phosphorus') return dailyStats?.totalPhosphorus || 0;
+  return 0;
+}
+
+export function getNutrientTarget(nutrient, proteinTarget, fatTarget, carbsTarget, calorieTarget, heartCard, lowCarbCard) {
+  const key = nutrient?.startsWith('total') ? nutrient.slice(5).toLowerCase() : nutrient?.toLowerCase();
+
+  if (key === 'protein') return proteinTarget || 0;
+  if (key === 'fat') return fatTarget || 0;
+  if (key === 'carbs') return carbsTarget || 0;
+  if (key === 'calories') return calorieTarget || 0;
+  if (key === 'sodium') return heartCard?.sodium?.target || 2300;
+  if (key === 'cholesterol') return heartCard?.cholesterol?.target || 300;
+  if (key === 'sugar') return lowCarbCard?.sugar?.target || 50;
+  if (key === 'fiber') return lowCarbCard?.fiber?.target || 25;
+  if (key === 'vitamina') return 900;
+  if (key === 'vitaminc') return 90;
+  if (key === 'vitamind') return 20;
+  if (key === 'vitamine') return 15;
+  if (key === 'vitamink') return 120;
+  if (key === 'vitaminb1') return 1.2;
+  if (key === 'vitaminb2') return 1.3;
+  if (key === 'vitaminb3') return 16;
+  if (key === 'vitaminb6') return 1.7;
+  if (key === 'vitaminb9') return 400;
+  if (key === 'vitaminb12') return 2.4;
+  if (key === 'calcium') return 1000;
+  if (key === 'iron') return 18;
+  if (key === 'magnesium') return 420;
+  if (key === 'potassium') return 3500;
+  if (key === 'zinc') return 11;
+  if (key === 'phosphorus') return 700;
+  return 0;
+}

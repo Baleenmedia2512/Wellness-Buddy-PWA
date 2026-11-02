@@ -80,10 +80,10 @@ async function persistEnrichment(foodRowId, enrichmentPayload) {
   if (!foodRowId || Object.keys(enrichmentPayload).length === 0) return;
 
   // Dynamic import avoids circular dependency at module load
-  const { getSupabaseClient } = await import('../../../utils/supabaseClient.js');
-  const supabase = getSupabaseClient();
+  const { getMysqlClient } = await import('../../../utils/mysqlClient.js');
+  const db = getMysqlClient();
 
-  const { error } = await supabase
+  const { error } = await db
     .from('food_nutrition_data_table')
     .update({ ...enrichmentPayload, EnrichmentStatus: 'completed' })
     .eq('"ID"', foodRowId);
@@ -117,10 +117,11 @@ export async function processNextJob() {
   }
 
   const trace = new TraceContext({
-    captureId: job.captureId,
-    userId:    job.userId,
-    traceId:   job.traceId,   // Replay the original traceId for correlation
-    module:    job.module,
+    captureId:  job.captureId,
+    userId:     job.userId,
+    traceId:    job.traceId,   // Replay the original traceId for correlation
+    module:     job.module,
+    appVersion: job.appVersion,
   });
 
   logger.info('jobWorker: starting enrichment', {

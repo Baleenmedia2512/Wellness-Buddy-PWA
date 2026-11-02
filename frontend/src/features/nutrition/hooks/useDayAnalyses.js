@@ -85,6 +85,10 @@ export function useDayAnalyses({
   nutritionRefreshKey = 0,
   /** Home-only: skip refetch when no newer activity log exists (see homeDashboardActivity). */
   enableActivityLogGate = false,
+  /** When false, skip auto-fetch (timeline modal-host mount). */
+  enabled = true,
+  /** Coach viewing a downline member — forwarded for backend hierarchy check. */
+  viewerUserId = null,
 }) {
   // Restore last Home snapshot instantly when remounting with no new activity log.
   const cachedSnapshot = enableActivityLogGate ? getHomeDashboardSnapshot() : null;
@@ -153,14 +157,29 @@ export function useDayAnalyses({
           );
         }
 
+        const statsParams = new URLSearchParams({
+          userId: String(actualUserId),
+          date: dateString,
+          detailed: 'true',
+          _t: String(cacheBuster),
+        });
+        if (viewerUserId != null && viewerUserId !== '' && String(viewerUserId) !== String(actualUserId)) {
+          statsParams.set('viewerUserId', String(viewerUserId));
+        }
+
         const response = await fetch(
-          `${apiBaseUrl}/api/food-corrections/stats?userId=${actualUserId}&date=${dateString}&detailed=true&_t=${cacheBuster}`,
+          `${apiBaseUrl}/api/food-corrections/stats?${statsParams.toString()}`,
           {
             cache: 'no-store',
             headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
           },
         );
         const data = await response.json();
+
+        if (response.status === 403) {
+          setError('You do not have permission to view this member.');
+          return;
+        }
 
         // Stage 19 — useDayAnalyses fetch completed
         if (_trD) {
@@ -222,17 +241,18 @@ export function useDayAnalyses({
         setLoading(false);
       }
     },
-    [apiBaseUrl, resolveUserId, enableActivityLogGate],
+    [apiBaseUrl, resolveUserId, enableActivityLogGate, viewerUserId],
   );
 
   // Auto-refresh when user, date, or nutritionRefreshKey (activity log) changes.
   // Diary / NutritionDashboard always force-fetch; Home uses the activity gate.
+  // Timeline modal-host mounts pass enabled=false until first open.
   useEffect(() => {
-    if (!user) return;
+    if (!user || !enabled) return;
     fetchDayAnalyses(selectedDate, {
       force: enableActivityLogGate ? shouldRefreshHomeDashboard() : true,
     });
-  }, [user, selectedDate, fetchDayAnalyses, nutritionRefreshKey, enableActivityLogGate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, selectedDate, fetchDayAnalyses, nutritionRefreshKey, enableActivityLogGate, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apply optimistic deltas to daily totals (used by mutations).
   const applyDailyDelta = useCallback(

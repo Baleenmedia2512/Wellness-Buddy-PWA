@@ -5,63 +5,97 @@
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { Trophy } from "lucide-react";
+import { Scale } from "lucide-react";
 import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
+import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
+import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js';
+import TeamMemberProfileModal from '../../../shared/components/TeamMemberProfileModal';
+import LeaderboardAvatar from '../../leaderboard/components/LeaderboardAvatar.js';
+import LeaderboardAvatarViewer from '../../leaderboard/components/LeaderboardAvatarViewer.js';
+import LeaderboardRankBadge from '../../leaderboard/components/LeaderboardRankBadge.js';
+import {
+  buildUserAvatarUrl,
+  getAvatarDisplayVersion,
+} from '../../user/services/avatarDisplayVersion';
+import { sortLeaderboardByRankAsc } from '../../leaderboard/utils/leaderboardOrder.js';
+import { LEADERBOARD_CONFIG } from '../../../config/leaderboardConfig.js';
+import { useRaceLeaderboardRealtime } from '../../leaderboard/hooks/useRaceLeaderboardRealtime.js';
 
 // ---------------------------------------------------------------------------
-// SWR cache — global leaderboard is identical for all users, no userId key.
+// SWR cache — hierarchy-scoped (per logged-in user).
 // Stale data shows instantly on back-navigation; fresh data arrives quietly.
 // ---------------------------------------------------------------------------
-const WEIGHT_LB_CACHE_TTL = 5 * 60 * 1000;
-const readWeightLBCache = () => {
+const WEIGHT_LB_CACHE_TTL = 15 * 1000;
+// Keep a short poll even when Realtime is configured (WS can fail silently).
+const POLL_MS = LEADERBOARD_CONFIG.REFRESH_INTERVAL;
+// v4: hierarchy-scoped Top N (per logged-in user)
+const WEIGHT_LB_CACHE_KEY_PREFIX = 'wv.lb.weight.v5.';
+const WEIGHT_LB_LEGACY_KEYS = ['wv.lb.weight', 'wv.lb.weight.v2', 'wv.lb.weight.v3', 'wv.lb.weight.v4'];
+
+const cacheKeyFor = (userId) => `${WEIGHT_LB_CACHE_KEY_PREFIX}${userId || 'anon'}`;
+
+const stripWeightAvatars = (data) =>
+  (data || []).map(({ profileImage, ...rest }) => rest);
+
+const readWeightLBCache = (userId) => {
   try {
-    const raw = localStorage.getItem('wv.lb.weight');
+    WEIGHT_LB_LEGACY_KEYS.forEach((k) => localStorage.removeItem(k));
+    const raw = localStorage.getItem(cacheKeyFor(userId));
     if (!raw) return null;
     const c = JSON.parse(raw);
-    return Date.now() - c.ts < WEIGHT_LB_CACHE_TTL ? c.data : null;
+    return Date.now() - c.ts < WEIGHT_LB_CACHE_TTL ? sortLeaderboardByRankAsc(c.data) : null;
   } catch { return null; }
 };
-const writeWeightLBCache = (data) => {
+const writeWeightLBCache = (userId, data) => {
   try {
-    localStorage.setItem('wv.lb.weight', JSON.stringify({ data, ts: Date.now() }));
-  } catch { /* quota — ignore */ }
+    // Do not cache base64 avatars — quota blows and leaves stale null-avatar data.
+    localStorage.setItem(
+      cacheKeyFor(userId),
+      JSON.stringify({ data: stripWeightAvatars(sortLeaderboardByRankAsc(data)), ts: Date.now() }),
+    );
+  } catch {
+    try { localStorage.removeItem(cacheKeyFor(userId)); } catch { /* ignore */ }
+  }
 };
 
 /**
  * WeightLossLeaderboard Component
- * Displays global weight loss leaderboard strip showing top performers
+ * Hierarchy-scoped weight loss leaderboard (Weight Loss Today vs Yesterday).
  *
- * Features:
- * - Shows rank, profile avatar, user name, coach name, weight loss
- * - Smooth marquee animation (continuous horizontal scroll)
- * - Pause on hover for better UX
- * - Hides completely if no eligible users
- * - Exposes refresh method via ref for manual updates
- *
- * @param {string} apiBaseUrl - API base URL
- * @param {number} topN - Number of top users to show (default: 10)
+ * @param {'strip'|'tile'} variant - strip = auto-scroll headline (legacy); tile = static card list
  */
-const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
-  const [leaderboardData, setLeaderboardData] = useState(() => readWeightLBCache() ?? []);
-  const [isVisible, setIsVisible] = useState(() => (readWeightLBCache()?.length ?? 0) > 0);
-  const [isPaused, setIsPaused] = useState(false);
+const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email, variant = 'strip' }, ref) => {
+  const [leaderboardData, setLeaderboardData] = useState(() => readWeightLBCache(userId) ?? []);
+  const [isVisible, setIsVisible] = useState(() => (readWeightLBCache(userId)?.length ?? 0) > 0);
+  const [hasEntered, setHasEntered] = useState(() => (readWeightLBCache(userId)?.length ?? 0) > 0);
+  const [expandedAvatar, setExpandedAvatar] = useState(null);
+  const [profileMember, setProfileMember] = useState(null);
+  const isTile = variant === 'tile';
+  const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
+    enabled: !isTile && isVisible && leaderboardData.length > 0,
+  });
 
   // Fetch leaderboard data
   const fetchLeaderboard = useCallback(async () => {
+    const emailTrim = String(email || '').trim();
+    if ((userId == null || userId === '') && !emailTrim) {
+      setLeaderboardData([]);
+      setIsVisible(false);
+      return;
+    }
     try {
-      // debugLog(
-      //   "≡ƒÅå [LEADERBOARD] Fetching data from:",
-      //   `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}`,
-      // );
-
+      const params = new URLSearchParams({
+        topN: String(topN),
+      });
+      if (userId != null && userId !== '') params.set('userId', String(userId));
+      if (emailTrim) params.set('email', emailTrim);
       const response = await fetch(
-        `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}&t=${Date.now()}`,
+        `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?${params}`,
         {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
           },
         },
       );
@@ -74,17 +108,13 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
       const result = await response.json();
 
       if (result.success && result.data && result.data.length > 0) {
-        // debugLog(
-        //   "Γ£à [LEADERBOARD] Data found:",
-        //   result.data.length,
-        //   "users",
-        // );
-        setLeaderboardData(result.data);
+        const ordered = sortLeaderboardByRankAsc(result.data);
+        setLeaderboardData(ordered);
         setIsVisible(true);
-        writeWeightLBCache(result.data);
+        writeWeightLBCache(userId, ordered);
       } else {
         debugLog(
-          "ΓÜá∩╕Å [LEADERBOARD] No data available:",
+          "⚠ [LEADERBOARD] No data available:",
           result.message || "Empty data",
         );
         setLeaderboardData([]);
@@ -95,25 +125,24 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
       setLeaderboardData([]);
       setIsVisible(false);
     }
-  }, [apiBaseUrl, topN]);
+  }, [apiBaseUrl, topN, userId, email]);
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
     // refresh: re-fetches from server (retries after 4s for DB propagation)
     refresh: () => {
       fetchLeaderboard();
-      setTimeout(fetchLeaderboard, 4000);
     },
     // injectEntry: instantly show the current user's entry in the strip
     // without waiting for any API call. The next refresh will replace with real data.
-    injectEntry: ({ userId, userName, email, weightLoss, profileImage, coachName }) => {
-      // Match API: loss-only and ≤ 3 kg for Today vs Yesterday strip
+    injectEntry: ({ userId: entryUserId, userName, email, weightLoss, profileImage, coachName }) => {
+      // Match API: loss-only and ≤ 3 kg for Weight Loss Today vs Yesterday strip
       if (!weightLoss || weightLoss <= 0 || weightLoss > 3) return;
       setLeaderboardData((prev) => {
         // Remove any existing entry for this user, then add new one at top
-        const filtered = prev.filter((u) => u.userId !== userId);
+        const filtered = prev.filter((u) => u.userId !== entryUserId);
         const injected = [{
-          userId,
+          userId: entryUserId,
           userName: userName || "You",
           email: email || "",
           coachName: coachName || "",
@@ -130,58 +159,28 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     },
   }));
 
-  // Initial fetch
+  useRaceLeaderboardRealtime(fetchLeaderboard);
+
+  // Instant paint from SWR cache; Realtime pings + slower poll backup
   useEffect(() => {
-    fetchLeaderboard();
-    // Refresh every 1 minute for real-time updates
-    const refreshInterval = setInterval(fetchLeaderboard, 1 * 60 * 1000);
-    return () => clearInterval(refreshInterval);
-  }, [fetchLeaderboard]);
-
-  // Generate profile avatar from email or name
-  const getAvatar = (email, userName, profileImage) => {
-    // If profile image exists, use it with lazy loading
-    if (profileImage) {
-      return (
-        <img
-          src={profileImage}
-          alt={userName || "User"}
-          className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover shadow-md border-2 border-white"
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-        />
-      );
+    const cached = readWeightLBCache(userId);
+    if (cached?.length) {
+      setLeaderboardData(cached);
+      setIsVisible(true);
     }
+    fetchLeaderboard();
+    return setVisibilityAwareInterval(fetchLeaderboard, POLL_MS);
+  }, [fetchLeaderboard, userId]);
 
-    // Otherwise, generate initial-based avatar
-    const initial = userName
-      ? userName.charAt(0).toUpperCase()
-      : email
-      ? email.charAt(0).toUpperCase()
-      : "?";
-
-    // Generate color based on email/name
-    const colors = [
-      "bg-blue-500",
-      "bg-green-500",
-      "bg-purple-500",
-      "bg-pink-500",
-      "bg-indigo-500",
-      "bg-yellow-500",
-      "bg-red-500",
-      "bg-teal-500",
-    ];
-    const colorIndex = (userName || email || "").length % colors.length;
-
-    return (
-      <div
-        className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full ${colors[colorIndex]} flex items-center justify-center text-white font-bold text-sm sm:text-base shadow-md`}
-      >
-        {initial}
-      </div>
-    );
-  };
+  // Smooth fade-in when the strip becomes visible
+  useEffect(() => {
+    if (!isVisible || leaderboardData.length === 0) {
+      setHasEntered(false);
+      return undefined;
+    }
+    const id = requestAnimationFrame(() => setHasEntered(true));
+    return () => cancelAnimationFrame(id);
+  }, [isVisible, leaderboardData.length]);
 
   // Format weight loss display (grams for < 1kg, kg for >= 1kg)
   const formatWeightLoss = (weightLoss) => {
@@ -197,48 +196,112 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   // Get rank badge color
   const getRankColor = (rank) => {
     if (rank === 1)
-      return "bg-gradient-to-r from-yellow-400 to-yellow-600 text-white";
+      return "bg-gradient-to-br from-yellow-400 to-yellow-600 text-white";
     if (rank === 2)
-      return "bg-gradient-to-r from-gray-300 to-gray-400 text-gray-800";
+      return "bg-gradient-to-br from-gray-300 to-gray-500 text-gray-900";
     if (rank === 3)
-      return "bg-gradient-to-r from-orange-400 to-orange-600 text-white";
-    return "bg-gradient-to-r from-green-500 to-green-600 text-white";
+      return "bg-gradient-to-br from-orange-400 to-orange-600 text-white";
+    return "bg-gradient-to-br from-green-500 to-green-700 text-white";
   };
 
   // Don't render if no data or loading failed
   if (!isVisible || leaderboardData.length === 0) {
-    // Hide completely when no data (don't show message)
     return null;
   }
 
-  // Render leaderboard card
+  const openProfile = (user) => {
+    const memberEmail = String(user?.email || user?.Email || '').trim();
+    const memberUserId = user?.userId ?? user?.UserId ?? user?.userID ?? user?.id;
+    if (memberEmail || memberUserId != null) {
+      setProfileMember({ email: memberEmail || null, userId: memberUserId ?? null });
+    }
+  };
+
+  const openExpandedAvatar = (user) => {
+    const memberUserId = user?.userId ?? user?.UserId ?? user?.userID ?? user?.id;
+    setExpandedAvatar({
+      src: buildUserAvatarUrl(apiBaseUrl, memberUserId, getAvatarDisplayVersion()),
+      name: user?.userName || user?.UserName || 'User',
+      email: user?.email || user?.Email,
+      userId: memberUserId,
+    });
+  };
+
+  const renderTappableAvatar = (user) => (
+    <button
+      type="button"
+      className="flex-shrink-0 rounded-full p-0 m-0 border-0 bg-transparent cursor-pointer appearance-none leading-none"
+      onClick={(event) => {
+        event.stopPropagation();
+        openExpandedAvatar(user);
+      }}
+      aria-label={`View ${user.userName || 'user'}'s photo`}
+    >
+      <LeaderboardAvatar
+        apiBaseUrl={apiBaseUrl}
+        userId={user.userId ?? user.UserId ?? user.userID ?? user.id}
+        email={user.email || user.Email}
+        userName={user.userName || user.UserName}
+        profileImage={user.profileImage}
+        interactive={false}
+      />
+    </button>
+  );
+
+  const avatarViewer = (
+    <LeaderboardAvatarViewer
+      isOpen={Boolean(expandedAvatar)}
+      src={expandedAvatar?.src}
+      name={expandedAvatar?.name}
+      onClose={() => setExpandedAvatar(null)}
+      onViewProfile={() => {
+        const member = expandedAvatar;
+        setExpandedAvatar(null);
+        openProfile(member);
+      }}
+    />
+  );
+
+  const profileViewer = (
+    <TeamMemberProfileModal
+      isOpen={Boolean(profileMember)}
+      onClose={() => setProfileMember(null)}
+      memberEmail={profileMember?.email}
+      memberUserId={profileMember?.userId}
+      apiBaseUrl={apiBaseUrl}
+    />
+  );
+
+  // Render leaderboard card (strip row)
   const renderLeaderboardCard = (user, key) => (
     <div
       key={key}
       className="inline-flex items-center gap-1.5 sm:gap-2 md:gap-3 mx-2 sm:mx-3 md:mx-4 flex-shrink-0"
     >
-      {/* Trophy + Rank */}
-      <div className="inline-flex flex-col items-center justify-center gap-0.5 flex-shrink-0 w-8 sm:w-10 md:w-12">
-        <Trophy className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-yellow-500" />
-        <div
-          className={`px-1 sm:px-1.5 py-0.5 rounded-full text-[8px] sm:text-[9px] md:text-[10px] font-bold leading-none ${getRankColor(
-            user.rank,
-          )}`}
-        >
-          #{user.rank}
-        </div>
-      </div>
+      <LeaderboardRankBadge
+        rank={user.rank}
+        colorClass={getRankColor(user.rank)}
+      />
 
       {/* Profile Avatar */}
       <div className="flex-shrink-0">
-        {getAvatar(user.email, user.userName, user.profileImage)}
+        {renderTappableAvatar(user)}
       </div>
 
       {/* User Details */}
       <div className="flex flex-col justify-center flex-shrink-0 min-w-0 max-w-[120px] sm:max-w-[150px] md:max-w-[180px]">
-        <span className="font-bold text-gray-800 text-xs sm:text-sm md:text-base truncate leading-tight">
+        <button
+          type="button"
+          className="truncate text-left font-bold text-gray-800 text-xs sm:text-sm md:text-base leading-tight hover:underline focus:outline-none focus-visible:underline"
+          onClick={(event) => {
+            event.stopPropagation();
+            openProfile(user);
+          }}
+          disabled={!user.email && user.userId == null}
+          aria-label={`View ${user.userName || 'user'}'s profile`}
+        >
           {user.userName}
-        </span>
+        </button>
         {(() => {
           const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
           if (!sponsorName && !idealCoachName) return null;
@@ -267,36 +330,104 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     </div>
   );
 
-  // Marquee Animation with manual scroll capability
+  const renderTileRow = (user) => {
+    const formatted = formatWeightLoss(user.weightLoss);
+    return (
+      <li
+        key={user.userId}
+        className="flex items-center gap-2.5 py-2.5"
+      >
+        <LeaderboardRankBadge
+          rank={user.rank}
+          colorClass={getRankColor(user.rank)}
+        />
+        {renderTappableAvatar(user)}
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            className="block max-w-full truncate text-left text-sm font-semibold text-gray-800 hover:underline focus:outline-none focus-visible:underline"
+            onClick={() => openProfile(user)}
+            disabled={!user.email && user.userId == null}
+            aria-label={`View ${user.userName || 'user'}'s profile`}
+          >
+            {user.userName}
+          </button>
+          {(() => {
+            const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
+            if (!sponsorName && !idealCoachName) return null;
+            return (
+              <p className="truncate text-[10px] text-gray-500">
+                {[sponsorName && `Sponsor: ${sponsorName}`, idealCoachName && `Coach: ${idealCoachName}`]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            );
+          })()}
+        </div>
+        <span className="shrink-0 rounded-lg bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700">
+          -{formatted.value} {formatted.unit}
+        </span>
+      </li>
+    );
+  };
+
+  if (isTile) {
+    return (
+      <section
+        className={`mx-1 rounded-2xl border border-emerald-100 bg-white p-3 shadow-sm transition-opacity duration-500 ease-out ${
+          hasEntered ? 'opacity-100' : 'opacity-0'
+        }`}
+        aria-label="Weight Loss Today vs Yesterday"
+      >
+        <header className="mb-1 flex items-center gap-2 border-b border-emerald-50 pb-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100" aria-hidden>
+            <Scale className="h-4 w-4 text-emerald-700" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-emerald-900">Top 10 Weight Loss</h3>
+            <p className="text-[11px] text-emerald-700/80">Today vs Yesterday</p>
+          </div>
+        </header>
+        <ul className="divide-y divide-emerald-50">
+          {leaderboardData.map(renderTileRow)}
+        </ul>
+        {avatarViewer}
+        {profileViewer}
+      </section>
+    );
+  }
+
   return (
-    <div className="w-full bg-white shadow-sm">
+    <div
+      className={`w-full bg-white shadow-sm transition-opacity duration-500 ease-out ${
+        hasEntered ? 'opacity-100' : 'opacity-0'
+      }`}
+    >
       <div className="py-0 px-0">
-        <div className="relative h-[56px] sm:h-[60px] overflow-hidden">
-          <div className="absolute inset-y-0 left-0 z-10 pointer-events-none">
-            <div className="flex h-full w-[68px] sm:w-[72px] items-center justify-center border-r border-gray-200 bg-white shadow-sm px-1.5 text-center text-[9px] sm:text-[10px] font-medium leading-tight text-green-700">
-              Today vs<br />Yesterday
+        <div className="relative h-[76px] sm:h-[84px] overflow-hidden">
+          <div className="absolute inset-y-0 left-0 z-10 pointer-events-none flex items-stretch">
+            <div
+              className="flex h-full w-[60px] sm:w-[64px] items-center justify-center rounded-r-md bg-white px-1 py-2 text-center text-[9px] sm:text-[10px] font-semibold leading-[1.2] text-green-700 shadow-sm"
+              aria-label="Weight Loss Today vs Yesterday"
+            >
+              Weight Loss<br />Today vs<br />Yesterday
             </div>
           </div>
 
           <div
-            className="h-full overflow-hidden cursor-pointer"
-            onClick={() => setIsPaused(!isPaused)}
+            ref={viewportRef}
+            className="h-full overflow-hidden pl-[58px] sm:pl-[62px] cursor-pointer"
+            style={{ touchAction: 'pan-y' }}
+            {...interactionHandlers}
           >
             <div
-              className="animate-smooth-marquee whitespace-nowrap inline-flex items-center h-full"
-              style={{
-                animationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
-                animationPlayState: isPaused ? "paused" : "running",
-                WebkitAnimationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
-                WebkitAnimationPlayState: isPaused ? "paused" : "running",
-              }}
+              ref={trackRef}
+              className="whitespace-nowrap inline-flex items-center h-full will-change-transform"
+              style={{ transform: 'translate3d(0,0,0)', backfaceVisibility: 'hidden' }}
             >
-              {/* First set of items */}
               {leaderboardData.map((user) =>
                 renderLeaderboardCard(user, `first-${user.userId}`),
               )}
-
-              {/* Duplicate set for seamless loop */}
               {leaderboardData.map((user) =>
                 renderLeaderboardCard(user, `second-${user.userId}`),
               )}
@@ -304,6 +435,8 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
           </div>
         </div>
       </div>
+      {avatarViewer}
+      {profileViewer}
     </div>
   );
 });

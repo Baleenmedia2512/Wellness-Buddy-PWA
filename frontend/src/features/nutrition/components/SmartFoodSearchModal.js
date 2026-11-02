@@ -1,19 +1,81 @@
 // src/components/SmartFoodSearchModal.js
-import React, { useState, useEffect, useRef } from "react";
-import { X, Search, Check } from "lucide-react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { X, Search, Check, ShoppingCart, Minus, Plus } from "lucide-react";
 import {
-  scaleNutritionFields,
-  sumNutrition,
-  pickNutrition,
   dedupeSearchBuckets,
-  resolveQuantityUnit,
-  formatServingPortion,
-  referenceWeightG,
 } from "../domain/nutritionFields";
+import {
+  applyFoodMeasure,
+  availableMeasureUnits,
+  defaultMeasureForItem,
+  previewMeasureNutrition,
+} from "../domain/foodMeasureUnits";
+import { isFlagEnabled } from "../../../config/featureFlags";
+import FloatingMealTray from "./meal-builder/FloatingMealTray";
+import MealBuilderSheet from "./meal-builder/MealBuilderSheet";
+import MealBowlIcon from "./meal-builder/MealBowlIcon";
+import CustomFoodEntryForm from "./meal-builder/CustomFoodEntryForm";
+import {
+  buildPlateSavePayload,
+  computeMacroSummary,
+  computeSelectedKcal,
+} from "./meal-builder/mealSelection";
+import { toSelectableItem } from "./meal-builder/useMealSelection";
+import { fetchFoodSuggestions } from "../services/foodSuggestionsApi";
+import { fetchDrySaladSuggestions } from "../services/drySaladSuggestionsApi";
+import { createCustomFood } from "../services/nutritionKnowledge.api";
+import { clearFoodSearchCache } from "../services/foodCorrection/correctionApi";
+import { buildCustomMealItem, shouldOfferCustomFoodAdd } from "../domain/customFood";
+import {
+  filterSuggestionsAgainstSelected,
+  filterRegularFoodSearchItems,
+  drySaladUsualComboTitle,
+  drySaladOftenTitle,
+  drySaladSlotFromDeviceNow,
+} from "../domain/foodSuggestionRank";
+
+/**
+ * Time-slot usual combo stays on screen as suggestions.
+ * false = do not drop it into the tray; the user taps what they want.
+ * Set true to restore the previous auto-preselect.
+ */
+const AUTO_PRESELECT_USUAL_COMBO = false;
+
+/** Session cache so Clear all / cancel cannot wipe the next Target Nutrition prefill. */
+function usualComboCacheKey(userId, slot) {
+  return `wv:dry-salad-usual-combo:${String(userId || "")}:${String(slot || "any")}`;
+}
+
+function readUsualComboCache(userId, slot) {
+  if (!userId || typeof sessionStorage === "undefined") return [];
+  try {
+    const raw = sessionStorage.getItem(usualComboCacheKey(userId, slot));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeUsualComboCache(userId, slot, items) {
+  if (!userId || typeof sessionStorage === "undefined") return;
+  try {
+    const list = Array.isArray(items) ? items : [];
+    if (list.length === 0) {
+      sessionStorage.removeItem(usualComboCacheKey(userId, slot));
+      return;
+    }
+    sessionStorage.setItem(usualComboCacheKey(userId, slot), JSON.stringify(list));
+  } catch {
+    /* quota / private mode — ignore */
+  }
+}
 
 /**
  * SmartFoodSearchModal
  * Master DB + history search, then manual macros. Micros preserved (ADR-0005).
+ * With ff.meal-builder: full-screen Add Food + Your Meal tray + suggestions.
  */
 const SmartFoodSearchModal = ({
   isOpen,
@@ -24,23 +86,31 @@ const SmartFoodSearchModal = ({
   userId,
   timeLabel,
   altSwitchButtons,
-  // When true, skip the "AI Unavailable / Log Food" type-select screen and go
-  // directly to the search/manual form. Use when the caller has already
-  // established the entry type (e.g. UnknownEntryFlow after picking Food).
   skipTypeSelect = false,
+  headerTitle = "Regular food",
+  headerSubtitle = "Type the food item below",
+  initialQuery = "",
+  catalogMode = false,
 }) => {
-  const [showTypeSelect, setShowTypeSelect] = useState(true); // initial screen: show 3 type buttons
+  const mealBuilderEnabled = isFlagEnabled("ff.meal-builder");
+  const customFoodEnabled = isFlagEnabled("ff.nutrition-knowledge");
+  const [showTypeSelect, setShowTypeSelect] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [masterItems, setMasterItems] = useState([]);
   const [myItems, setMyItems] = useState([]);
   const [communityItems, setCommunityItems] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showManualForm, setShowManualForm] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [customSaving, setCustomSaving] = useState(false);
   const [error, setError] = useState("");
-  const [selectedItems, setSelectedItems] = useState([]); // items chosen for this meal
+  const [selectedItems, setSelectedItems] = useState([]);
+  const [mealSheetOpen, setMealSheetOpen] = useState(false);
+  const [addToast, setAddToast] = useState("");
+  const [latestFoods, setLatestFoods] = useState([]);
+  const [oftenWith, setOftenWith] = useState([]);
+  const [usualCombo, setUsualCombo] = useState([]);
+  const [drySaladSlot, setDrySaladSlot] = useState(null);
 
-  // Manual form fields
   const [manualName, setManualName] = useState("");
   const [manualCalories, setManualCalories] = useState("");
   const [manualProtein, setManualProtein] = useState("");
@@ -49,80 +119,25 @@ const SmartFoodSearchModal = ({
   const [manualFiber, setManualFiber] = useState("");
 
   const searchTimerRef = useRef(null);
+  const searchAbortRef = useRef(null);
+  const searchSeqRef = useRef(0);
   const inputRef = useRef(null);
+  const saveStartedRef = useRef(false);
+  const wasOpenRef = useRef(false);
+  const addToastTimerRef = useRef(null);
+  const didPrefillRef = useRef(false);
+  /** True after Clear all this visit — do not auto-reselect combo until next open. */
+  const clearedSelectionRef = useRef(false);
+  /** Last known usual combo — Clear all must not wipe this; next open can re-prefill. */
+  const usualComboRef = useRef([]);
+  const selectedItemsRef = useRef(selectedItems);
+  selectedItemsRef.current = selectedItems;
 
-  // Reset state when modal opens/closes
-  useEffect(() => {
-    if (isOpen) {
-      setShowTypeSelect(!skipTypeSelect);
-      setSearchQuery("");
-      setMasterItems([]);
-      setMyItems([]);
-      setCommunityItems([]);
-      setShowManualForm(false);
-      setSelectedItems([]);
-      setError("");
-      resetManualForm();
-    }
-  }, [isOpen, skipTypeSelect]);
-
-  const handleBackFromFoodEntry = () => {
-    if (skipTypeSelect) {
-      handleClose();
-      return;
-    }
-    setShowTypeSelect(true);
-    setSearchQuery("");
-    setShowManualForm(false);
-    setError("");
-  };
-
-  // Debounced search
-  useEffect(() => {
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
-      setMasterItems([]);
-      setMyItems([]);
-      setCommunityItems([]);
-      return;
-    }
-    searchTimerRef.current = setTimeout(() => {
-      performSearch(searchQuery.trim());
-    }, 350);
-    return () => clearTimeout(searchTimerRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
-  }, [searchQuery]);
-
-  const performSearch = async (query) => {
-    if (!userId || !apiBaseUrl) return;
-    setIsSearching(true);
-    try {
-      const res = await fetch(
-        `${apiBaseUrl}/api/food-corrections/search?userId=${encodeURIComponent(userId)}&query=${encodeURIComponent(query)}`
-      );
-      const data = await res.json();
-      if (data.success) {
-        const buckets = dedupeSearchBuckets({
-          masterItems: data.masterItems || [],
-          myItems: data.myItems || [],
-          communityItems: data.communityItems || [],
-        });
-        setMasterItems(buckets.masterItems);
-        setMyItems(buckets.myItems);
-        setCommunityItems(buckets.communityItems);
-      } else {
-        setMasterItems([]);
-        setMyItems([]);
-        setCommunityItems([]);
-      }
-    } catch {
-      setMasterItems([]);
-      setMyItems([]);
-      setCommunityItems([]);
-    } finally {
-      setIsSearching(false);
-    }
-  };
+  const showAddToast = useCallback((msg) => {
+    setAddToast(msg);
+    if (addToastTimerRef.current) clearTimeout(addToastTimerRef.current);
+    addToastTimerRef.current = setTimeout(() => setAddToast(""), 2800);
+  }, []);
 
   const resetManualForm = () => {
     setManualName("");
@@ -133,93 +148,343 @@ const SmartFoodSearchModal = ({
     setManualFiber("");
   };
 
-  const handleToggleItem = (item) => {
-    setSelectedItems(prev => {
-      const exists = prev.some(s => s.name === item.name);
-      if (exists) return prev.filter(s => s.name !== item.name);
-      const qtyUnit = resolveQuantityUnit(item);
-      // Quantity is servings/pcs/cups — nutrition on the item is for 1 unit.
-      return [...prev, {
-        ...item,
-        servings: 1,
-        refWeightG: referenceWeightG(item),
-        quantityUnit: qtyUnit.unit,
-        quantityLabel: qtyUnit.shortLabel,
-      }];
-    });
-  };
+  /** Clear tray picks for this visit only — never touches usual combo / history. */
+  const clearMealSelection = useCallback(() => {
+    clearedSelectionRef.current = true;
+    setSelectedItems([]);
+    setMealSheetOpen(false);
+  }, []);
 
-  const handleQuantityChange = (name, rawValue) => {
-    const qty = parseFloat(rawValue);
-    setSelectedItems(prev =>
-      prev.map(s => s.name === name
-        ? { ...s, servings: isNaN(qty) || qty < 0 ? 0 : qty }
-        : s)
-    );
-  };
+  useEffect(() => {
+    if (!isOpen) {
+      wasOpenRef.current = false;
+      return undefined;
+    }
 
-  // Scale nutrition by serving count (1 unit = reference weight / profile portion).
-  const scaledItem = (item) => {
-    const servings = Number(item.servings);
-    const count = Number.isFinite(servings) && servings > 0 ? servings : 1;
-    const nutrition = scaleNutritionFields(item, count);
-    const refW = item.refWeightG ?? referenceWeightG(item);
-    return {
-      name: item.name,
-      weight_g: Math.round(refW * count),
-      portion: formatServingPortion(item, count),
-      nutrition,
-      ...nutrition,
-    };
-  };
+    const justOpened = !wasOpenRef.current;
+    wasOpenRef.current = true;
+    const q = typeof initialQuery === "string" ? initialQuery : "";
 
-  const handleAddSelected = async () => {
-    if (selectedItems.length === 0) return;
+    setShowTypeSelect(!skipTypeSelect);
+    setSearchQuery(q);
+    setMasterItems([]);
+    setMyItems([]);
+    setCommunityItems([]);
+    setShowManualForm(false);
+    setCustomSaving(false);
+    setMealSheetOpen(false);
+    setLatestFoods([]);
+    setOftenWith([]);
+    setAddToast("");
     setError("");
-    setIsSaving(true);
-    try {
-      const scaled = selectedItems.map(scaledItem);
-      const total = sumNutrition(scaled.map((f) => pickNutrition(f)));
-      await onSave({
-        items: scaled,
-        total,
-        isPlate: true,
-        plateName: selectedItems.map(f => f.name).join(", "),
+    resetManualForm();
+    saveStartedRef.current = false;
+
+    // New visit: clear tray only. Keep usualCombo so Clear all / cancel cannot
+    // erase the remembered combo before the next suggestions fetch returns.
+    if (justOpened) {
+      clearedSelectionRef.current = false;
+      didPrefillRef.current = false;
+      setSelectedItems([]);
+      const slot = catalogMode ? drySaladSlotFromDeviceNow() : null;
+      const cachedCombo = catalogMode
+        ? (usualComboRef.current.length > 0
+          ? usualComboRef.current
+          : readUsualComboCache(userId, slot))
+        : [];
+      if (cachedCombo.length > 0) {
+        usualComboRef.current = cachedCombo;
+        setUsualCombo(cachedCombo);
+        if (slot) setDrySaladSlot(slot);
+        if (AUTO_PRESELECT_USUAL_COMBO) {
+          didPrefillRef.current = true;
+          setSelectedItems(cachedCombo.map((item) => toSelectableItem(item)));
+        }
+      }
+    }
+
+    if (q.trim().length >= 1 || catalogMode) {
+      setIsSearching(true);
+      const timer = setTimeout(() => performSearch(q.trim()), 80);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, skipTypeSelect, initialQuery, catalogMode]);
+
+  useEffect(() => () => {
+    if (addToastTimerRef.current) clearTimeout(addToastTimerRef.current);
+  }, []);
+
+  // Latest + Often added with (personal-first server ranking)
+  useEffect(() => {
+    if (!isOpen || !mealBuilderEnabled || catalogMode || !apiBaseUrl || !userId) return undefined;
+    if (showTypeSelect && !skipTypeSelect) return undefined;
+
+    const controller = new AbortController();
+    const anchor = selectedItems.length
+      ? selectedItems[selectedItems.length - 1].name
+      : "";
+    const exclude = selectedItems.map((s) => s.name);
+
+    fetchFoodSuggestions({
+      apiBaseUrl,
+      userId,
+      anchor,
+      exclude,
+      limit: 8,
+      signal: controller.signal,
+    })
+      .then((data) => {
+        setLatestFoods(filterRegularFoodSearchItems(data.latest || []));
+        setOftenWith(filterRegularFoodSearchItems(data.oftenWith || []));
+      })
+      .catch((err) => {
+        if (err?.name === "AbortError") return;
+        /* network — leave prior suggestions */
       });
+
+    return () => controller.abort();
+  }, [
+    isOpen,
+    mealBuilderEnabled,
+    catalogMode,
+    apiBaseUrl,
+    userId,
+    selectedItems,
+    showTypeSelect,
+    skipTypeSelect,
+  ]);
+
+  // Dry salad: usual combo for this time of day, listed for the user to add.
+  // Auto-preselect is off (AUTO_PRESELECT_USUAL_COMBO) so the tray starts empty.
+  useEffect(() => {
+    if (!isOpen || !catalogMode || !apiBaseUrl || !userId) return undefined;
+    if (showTypeSelect && !skipTypeSelect) return undefined;
+
+    const controller = new AbortController();
+    fetchDrySaladSuggestions({
+      apiBaseUrl,
+      userId,
+      slot: drySaladSlotFromDeviceNow(),
+      signal: controller.signal,
+    })
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        const selected = data.selected || [];
+        const extras = data.suggestions || [];
+        const slot = data.slot || null;
+        setDrySaladSlot(slot);
+        usualComboRef.current = selected;
+        setUsualCombo(selected);
+        setOftenWith(extras);
+        writeUsualComboCache(userId, slot || drySaladSlotFromDeviceNow(), selected);
+        // Prefill every open unless user hit Clear all this visit (local only).
+        if (AUTO_PRESELECT_USUAL_COMBO && !clearedSelectionRef.current) {
+          didPrefillRef.current = true;
+          setSelectedItems(selected.map((item) => toSelectableItem(item)));
+        }
+      })
+      .catch((err) => {
+        if (err?.name === "AbortError") return;
+        /* network — keep cached usualComboRef / usualCombo */
+      });
+
+    return () => controller.abort();
+  }, [
+    isOpen,
+    catalogMode,
+    apiBaseUrl,
+    userId,
+    showTypeSelect,
+    skipTypeSelect,
+  ]);
+
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (!catalogMode && (!searchQuery.trim() || searchQuery.trim().length < 1)) {
+      if (searchAbortRef.current) searchAbortRef.current.abort();
+      setMasterItems([]);
+      setMyItems([]);
+      setCommunityItems([]);
+      setIsSearching(false);
+      return undefined;
+    }
+    const delay = searchQuery.trim().length === 1 ? 280 : 220;
+    searchTimerRef.current = setTimeout(() => {
+      performSearch(searchQuery.trim());
+    }, delay);
+    return () => clearTimeout(searchTimerRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, catalogMode]);
+
+  const performSearch = async (query) => {
+    if (!apiBaseUrl) return;
+    if (!catalogMode && !userId) return;
+    if (searchAbortRef.current) searchAbortRef.current.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+    const seq = ++searchSeqRef.current;
+    setIsSearching(true);
+    try {
+      const searchUrl = catalogMode
+        ? `${apiBaseUrl}/api/dry-salad/search?query=${encodeURIComponent(query)}`
+        : `${apiBaseUrl}/api/food-corrections/search?userId=${encodeURIComponent(userId)}&query=${encodeURIComponent(query)}`;
+      const res = await fetch(searchUrl, { signal: controller.signal });
+      const data = await res.json();
+      if (seq !== searchSeqRef.current) return;
+      if (data.success) {
+        const buckets = dedupeSearchBuckets({
+          masterItems: data.masterItems || [],
+          myItems: data.myItems || [],
+          communityItems: data.communityItems || [],
+        }, query);
+        const filterItems = catalogMode ? (items) => items : filterRegularFoodSearchItems;
+        setMasterItems(filterItems(buckets.masterItems));
+        setMyItems(filterItems(buckets.myItems));
+        setCommunityItems(filterItems(buckets.communityItems));
+      } else {
+        setMasterItems([]);
+        setMyItems([]);
+        setCommunityItems([]);
+      }
     } catch (err) {
-      setError(err.message || "Failed to save");
+      if (err?.name === "AbortError") return;
+      if (seq !== searchSeqRef.current) return;
+      setMasterItems([]);
+      setMyItems([]);
+      setCommunityItems([]);
     } finally {
-      setIsSaving(false);
+      if (seq === searchSeqRef.current) setIsSearching(false);
     }
   };
 
-  const handleManualSave = async () => {
+  const handleRemoveItem = useCallback((item) => {
+    const prev = selectedItemsRef.current;
+    const next = prev.filter((s) => s.name !== item.name);
+    setSelectedItems(next);
+    if (next.length === 0) setMealSheetOpen(false);
+  }, []);
+
+  /** Legacy toggle (flag OFF): add/remove without measure UI. */
+  const handleToggleItem = (item) => {
+    const prev = selectedItemsRef.current;
+    const exists = prev.some((s) => s.name === item.name);
+    if (exists) {
+      handleRemoveItem(item);
+      return;
+    }
+    setSelectedItems([...prev, toSelectableItem(item)]);
+    showAddToast(`Added ${item.name}`);
+  };
+
+  /** Meal builder: add (or replace) with chosen g / ml / pcs quantity. */
+  const handleAddWithMeasure = useCallback((item, measure) => {
+    const measured = applyFoodMeasure(item, measure);
+    const selectable = toSelectableItem(measured);
+    const prev = selectedItemsRef.current;
+    const without = prev.filter((s) => s.name !== item.name);
+    setSelectedItems([...without, selectable]);
+    const unit = String(measure?.unit || selectable.measureUnit || "g");
+    const qty = measure?.quantity ?? selectable.servings ?? 1;
+    showAddToast(
+      unit === "pcs"
+        ? `Added ${qty} ${item.name}`
+        : `Added ${qty}${unit} ${item.name}`,
+    );
+  }, [showAddToast]);
+
+  const handleQuantityChange = (name, rawValue) => {
+    const qty = parseFloat(rawValue);
+    // Half-serving steps (0.5, 1, 1.5, …); min 0.5
+    const snapped = Number.isNaN(qty) || qty < 0.5
+      ? 0.5
+      : Math.round(qty * 2) / 2;
+    setSelectedItems((prev) =>
+      prev.map((s) => (s.name === name ? { ...s, servings: snapped } : s)),
+    );
+  };
+
+  const handleCustomFoodConfirm = async ({ name, unit, quantity, servingSize }) => {
+    if (!apiBaseUrl || customSaving) return;
+    setCustomSaving(true);
+    setError("");
+    try {
+      // API `servingSize` = reference amount in g/ml (one serving). UI servings always 1.
+      const data = await createCustomFood({
+        name,
+        unit,
+        servingSize: quantity,
+        userId,
+        apiBaseUrl,
+      });
+      clearFoodSearchCache();
+      const mealItem = buildCustomMealItem(
+        { ...(data?.item || {}), profileId: data?.profileId ?? data?.item?.profileId },
+        { name, unit, quantity, servingSize: servingSize > 0 ? servingSize : 1 },
+      );
+      const prev = selectedItemsRef.current;
+      const exists = prev.some(
+        (s) => String(s.name || "").trim().toLowerCase() === name.toLowerCase(),
+      );
+      if (!exists) {
+        setSelectedItems([...prev, toSelectableItem(mealItem)]);
+      }
+      showAddToast(`Added ${name} — search again to add more`);
+      setSearchQuery("");
+      setMasterItems([]);
+      setMyItems([]);
+      setCommunityItems([]);
+      // Stay on Add Food; focus search for the next item.
+      requestAnimationFrame(() => {
+        inputRef.current?.focus?.();
+      });
+    } catch (err) {
+      setError(err?.message || "Could not add custom food");
+    } finally {
+      setCustomSaving(false);
+    }
+  };
+
+  const submitSave = (payload) => {
+    if (saveStartedRef.current) return;
+    saveStartedRef.current = true;
+    setError("");
+    Promise.resolve(onSave?.(payload)).catch((err) => {
+      saveStartedRef.current = false;
+      setError(err?.message || "Failed to save");
+    });
+  };
+
+  const handleAddSelected = () => {
+    if (selectedItems.length === 0) return;
+    setMealSheetOpen(false);
+    const payload = buildPlateSavePayload(selectedItems);
+    submitSave(catalogMode
+      ? { ...payload, mealKind: "dry-salad", intakeSlot: drySaladSlotFromDeviceNow() }
+      : payload);
+  };
+
+  const handleManualSave = () => {
     setError("");
     if (!manualName.trim()) {
       setError("Please enter a food name");
       return;
     }
     const calories = parseFloat(manualCalories);
-    if (!manualCalories || isNaN(calories) || calories < 0) {
+    if (!manualCalories || Number.isNaN(calories) || calories < 0) {
       setError("Please enter valid calories");
       return;
     }
-    setIsSaving(true);
-    try {
-      await onSave({
-        foodName: manualName.trim(),
-        calories: Math.round(calories),
-        protein: Math.round(parseFloat(manualProtein) || 0),
-        carbs: Math.round(parseFloat(manualCarbs) || 0),
-        fat: Math.round(parseFloat(manualFat) || 0),
-        fiber: Math.round(parseFloat(manualFiber) || 0),
-        portion: "1 serving",
-      });
-    } catch (err) {
-      setError(err.message || "Failed to save");
-    } finally {
-      setIsSaving(false);
-    }
+    submitSave({
+      foodName: manualName.trim(),
+      calories: Math.round(calories),
+      protein: Math.round(parseFloat(manualProtein) || 0),
+      carbs: Math.round(parseFloat(manualCarbs) || 0),
+      fat: Math.round(parseFloat(manualFat) || 0),
+      fiber: Math.round(parseFloat(manualFiber) || 0),
+      portion: "1 serving",
+    });
   };
 
   const handleClose = () => {
@@ -235,239 +500,256 @@ const SmartFoodSearchModal = ({
     onClose();
   };
 
+  const handleBackFromFoodEntry = () => {
+    if (skipTypeSelect) {
+      handleClose();
+      return;
+    }
+    setShowTypeSelect(true);
+    setSearchQuery("");
+    setShowManualForm(false);
+    setError("");
+  };
+
   if (!isOpen) return null;
 
-  const hasMasterItems = masterItems.length > 0;
   const hasMyItems = myItems.length > 0;
   const hasCommunityItems = communityItems.length > 0;
   const hasSelected = selectedItems.length > 0;
-  const selectedTotal = selectedItems.reduce((s, f) => {
-    const count = Number(f.servings);
-    const servings = Number.isFinite(count) && count > 0 ? count : 1;
-    return s + Math.round((f.calories ?? 0) * servings);
-  }, 0);
+  const selectedTotal = computeSelectedKcal(selectedItems);
+  const macroSummary = computeMacroSummary(selectedItems);
+  const showFoodEntry = skipTypeSelect || !showTypeSelect;
+  const useFullScreen = mealBuilderEnabled && showFoodEntry;
+  const hasTypedQuery = searchQuery.trim().length >= 1;
+  const searching = hasTypedQuery;
+  const showCatalogResults = catalogMode || hasTypedQuery;
+  const suggestionRows = hasSelected
+    ? filterSuggestionsAgainstSelected(oftenWith, selectedItems)
+    : filterSuggestionsAgainstSelected(latestFoods, selectedItems);
+  const drySaladOftenRows = filterSuggestionsAgainstSelected(oftenWith, selectedItems);
+  // Selected items move to the top list; hide them from combo/catalog to avoid duplicates
+  const usualComboRows = filterSuggestionsAgainstSelected(usualCombo, selectedItems);
+  const catalogRows = catalogMode && !hasTypedQuery
+    ? filterSuggestionsAgainstSelected(masterItems, selectedItems)
+    : masterItems;
+  const showDrySaladSuggestions = catalogMode && !hasTypedQuery && !showManualForm;
+  const showRegularSuggestions = !catalogMode && !showManualForm && !searching && suggestionRows.length > 0;
+  const noSearchHits = !isSearching
+    && catalogRows.length === 0
+    && !hasMyItems
+    && !hasCommunityItems;
+  // Show Add even when partial hits exist (e.g. "dates" for "dates shake").
+  // Hide only when an exact name match is already in the results.
+  const showAddCustomOption = customFoodEnabled
+    && !catalogMode
+    && !showManualForm
+    && hasTypedQuery
+    && shouldOfferCustomFoodAdd({
+      query: searchQuery,
+      results: [...catalogRows, ...myItems, ...communityItems],
+      isSearching,
+    });
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] flex flex-col">
-
-        {/* ── Type Selection Screen ── */}
-        {showTypeSelect && !skipTypeSelect && (
-          <>
-            {/* Header */}
-            <div className="flex items-start justify-between px-4 pt-4 pb-2 flex-shrink-0">
-              <div>
-                <p className="text-sm font-bold text-gray-900 leading-snug">AI Unavailable</p>
-                <p className="text-[11px] text-gray-400 mt-0.5 leading-snug max-w-[220px]">
-                  AI couldn't detect your input. Please log manually.
-                </p>
-              </div>
-              <button
-                onClick={handleClose}
-                className="p-1.5 rounded-xl hover:bg-gray-100 active:bg-gray-200 transition-colors flex-shrink-0"
-              >
-                <X className="w-4 h-4 text-gray-400" />
-              </button>
-            </div>
-
-            {/* Primary food card */}
-            <div className="px-4 pb-3">
-              <button
-                onClick={() => setShowTypeSelect(false)}
-                className="w-full text-white rounded-[16px] py-3 px-4 flex flex-col items-center justify-center gap-1 transition-all active:scale-[0.97]"
-                style={{
-                  background: "linear-gradient(135deg, #f97316 0%, #fb923c 60%, #fdba74 100%)",
-                  boxShadow: "0 6px 18px rgba(249,115,22,0.30)",
-                }}
-              >
-                <span className="text-2xl leading-none">🍽️</span>
-                <span className="text-sm font-bold tracking-tight">Log Food</span>
-                <span className="text-[11px] font-normal opacity-80">{timeLabel || "Add it manually"}</span>
-              </button>
-            </div>
-
-          </>
+  // Keep search on the same page while the inline custom-food panel is open.
+  const searchBar = !showManualForm && (
+    <div className="relative">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+      <input
+        ref={inputRef}
+        type="text"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        placeholder={catalogMode ? "Search target nutrition…" : "Search for food..."}
+        className="w-full pl-9 pr-10 py-3 border-2 border-gray-200 focus:border-green-500 rounded-xl outline-none text-sm bg-white transition-colors"
+        style={{ fontSize: "16px" }}
+      />
+      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+        {isSearching && (
+          <div className="p-1.5">
+            <svg className="animate-spin w-4 h-4 text-green-500" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            </svg>
+          </div>
         )}
+        {searchQuery.length > 0 && !isSearching && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery("")}
+            className="p-1.5 text-gray-400 hover:text-gray-600"
+            aria-label="Clear search"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
 
-        {/* ── Food Entry Screen ── */}
-        {(skipTypeSelect || !showTypeSelect) && (
-          <>
-        {/* ── Header ── */}
-        <div className="flex items-center justify-between px-4 pt-3 pb-2.5 border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleBackFromFoodEntry}
-              className="p-1.5 rounded-xl hover:bg-gray-100 active:bg-gray-200 transition-colors"
-              aria-label="Back"
-            >
-              <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            <div>
-              <h2 className="text-sm font-bold text-gray-900">Regular food</h2>
-              <p className="text-xs text-gray-400">Type the food item below</p>
+  const renderFoodRows = (items, keyPrefix, mealBuilder) =>
+    items.map((item) => (
+      <FoodItemRow
+        key={`${keyPrefix}-${item.name}`}
+        item={item}
+        selected={selectedItems.some((s) => s.name === item.name)}
+        onToggle={handleToggleItem}
+        onAddWithMeasure={handleAddWithMeasure}
+        onRemove={handleRemoveItem}
+        mealBuilder={mealBuilder}
+        targetNutrition={catalogMode}
+      />
+    ));
+
+  // When typing a name, pin search hits under the search bar (above selected/combo).
+  // Custom food expands inline here — no separate page.
+  const renderCatalogResults = (mealBuilder) =>
+    !showManualForm && showCatalogResults ? (
+      <div className="space-y-4">
+        {catalogRows.length > 0 && (
+          <div>
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
+              {catalogMode ? "Target Nutrition catalog" : "Nutrition library"}
+            </p>
+            <div className="space-y-1.5">
+              {renderFoodRows(catalogRows, "master", mealBuilder)}
             </div>
           </div>
-          <button onClick={handleClose} className="p-1.5 rounded-xl hover:bg-gray-100 transition-colors">
-            <X className="w-4 h-4 text-gray-400" />
+        )}
+        {!catalogMode && hasMyItems && (
+          <div>
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">My History</p>
+            <div className="space-y-1.5">{renderFoodRows(myItems, "my", mealBuilder)}</div>
+          </div>
+        )}
+        {!catalogMode && hasCommunityItems && (
+          <div>
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Community</p>
+            <div className="space-y-1.5">{renderFoodRows(communityItems, "community", mealBuilder)}</div>
+          </div>
+        )}
+        {showAddCustomOption && (
+          <CustomFoodEntryForm
+            foodName={searchQuery.trim()}
+            saving={customSaving}
+            onConfirm={handleCustomFoodConfirm}
+          />
+        )}
+        {noSearchHits
+          && !showAddCustomOption
+          && (hasTypedQuery || !usualCombo.length) && (
+          <p className="text-sm text-gray-400 text-center py-4">
+            No food found — try a different name
+          </p>
+        )}
+      </div>
+    ) : null;
+
+  // ── Full-screen Meal Builder ──────────────────────────────────────────────
+  if (useFullScreen) {
+    return (
+      <div
+        className="fixed inset-0 z-50 bg-white flex flex-col"
+        style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        <div className="flex items-center gap-2 px-4 pt-3 pb-2 border-b border-gray-100 flex-shrink-0">
+          <button
+            type="button"
+            onClick={handleBackFromFoodEntry}
+            className="p-1.5 rounded-xl hover:bg-gray-100"
+            aria-label="Back"
+          >
+            <svg className="w-5 h-5 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
           </button>
+          <h1 className="flex-1 text-center text-base font-bold text-gray-900 pr-8">
+            {catalogMode ? (headerTitle || "Target Nutrition") : "Add Food"}
+          </h1>
         </div>
 
-        {/* ── Scrollable body ── */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
+        <div className={`flex-1 overflow-y-auto px-4 py-3 space-y-3 ${hasSelected ? "pb-40" : ""}`}>
+          {searchBar}
 
-          {/* Search bar */}
-          {!showManualForm && (
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              <input
-                ref={inputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search food (e.g. chicken, rice…)"
-                className="w-full pl-9 pr-10 py-3 border-2 border-gray-200 focus:border-orange-400 rounded-xl outline-none text-sm bg-white transition-colors"
-                style={{ fontSize: "16px" }}
-              />
-              {isSearching && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <svg className="animate-spin w-4 h-4 text-orange-400" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                </div>
-              )}
-              {searchQuery.length > 0 && !isSearching && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
+          {addToast && (
+            <p className="text-[11px] text-green-700 font-medium px-1" role="status">
+              {addToast}
+            </p>
           )}
 
-          {/* ── Selected items with portions ── */}
-          {!showManualForm && hasSelected && (
-            <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-orange-700">{selectedItems.length} item{selectedItems.length > 1 ? "s" : ""} · {selectedTotal} kcal total</p>
-                <button onClick={() => setSelectedItems([])} className="text-[11px] text-orange-400 hover:text-orange-600 font-medium">Clear all</button>
+          {hasTypedQuery && renderCatalogResults(true)}
+
+          {showRegularSuggestions && (
+            <div>
+              <div className="flex items-center justify-between mb-2 px-0.5">
+                <p className="text-sm font-bold text-gray-900">
+                  {hasSelected ? "Often added with" : "Latest"}
+                </p>
               </div>
               <div className="space-y-1.5">
-                {selectedItems.map(item => {
-                  const count = Number(item.servings);
-                  const servings = Number.isFinite(count) && count > 0 ? count : 1;
-                  const kcal = Math.round((item.calories ?? 0) * servings);
-                  const unitLabel = item.quantityLabel || resolveQuantityUnit(item).shortLabel;
-                  return (
-                    <div key={item.name} className="flex items-center gap-2 bg-white border border-orange-100 rounded-xl px-2.5 py-1.5">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-gray-800 truncate">{item.name}</p>
-                        <p className="text-[11px] text-orange-600 font-semibold">
-                          {kcal} kcal
-                          {(item.portion || item.portion_label) ? (
-                            <span className="font-normal text-gray-400"> · {formatServingPortion(item, servings)}</span>
-                          ) : null}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          pattern="[0-9]*"
-                          value={item.servings ?? 1}
-                          onChange={(e) => handleQuantityChange(item.name, e.target.value)}
-                          className="w-12 text-center border border-orange-200 rounded-lg px-1.5 py-1 text-xs focus:outline-none focus:border-orange-400"
-                          style={{ fontSize: "14px" }}
-                          aria-label={`Number of ${unitLabel}`}
-                        />
-                        <span className="text-[11px] text-gray-500 min-w-[2.5rem]">{unitLabel}</span>
-                      </div>
-                      <button onClick={() => handleToggleItem(item)} className="flex-shrink-0 text-gray-300 hover:text-red-400 transition-colors">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  );
-                })}
+                {renderFoodRows(suggestionRows, hasSelected ? "often" : "latest", true)}
               </div>
             </div>
           )}
 
-          {/* ── Search results ── */}
-          {!showManualForm && searchQuery.trim().length >= 2 && (
-            <div className="space-y-4">
-              {hasMasterItems && (
-                <div>
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Nutrition library</p>
-                  <div className="space-y-1.5">
-                    {masterItems.map((item) => (
-                      <FoodItemRow
-                        key={`master-${item.name}`}
-                        item={item}
-                        selected={selectedItems.some(s => s.name === item.name)}
-                        onToggle={handleToggleItem}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* My items */}
-              {hasMyItems && (
-                <div>
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">My History</p>
-                  <div className="space-y-1.5">
-                    {myItems.map((item) => (
-                      <FoodItemRow
-                        key={`my-${item.name}`}
-                        item={item}
-                        selected={selectedItems.some(s => s.name === item.name)}
-                        onToggle={handleToggleItem}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Community items */}
-              {hasCommunityItems && (
-                <div>
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Community</p>
-                  <div className="space-y-1.5">
-                    {communityItems.map((item) => (
-                      <FoodItemRow
-                        key={`community-${item.name}`}
-                        item={item}
-                        selected={selectedItems.some(s => s.name === item.name)}
-                        onToggle={handleToggleItem}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* No results */}
-              {!isSearching && !hasMasterItems && !hasMyItems && !hasCommunityItems && (
-                <p className="text-sm text-gray-400 text-center py-4">No food found — try a different name or add manually</p>
-              )}
-            </div>
-          )}
-
-          {/* ── Empty state (only when nothing selected) ── */}
-          {!showManualForm && searchQuery.trim().length < 2 && !hasSelected && (
-            <div className="flex flex-col items-center justify-center py-10 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-orange-50 flex items-center justify-center mb-3">
-                <Search className="w-6 h-6 text-orange-400" />
+          {catalogMode && hasSelected && !showManualForm && (
+            <div>
+              <p className="text-[11px] text-green-700 font-medium px-0.5 mb-2">
+                Your picks — add or remove items, then save
+              </p>
+              <p className="text-sm font-bold text-gray-900 mb-2 px-0.5">
+                Your meal
+              </p>
+              <div className="space-y-1.5">
+                {renderFoodRows(selectedItems, "selected", true)}
               </div>
-              <p className="text-sm font-medium text-gray-600">Search your food history</p>
-              <p className="text-xs text-gray-400 mt-1">Type a food name to find past meals</p>
             </div>
           )}
 
-          {/* ── Manual form ── */}
+          {showDrySaladSuggestions && usualComboRows.length > 0 && !hasSelected && (
+            <div>
+              <p className="text-sm font-bold text-gray-900 mb-2 px-0.5">
+                {drySaladUsualComboTitle(drySaladSlot)}
+              </p>
+              <div className="space-y-1.5">
+                {renderFoodRows(usualComboRows, "usual", true)}
+              </div>
+            </div>
+          )}
+
+          {showDrySaladSuggestions && usualComboRows.length > 0 && hasSelected && (
+            <div>
+              <p className="text-sm font-bold text-gray-900 mb-2 px-0.5">
+                Add from usual combo
+              </p>
+              <div className="space-y-1.5">
+                {renderFoodRows(usualComboRows, "usual", true)}
+              </div>
+            </div>
+          )}
+
+          {showDrySaladSuggestions && drySaladOftenRows.length > 0 && (
+            <div>
+              <p className="text-sm font-bold text-gray-900 mb-2 px-0.5">
+                {drySaladOftenTitle(drySaladSlot)}
+              </p>
+              <div className="space-y-1.5">
+                {renderFoodRows(drySaladOftenRows, "often-slot", true)}
+              </div>
+            </div>
+          )}
+
+          {!hasTypedQuery && renderCatalogResults(true)}
+
+          {!showManualForm && !searching && !catalogMode && suggestionRows.length === 0 && !hasSelected && (
+            <div className="flex flex-col items-center justify-center py-14 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center mb-3">
+                <MealBowlIcon size={36} />
+              </div>
+              <p className="text-sm font-medium text-gray-600">Build your meal</p>
+              <p className="text-xs text-gray-400 mt-1">Search or tap + to build your meal</p>
+            </div>
+          )}
+
           {showManualForm && (
             <div className="space-y-4">
               <div>
@@ -479,7 +761,7 @@ const SmartFoodSearchModal = ({
                   value={manualName}
                   onChange={(e) => setManualName(e.target.value)}
                   placeholder="e.g., Grilled Chicken Breast"
-                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-orange-400 outline-none text-sm transition-colors"
+                  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-green-500 outline-none text-sm"
                   style={{ fontSize: "16px" }}
                   autoFocus
                 />
@@ -494,7 +776,6 @@ const SmartFoodSearchModal = ({
             </div>
           )}
 
-          {/* Error */}
           {error && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-xl">
               <span>⚠️</span>
@@ -503,76 +784,446 @@ const SmartFoodSearchModal = ({
           )}
         </div>
 
-        {/* ── Footer ── */}
-        <div className="flex gap-3 px-5 pb-3 pt-3 border-t border-gray-100 flex-shrink-0">
-          {showManualForm ? (
-            <>
-              <button
-                onClick={() => { setShowManualForm(false); setError(""); }}
-                disabled={isSaving}
-                className="px-4 py-3 border-2 border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors disabled:opacity-50"
-              >
-                ← Back
-              </button>
-              <button
-                onClick={handleManualSave}
-                disabled={isSaving}
-                className="flex-1 px-4 py-3 bg-orange-500 text-white rounded-xl text-sm font-semibold hover:bg-orange-600 active:bg-orange-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {isSaving ? <SpinnerIcon /> : null}
-                {isSaving ? "Saving…" : "Save Food"}
-              </button>
-            </>
-          ) : hasSelected ? (
-            <>
-              <button
-                onClick={() => setSelectedItems([])}
-                disabled={isSaving}
-                className="px-4 py-3 border-2 border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors disabled:opacity-50"
-              >
-                Clear
-              </button>
-              <button
-                onClick={handleAddSelected}
-                disabled={isSaving}
-                className="flex-1 px-4 py-3 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 active:bg-green-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {isSaving ? <SpinnerIcon /> : <Check className="w-4 h-4" />}
-                {isSaving ? "Saving…" : `Add ${selectedItems.length} item${selectedItems.length > 1 ? "s" : ""}`}
-              </button>
-            </>
-          ) : (
+        {showManualForm ? (
+          <div className="flex gap-3 px-4 pb-4 pt-3 border-t border-gray-100 flex-shrink-0">
             <button
-              onClick={handleClose}
-              className="flex-1 px-4 py-3 border-2 border-gray-300 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors"
+              type="button"
+              onClick={() => { setShowManualForm(false); setError(""); }}
+              className="px-4 py-3 border-2 border-gray-200 text-gray-600 rounded-xl text-sm font-semibold"
             >
-              Cancel
+              ← Back
             </button>
-          )}
-        </div>
+            <button
+              type="button"
+              onClick={handleManualSave}
+              className="flex-1 px-4 py-3 bg-green-600 text-white rounded-xl text-sm font-semibold"
+            >
+              Save Food
+            </button>
+          </div>
+        ) : hasSelected ? (
+          <FloatingMealTray
+            items={selectedItems}
+            totalKcal={selectedTotal}
+            onOpenSheet={() => setMealSheetOpen(true)}
+            onSave={handleAddSelected}
+            onClear={clearMealSelection}
+          />
+        ) : null}
 
+        <MealBuilderSheet
+          open={mealSheetOpen && hasSelected}
+          items={selectedItems}
+          totalKcal={selectedTotal}
+          macroSummary={macroSummary}
+          onClose={() => setMealSheetOpen(false)}
+          onSave={handleAddSelected}
+          onClear={clearMealSelection}
+          onRemove={handleRemoveItem}
+          onQuantityChange={handleQuantityChange}
+          plainQuantity={catalogMode}
+        />
+      </div>
+    );
+  }
+
+  // ── Legacy modal (flag OFF or type-select) ────────────────────────────────
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] flex flex-col relative">
+
+        {showTypeSelect && !skipTypeSelect && (
+          <>
+            <div className="flex items-start justify-between px-4 pt-4 pb-2 flex-shrink-0">
+              <div>
+                <p className="text-sm font-bold text-gray-900 leading-snug">AI Unavailable</p>
+                <p className="text-[11px] text-gray-400 mt-0.5 leading-snug max-w-[220px]">
+                  AI couldn&apos;t detect your input. Please log manually.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleClose}
+                className="p-1.5 rounded-xl hover:bg-gray-100 flex-shrink-0"
+              >
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+            <div className="px-4 pb-3">
+              <button
+                type="button"
+                onClick={() => setShowTypeSelect(false)}
+                className="w-full text-white rounded-[16px] py-3 px-4 flex flex-col items-center justify-center gap-1 transition-all active:scale-[0.97]"
+                style={{
+                  background: "linear-gradient(135deg, #f97316 0%, #fb923c 60%, #fdba74 100%)",
+                  boxShadow: "0 6px 18px rgba(249,115,22,0.30)",
+                }}
+              >
+                <span className="text-2xl leading-none">🍽️</span>
+                <span className="text-sm font-bold tracking-tight">Log Food</span>
+                <span className="text-[11px] font-normal opacity-80">{timeLabel || "Add it manually"}</span>
+              </button>
+            </div>
           </>
         )}
 
+        {showFoodEntry && (
+          <>
+        <div className="flex items-center justify-between px-4 pt-3 pb-2.5 border-b border-gray-100 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <button
+                  type="button"
+              onClick={handleBackFromFoodEntry}
+                  className="p-1.5 rounded-xl hover:bg-gray-100"
+              aria-label="Back"
+            >
+              <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-gray-900">{headerTitle || "Regular food"}</h2>
+                {hasSelected && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 text-orange-700 px-2 py-0.5 text-[11px] font-semibold">
+                    <ShoppingCart className="w-3 h-3" aria-hidden />
+                    Cart {selectedItems.length}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-400">{headerSubtitle || "Type the food item below"}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
+              {searchBar}
+
+          {hasTypedQuery && renderCatalogResults(false)}
+
+          {!showManualForm && hasSelected && (
+            <div className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5">
+              <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-orange-700">
+                      {selectedItems.length} item{selectedItems.length > 1 ? "s" : ""} · {selectedTotal} kcal total
+                    </p>
+                    <button type="button" onClick={clearMealSelection} className="text-[11px] text-orange-400 font-medium">
+                      Clear all
+                    </button>
+              </div>
+              <div className="space-y-1.5">
+                    {selectedItems.map((item) => {
+                  const count = Number(item.servings);
+                  const servings = Number.isFinite(count) && count > 0 ? count : 1;
+                  const kcal = Math.round((item.calories ?? 0) * servings);
+                  return (
+                    <div key={item.name} className="relative bg-white border border-orange-100 rounded-xl px-2.5 py-2 pr-8">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleItem(item)}
+                        className="absolute top-0.5 right-1 p-0.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 active:scale-95 transition-all"
+                        aria-label={`Remove ${item.name}`}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-gray-800 break-words leading-snug">{item.name}</p>
+                        <div className="flex items-center justify-between gap-2 mt-1">
+                          <p className="text-[11px] text-orange-600 font-semibold">{kcal} kcal</p>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={item.servings ?? 1}
+                            onChange={(e) => handleQuantityChange(item.name, e.target.value)}
+                            className="w-12 text-center border border-orange-200 rounded-lg px-1.5 py-1 text-xs"
+                            style={{ fontSize: "14px" }}
+                            aria-label={`Quantity for ${item.name}`}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+              {!showManualForm && catalogMode && usualCombo.length > 0 && !hasTypedQuery && (
+                <div>
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">
+                    {drySaladUsualComboTitle(drySaladSlot)}
+                  </p>
+                  <div className="space-y-1.5">{renderFoodRows(usualCombo, "usual", false)}</div>
+                </div>
+              )}
+
+              {!hasTypedQuery && renderCatalogResults(false)}
+
+              {showManualForm && (
+                <div className="space-y-4">
+                  <MacroField label="Food Name" required value={manualName} onChange={setManualName} placeholder="e.g. Chicken" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <MacroField label="Calories (kcal)" required value={manualCalories} onChange={setManualCalories} placeholder="250" />
+                    <MacroField label="Protein (g)" value={manualProtein} onChange={setManualProtein} placeholder="30" />
+                    <MacroField label="Carbs (g)" value={manualCarbs} onChange={setManualCarbs} placeholder="20" />
+                    <MacroField label="Fat (g)" value={manualFat} onChange={setManualFat} placeholder="5" />
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-3 rounded-xl">{error}</div>
+          )}
+        </div>
+
+        <div className="flex gap-3 px-5 pb-3 pt-3 border-t border-gray-100 flex-shrink-0">
+          {showManualForm ? (
+            <>
+                  <button type="button" onClick={() => setShowManualForm(false)} className="px-4 py-3 border-2 border-gray-200 rounded-xl text-sm font-semibold">← Back</button>
+                  <button type="button" onClick={handleManualSave} className="flex-1 px-4 py-3 bg-orange-500 text-white rounded-xl text-sm font-semibold">Save Food</button>
+            </>
+          ) : hasSelected ? (
+            <>
+                  <button type="button" onClick={clearMealSelection} className="px-4 py-3 border-2 border-gray-200 rounded-xl text-sm font-semibold">Clear</button>
+                  <button type="button" onClick={handleAddSelected} className="flex-1 px-4 py-3 bg-green-600 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2">
+                    <Check className="w-4 h-4" /> Save
+              </button>
+            </>
+          ) : (
+                <button type="button" onClick={handleClose} className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-xl text-sm font-semibold">Cancel</button>
+          )}
+        </div>
+          </>
+        )}
       </div>
     </div>
   );
 };
 
-// ── Sub-components ──────────────────────────────────────────────────────────
+const QTY_STEP_G_ML = 10;
+const QTY_STEP_PCS = 1;
+const QTY_MIN_G_ML = 1;
+const QTY_MIN_PCS = 0.5;
 
-const FoodItemRow = ({ item, selected, onToggle }) => {
+function bumpMeasureQuantity(unit, raw, delta) {
+  const n = Number(raw);
+  const isPcs = unit === "pcs";
+  const step = isPcs ? QTY_STEP_PCS : QTY_STEP_G_ML;
+  const min = isPcs ? QTY_MIN_PCS : QTY_MIN_G_ML;
+  const base = Number.isFinite(n) && n > 0 ? n : (isPcs ? 1 : 100);
+  const next = Math.round((base + (delta || step)) * 100) / 100;
+  return String(Math.max(min, next));
+}
+
+const FoodItemRow = ({
+  item,
+  selected,
+  onToggle,
+  onAddWithMeasure,
+  onRemove,
+  mealBuilder = false,
+  targetNutrition = false,
+}) => {
   const portion = item.portion || item.portion_label;
+  const units = availableMeasureUnits(item);
+  const defaults = defaultMeasureForItem(item);
+  const [unit, setUnit] = useState(defaults.unit);
+  const [quantity, setQuantity] = useState(String(defaults.quantity));
+
+  useEffect(() => {
+    const next = defaultMeasureForItem(item);
+    setUnit(next.unit);
+    setQuantity(String(next.quantity));
+  }, [item?.name, item?.weight_g, item?.unit, item?.isLiquid, item?.is_liquid]);
+
+  // Target Nutrition keeps the catalog amount under the name. No g/ml switch, no qty box.
+  if (mealBuilder && targetNutrition) {
+    const catalogPreview = previewMeasureNutrition(item, defaults);
+    return (
+      <button
+        type="button"
+        onClick={() => onToggle(item)}
+        aria-label={selected ? `Remove ${item.name}` : `Add ${item.name}`}
+        className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 border-2 transition-colors text-left ${
+          selected ? "bg-green-50 border-green-500" : "bg-white border-gray-200 hover:border-green-300"
+        }`}
+      >
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-medium leading-snug line-clamp-2 break-words ${selected ? "text-green-900" : "text-gray-800"}`}>
+            {item.name}
+          </p>
+          <p className="text-xs text-gray-400 mt-0.5 leading-snug">
+            {catalogPreview.portionLabel ? <span>{catalogPreview.portionLabel} · </span> : (portion ? <span>{portion} · </span> : null)}
+            {catalogPreview.calories ?? item.calories ?? "?"} kcal
+            {catalogPreview.protein != null && catalogPreview.protein > 0
+              ? ` · ${catalogPreview.protein}g protein`
+              : (item.protein ? ` · ${item.protein}g protein` : "")}
+          </p>
+        </div>
+        <span
+          aria-hidden="true"
+          className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center font-bold text-lg ${
+            selected
+              ? "bg-green-600 text-white"
+              : "bg-green-50 text-green-700 border-2 border-green-300"
+          }`}
+        >
+          {selected ? <Check className="w-4 h-4" /> : "+"}
+        </span>
+      </button>
+    );
+  }
+
+  if (mealBuilder) {
+    const unitLabel = unit === "pcs" ? "pcs" : unit;
+    // Live preview: 1 pcs → 135 kcal, 2 pcs → 270; always from 1-piece base.
+    const preview = previewMeasureNutrition(item, { unit, quantity });
+    return (
+      <div
+        className={`w-full rounded-xl px-3 py-2.5 border-2 transition-colors ${
+          selected ? "bg-green-50 border-green-500" : "bg-white border-gray-200"
+        }`}
+      >
+        <div className="flex items-start gap-2">
+          <div className="flex-1 min-w-0 pr-1">
+            <p className={`text-sm font-medium leading-snug line-clamp-2 break-words ${selected ? "text-green-900" : "text-gray-800"}`}>
+              {item.name}
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5 leading-snug">
+              {preview.portionLabel ? <span>{preview.portionLabel} · </span> : null}
+              {preview.calories ?? item.calories ?? "?"} kcal
+              {preview.protein != null && preview.protein > 0
+                ? ` · ${preview.protein}g protein`
+                : (item.protein && unit !== "pcs" ? ` · ${item.protein}g protein` : "")}
+            </p>
+          </div>
+          {selected && (
+            <button
+              type="button"
+              onClick={() => onRemove?.(item)}
+              aria-label={`Remove ${item.name}`}
+              className="flex-shrink-0 w-8 h-8 rounded-full bg-green-600 text-white flex items-center justify-center"
+            >
+              <Check className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 mt-2 w-full">
+          {/* Piece foods: pcs only — no g/ml radios. Others: g + ml. */}
+          {units.length > 1 && (
+            <div
+              className="flex items-center gap-2.5 flex-shrink-0"
+              role="radiogroup"
+              aria-label={`Unit for ${item.name}`}
+            >
+              {units.map((option) => {
+                const active = unit === option;
+                const label = option === "pcs" ? "pcs" : option;
+                return (
+                  <label
+                    key={option}
+                    className="inline-flex items-center gap-1 cursor-pointer select-none"
+                  >
+                    <input
+                      type="radio"
+                      name={`measure-unit-${item.name}`}
+                      value={option}
+                      checked={active}
+                      onChange={() => {
+                        setUnit(option);
+                        if (option === "pcs") setQuantity("1");
+                        else if (unit === "pcs") {
+                          setQuantity(String(defaultMeasureForItem({ ...item, unit: option }).quantity));
+                        }
+                      }}
+                      className="sr-only"
+                    />
+                    <span
+                      aria-hidden="true"
+                      className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border-2 ${
+                        active ? "border-green-600 bg-white" : "border-gray-300 bg-white"
+                      }`}
+                    >
+                      {active && <span className="h-1.5 w-1.5 rounded-full bg-green-600" />}
+                    </span>
+                    <span className={`text-xs font-medium ${active ? "text-gray-900" : "text-gray-600"}`}>
+                      {label}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+          {unit === "pcs" && units.length === 1 && (
+            <span className="text-xs font-semibold text-gray-600 flex-shrink-0">pcs</span>
+          )}
+
+          <div
+            className="flex items-center h-9 flex-1 min-w-[7.5rem] rounded-lg border border-green-200 bg-white overflow-hidden"
+            role="group"
+            aria-label={`Quantity in ${unitLabel}`}
+          >
+            <button
+              type="button"
+              aria-label="Decrease quantity"
+              className="w-9 h-9 flex items-center justify-center text-green-700 active:bg-green-50 flex-shrink-0"
+              onClick={() => setQuantity((q) => bumpMeasureQuantity(unit, q, unit === "pcs" ? -QTY_STEP_PCS : -QTY_STEP_G_ML))}
+            >
+              <Minus className="w-4 h-4" strokeWidth={2.5} />
+            </button>
+            <input
+              type="number"
+              inputMode="decimal"
+              min={unit === "pcs" ? QTY_MIN_PCS : QTY_MIN_G_ML}
+              step="any"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              className="flex-1 min-w-0 w-full text-center border-x border-green-100 outline-none text-sm bg-white py-1.5"
+              style={{ fontSize: "16px" }}
+              aria-label={`Quantity for ${item.name}`}
+            />
+            <span className="text-xs font-semibold text-gray-500 pr-1.5 flex-shrink-0">{unitLabel}</span>
+            <button
+              type="button"
+              aria-label="Increase quantity"
+              className="w-9 h-9 flex items-center justify-center text-green-700 active:bg-green-50 flex-shrink-0"
+              onClick={() => setQuantity((q) => bumpMeasureQuantity(unit, q, unit === "pcs" ? QTY_STEP_PCS : QTY_STEP_G_ML))}
+            >
+              <Plus className="w-4 h-4" strokeWidth={2.5} />
+            </button>
+          </div>
+
+          <button
+            type="button"
+            aria-label={
+              selected
+                ? `Update ${item.name} to ${quantity || "?"} ${unitLabel}`
+                : `Add ${quantity || "?"} ${unitLabel} ${item.name}`
+            }
+            onClick={() => onAddWithMeasure?.(item, { unit, quantity })}
+            className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center font-bold text-lg ml-auto ${
+              selected
+                ? "bg-green-600 text-white"
+                : "bg-green-50 text-green-700 border-2 border-green-300"
+            }`}
+          >
+            +
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <button
+      type="button"
       onClick={() => onToggle(item)}
       className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 border-2 transition-colors text-left ${
-        selected
-          ? "bg-orange-50 border-orange-400"
-          : "bg-white border-gray-200 hover:border-orange-300"
+        selected ? "bg-orange-50 border-orange-400" : "bg-white border-gray-200 hover:border-orange-300"
       }`}
     >
-      <div className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+      <div className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
         selected ? "bg-orange-500 border-orange-500" : "border-gray-300"
       }`}>
         {selected && <Check className="w-3 h-3 text-white" />}
@@ -582,7 +1233,6 @@ const FoodItemRow = ({ item, selected, onToggle }) => {
         <p className="text-xs text-gray-400 mt-0.5">
           {portion ? <span>{portion} · </span> : null}
           {item.calories ?? "?"} kcal
-          {item.protein ? ` · ${item.protein}g protein` : ""}
         </p>
       </div>
     </button>
@@ -597,7 +1247,6 @@ const MacroField = ({ label, value, onChange, placeholder, required, span }) => 
     <input
       type="text"
       inputMode="decimal"
-      pattern="[0-9]*"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
@@ -605,13 +1254,6 @@ const MacroField = ({ label, value, onChange, placeholder, required, span }) => 
       style={{ fontSize: "16px" }}
     />
   </div>
-);
-
-const SpinnerIcon = () => (
-  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-  </svg>
 );
 
 export default SmartFoodSearchModal;

@@ -1,4 +1,5 @@
 import React from 'react';
+import BathroomScaleIcon from '../../../shared/components/icons/BathroomScaleIcon';
 import { getParameterMeta } from '../domain/parameterRegistry';
 import {
   getParameterIcon,
@@ -26,8 +27,8 @@ export default function ScoreCategoryRow({
   onOpenContribution,
 }) {
   const meta = getParameterMeta(category.key);
-  const Icon = getParameterIcon(category.key);
-  const label = category.label || meta?.label || category.key;
+  const Icon = category.key === 'weight_post' ? BathroomScaleIcon : getParameterIcon(category.key);
+  const label = meta?.label || category.label || category.key;
   const scoringMode = category.scoringMode || meta?.scoringMode;
   const modeLabel = SCORING_MODE_LABELS[scoringMode] || scoringMode;
   const modeHint = getScoringModeHint(scoringMode, category.key, goalMode, { timeWindows });

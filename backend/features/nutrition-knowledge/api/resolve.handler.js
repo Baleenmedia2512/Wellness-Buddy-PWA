@@ -12,7 +12,12 @@ import {
   pickNutrition,
   shouldAutoPromote,
   AUTO_PROMOTE_SIGHTINGS,
+  sortByFoodNameMatch,
+  buildCustomFoodPortionLabel,
 } from '../domain/nutrition.rules.js';
+import { buildCustomFoodExportCsv } from '../domain/customFoodExport.rules.js';
+import { assertNutritionKnowledgeAdmin } from '../domain/permissions/nutritionAdmin.policy.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 
 async function loadApprovedProfile(name) {
   const dbRow = await repo.findProfileByName(name, { status: 'approved' });
@@ -66,8 +71,9 @@ export async function searchMaster({ searchTerm }) {
   let rows = await repo.searchProfiles(searchTerm, { status: 'approved', limit: 20 });
   if (rows === null) {
     rows = searchSeedProfiles(searchTerm);
-  } else if (rows.length === 0) {
-    // Also include seed hits not yet migrated.
+  } else {
+    // Always union in-code seeds so common foods (and typo aliases) appear
+    // even when the master table has unrelated prefix hits.
     const seedHits = searchSeedProfiles(searchTerm);
     const have = new Set(rows.map((r) => r.normalized_name));
     for (const s of seedHits) {
@@ -75,7 +81,10 @@ export async function searchMaster({ searchTerm }) {
     }
   }
 
-  const items = rows.map((row) => profileToSearchItem(row));
+  const items = sortByFoodNameMatch(
+    rows.map((row) => profileToSearchItem(row)),
+    searchTerm,
+  );
   return {
     httpStatus: 200,
     body: { ok: true, data: { items } },
@@ -141,4 +150,173 @@ export async function approveMasterProfile({ profileId, reviewedByUserId }) {
     };
   }
   return { httpStatus: 200, body: { ok: true, data: { profile: row } } };
+}
+
+async function loadTeamRole(userId) {
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from('team_table')
+    .select('"Role"')
+    .eq('UserId', userId)
+    .limit(1);
+  if (error) {
+    throw error;
+  }
+  return data?.[0] || null;
+}
+
+/**
+ * Create (or return existing) a custom master food: name + g/ml + serving size.
+ * Nutrition macros are not required. Always logs a submission row for Excel export.
+ * @param {{ name: string, unit: 'g'|'ml', servingSize: number, userId?: number|null }} input
+ */
+export async function createCustomFood({ name, unit, servingSize, userId = null }) {
+  if (!isEnabled('ff.nutrition-knowledge')) {
+    return {
+      httpStatus: 404,
+      body: { ok: false, error: { code: 'FLAG_OFF', message: 'Nutrition knowledge is disabled' } },
+    };
+  }
+
+  const result = await repo.upsertUserCustomFood({
+    canonicalName: name,
+    unit,
+    servingSize,
+    createdByUserId: userId,
+  });
+
+  if (!result?.row) {
+    return {
+      httpStatus: 500,
+      body: {
+        ok: false,
+        error: {
+          code: 'SAVE_FAILED',
+          message: result?.error || 'Could not save custom food',
+        },
+      },
+    };
+  }
+
+  if (userId) {
+    await repo.insertCustomFoodSubmission({
+      userId,
+      foodName: result.row.canonical_name || name,
+      unit,
+      quantity: servingSize,
+      profileId: result.row.id ?? null,
+    });
+  }
+
+  // Scale master nutrition (once filled) to this user's quantity.
+  const item = profileToSearchItem(result.row, servingSize);
+  const portion = buildCustomFoodPortionLabel(servingSize, unit);
+  return {
+    httpStatus: result.created ? 201 : 200,
+    body: {
+      ok: true,
+      data: {
+        created: result.created,
+        item: {
+          ...item,
+          name: result.row.canonical_name || name,
+          unit,
+          is_liquid: unit === 'ml',
+          isLiquid: unit === 'ml',
+          weight_g: Math.round(servingSize),
+          volume_ml: unit === 'ml' ? Math.round(servingSize) : null,
+          portion,
+          calories: item.calories ?? 0,
+          nutrition: item.nutrition || {},
+        },
+        profileId: result.row.id ?? null,
+      },
+    },
+  };
+}
+
+/**
+ * CSV download for developers — same columns as Excel template.
+ * @param {{ userId: number, pendingOnly?: boolean, limit?: number }} input
+ */
+export async function exportCustomFoodSubmissions({ userId, pendingOnly = true, limit = 5000 }) {
+  if (!isEnabled('ff.nutrition-knowledge')) {
+    return {
+      httpStatus: 404,
+      body: { ok: false, error: { code: 'FLAG_OFF', message: 'Nutrition knowledge is disabled' } },
+    };
+  }
+
+  const requester = await loadTeamRole(userId);
+  assertNutritionKnowledgeAdmin(requester);
+
+  const rows = await repo.listCustomFoodSubmissionsForExport({
+    limit,
+    pendingNutritionOnly: pendingOnly,
+  });
+  if (rows === null) {
+    return {
+      httpStatus: 500,
+      body: { ok: false, error: { code: 'EXPORT_FAILED', message: 'Could not load custom food submissions' } },
+    };
+  }
+
+  const csv = buildCustomFoodExportCsv(rows);
+  const stamp = new Date().toISOString().slice(0, 10);
+  return {
+    httpStatus: 200,
+    body: csv,
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="custom-food-submissions-${stamp}.csv"`,
+      'Cache-Control': 'no-store',
+    },
+  };
+}
+
+/**
+ * Developer fills nutrition for a master custom food (shared for all users).
+ * Values apply to referenceQuantity (default: profile reference_weight_g).
+ * Later adds at other quantities are scaled automatically.
+ */
+export async function setCustomFoodNutrition({
+  userId,
+  profileId,
+  nutrition,
+  referenceWeightG = null,
+}) {
+  if (!isEnabled('ff.nutrition-knowledge')) {
+    return {
+      httpStatus: 404,
+      body: { ok: false, error: { code: 'FLAG_OFF', message: 'Nutrition knowledge is disabled' } },
+    };
+  }
+
+  const requester = await loadTeamRole(userId);
+  assertNutritionKnowledgeAdmin(requester);
+
+  const profile = await repo.updateProfileNutrition({
+    profileId,
+    nutrition: pickNutrition(nutrition),
+    referenceWeightG,
+    reviewedByUserId: userId,
+  });
+
+  if (!profile) {
+    return {
+      httpStatus: 404,
+      body: { ok: false, error: { code: 'NOT_FOUND', message: 'Profile not found' } },
+    };
+  }
+
+  return {
+    httpStatus: 200,
+    body: {
+      ok: true,
+      data: {
+        profile,
+        item: profileToSearchItem(profile),
+      },
+    },
+  };
 }

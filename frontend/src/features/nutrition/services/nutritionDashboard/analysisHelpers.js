@@ -2,24 +2,26 @@
 // These do NOT touch the network — see *Api.js modules for fetches.
 import { computeMealGlycemicIndex } from '../../domain/mealGlycemicIndex';
 import { parseUtcTimestamp } from '../../../../shared/utils/datetimeUtils';
-
-/** Calories for a single food item from canonical or legacy shapes. */
-const foodItemCalories = (food) =>
-  Number(food?.nutrition?.calories ?? food?.calories ?? 0);
+import { FOOD_MICRO_FIELDS, aggregateFoodTotals } from '../../domain/aggregateFoodTotals';
 
 /**
- * Compact multi-food title: highest-calorie dish + extra count.
- * e.g. "Dosa+2more" for 3 items when Dosa has the most kcal.
+ * Multi-food title: every item name, comma-separated.
+ * e.g. "Dosa, Idli with Sambar, Idiyappam" — not "Dosa+3more".
  */
 export const formatFoodsTitle = (foods) => {
   const items = Array.isArray(foods) ? foods.filter(Boolean) : [];
-  const count = items.length;
-  if (count === 0) return 'Unknown Food';
-  if (count === 1) return (items[0]?.name || 'Unknown Food').trim();
-
-  const top = [...items].sort((a, b) => foodItemCalories(b) - foodItemCalories(a))[0];
-  const topName = (top?.name || 'Unknown Food').trim();
-  return `${topName}+${count - 1}more`;
+  const seen = new Set();
+  const names = [];
+  for (const item of items) {
+    const name = String(item?.name || item?.foodName || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  if (names.length === 0) return 'Unknown Food';
+  return names.join(', ');
 };
 
 /**
@@ -120,23 +122,11 @@ export const parseAnalysisData = (analysisData) => {
 /** Sum & round per-item nutrition into day/meal totals. */
 export const recalculateTotals = (items) => {
   const list = Array.isArray(items) ? items : [];
-  const t = list.reduce(
-    (acc, item) => {
-      const n = item.nutrition || {};
-      const itemCarbs = n.carbs ?? item.carbs ?? 0;
-      return {
-        calories:    acc.calories    + (n.calories    ?? item.calories    ?? 0),
-        protein:     acc.protein     + (n.protein     ?? item.protein     ?? 0),
-        carbs:       acc.carbs       + itemCarbs,
-        fat:         acc.fat         + (n.fat         ?? item.fat         ?? 0),
-        fiber:       acc.fiber       + (n.fiber       ?? item.fiber       ?? 0),
-        sugar:       acc.sugar       + (n.sugar       ?? item.sugar       ?? 0),
-        sodium:      acc.sodium      + (n.sodium      ?? item.sodium      ?? 0),
-        cholesterol: acc.cholesterol + (n.cholesterol ?? item.cholesterol ?? 0),
-      };
-    },
-    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0 },
-  );
+  const t = aggregateFoodTotals(list);
+  const micros = {};
+  for (const key of FOOD_MICRO_FIELDS) {
+    micros[key] = t[key] || 0;
+  }
   return {
     calories:    Math.round(t.calories),
     protein:     Math.round(t.protein * 10) / 10,
@@ -147,6 +137,7 @@ export const recalculateTotals = (items) => {
     sodium:      Math.round(t.sodium),
     cholesterol: Math.round(t.cholesterol),
     // Available-carb weighted meal GI (never sum/simple-average item GIs)
-    glycemic_index: computeMealGlycemicIndex(list),
+    glycemic_index: t.glycemicIndex ?? computeMealGlycemicIndex(list),
+    ...micros,
   };
 };

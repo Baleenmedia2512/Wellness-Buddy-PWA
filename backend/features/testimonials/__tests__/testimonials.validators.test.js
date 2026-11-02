@@ -7,6 +7,8 @@ import assert from 'node:assert/strict';
 import {
   validateSubmitTestimonial,
   validateEditTestimonial,
+  validateUpdateMemberHealthIssues,
+  validateSubmitAllEdits,
 } from '../testimonials.validators.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 
@@ -40,14 +42,13 @@ describe('validateSubmitTestimonial', () => {
     assert.deepEqual(result.recoveredHealthIssues, ['Diabetes']);
   });
 
-  it('requires recovered health issues when after photo is included', () => {
-    assert.throws(
-      () => validateSubmitTestimonial(beforeOnlyBody({
-        afterImageBase64: TINY_BASE64,
-        afterWeightKg: 72,
-      })),
-      (err) => err instanceof ValidationError && /recovered health issue/i.test(err.message),
-    );
+  it('accepts after photo submit without recovered health issues', () => {
+    const result = validateSubmitTestimonial(beforeOnlyBody({
+      afterImageBase64: TINY_BASE64,
+      afterWeightKg: 72,
+    }));
+    assert.equal(result.hasAfter, true);
+    assert.deepEqual(result.recoveredHealthIssues, []);
   });
 
   it('accepts after photo submit when recovered health issues are present', () => {
@@ -58,6 +59,17 @@ describe('validateSubmitTestimonial', () => {
     }));
     assert.equal(result.hasAfter, true);
     assert.deepEqual(result.recoveredHealthIssues, ['Diabetes']);
+  });
+
+  it('accepts decimal before/after weights', () => {
+    const result = validateSubmitTestimonial(beforeOnlyBody({
+      beforeWeightKg: '85.5',
+      afterImageBase64: TINY_BASE64,
+      afterWeightKg: '72,25',
+      recoveredHealthIssues: [],
+    }));
+    assert.equal(result.beforeWeightKg, 85.5);
+    assert.equal(result.afterWeightKg, 72.25);
   });
 });
 
@@ -70,5 +82,81 @@ describe('validateEditTestimonial', () => {
     assert.equal(result.userId, 713);
     assert.equal(result.beforeWeightKg, 84);
     assert.equal(result.recoveredHealthIssues, undefined);
+  });
+});
+
+describe('validateUpdateMemberHealthIssues', () => {
+  it('accepts a coach updating a member health issue', () => {
+    const result = validateUpdateMemberHealthIssues({
+      coachId: 10,
+      userId: 713,
+      recoveredHealthIssues: ['Back Pain'],
+    });
+    assert.equal(result.coachId, 10);
+    assert.equal(result.userId, 713);
+    assert.deepEqual(result.recoveredHealthIssues, ['Back Pain']);
+  });
+
+  it('requires recoveredHealthIssues', () => {
+    assert.throws(
+      () => validateUpdateMemberHealthIssues({ coachId: 10, userId: 713 }),
+      (err) => err instanceof ValidationError && /recoveredHealthIssues is required/i.test(err.message),
+    );
+  });
+
+  it('accepts an empty recoveredHealthIssues list', () => {
+    const result = validateUpdateMemberHealthIssues({
+      coachId: 10,
+      userId: 713,
+      recoveredHealthIssues: [],
+    });
+    assert.deepEqual(result.recoveredHealthIssues, []);
+  });
+});
+
+describe('validateSubmitAllEdits duration', () => {
+  it('rejects stub duration text that used to be written on video-only rows', () => {
+    assert.throws(
+      () => validateSubmitAllEdits({
+        userId: 713,
+        dirtySlots: [],
+        durationText: '—',
+      }),
+      (err) => err instanceof ValidationError && /days.*months/i.test(err.message),
+    );
+  });
+
+  it('accepts weight-only edits without a duration', () => {
+    const result = validateSubmitAllEdits({
+      userId: 713,
+      dirtySlots: [],
+      afterWeightKg: 73,
+    });
+    assert.equal(result.afterWeightKg, 73);
+    assert.equal(result.durationText, undefined);
+    assert.equal(result.submitForApproval, false);
+  });
+
+  it('passes through submitForApproval', () => {
+    const result = validateSubmitAllEdits({
+      userId: 713,
+      dirtySlots: ['issues'],
+      recoveredHealthIssues: ['Knee Pain'],
+      submitForApproval: true,
+    });
+    assert.equal(result.submitForApproval, true);
+  });
+
+  it('accepts duration, weight, and goal in dirtySlots', () => {
+    const result = validateSubmitAllEdits({
+      userId: 713,
+      dirtySlots: ['duration', 'weight', 'goal'],
+      afterWeightKg: 73,
+      durationText: '3 months',
+      goalType: 'loss',
+      submitForApproval: true,
+    });
+    assert.deepEqual(result.dirtySlots, ['duration', 'weight', 'goal']);
+    assert.equal(result.submitForApproval, true);
   });
 });

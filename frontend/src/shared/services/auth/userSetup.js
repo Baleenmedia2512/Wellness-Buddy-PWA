@@ -1,7 +1,7 @@
 /**
  * shared/services/auth/userSetup.js
  * ---------------------------------------------------------------------------
- * Pure HTTP helpers for the user-status (active / inactive / not-found)
+ * Pure HTTP helpers for the user-status (active / not-found)
  * lookup and the setup-status (skipped / complete / pending OTP / incomplete)
  * fetch. Extracted from App.js's `checkUserStatus` and the duplicate
  * setup-status fetch trees in the auth-state listener and the standalone
@@ -25,20 +25,21 @@
  */
 
 import { getDeviceTimezoneIana } from "../../utils/deviceTimezone.js";
+import { apiFetch } from "../apiFetch.js";
 
 /**
  * POST /api/user/lookup → user-status discriminated union.
  *
  * @param {{ apiBaseUrl: string, email: string }} params
  * @returns {Promise<{
- *   result: 'active' | 'inactive' | 'userNotFound' | 'newUser',
+ *   result: 'active' | 'userNotFound' | 'newUser',
  *   role?: string,
  * }>}
  *
  * Mapping rules (preserved from legacy `checkUserStatus`):
  *   - !data.success || data.userNotFound      → 'userNotFound'
  *   - data.isNewUser                          → 'newUser'  (carries role if present)
- *   - data.success && !data.isActive          → 'inactive'
+ *   - data.success && !data.isActive          → 'active'   (inactive users are allowed through)
  *   - data.success && data.isActive           → 'active'   (carries role if present)
  *   - HTTP non-OK or thrown error             → 'active'   (FAIL-OPEN)
  */
@@ -46,7 +47,7 @@ export async function fetchUserStatus({ apiBaseUrl, email }) {
   if (!email) return { result: "active" };
 
   try {
-    const response = await fetch(`${apiBaseUrl}/api/user/lookup`, {
+    const response = await apiFetch(`${apiBaseUrl}/api/user/lookup`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -55,23 +56,35 @@ export async function fetchUserStatus({ apiBaseUrl, email }) {
       }),
     });
 
-    if (!response.ok) {
-      // Legacy threw and caught → fail-open. Preserve.
-      return { result: "active" };
+    let data = {};
+    try {
+      data = await response.json();
+    } catch {
+      data = {};
     }
 
-    const data = await response.json();
+    // Account hard-deleted — must NOT fail-open (404 previously treated as active).
+    if (response.status === 404 || data.userNotFound || data.success === false) {
+      if (data.userNotFound || response.status === 404) {
+        return { result: "userNotFound" };
+      }
+    }
+
+    if (!response.ok) {
+      // Legacy threw and caught → fail-open for transient errors only.
+      return { result: "active" };
+    }
 
     if (!data.success || data.userNotFound) {
       return { result: "userNotFound" };
     }
     if (data.isNewUser) {
-      return { result: "newUser", role: data.role };
+      return { result: "newUser", role: data.role || "user" };
     }
     if (data.success && !data.isActive) {
-      return { result: "inactive" };
+      return { result: "active", role: data.role || "user" };
     }
-    return { result: "active", role: data.role };
+    return { result: "active", role: data.role || "user" };
   } catch (err) {
     // Fail-open: caller treats unknown network state as "let user in".
     return { result: "active", error: err };
@@ -81,7 +94,7 @@ export async function fetchUserStatus({ apiBaseUrl, email }) {
 /**
  * GET /api/user/status → setup-status discriminated union.
  *
- * @param {{ apiBaseUrl: string, email: string }} params
+ * @param {{ apiBaseUrl: string, email?: string, userId?: string|number }} params
  * @returns {Promise<{
  *   result: 'skipped' | 'complete' | 'pendingOtp' | 'incomplete' | 'error',
  *   raw?: object,
@@ -95,12 +108,15 @@ export async function fetchUserStatus({ apiBaseUrl, email }) {
  *   - statusData.setupComplete===true                           → 'complete'
  *   - HTTP non-OK or thrown error                               → 'error'
  */
-export async function fetchSetupStatus({ apiBaseUrl, email }) {
-  if (!email) return { result: "error" };
+export async function fetchSetupStatus({ apiBaseUrl, email, userId }) {
+  if (!email && (userId == null || userId === '')) return { result: "error" };
 
   try {
-    const statusResponse = await fetch(
-      `${apiBaseUrl}/api/user/status?email=${encodeURIComponent(email)}`,
+    const qs = email
+      ? `email=${encodeURIComponent(email)}`
+      : `userId=${encodeURIComponent(String(userId))}`;
+    const statusResponse = await apiFetch(
+      `${apiBaseUrl}/api/user/status?${qs}`,
     );
 
     if (!statusResponse.ok) {

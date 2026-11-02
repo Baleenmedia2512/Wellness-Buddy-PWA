@@ -1,7 +1,7 @@
 /**
  * EducationActionButtons.js — presentational.
  * Action rows used by education modals: a destructive Delete button (detail
- * modal) and a Cancel/Save pair (manual entry modal).
+ * modal) and a full-width Save button (manual entry modal).
  */
 import React from 'react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
@@ -35,20 +35,14 @@ export function DeleteEducationButton({ onDelete, isDeleting }) {
   );
 }
 
-export function EducationFormActions({ onCancel, onSave, isSaving }) {
+export function EducationFormActions({ onSave, isSaving }) {
   return (
-    <div className="flex gap-2 px-4 py-3 border-t border-gray-100">
+    <div className="px-4 py-3 border-t border-gray-100">
       <button
-        onClick={onCancel}
-        disabled={isSaving}
-        className="flex-1 px-4 py-2.5 border-2 border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors disabled:opacity-50"
-      >
-        Cancel
-      </button>
-      <button
+        type="button"
         onClick={onSave}
         disabled={isSaving}
-        className="flex-1 px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+        className="w-full px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
       >
         {isSaving ? (
           <>
@@ -59,7 +53,7 @@ export function EducationFormActions({ onCancel, onSave, isSaving }) {
             Saving...
           </>
         ) : (
-          <>Log Session</>
+          <>Save</>
         )}
       </button>
     </div>

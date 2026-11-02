@@ -5,7 +5,9 @@ import { PHYSICAL_ACTIVITY_OPTIONS } from '../../../../shared/utils/tdeeCalculat
 const selectCls =
   'w-full min-w-0 max-w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none bg-white';
 
-export default function PhysicalActivityField({ value, onChange }) {
+const DEFAULT_LABEL_CLS = 'block text-sm font-medium text-gray-700 mb-1';
+
+export default function PhysicalActivityField({ value, onChange, labelClassName }) {
   const selected = useMemo(
     () => PHYSICAL_ACTIVITY_OPTIONS.find((o) => o.id === value) || null,
     [value],
@@ -13,7 +15,7 @@ export default function PhysicalActivityField({ value, onChange }) {
 
   return (
     <div className="min-w-0 max-w-full">
-      <label className="block text-sm font-medium text-gray-700 mb-1">
+      <label className={labelClassName || DEFAULT_LABEL_CLS}>
         Physical Activity
       </label>
       <select

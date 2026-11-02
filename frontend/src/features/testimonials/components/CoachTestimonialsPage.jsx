@@ -1,50 +1,100 @@
-﻿/**
+/**
  * CoachTestimonialsPage.jsx
  * Unified testimonials card view for every user.
  *
- * Unified per-member card shows ALL 5 slots:
- *   • Before photo · After photo · Health video · Business video · Recovered health issues
+ * Per-member card:
+ *   • Mine: edit slots + video upload → divider → branded card → Share Image → videos
+ *   • Direct/Full: header → divider → branded card → Share Image → videos → Share Video
+ *     (no duplicate video block above the branded card)
  *
  * With downline: Mine | Direct | Full + search + upload filters.
  * Without downline: own card only (no Direct/Full/search/filters).
- *
- * Video playback: Instagram-style tap-to-play inline modal.
  */
 import React, { useEffect, useCallback, useState, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  AlertCircle, ArrowLeft, Camera, CheckCircle, CircleDot, Clock,
-  Images, Mail, Pencil, Plus, RefreshCw, Save, Share2, ShieldCheck, Upload, Users, Video,
-  Play, X, HeartPulse, Maximize2, TrendingDown, TrendingUp,
+  AlertCircle, ArrowLeft, Camera, CheckCircle, CircleDot, Clock, Crop,
+  Images, Mail, Pencil, Plus, RefreshCw, Save, ShieldCheck, Upload, Users, Video,
+  X, TrendingDown, TrendingUp,
 } from 'lucide-react';
+import CustomAlertModal from '../../../shared/components/CustomAlertModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import ProfilePhotoThumbnail from '../../../shared/components/ProfilePhotoThumbnail.jsx';
+import FullscreenProfilePhotoViewer from '../../../shared/components/FullscreenProfilePhotoViewer.jsx';
+import { TeamMemberProfileModal } from '../../../shared/components/TeamMemberProfileModal';
 import NativeInput from '../../../shared/components/NativeInput.jsx';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import {
   listForCoach, getMyTestimonial, getMyVideoTestimonial, getTeamTestimonialReport,
-  submitAllEdits, verifyUnifiedOtp, prepareTestimonialVideoUpload,
+  getTestimonialDetail, submitAllEdits, verifyUnifiedOtp, resendUnifiedOtp, cancelUnifiedOtp, prepareTestimonialVideoUpload,
 } from '../services/testimonialApi.js';
+import { getProfile } from '../../user/services/user.api.js';
 import { uploadTestimonialVideoInChunks } from '../services/testimonialVideoUpload.js';
 import TestimonialSearchBar from './TestimonialSearchBar.jsx';
 import OtpInline from './OtpInline.jsx';
+import {
+  EMAIL_OTP_LENGTH,
+  extractOtpFromText,
+  isValidEmailOtp,
+} from '../../user/domain/otpLength';
 import VideoThumbnailCard from './VideoThumbnailCard.jsx';
-import DiseaseMultiSelect from './DiseaseMultiSelect.jsx';
-import TransformationShareCard from './TransformationShareCard.jsx';
+import HealthIssueCoachEditor from './HealthIssueCoachEditor.jsx';
+import {
+  TransformationCardContent,
+  TransformationShareActions,
+} from './TransformationShareCard.jsx';
+
+import { CARD_W, CARD_H } from '../utils/shareCardLayout.js';
+import { getCachedVideoThumbnail } from '../utils/videoThumbnailCache.js';
+import { jpegDataUrlToObjectUrl, revokeBlobUrl, withTestimonialMediaCacheBust } from '../utils/testimonialMediaUrl.js';
+import { useRevocableImageSrc } from '../hooks/useRevocableImageSrc.js';
+import { resolveResultVideoUrl, prefetchNativeResultVideos } from '../utils/downloadVideo.js';
+import { MAX_HEALTH_VIDEO_MB, isVideoOverSizeLimit, videoTooLargeMessage, maxVideoMbForSlot } from '../utils/videoLimits.js';
+import { compressVideoToMaxBytes } from '../utils/compressTestimonialVideo.js';
+import { normalizeVideoUploadFile } from '../utils/normalizeVideoUploadFile.js';
+import { isCaptureFlowBusy, setCaptureFlowBusy } from '../../../shared/services/captureFlowBusy';
+import usePortraitCoverCrop from '../../user/hooks/usePortraitCoverCrop';
+import { shouldShowTestimonialsPageSkeleton } from '../utils/testimonialsPageLoad.js';
 import {
   UPLOAD_FILTERS,
   TEAM_SCOPES,
   computeMemberCompleteness,
-  filterRowsByUpload,
-  countRowsByUpload,
-  countRowsByTeamScope,
   toggleStatusFilter,
+  resolveTeamScopeCount,
 } from '../utils/testimonialFilters.js';
 import {
+  buildHealthIssueSuggestions,
   buildSearchSuggestions,
-  filterRowsBySearch,
   normalizeSearchQuery,
 } from '../utils/testimonialSearch.js';
-import { PORTRAIT_IMAGE_CLASS_SM } from '../services/testimonialFormUtils.js';
+import {
+  PORTRAIT_IMAGE_CLASS_SM,
+  parseDurationText,
+  formatDurationText,
+  sanitizeDurationDigits,
+  sanitizeWeightTyping,
+  parseWeightKg,
+  validateDurationFields,
+  isUsableDurationText,
+  liveWeightDiffKg,
+  isTransformationWeightLoss,
+  canShareTransformationPhoto,
+  
+  
+  hasApprovalReadyBeforePhoto,
+  hasDistinctTransformationAfter,
+  hasStoredTransformationBefore,
+  hasStoredTransformationPhotoCard,
+} from '../services/testimonialFormUtils.js';
 import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
+import { uniqueConditions, isSameIssueList, withoutHealthIssue } from '../utils/uniqueConditions.js';
+import { getApiBaseUrl } from '../../../config/api.config.js';
+import {
+  buildUserAvatarUrl,
+  getAvatarDisplayVersion,
+  subscribeAvatarDisplayVersion,
+} from '../../user/services/avatarDisplayVersion.js';
+import { seedMineTestimonialFromProfileSlots } from '../../user/domain/transformationBeforeAfter';
 
 // â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -141,7 +191,54 @@ function VideoPlayerModal({ url, title, onClose }) {
   );
 }
 
-// â”€â”€ Video play button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/**
+ * On-screen branded Transformation Results card (scaled to card width).
+ * Share capture still uses a full-size hidden clone so html2canvas stays sharp.
+ */
+function VisibleTransformationCard({ testimonial, userName }) {
+  const wrapRef = useRef(null);
+  const [scale, setScale] = useState(0);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return undefined;
+    const update = () => {
+      const w = el.clientWidth;
+      if (w > 0) setScale(w / CARD_W);
+    };
+    update();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    ro?.observe(el);
+    window.addEventListener('resize', update);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={wrapRef}
+      className="w-full overflow-hidden rounded-2xl border border-emerald-100 shadow-sm bg-white"
+      style={{
+        height: scale > 0 ? Math.round(CARD_H * scale) : undefined,
+        aspectRatio: scale > 0 ? undefined : `${CARD_W} / ${CARD_H}`,
+      }}
+      aria-label="Transformation results card"
+    >
+      <div
+        style={{
+          width: CARD_W,
+          height: CARD_H,
+          transform: scale > 0 ? `scale(${scale})` : undefined,
+          transformOrigin: 'top left',
+        }}
+      >
+        <TransformationCardContent testimonial={testimonial} userName={userName} />
+      </div>
+    </div>
+  );
+}
 
 // VideoThumbnailBtn replaced by VideoThumbnailCard (imported above)
 // â”€â”€ Upload completeness badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -162,16 +259,25 @@ function CompletenessBadge({ level, filledCount, totalSlots }) {
 
 // â”€â”€ Team compliance â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function TeamComplianceInline({ userName, teamStats, onComplianceClick }) {
+function TeamComplianceInline({ userName, teamStats, onComplianceClick, onProfileClick }) {
+  const memberName = onProfileClick ? (
+      <button
+        type="button"
+        onClick={onProfileClick}
+        className="font-semibold text-gray-900 truncate text-left hover:underline"
+      >
+        {userName}
+      </button>
+    ) : <span className="font-semibold text-gray-900 truncate">{userName}</span>;
   if (!teamStats?.totalMembers) {
-    return <p className="font-semibold text-gray-900 text-sm truncate">{userName}</p>;
+    return <p className="text-sm">{memberName}</p>;
   }
   const scoreNum   = Number(teamStats.uploadPercentage ?? 0);
   const colorClass = teamComplianceColorClass(scoreNum);
   const uploaded   = teamStats.uploaded ?? teamStats.uploadedMembers?.length ?? 0;
   return (
     <p className="text-sm font-medium flex items-baseline gap-2 min-w-0 flex-wrap">
-      <span className="font-semibold text-gray-900 truncate">{userName}</span>
+      {memberName}
       <button
         type="button"
         onClick={onComplianceClick}
@@ -183,14 +289,23 @@ function TeamComplianceInline({ userName, teamStats, onComplianceClick }) {
   );
 }
 
-function TeamComplianceModal({ userName, teamStats, onClose }) {
+function TeamComplianceModal({ userName, teamStats, onClose, onMemberProfile }) {
   const scoreColor  = teamComplianceColorClass(Number(teamStats.uploadPercentage ?? 0));
   const uploaded    = teamStats.uploaded    ?? teamStats.uploadedMembers?.length ?? 0;
   const total       = teamStats.totalMembers ?? 0;
   const notUploaded = total - uploaded;
 
-  return (
-    <div className="fixed inset-0 z-[70] ios-full-page bg-gray-50" role="dialog" aria-labelledby="tc-title">
+  // Portal to body so iOS WKWebView does not trap `fixed` inside `.ios-scroll-body`
+  // (header was clipped; only cards showed under Transformation tabs).
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[80] ios-full-page bg-white"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="tc-title"
+    >
       <header className="flex-shrink-0 bg-white border-b border-gray-200 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
         <div className="flex items-center gap-3">
           <TouchFeedbackButton onClick={onClose} className="p-2 -ml-2 rounded-full text-gray-600 hover:text-gray-900" ariaLabel="Back">
@@ -198,21 +313,33 @@ function TeamComplianceModal({ userName, teamStats, onClose }) {
           </TouchFeedbackButton>
           <div className="min-w-0 flex-1">
             <h2 id="tc-title" className="text-base font-bold text-gray-800 truncate">Team Compliance</h2>
-            <p className="text-xs text-gray-500 truncate">{userName}</p>
+            <p className="text-xs text-gray-500 truncate uppercase tracking-wide">{userName}</p>
           </div>
         </div>
       </header>
       <div className="ios-scroll-body px-4 py-4 space-y-3">
         <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-1">
           <p className={`text-2xl font-bold ${scoreColor}`}>{formatPercentage(teamStats.uploadPercentage)}%</p>
-          <p className="text-sm text-gray-500">Team upload rate Â· {uploaded}/{total} members</p>
+          <p className="text-sm text-gray-500">
+            Team upload rate {'\u00b7'} {uploaded}/{total} members
+          </p>
         </div>
         {(teamStats.uploadedMembers?.length > 0) && (
           <div className="bg-white rounded-2xl border border-green-200 p-3">
             <p className="text-xs font-bold text-green-800 mb-2">Uploaded ({uploaded})</p>
             <ul className="space-y-0.5">
               {teamStats.uploadedMembers.map((m) => (
-                <li key={m.userId} className="text-xs text-green-700 font-medium truncate">{m.userName}</li>
+                <li key={m.userId} className="text-xs text-green-700 font-medium truncate">
+                  {m.userId != null ? (
+                    <button
+                      type="button"
+                      onClick={() => onMemberProfile(m.userId)}
+                      className="text-left hover:underline"
+                    >
+                      {m.userName}
+                    </button>
+                  ) : m.userName}
+                </li>
               ))}
             </ul>
           </div>
@@ -222,57 +349,98 @@ function TeamComplianceModal({ userName, teamStats, onClose }) {
             <p className="text-xs font-bold text-red-800 mb-2">Not Uploaded ({notUploaded})</p>
             <ul className="space-y-0.5">
               {teamStats.notUploadedMembers.map((m) => (
-                <li key={m.userId} className="text-xs text-red-700 font-medium truncate">{m.userName}</li>
+                <li key={m.userId} className="text-xs text-red-700 font-medium truncate">
+                  {m.userId != null ? (
+                    <button
+                      type="button"
+                      onClick={() => onMemberProfile(m.userId)}
+                      className="text-left hover:underline"
+                    >
+                      {m.userName}
+                    </button>
+                  ) : m.userName}
+                </li>
               ))}
             </ul>
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
-function TeamComplianceSection({ userName, teamStats }) {
+function TeamComplianceSection({ userName, teamStats, onProfileClick }) {
   const [open, setOpen] = useState(false);
+  const [profileUserId, setProfileUserId] = useState(null);
   return (
     <>
-      <TeamComplianceInline userName={userName} teamStats={teamStats} onComplianceClick={() => setOpen(true)} />
-      {open && teamStats?.totalMembers && (
-        <TeamComplianceModal userName={userName} teamStats={teamStats} onClose={() => setOpen(false)} />
+      <TeamComplianceInline
+        userName={userName}
+        teamStats={teamStats}
+        onComplianceClick={() => setOpen(true)}
+        onProfileClick={onProfileClick}
+      />
+      {open && !profileUserId && teamStats?.totalMembers && (
+        <TeamComplianceModal
+          userName={userName}
+          teamStats={teamStats}
+          onClose={() => setOpen(false)}
+          onMemberProfile={(userId) => {
+            setOpen(false);
+            setProfileUserId(userId);
+          }}
+        />
       )}
+      <TeamMemberProfileModal
+        isOpen={Boolean(profileUserId)}
+        onClose={() => setProfileUserId(null)}
+        memberUserId={profileUserId}
+        apiBaseUrl={getApiBaseUrl()}
+      />
     </>
   );
 }
 
-// â”€â”€ Photo viewer modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/** Avatar via dedicated endpoint — keeps list-for-coach JSON tiny. */
+function MemberAvatar({ user, onViewProfile }) {
+  const [avatarVersion, setAvatarVersion] = useState(getAvatarDisplayVersion);
+  useEffect(() => subscribeAvatarDisplayVersion(setAvatarVersion), []);
 
-function PhotoModal({ url, label, onClose }) {
-  useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
+  const userId = user?.userId;
+  const inline = user?.profileImage;
+  let remote = null;
+  try {
+    if (userId != null && !inline) {
+      remote = buildUserAvatarUrl(getApiBaseUrl(), userId, avatarVersion, { profileOnly: true });
+    }
+  } catch {
+    remote = null;
+  }
+  const src = inline || remote;
+
+  if (src) {
+    return (
+      <ProfilePhotoThumbnail
+        src={src}
+        alt={user?.userName || 'User'}
+        onViewProfile={onViewProfile}
+        className="h-11 w-11 rounded-full flex-shrink-0"
+        imageClassName="h-11 w-11 rounded-full object-cover border-2 border-white shadow"
+        fallbackClassName="h-11 w-11 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white font-bold text-base shadow flex-shrink-0"
+        fallback={(user?.userName || '?').charAt(0).toUpperCase()}
+      />
+    );
+  }
 
   return (
-    <div
-      className="fixed inset-0 z-[80] bg-black/90 flex flex-col items-center justify-center"
-      onClick={onClose}
-    >
-      <div className="relative" onClick={(e) => e.stopPropagation()}>
-        <img src={url} alt={label} className="max-h-[85vh] max-w-[95vw] object-contain rounded-xl" />
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-2 right-2 p-1.5 rounded-full bg-black/50 text-white hover:bg-black/70"
-          aria-label="Close"
-        >
-          <X className="h-4 w-4" />
-        </button>
-        <p className="text-center text-white text-xs font-semibold mt-2 px-2">{label}</p>
-      </div>
+    <div className="h-11 w-11 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white font-bold text-base shadow flex-shrink-0">
+      {(user?.userName || '?').charAt(0).toUpperCase()}
     </div>
   );
 }
+
+// â”€â”€ Photo viewer modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // â”€â”€ Upload completeness filter chip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -301,54 +469,274 @@ function UploadFilterChip({ filterKey, count, activeFilter, onToggle }) {
 
 // ── Unified OTP entry (after submit-all-edits) ────────────────────────────────
 
-function UnifiedOtpInline({ userId, onVerified }) {
+const OTP_VALIDITY_HOURS_DEFAULT = 24;
+
+function isOtpExpiredClient(otpExpiresAt) {
+  if (!otpExpiresAt) return false;
+  // Match backend: compare IST-shifted "now" to stored expiry wall clock.
+  const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  return istNow > new Date(otpExpiresAt);
+}
+
+function UnifiedOtpInline({
+  userId,
+  sponsorName = null,
+  otpExpiresAt = null,
+  otpValidityHours = OTP_VALIDITY_HOURS_DEFAULT,
+  otpExpired: otpExpiredProp = null,
+  onVerified,
+  onOtpMetaUpdate,
+  onClose,
+}) {
   const [otp,     setOtp]     = React.useState('');
   const [loading, setLoading] = React.useState(false);
+  const [resending, setResending] = React.useState(false);
+  const [closing, setClosing] = React.useState(false);
+  const [dismissed, setDismissed] = React.useState(false);
   const [err,     setErr]     = React.useState(null);
+  const [info,    setInfo]    = React.useState(null);
+  const [expiresAt, setExpiresAt] = React.useState(otpExpiresAt);
+  const [tick, setTick] = React.useState(0);
+
+  React.useEffect(() => {
+    setDismissed(false);
+  }, [userId, otpExpiresAt]);
+
+  React.useEffect(() => {
+    setExpiresAt(otpExpiresAt);
+  }, [otpExpiresAt]);
+
+  React.useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const expired = otpExpiredProp === true
+    || (otpExpiredProp !== false && isOtpExpiredClient(expiresAt));
+  void tick; // re-render on interval for expiry flip
+
+  const sponsorLabel = (sponsorName && String(sponsorName).trim()) || 'your sponsor';
+  const hours = Number(otpValidityHours) > 0 ? Number(otpValidityHours) : OTP_VALIDITY_HOURS_DEFAULT;
+
+  const handleOtpInput = (raw) => {
+    const extracted = extractOtpFromText(raw, EMAIL_OTP_LENGTH);
+    setOtp(extracted ?? String(raw ?? '').replace(/\D/g, '').slice(0, EMAIL_OTP_LENGTH));
+    setErr(null);
+  };
+
+  const handleClose = () => {
+    if (dismissed || closing || loading || resending) return;
+    setDismissed(true);
+    setClosing(true);
+    try {
+      void Promise.resolve(onClose?.()).finally(() => {
+        setClosing(false);
+      });
+    } catch {
+      setClosing(false);
+    }
+  };
 
   const submit = async () => {
     setErr(null);
-    if (!/^\d{6}$/.test(otp.trim())) { setErr('Enter the 6-digit OTP from your sponsor'); return; }
+    setInfo(null);
+    if (expired) {
+      setErr('OTP has expired. Resend a new code to your sponsor.');
+      return;
+    }
+    if (!isValidEmailOtp(otp.trim())) {
+      setErr(`Enter the 4-digit OTP from ${sponsorLabel}`);
+      return;
+    }
     setLoading(true);
     try {
-      await verifyUnifiedOtp({ userId, otp: otp.trim() });
-      onVerified();
+      const result = await verifyUnifiedOtp({ userId, otp: otp.trim() });
+      setDismissed(true);
+      onVerified?.(result?.testimonial || result?.data);
     } catch (e) {
-      setErr(e.message || 'Invalid OTP. Please check with your sponsor.');
+      const msg = e.message || `Invalid OTP. Please check with ${sponsorLabel}.`;
+      setErr(msg);
+      if (/expired/i.test(msg)) {
+        onOtpMetaUpdate?.({ otpExpired: true });
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const resend = async () => {
+    setErr(null);
+    setInfo(null);
+    setResending(true);
+    try {
+      const result = await resendUnifiedOtp({ userId });
+      setOtp('');
+      setExpiresAt(result?.otpExpiresAt ?? null);
+      setInfo(result?.message || `New OTP sent to ${sponsorLabel}. Valid for ${hours} hours.`);
+      onOtpMetaUpdate?.({
+        otpExpiresAt: result?.otpExpiresAt ?? null,
+        otpExpired: false,
+        sponsorName: result?.sponsorName ?? sponsorName,
+        testimonial: result?.testimonial,
+      });
+    } catch (e) {
+      setErr(e.message || 'Could not resend OTP. Please try again.');
+    } finally {
+      setResending(false);
+    }
+  };
+
+  if (dismissed) {
+    return null;
+  }
+
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3 relative">
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
-        <p className="text-sm font-semibold text-amber-800">Enter OTP from your sponsor</p>
+        <p className="text-sm font-semibold text-amber-800">
+          Enter the 4-digit approval code sent to your sponsor {sponsorLabel} through email
+        </p>
       </div>
       <p className="text-xs text-amber-700 leading-relaxed">
-        Your sponsor received a single 6-digit OTP covering all your changes. Ask them to share it.
+        Ask them to share the code. The OTP is valid for{' '}
+        <span className="font-semibold">{hours} hours</span>.
       </p>
+      {expired && (
+        <p className="text-xs font-semibold text-red-600">
+          This OTP has expired. Resend a new code to {sponsorLabel}.
+        </p>
+      )}
+      {!expired && (
+        <NativeInput
+          otp
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="one-time-code"
+          maxLength={EMAIL_OTP_LENGTH}
+          placeholder="_ _ _ _"
+          value={otp}
+          onChange={(e) => handleOtpInput(e.target.value)}
+          onPaste={(e) => {
+            e.preventDefault();
+            handleOtpInput(e.clipboardData?.getData('text') ?? '');
+          }}
+          className="w-full text-center text-2xl font-bold tracking-[0.4em] border-2 border-amber-300 rounded-xl py-3 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+        />
+      )}
+      {err && <p className="text-xs text-red-600 text-center">{err}</p>}
+      {info && <p className="text-xs text-emerald-700 text-center">{info}</p>}
+      {!expired ? (
+        <div className="flex items-center gap-3 w-full">
+          {onClose && (
+            <TouchFeedbackButton
+              type="button"
+              onClick={handleClose}
+              disabled={closing || loading || resending}
+              className="flex-1 py-3 rounded-xl bg-red-500 hover:bg-red-600 active:bg-red-700 text-white text-sm font-bold disabled:opacity-60 transition-colors text-center"
+              aria-label="Close OTP verification and revert changes"
+            >
+              {closing ? 'Closing\u2026' : 'Close'}
+            </TouchFeedbackButton>
+          )}
+          <TouchFeedbackButton
+            type="button"
+            onClick={submit}
+            disabled={loading || otp.length !== EMAIL_OTP_LENGTH}
+            className={`${onClose ? 'flex-1' : 'w-full'} py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-bold disabled:opacity-60 transition-colors text-center`}
+          >
+            {loading ? 'Verifying\u2026' : 'Verify with OTP'}
+          </TouchFeedbackButton>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 w-full">
+          {onClose && (
+            <TouchFeedbackButton
+              type="button"
+              onClick={handleClose}
+              disabled={closing || loading || resending}
+              className="flex-1 py-3 rounded-xl bg-red-500 hover:bg-red-600 active:bg-red-700 text-white text-sm font-bold disabled:opacity-60 transition-colors text-center"
+              aria-label="Close OTP verification and revert changes"
+            >
+              {closing ? 'Closing\u2026' : 'Close'}
+            </TouchFeedbackButton>
+          )}
+          <TouchFeedbackButton
+            type="button"
+            onClick={resend}
+            disabled={resending}
+            className={`${onClose ? 'flex-1' : 'w-full'} py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-bold disabled:opacity-60 transition-colors text-center`}
+          >
+            {resending ? 'Sending\u2026' : `Resend OTP to ${sponsorLabel}`}
+          </TouchFeedbackButton>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const EMPTY_HEALTH_ISSUES = Object.freeze([]);
+
+function sameIssueList(a, b) {
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
+}
+
+function afterWeightDiffers(beforeKg, afterKg) {
+  const before = Number(beforeKg);
+  const after = Number(afterKg);
+  if (!Number.isFinite(before) || !Number.isFinite(after)) return false;
+  return before !== after;
+}
+
+function DurationEditor({
+  valueText,
+  unit,
+  onValueChange,
+  onUnitChange,
+  onCommit,
+  onCancel,
+}) {
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
       <NativeInput
-        otp
-        type="text"
         inputMode="numeric"
         pattern="[0-9]*"
         autoComplete="off"
-        maxLength={6}
-        placeholder="_ _ _ _ _ _"
-        value={otp}
-        onChange={(e) => { setOtp(e.target.value.replace(/\D/g, '').slice(0, 6)); setErr(null); }}
-        className="w-full text-center text-2xl font-bold tracking-[0.4em] border-2 border-amber-300 rounded-xl py-3 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+        autoFocus
+        placeholder="e.g. 3"
+        value={valueText ?? ''}
+        onChange={(e) => onValueChange(sanitizeDurationDigits(e.target.value))}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            onCommit();
+          }
+          if (e.key === 'Escape') onCancel();
+        }}
+        className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-green-400"
       />
-      {err && <p className="text-xs text-red-600 text-center">{err}</p>}
-      <TouchFeedbackButton
-        onClick={submit}
-        disabled={loading || otp.length !== 6}
-        className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold disabled:opacity-60 transition-colors"
+      <select
+        value={unit}
+        onChange={(e) => onUnitChange(e.target.value)}
+        className="border border-gray-300 rounded-lg px-1.5 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-green-400"
       >
-        {loading ? 'Verifying\u2026' : 'Verify with OTP'}
-      </TouchFeedbackButton>
+        <option value="days">days</option>
+        <option value="months">months</option>
+      </select>
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onCommit}
+        className="text-green-600 hover:text-green-800 text-[11px] font-bold"
+      >
+        Save
+      </button>
+      <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600">
+        <X className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }
@@ -358,15 +746,74 @@ function MemberCard({
   teamStats,
   editable = false,
   userId = null,
+  coachId = null,
+  onMineRefresh,
   onOtpVerified,
+  knownHealthIssues = [],
 }) {
-  const { user, testimonial } = row;
-  const { level, filledCount, totalSlots } = computeMemberCompleteness(row);
+  const { user } = row;
+  const [detailTestimonial, setDetailTestimonial] = useState(null);
+  const detailInFlightRef = useRef(null);
+  // Mine card: always prefer parent row after server refresh (photos + signed URLs).
+  const testimonial = editable ? row.testimonial : (detailTestimonial || row.testimonial);
+  const { level, filledCount, totalSlots } = computeMemberCompleteness({
+    ...row,
+    testimonial,
+  });
+
+  const ensureDetail = useCallback(async () => {
+    if (detailTestimonial) return detailTestimonial;
+    if (editable) return row.testimonial; // Mine already has full my-testimonial payload
+    const memberId = row.user?.userId;
+    if (!memberId) return row.testimonial;
+    if (detailInFlightRef.current) return detailInFlightRef.current;
+    const promise = getTestimonialDetail(memberId, coachId)
+      .then((data) => {
+        const full = data?.testimonial || null;
+        setDetailTestimonial(full);
+        return full;
+      })
+      .finally(() => {
+        detailInFlightRef.current = null;
+      });
+    detailInFlightRef.current = promise;
+    return promise;
+  }, [detailTestimonial, editable, row, coachId]);
+
+  // Lazy-load full media when list row only has thumbs / video paths.
+  useEffect(() => {
+    if (editable) return undefined;
+    const t = row.testimonial;
+    if (!t) return undefined;
+    const needsVideo = (t.healthVideoPath || t.businessVideoPath)
+      && !t.healthVideoUrl && !t.businessVideoUrl;
+    if (needsVideo) {
+      void ensureDetail();
+    }
+    return undefined;
+  }, [editable, row.testimonial, ensureDetail]);
+
+  // Download result videos to cache in the background so Share Video is instant.
+  useEffect(() => {
+    if (!testimonial?.healthVideoUrl && !testimonial?.businessVideoUrl) return undefined;
+    void prefetchNativeResultVideos(testimonial);
+    return undefined;
+  }, [testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
   const [expandedPhoto, setExpandedPhoto] = useState(null);
-  const hasAfter  = testimonial?.afterImageUrl  && testimonial?.status !== 'incomplete';
-  const diff      = testimonial ? Math.abs((testimonial.afterWeightKg ?? 0) - (testimonial.beforeWeightKg ?? 0)).toFixed(1) : null;
-  const issues    = testimonial?.recoveredHealthIssues ?? [];
+  const [profileOpen, setProfileOpen] = useState(false);
+  // After is shown only when it is a different file from Before.
+  const hasAfterImage = hasDistinctTransformationAfter(testimonial);
+  const hasAfter = hasAfterImage
+    && (
+      testimonial?.status !== 'incomplete'
+      || afterWeightDiffers(testimonial?.beforeWeightKg, testimonial?.afterWeightKg)
+    );
+  // Stable empty fallback — a fresh `[]` each render re-triggers setState forever.
+  const issues = Array.isArray(testimonial?.recoveredHealthIssues)
+    ? testimonial.recoveredHealthIssues
+    : EMPTY_HEALTH_ISSUES;
+  const [approvedIssues, setApprovedIssues] = useState(issues);
 
   // ── Inline editing state (Mine card only) ────────────────────────────────
   const [expandedSlots, setExpandedSlots] = useState(new Set());
@@ -377,15 +824,117 @@ function MemberCard({
   const [draftHealthPreview,   setDraftHealthPreview]   = useState(null);
   const [draftBusinessPreview, setDraftBusinessPreview] = useState(null);
   const [draftIssues,   setDraftIssues]   = useState(null);
+
+  // Baseline snapshot before unverified / pending edits were applied
+  const baselineKey = userId ? `transformation_baseline_${userId}` : null;
+  const baselineTestimonialRef = useRef(null);
+
+  useEffect(() => {
+    if (testimonial && testimonial.status !== 'pending' && !testimonial.hasPendingOtp && !testimonial.otpPending) {
+      const snap = {
+        status: testimonial.status,
+        beforeImagePath: testimonial.beforeImagePath,
+        afterImagePath: testimonial.afterImagePath,
+        beforeWeightKg: testimonial.beforeWeightKg,
+        afterWeightKg: testimonial.afterWeightKg,
+        goalType: testimonial.goalType,
+        durationText: testimonial.durationText,
+        recoveredHealthIssues: testimonial.recoveredHealthIssues,
+        videoStatus: testimonial.videoStatus,
+        healthVideoPath: testimonial.healthVideoPath,
+        businessVideoPath: testimonial.businessVideoPath,
+        beforeImageUrl: testimonial.beforeImageUrl,
+        afterImageUrl: testimonial.afterImageUrl,
+        healthVideoUrl: testimonial.healthVideoUrl,
+        businessVideoUrl: testimonial.businessVideoUrl,
+        verifiedAt: testimonial.verifiedAt,
+      };
+      baselineTestimonialRef.current = snap;
+      if (baselineKey) {
+        try {
+          localStorage.setItem(baselineKey, JSON.stringify(snap));
+        } catch {}
+      }
+    }
+  }, [testimonial, baselineKey]);
+
+  const clearDrafts = useCallback(() => {
+    setDraftBefore((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
+    setDraftAfter((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
+    setDraftHealthPath(null);
+    setDraftBusinessPath(null);
+    setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return null; });
+    setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return null; });
+    setDraftIssues(null);
+    setBeforeWeightText(null);
+    setAfterWeightText(null);
+    setDurationValueText(null);
+    setExpandedSlots(new Set());
+  }, []);
+  // Freeze the last approved issue list while new tags are draft/pending OTP.
+  useEffect(() => {
+    if (draftIssues != null) return;
+    if (testimonial?.status === 'pending') return;
+    setApprovedIssues((prev) => (sameIssueList(prev, issues) ? prev : issues));
+  }, [issues, draftIssues, testimonial?.status]);
+  // Local text while weight/duration fields are open — needed for Android WebView typing
+  const [beforeWeightText, setBeforeWeightText] = useState(null);
+  const [afterWeightText,  setAfterWeightText]  = useState(null);
+  const [durationValueText, setDurationValueText] = useState(null);
+  const [durationUnitDraft, setDurationUnitDraft] = useState('months');
   const [uploadingHealth,   setUploadingHealth]   = useState(false);
   const [uploadingBusiness, setUploadingBusiness] = useState(false);
   const [pickerSlot,        setPickerSlot]         = useState(null); // 'before' | 'after' | null
   const [isSubmitting,    setIsSubmitting]    = useState(false);
   const [submitError,     setSubmitError]     = useState(null);
   const [videoUploadError,setVideoUploadError]= useState(null);
+  const [videoSizeAlert,  setVideoSizeAlert]  = useState(null);
   const [submitDone,      setSubmitDone]      = useState(false);
   const [unifiedOtpVerified, setUnifiedOtpVerified] = useState(false);
-  const [showShareCard,   setShowShareCard]   = useState(false);
+  const [unifiedOtpDismissed, setUnifiedOtpDismissed] = useState(false);
+  const [mediaEpoch, setMediaEpoch] = useState(0);
+
+  useEffect(() => {
+    setUnifiedOtpDismissed(false);
+  }, [userId, testimonial?.id]);
+  const shareCardRef = useRef(null);
+  const compressBusyRef = useRef(false);
+  const cropSlotRef = useRef('before');
+  const coverCrop = usePortraitCoverCrop({
+    onApply: (dataUrl, key) => {
+      const slot = key === 'after' || key === 'before' ? key : cropSlotRef.current;
+      const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+      const previewUrl = jpegDataUrlToObjectUrl(dataUrl) || dataUrl;
+      const beforeBase = {
+        weightKg: testimonial?.beforeWeightKg,
+        goalType: testimonial?.goalType,
+        durationText: testimonial?.durationText,
+      };
+      const afterBase = { weightKg: testimonial?.afterWeightKg };
+      if (slot === 'before') {
+        setDraftBefore((prev) => {
+          revokeBlobUrl(prev?.previewUrl);
+          return {
+            ...(prev || beforeBase),
+            previewUrl,
+            imageBase64: base64,
+            compressing: false,
+          };
+        });
+      } else {
+        setDraftAfter((prev) => {
+          revokeBlobUrl(prev?.previewUrl);
+          return {
+            ...(prev || afterBase),
+            previewUrl,
+            imageBase64: base64,
+            compressing: false,
+          };
+        });
+      }
+    },
+    onError: (msg) => setSubmitError(msg || 'Could not read that photo. Please try another.'),
+  });
 
   const beforeCamRef   = useRef(null);
   const beforeGalRef   = useRef(null);
@@ -401,11 +950,103 @@ function MemberCard({
     draftAfter?.imageBase64  && 'after',
     draftHealthPath          && 'health',
     draftBusinessPath        && 'business',
-    draftIssues !== null     && 'issues',
+    // Mark issues dirty whenever draftIssues array exists
+    Array.isArray(draftIssues) && 'issues',
   ].filter(Boolean);
-  // hasDirtySlots: true for ANY pending change including weight-only edits
-  const hasDirtySlots = dirtySlots.length > 0 || !!draftBefore || !!draftAfter;
+  // hasDirtySlots: true for ANY pending change including weight-only edits or video drafts
+  const hasDirtySlots = dirtySlots.length > 0 || !!draftBefore || !!draftAfter || !!draftHealthPreview || !!draftBusinessPreview || !!draftHealthPath || !!draftBusinessPath || Array.isArray(draftIssues);
+  const changedCount = Math.max(dirtySlots.length, hasDirtySlots ? 1 : 0);
   const anyVideoUploading = uploadingHealth || uploadingBusiness;
+
+  // Prefer draft edits so the "Lost/Gained X kgs" badge updates live while editing
+  const shownBeforeKg = draftBefore?.weightKg
+    ?? testimonial?.beforeWeightKg
+    ?? (editable ? user?.latestWeightKg : null);
+  const displayBeforeKg = Number(shownBeforeKg ?? 0);
+  const shownAfterKg = draftAfter?.weightKg
+    ?? (hasAfter ? testimonial?.afterWeightKg : null)
+    ?? testimonial?.afterWeightKg
+    ?? shownBeforeKg;
+  const displayAfterKg  = Number(shownAfterKg ?? 0);
+  const displayDuration = draftBefore?.durationText ?? testimonial?.durationText;
+  const usableDuration = isUsableDurationText(displayDuration);
+  const liveDiff = liveWeightDiffKg(displayBeforeKg, displayAfterKg);
+  const diff = liveDiff;
+  const weightIsLoss = isTransformationWeightLoss(displayBeforeKg, displayAfterKg);
+
+  const mediaVersion = `${testimonial?.updatedAt ?? testimonial?.id ?? ''}-${mediaEpoch}`;
+  const beforeRaw = draftBefore?.previewUrl
+    || withTestimonialMediaCacheBust(testimonial?.beforeImageUrl, mediaVersion);
+  // No separate After file yet: show the Before photo in that column.
+  // This is display only. It is not saved as After and does not start coach approval.
+  const afterRaw = draftAfter?.previewUrl
+    || (hasAfterImage
+      ? withTestimonialMediaCacheBust(testimonial?.afterImageUrl, mediaVersion)
+      : null)
+    || beforeRaw;
+  const beforeImageSrc = useRevocableImageSrc(beforeRaw);
+  const afterImageSrc = useRevocableImageSrc(afterRaw);
+
+  // Photo-only drafts — weight/duration edits must NOT open this strip (Android focus loss)
+  const hasPhotoDraft = Boolean(
+    draftBefore?.previewUrl || draftBefore?.imageBase64
+    || draftAfter?.previewUrl || draftAfter?.imageBase64
+  );
+
+  const parseWeightInput = useCallback((raw) => parseWeightKg(raw), []);
+
+  const commitBeforeWeight = useCallback((raw) => {
+    const v = parseWeightInput(raw);
+    if (v == null) return;
+    setDraftBefore((prev) => ({
+      ...(prev || { goalType: testimonial?.goalType, durationText: testimonial?.durationText }),
+      weightKg: v,
+    }));
+  }, [parseWeightInput, testimonial?.goalType, testimonial?.durationText]);
+
+  const commitAfterWeight = useCallback((raw) => {
+    const v = parseWeightInput(raw);
+    if (v == null) return;
+    setDraftAfter((prev) => ({ ...(prev || {}), weightKg: v }));
+  }, [parseWeightInput]);
+
+  const openBeforeWeightEdit = useCallback(() => {
+    setBeforeWeightText(String(draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? user?.latestWeightKg ?? ''));
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.add('beforeWeight');
+      return next;
+    });
+  }, [draftBefore?.weightKg, testimonial?.beforeWeightKg, user?.latestWeightKg]);
+
+  const closeBeforeWeightEdit = useCallback((raw) => {
+    if (raw != null) commitBeforeWeight(raw);
+    setBeforeWeightText(null);
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.delete('beforeWeight');
+      return next;
+    });
+  }, [commitBeforeWeight]);
+
+  const openAfterWeightEdit = useCallback(() => {
+    setAfterWeightText(String(draftAfter?.weightKg ?? testimonial?.afterWeightKg ?? user?.latestWeightKg ?? ''));
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.add('afterWeight');
+      return next;
+    });
+  }, [draftAfter?.weightKg, testimonial?.afterWeightKg, user?.latestWeightKg]);
+
+  const closeAfterWeightEdit = useCallback((raw) => {
+    if (raw != null) commitAfterWeight(raw);
+    setAfterWeightText(null);
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.delete('afterWeight');
+      return next;
+    });
+  }, [commitAfterWeight]);
 
   const toggleSlot = useCallback((slot) => {
     setExpandedSlots(prev => {
@@ -415,19 +1056,75 @@ function MemberCard({
     });
   }, []);
 
-  const handleImageFile = useCallback((slot, file) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const full = e.target.result;
-      const b64 = full.replace(/^data:image\/[a-z]+;base64,/, '');
-      if (slot === 'before') {
-        setDraftBefore(prev => ({ ...(prev || { weightKg: testimonial?.beforeWeightKg, goalType: testimonial?.goalType, durationText: testimonial?.durationText }), imageBase64: b64, previewUrl: full }));
-      } else {
-        setDraftAfter(prev => ({ ...(prev || { weightKg: testimonial?.afterWeightKg }), imageBase64: b64, previewUrl: full }));
-      }
+  const openDurationEdit = useCallback(() => {
+    const parsed = parseDurationText(draftBefore?.durationText ?? testimonial?.durationText);
+    setDurationValueText(parsed.durationValue);
+    setDurationUnitDraft(parsed.durationUnit);
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.add('duration');
+      return next;
+    });
+  }, [draftBefore?.durationText, testimonial?.durationText]);
+
+  const closeDurationEdit = useCallback(() => {
+    setDurationValueText(null);
+    setExpandedSlots((prev) => {
+      const next = new Set(prev);
+      next.delete('duration');
+      return next;
+    });
+  }, []);
+
+  const commitDurationEdit = useCallback(() => {
+    const err = validateDurationFields(durationUnitDraft, durationValueText);
+    if (err) {
+      setSubmitError(err);
+      return;
+    }
+    const text = formatDurationText(durationUnitDraft, durationValueText);
+    setDraftBefore((prev) => ({
+      ...(prev || {
+        weightKg: testimonial?.beforeWeightKg,
+        goalType: testimonial?.goalType || 'loss',
+      }),
+      durationText: text,
+    }));
+    setSubmitError(null);
+    closeDurationEdit();
+  }, [closeDurationEdit, durationUnitDraft, durationValueText, testimonial?.beforeWeightKg, testimonial?.goalType]);
+
+  const openPhotoPicker = useCallback((inputRef) => {
+    setCaptureFlowBusy(true);
+    setPickerSlot(null);
+    inputRef?.current?.click();
+    const onFocus = () => {
+      window.removeEventListener('focus', onFocus);
+      window.setTimeout(() => {
+        if (!compressBusyRef.current) setCaptureFlowBusy(false);
+      }, 400);
     };
-    reader.readAsDataURL(file);
-  }, [testimonial]);
+    window.addEventListener('focus', onFocus);
+  }, []);
+
+  const handleImageFile = useCallback((slot, file) => {
+    if (!file) return;
+    cropSlotRef.current = slot;
+    setPickerSlot(null);
+    setSubmitError(null);
+    void coverCrop.pickFile(file, slot);
+  }, [coverCrop]);
+
+  const handleAdjustExisting = useCallback((slot) => {
+    const src = slot === 'after'
+      ? (draftAfter?.previewUrl || testimonial?.afterImageUrl)
+      : (draftBefore?.previewUrl || testimonial?.beforeImageUrl);
+    if (!src) return;
+    cropSlotRef.current = slot;
+    setPickerSlot(null);
+    setSubmitError(null);
+    void coverCrop.recrop(src, slot);
+  }, [coverCrop, draftAfter?.previewUrl, draftBefore?.previewUrl, testimonial?.afterImageUrl, testimonial?.beforeImageUrl]);
 
   const handleVideoFile = useCallback(async (slot, file) => {
     const numericUserId = Number(userId);
@@ -436,10 +1133,41 @@ function MemberCard({
       return;
     }
     setVideoUploadError(null);
+
+    // Restrict photos / non-video files: only video files are allowed
+    const isImage = file.type?.startsWith('image/') || /\.(jpe?g|png|gif|webp|bmp|heic|heif|svg)$/i.test(file.name || '');
+    const isVideo = file.type?.startsWith('video/') || /\.(mp4|mov|webm|3gp|mkv|avi|m4v)$/i.test(file.name || '');
+    if (isImage || !isVideo) {
+      setVideoUploadError('Only video files are allowed for results. Photos and images are not allowed.');
+      return;
+    }
+
+    setCaptureFlowBusy(true);
     const localUrl = URL.createObjectURL(file);
-    if (slot === 'health')    { setDraftHealthPreview(localUrl);   setUploadingHealth(true);   }
-    else                      { setDraftBusinessPreview(localUrl); setUploadingBusiness(true); }
+    if (slot === 'health') {
+      setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return localUrl; });
+      setDraftHealthPath(null);
+      setUploadingHealth(true);
+    } else {
+      setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return localUrl; });
+      setDraftBusinessPath(null);
+      setUploadingBusiness(true);
+    }
     try {
+      const normalized = await normalizeVideoUploadFile(file);
+      const maxBytes = maxVideoMbForSlot(slot) * 1024 * 1024;
+      const compressed = await compressVideoToMaxBytes(normalized, maxBytes);
+      if (isVideoOverSizeLimit(compressed, slot)) {
+        setVideoSizeAlert(videoTooLargeMessage(slot));
+        if (slot === 'health') {
+          setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return null; });
+          setDraftHealthPath(null);
+        } else {
+          setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return null; });
+          setDraftBusinessPath(null);
+        }
+        return;
+      }
       const prep = await prepareTestimonialVideoUpload({
         userId:         numericUserId,
         uploadHealth:   slot === 'health',
@@ -449,73 +1177,396 @@ function MemberCard({
       if (!info?.path || !info?.sessionId) {
         throw new Error('Server did not return a valid upload path. Please try again.');
       }
-      const path = await uploadTestimonialVideoInChunks(file, info, slot, numericUserId);
+      const uploadPromise = uploadTestimonialVideoInChunks(compressed, info, slot, numericUserId);
+      uploadPromise.catch(() => {});
+      const path = await Promise.race([
+        uploadPromise,
+        new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error('Video upload timed out. Please try a smaller MP4 file.'));
+          }, 180000);
+        }),
+      ]);
       if (slot === 'health') setDraftHealthPath(path);
       else                   setDraftBusinessPath(path);
     } catch (err) {
       const msg = err?.message || '';
-      const isNoCoach = msg.toLowerCase().includes('no coach');
-      setVideoUploadError(
-        isNoCoach
-          ? 'You do not have a sponsor assigned yet. Please ask your admin to assign a sponsor before uploading videos.'
-          : (msg || 'Video upload failed. Please try again.')
-      );
-      if (slot === 'health') { setDraftHealthPreview(null); setDraftHealthPath(null); }
-      else                   { setDraftBusinessPreview(null); setDraftBusinessPath(null); }
+      const isTooLarge = /max of \d+ MB|exceeds \d+ MB/i.test(msg);
+      if (isTooLarge) {
+        setVideoSizeAlert(videoTooLargeMessage(slot));
+      } else {
+        const isNoCoach = msg.toLowerCase().includes('no coach');
+        setVideoUploadError(
+          isNoCoach
+            ? 'You do not have a sponsor assigned yet. Please ask your admin to assign a sponsor before uploading videos.'
+            : (msg || 'Video upload failed. Please try again.')
+        );
+      }
+      if (slot === 'health') {
+        setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return null; });
+        setDraftHealthPath(null);
+      } else {
+        setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return null; });
+        setDraftBusinessPath(null);
+      }
     } finally {
+      setCaptureFlowBusy(false);
       if (slot === 'health') setUploadingHealth(false);
       else                   setUploadingBusiness(false);
     }
   }, [userId]);
 
-  const handleSubmitAll = useCallback(async () => {
-    setIsSubmitting(true);
-    setSubmitError(null);
-    try {
-      const payload = {
-        userId,
-        dirtySlots,
-        ...(draftBefore ? {
-          // Only send image when actually changed
-          ...(draftBefore.imageBase64 ? { beforeImageBase64: draftBefore.imageBase64 } : {}),
-          ...(draftBefore.weightKg    !== undefined ? { beforeWeightKg: draftBefore.weightKg }   : {}),
-          ...(draftBefore.goalType                  ? { goalType: draftBefore.goalType }          : {}),
-          ...(draftBefore.durationText              ? { durationText: draftBefore.durationText }  : {}),
-        } : {}),
-        ...(draftAfter ? {
-          // Only send image when actually changed
-          ...(draftAfter.imageBase64 ? { afterImageBase64: draftAfter.imageBase64 } : {}),
-          ...(draftAfter.weightKg !== undefined ? { afterWeightKg: draftAfter.weightKg } : {}),
-        } : {}),
-        ...(draftHealthPath   ? { healthVideoPath:   draftHealthPath }   : {}),
-        ...(draftBusinessPath ? { businessVideoPath: draftBusinessPath } : {}),
-        ...(draftIssues !== null ? { recoveredHealthIssues: draftIssues } : {}),
+  const handleSubmitAll = useCallback(() => {
+    if (testimonial && (testimonial.status === 'verified' || testimonial.verifiedAt || hasAfter)) {
+      const snap = {
+        status: testimonial.status || 'verified',
+        verifiedAt: testimonial.verifiedAt || new Date().toISOString(),
+        beforeImagePath: testimonial.beforeImagePath,
+        afterImagePath: testimonial.afterImagePath,
+        beforeWeightKg: testimonial.beforeWeightKg,
+        afterWeightKg: testimonial.afterWeightKg,
+        goalType: testimonial.goalType,
+        durationText: testimonial.durationText,
+        recoveredHealthIssues: testimonial.recoveredHealthIssues,
+        videoStatus: testimonial.videoStatus,
+        healthVideoPath: testimonial.healthVideoPath,
+        businessVideoPath: testimonial.businessVideoPath,
+        beforeImageUrl: testimonial.beforeImageUrl,
+        afterImageUrl: testimonial.afterImageUrl,
+        healthVideoUrl: testimonial.healthVideoUrl,
+        businessVideoUrl: testimonial.businessVideoUrl,
       };
-      await submitAllEdits(payload);
-      // Issues-only OR weight/meta-only = silent save; anything with photo/video needs OTP
-      const needsOtp = dirtySlots.some((s) => ['before','after','health','business'].includes(s));
-      if (!needsOtp) {
-        onOtpVerified?.();
-      } else {
+      baselineTestimonialRef.current = snap;
+      if (baselineKey) {
+        try {
+          localStorage.setItem(baselineKey, JSON.stringify(snap));
+        } catch {}
+      }
+    }
+
+    const photoOrVideoChanged = dirtySlots.some((s) => ['before', 'after', 'health', 'business'].includes(s));
+    const hasResultVideo = Boolean(
+      testimonial?.healthVideoPath || testimonial?.businessVideoPath
+      || testimonial?.healthVideoUrl || testimonial?.businessVideoUrl,
+    );
+    // Profile-seeded URLs look like Before/After but are not on the testimonial row.
+    const hasVisiblePhotoCard = hasStoredTransformationPhotoCard(testimonial);
+    const issuesNeedOtp = dirtySlots.includes('issues') && (hasAfter || hasResultVideo || hasVisiblePhotoCard);
+    const afterWeightDirty = draftAfter?.weightKg !== undefined
+      && afterWeightDiffers(testimonial?.beforeWeightKg, draftAfter.weightKg);
+    const isSilentSave = !photoOrVideoChanged && !issuesNeedOtp && !afterWeightDirty
+      && !hasVisiblePhotoCard;
+    // Photos still compressing — wait so we do not submit without image bytes.
+    if (draftBefore?.compressing || draftAfter?.compressing || coverCrop.isPreparing) {
+      setSubmitError('Photo is still preparing — try Submit again in a moment.');
+      return;
+    }
+    if (draftBefore?.previewUrl && draftBefore.imageBase64 == null && !draftBefore.compressing) {
+      setSubmitError('Before photo failed to prepare. Please pick it again.');
+      return;
+    }
+    if (draftAfter?.previewUrl && draftAfter.imageBase64 == null && !draftAfter.compressing) {
+      setSubmitError('After photo failed to prepare. Please pick it again.');
+      return;
+    }
+
+    const durationForSubmit = String(draftBefore?.durationText ?? testimonial?.durationText ?? '').trim();
+    const usableDurationForSubmit = isUsableDurationText(durationForSubmit)
+      ? durationForSubmit
+      : '';
+
+    const payload = {
+      userId,
+      dirtySlots,
+      submitForApproval: !isSilentSave,
+      ...(draftBefore ? {
+        ...(draftBefore.imageBase64 ? { beforeImageBase64: draftBefore.imageBase64 } : {}),
+        ...(draftBefore.weightKg !== undefined ? { beforeWeightKg: draftBefore.weightKg } : {}),
+        // Always send goal on drafts — UI may show "Weight Loss" without writing state
+        goalType: draftBefore.goalType || testimonial?.goalType || 'loss',
+        ...(usableDurationForSubmit ? { durationText: usableDurationForSubmit } : {}),
+      } : {}),
+      ...(draftAfter ? {
+        ...(draftAfter.imageBase64 ? { afterImageBase64: draftAfter.imageBase64 } : {}),
+        ...(draftAfter.weightKg !== undefined ? { afterWeightKg: draftAfter.weightKg } : {}),
+      } : {}),
+      ...(draftHealthPath ? { healthVideoPath: draftHealthPath } : {}),
+      ...(draftBusinessPath ? { businessVideoPath: draftBusinessPath } : {}),
+      ...(Array.isArray(draftIssues)
+        ? { recoveredHealthIssues: draftIssues.filter(Boolean) }
+        : {}),
+      ...(!draftBefore && usableDurationForSubmit ? { durationText: usableDurationForSubmit } : {}),
+    };
+    if (
+      payload.beforeWeightKg === undefined
+      && (payload.afterWeightKg !== undefined || payload.durationText)
+    ) {
+      const beforeKg = Number(testimonial?.beforeWeightKg ?? displayBeforeKg);
+      if (Number.isFinite(beforeKg) && beforeKg > 0) {
+        payload.beforeWeightKg = beforeKg;
+      }
+    }
+
+    const approvalReadyBefore = hasApprovalReadyBeforePhoto({ testimonial, draftBefore });
+    // New users / profile-seeded cards must upload Transformation Before so OTP can start.
+    if (!isSilentSave && !approvalReadyBefore) {
+      setSubmitError('Add a Before photo on this Transformation card, then submit for approval.');
+      return;
+    }
+
+    // Visible Before+After (stored Transformation photos or drafts) needs duration + OTP.
+    // Health issues are optional.
+    const willComplete =
+      Boolean(draftBefore?.imageBase64 || (hasVisiblePhotoCard && testimonial?.beforeImageUrl))
+      && Boolean(draftAfter?.imageBase64 || (hasVisiblePhotoCard && testimonial?.afterImageUrl) || hasAfter);
+    const issuesForSubmit = Array.isArray(draftIssues)
+      ? draftIssues.filter(Boolean)
+      : (testimonial?.recoveredHealthIssues || []);
+    const submittingPhotoCard = Boolean(hasVisiblePhotoCard || willComplete || afterWeightDirty || approvalReadyBefore);
+    // Health issues are optional — user may submit without selecting any.
+    if (submittingPhotoCard && !usableDurationForSubmit) {
+      setSubmitError('Add a duration in days or months (e.g. 3 months) before submitting.');
+      return;
+    }
+    if (submittingPhotoCard && payload.recoveredHealthIssues == null && Array.isArray(draftIssues)) {
+      payload.recoveredHealthIssues = issuesForSubmit;
+    }
+
+    // First-time submit needs the before image bytes in the payload.
+    if (!testimonial?.id && dirtySlots.includes('before') && !draftBefore?.imageBase64) {
+      setSubmitError('Before photo failed to prepare. Please pick it again.');
+      return;
+    }
+
+    setSubmitError(null);
+
+    const reloadMine = async (patchedTestimonial) => {
+      if (typeof onMineRefresh === 'function') {
+        await onMineRefresh(patchedTestimonial || null);
+      }
+      setMediaEpoch((n) => n + 1);
+    };
+
+    const finishSubmit = async (result) => {
+      // Prefer explicit otpSent from API; fall back to pending OTP fields if older responses omit it.
+      const otpSent = result?.otpSent === true
+        || (result?.otpSent == null && Boolean(
+          result?.testimonial?.hasPendingOtp
+          || result?.testimonial?.otpPending
+          || result?.otpExpiresAt,
+        ));
+      const patched = result?.testimonial
+        ? {
+            ...result.testimonial,
+            sponsorName: result.sponsorName ?? result.testimonial.sponsorName ?? null,
+            otpExpiresAt: result.otpExpiresAt ?? result.testimonial.otpExpiresAt ?? null,
+            otpValidityHours: result.otpValidityHours ?? result.testimonial.otpValidityHours ?? 24,
+            otpExpired: false,
+            hasPendingOtp: otpSent || Boolean(
+              result.testimonial.hasPendingOtp || result.testimonial.otpPending,
+            ),
+          }
+        : null;
+      if (!isSilentSave && !otpSent) {
+        const saved = result?.testimonial;
+        const waitingForOtherPhoto = Boolean(saved) && !hasDistinctTransformationAfter(saved);
+        if (waitingForOtherPhoto && (hasStoredTransformationBefore(saved) || saved.beforeImageUrl || saved.afterImageUrl)) {
+          const cleared = hasStoredTransformationBefore(saved)
+            ? { ...patched, photosFromProfileSeed: false }
+            : patched;
+          clearDrafts();
+          void reloadMine(cleared);
+          return;
+        }
+        const hasDuration = Boolean(usableDurationForSubmit);
+        setSubmitError(
+          hasDuration
+            ? 'Coach approval did not start. Please tap Submit again — if it still fails, add the Before/After photos once more.'
+            : 'Coach approval did not start. Add a duration in days or months, then submit again.',
+        );
+        return;
+      }
+      clearDrafts();
+      // Show OTP immediately from submit response; refresh media/profile in background.
+      if (otpSent || patched?.hasPendingOtp) {
+        setUnifiedOtpDismissed(false);
+        setUnifiedOtpVerified(false);
         setSubmitDone(true);
       }
-      setDraftBefore(null); setDraftAfter(null);
-      setDraftHealthPath(null); setDraftBusinessPath(null);
-      setDraftHealthPreview(null); setDraftBusinessPreview(null);
-      setDraftIssues(null);
-      setExpandedSlots(new Set());
-    } catch (err) {
-      setSubmitError(err.message || 'Failed to submit. Please try again.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onOtpVerified]);
+      void reloadMine(patched);
+      if (userId) {
+        void getProfile({ userId, cacheBust: true }).catch(() => {
+          // Non-fatal — Profile reloads on next open with cache bust.
+        });
+      }
+    };
 
-  const handleUnifiedOtpVerified = useCallback(() => {
+    // Weight / issues only — still show OTP when the server emailed a code.
+    if (isSilentSave) {
+      void submitAllEdits(payload)
+        .then(finishSubmit)
+        .catch((err) => {
+          setSubmitError(err?.message || 'Failed to save. Please try again.');
+        });
+      return;
+    }
+
+    // Photo / video changes — return OTP as soon as the API responds.
+    // Server composes the share card + emails the coach after the response (waitUntil).
+    // Skip client html2canvas here so Submit is not blocked on card capture.
+    setIsSubmitting(true);
+    setCaptureFlowBusy(true);
+    void submitAllEdits(payload)
+      .then(finishSubmit)
+      .catch((err) => {
+        setSubmitError(err?.message || 'Failed to submit. Please try again.');
+      })
+      .finally(() => {
+        setIsSubmitting(false);
+        setCaptureFlowBusy(false);
+      });
+  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onMineRefresh, hasAfter, displayBeforeKg, coverCrop.isPreparing, testimonial?.id, testimonial?.beforeImageUrl, testimonial?.afterImageUrl, testimonial?.beforeWeightKg, testimonial?.afterWeightKg, testimonial?.goalType, testimonial?.durationText, testimonial?.recoveredHealthIssues, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
+
+  const anyPhotoCompressing = Boolean(
+    draftBefore?.compressing || draftAfter?.compressing || coverCrop.isPreparing,
+  );
+
+  const showUnifiedOtp = editable
+    && !unifiedOtpDismissed
+    && !unifiedOtpVerified
+    && (submitDone
+      || Boolean(testimonial?.hasPendingOtp)
+      || Boolean(testimonial?.otpPending));
+
+  const handleUnifiedOtpVerified = useCallback((verifiedTestimonial = null) => {
+    setUnifiedOtpDismissed(true);
     setSubmitDone(false);
     setUnifiedOtpVerified(true);
+    if (typeof onMineRefresh === 'function') {
+      void onMineRefresh({
+        ...(testimonial || {}),
+        ...(verifiedTestimonial || {}),
+        status: 'verified',
+        hasPendingOtp: false,
+        otpPending: false,
+        otpExpired: false,
+        otpExpiresAt: null,
+      });
+    }
     onOtpVerified?.();
-  }, [onOtpVerified]);
+  }, [onOtpVerified, onMineRefresh, testimonial]);
+
+  const handleUnifiedOtpClose = useCallback(async () => {
+    setUnifiedOtpDismissed(true);
+    clearDrafts();
+    setSubmitDone(false);
+    setUnifiedOtpVerified(true);
+    setSubmitError(null);
+
+    let baseline = baselineTestimonialRef.current;
+    if (!baseline && baselineKey) {
+      try {
+        const stored = localStorage.getItem(baselineKey);
+        if (stored) baseline = JSON.parse(stored);
+      } catch {}
+    }
+
+    if (typeof onMineRefresh === 'function') {
+      void onMineRefresh({
+        ...(testimonial || {}),
+        ...(baseline || {}),
+        status: baseline?.status || 'verified',
+        hasPendingOtp: false,
+        otpPending: false,
+        otpExpired: false,
+        otpExpiresAt: null,
+      });
+    }
+
+    try {
+      const result = await cancelUnifiedOtp({
+        userId,
+        restoreData: baseline || undefined,
+      });
+      const reverted = result?.testimonial || baseline;
+      if (reverted && typeof onMineRefresh === 'function') {
+        await onMineRefresh({
+          ...(testimonial || {}),
+          ...reverted,
+          status: reverted.status || 'verified',
+          hasPendingOtp: false,
+          otpPending: false,
+          otpExpired: false,
+          otpExpiresAt: null,
+        });
+      }
+    } catch {
+      if (typeof onMineRefresh === 'function') {
+        await onMineRefresh({
+          ...(testimonial || {}),
+          ...(baseline || {}),
+          status: baseline?.status || 'verified',
+          hasPendingOtp: false,
+          otpPending: false,
+          otpExpired: false,
+          otpExpiresAt: null,
+        });
+      }
+    }
+  }, [userId, clearDrafts, onMineRefresh, testimonial, baselineKey]);
+
+  const handleUnifiedOtpMetaUpdate = useCallback(async (meta) => {
+    if (!meta) return;
+    if (meta.testimonial && typeof onMineRefresh === 'function') {
+      await onMineRefresh({
+        ...meta.testimonial,
+        sponsorName: meta.sponsorName ?? meta.testimonial.sponsorName ?? null,
+        otpExpiresAt: meta.otpExpiresAt ?? meta.testimonial.otpExpiresAt ?? null,
+        otpExpired: meta.otpExpired ?? meta.testimonial.otpExpired ?? false,
+        hasPendingOtp: true,
+      });
+      return;
+    }
+    if (typeof onMineRefresh === 'function' && testimonial) {
+      await onMineRefresh({
+        ...testimonial,
+        ...meta,
+        hasPendingOtp: true,
+      });
+    }
+  }, [onMineRefresh, testimonial]);
+
+  const handleHealthIssuesSaved = useCallback((nextIssues) => {
+    const next = uniqueConditions(nextIssues);
+    setDraftIssues(isSameIssueList(next, approvedIssues) ? null : next);
+  }, [approvedIssues]);
+
+  const handleHealthIssueRemoved = useCallback((issue) => {
+    setDraftIssues((prev) => {
+      const next = withoutHealthIssue(prev ?? issues, issue);
+      return isSameIssueList(next, approvedIssues) ? null : next;
+    });
+  }, [issues, approvedIssues]);
+
+  const prepareShareCard = useCallback(async () => {
+    const full = await ensureDetail();
+    return full;
+  }, [ensureDetail]);
+
+  const isVerified = testimonial?.status === 'verified';
+  const resultVideoUrl = resolveResultVideoUrl(testimonial);
+  const healthVideoThumb = getCachedVideoThumbnail(testimonial?.healthVideoUrl);
+  const businessVideoThumb = getCachedVideoThumbnail(testimonial?.businessVideoUrl);
+
+  const loadHealthVideoUrl = useCallback(async () => {
+    const full = await ensureDetail();
+    return full?.healthVideoUrl || testimonial?.healthVideoUrl || null;
+  }, [ensureDetail, testimonial?.healthVideoUrl]);
+
+  const loadBusinessVideoUrl = useCallback(async () => {
+    const full = await ensureDetail();
+    return full?.businessVideoUrl || testimonial?.businessVideoUrl || null;
+  }, [ensureDetail, testimonial?.businessVideoUrl]);
 
 
   const borderCls =
@@ -528,43 +1579,79 @@ function MemberCard({
     : level === UPLOAD_FILTERS.PARTIAL      ? 'bg-gradient-to-b from-amber-50/50 to-white'
     :                                          'bg-white';
 
+  const shareCardTestimonial = testimonial ? {
+    ...testimonial,
+    beforeImageUrl: beforeImageSrc,
+    afterImageUrl: afterImageSrc,
+    beforeWeightKg: displayBeforeKg || testimonial.beforeWeightKg,
+    afterWeightKg: displayAfterKg || testimonial.afterWeightKg,
+    goalType: draftBefore?.goalType || testimonial.goalType,
+    durationText: (
+      isUsableDurationText(draftBefore?.durationText)
+        ? draftBefore.durationText
+        : testimonial.durationText
+    ),
+    recoveredHealthIssues: draftIssues ?? testimonial.recoveredHealthIssues,
+  } : null;
+  const shareCardUserName = user?.userName || user?.displayName || user?.name || null;
+  const showBrandedCard = Boolean(shareCardTestimonial && (beforeImageSrc || afterImageSrc));
+  // Share only after coach approval. Hide while Mine has unsaved edits or OTP in flight.
+  const canSharePhoto =
+    canShareTransformationPhoto(testimonial)
+    && !(editable && (hasDirtySlots || showUnifiedOtp));
+  const canShareVideo = Boolean(
+    testimonial?.videoStatus === 'verified'
+    && Boolean(resultVideoUrl || testimonial?.healthVideoPath || testimonial?.businessVideoPath)
+  );
+
   return (
-    <div className={`rounded-3xl border ${borderCls} ${bgCls} shadow-md`}>
-      {/* Header strip */}
+    <div className={`rounded-3xl border ${borderCls} ${bgCls} shadow-md overflow-visible`}>
+      {coverCrop.overlay}
+      {/* Header strip — Direct/Full photo share top-right (Mine uses Transformation card row) */}
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-        {user.profileImage ? (
-          <img src={user.profileImage} alt={user.userName}
-            className="h-11 w-11 rounded-full object-cover border-2 border-white shadow flex-shrink-0" loading="lazy" />
-        ) : (
-          <div className="h-11 w-11 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white font-bold text-base shadow flex-shrink-0">
-            {(user.userName || '?').charAt(0).toUpperCase()}
-          </div>
-        )}
+        <MemberAvatar
+          user={user}
+          onViewProfile={user?.userId != null ? () => setProfileOpen(true) : undefined}
+        />
         <div className="flex-1 min-w-0">
-          <TeamComplianceSection userName={user.userName} teamStats={teamStats} />
+          <TeamComplianceSection
+            userName={user.userName}
+            teamStats={teamStats}
+            onProfileClick={user?.userId != null ? () => setProfileOpen(true) : undefined}
+          />
           <div className="mt-0.5">
             <CompletenessBadge level={level} filledCount={filledCount} totalSlots={totalSlots} />
           </div>
         </div>
+        {!editable && canSharePhoto && (
+          <TransformationShareActions
+            variant="icon"
+            kind="photo"
+            cardRef={shareCardRef}
+            userName={user.userName}
+            testimonial={shareCardTestimonial}
+            onBeforeAction={prepareShareCard}
+          />
+        )}
       </div>
       <div className="px-4 pb-4 space-y-3">
 
-      {/* Photos — always show before/after slots when editable (Mine) */}
-      {(editable || (testimonial && (testimonial.beforeImageUrl || (hasAfter && testimonial.afterImageUrl)))) && (
+      {/* Photos — Mine always editable; team uses branded card when photos exist */}
+      {(editable || (!showBrandedCard && testimonial && (testimonial.beforeImageUrl || testimonial.afterImageUrl))) && (
         <div className="flex gap-2">
           <div className="flex-1 text-center">
             <div className="relative">
-              {draftBefore?.previewUrl || testimonial?.beforeImageUrl ? (
+              {beforeImageSrc ? (
                 <button
                   type="button"
-                  onClick={() => setExpandedPhoto({ url: draftBefore?.previewUrl || testimonial.beforeImageUrl, label: `${user.userName} — Before` })}
-                  className="w-full"
+                  onClick={() => setExpandedPhoto({ url: beforeImageSrc, label: `${user.userName} — Before` })}
+                  className="w-full overflow-hidden rounded-xl"
                 >
                   <img
-                    src={draftBefore?.previewUrl || testimonial.beforeImageUrl}
+                    key={`before-${beforeImageSrc}`}
+                    src={beforeImageSrc}
                     alt="Before"
                     className={`${PORTRAIT_IMAGE_CLASS_SM} w-full cursor-zoom-in`}
-                    loading="lazy"
                   />
                 </button>
               ) : (
@@ -576,7 +1663,7 @@ function MemberCard({
                   {editable ? <Plus className="h-7 w-7 text-green-400" /> : <AlertCircle className="h-5 w-5 text-gray-300" />}
                 </button>
               )}
-              {editable && (draftBefore?.previewUrl || testimonial?.beforeImageUrl) && (
+              {editable && beforeImageSrc && (
                 <button
                   type="button"
                   onClick={() => setPickerSlot(pickerSlot === 'before' ? null : 'before')}
@@ -586,14 +1673,37 @@ function MemberCard({
                   <Pencil className="h-3 w-3" />
                 </button>
               )}
+              {isVerified && beforeImageSrc && (
+                <span
+                  className="absolute top-1.5 left-1.5 h-6 w-6 rounded-full bg-green-500 text-white shadow flex items-center justify-center"
+                  aria-label="Verified"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+              )}
+              {draftBefore?.compressing && (
+                <div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center z-10">
+                  <div className="flex flex-col items-center gap-1">
+                    <div className="h-5 w-5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                    <span className="text-white text-[10px] font-bold">Preparing…</span>
+                  </div>
+                </div>
+              )}
             </div>
             {editable && pickerSlot === 'before' && (
-              <div className="flex gap-1.5 mt-1.5 justify-center">
-                <button type="button" onClick={() => { beforeCamRef.current?.click(); setPickerSlot(null); }}
+              <div className="flex flex-wrap gap-1.5 mt-1.5 justify-center">
+                <button type="button" onClick={() => handleAdjustExisting('before')}
+                  disabled={coverCrop.isPreparing}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold disabled:opacity-50">
+                  <Crop className="h-3 w-3" /> Adjust
+                </button>
+                <button type="button" onClick={() => openPhotoPicker(beforeCamRef)}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-green-600 text-white text-[10px] font-bold">
                   <Camera className="h-3 w-3" /> Camera
                 </button>
-                <button type="button" onClick={() => { beforeGalRef.current?.click(); setPickerSlot(null); }}
+                <button type="button" onClick={() => openPhotoPicker(beforeGalRef)}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold">
                   <Images className="h-3 w-3" /> Gallery
                 </button>
@@ -603,38 +1713,59 @@ function MemberCard({
                 </button>
               </div>
             )}
-            <input ref={beforeCamRef} type="file" accept="image/*" capture="environment" className="hidden"
-              onChange={(e) => { if (e.target.files?.[0]) { handleImageFile('before', e.target.files[0]); setPickerSlot(null); } }} />
-            <input ref={beforeGalRef} type="file" accept="image/*" className="hidden"
-              onChange={(e) => { if (e.target.files?.[0]) { handleImageFile('before', e.target.files[0]); setPickerSlot(null); } }} />
+            <input ref={beforeCamRef} type="file" accept="image/*" capture="environment" className="hidden" aria-label="Before camera upload"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) { handleImageFile('before', file); setPickerSlot(null); }
+              }} />
+            <input ref={beforeGalRef} type="file" accept="image/*" className="hidden" aria-label="Before gallery upload"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) { handleImageFile('before', file); setPickerSlot(null); }
+              }} />
             <div className="mt-1 space-y-0.5">
               <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">BEFORE</p>
               {editable && expandedSlots.has('beforeWeight') ? (
                 <div className="flex items-center justify-center gap-1 mt-1">
                   <input
-                    type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500" autoFocus
-                    defaultValue={draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? ''}
-                    onBlur={(e) => {
-                      const v = parseFloat(e.target.value);
-                      if (v > 0) setDraftBefore(prev => ({ ...(prev || { goalType: testimonial?.goalType, durationText: testimonial?.durationText }), weightKg: v }));
-                      toggleSlot('beforeWeight');
+                    type="text"
+                    inputMode="decimal"
+                    enterKeyHint="done"
+                    autoComplete="off"
+                    autoFocus
+                    value={beforeWeightText ?? ''}
+                    onChange={(e) => {
+                      const raw = sanitizeWeightTyping(e.target.value);
+                      setBeforeWeightText(raw);
+                      commitBeforeWeight(raw);
                     }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') toggleSlot('beforeWeight'); }}
+                    onBlur={(e) => closeBeforeWeightEdit(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur();
+                      if (e.key === 'Escape') closeBeforeWeightEdit(null);
+                    }}
                     className="w-20 border border-gray-300 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-400"
                   />
                   <span className="text-xs text-gray-400">kg</span>
-                  <button type="button" onClick={() => toggleSlot('beforeWeight')} className="text-gray-400 hover:text-gray-600">
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => closeBeforeWeightEdit(beforeWeightText)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
               ) : (
                 <div className="flex items-center justify-center gap-1">
                   <p className="text-sm font-bold text-gray-800">
-                    {draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? '—'}
-                    {(draftBefore?.weightKg ?? testimonial?.beforeWeightKg) && <span className="text-xs font-normal text-gray-400"> kg</span>}
+                    {shownBeforeKg ?? '—'}
+                    {shownBeforeKg != null && shownBeforeKg !== '' && <span className="text-xs font-normal text-gray-400"> kg</span>}
                   </p>
                   {editable && (
-                    <button type="button" onClick={() => toggleSlot('beforeWeight')}
+                    <button type="button" onClick={openBeforeWeightEdit}
                       className="p-0.5 rounded-full text-gray-300 hover:text-green-600 transition-colors" aria-label="Edit before weight">
                       <Pencil className="h-2.5 w-2.5" />
                     </button>
@@ -645,17 +1776,17 @@ function MemberCard({
           </div>
           <div className="flex-1 text-center">
             <div className="relative">
-              {draftAfter?.previewUrl || (hasAfter && testimonial?.afterImageUrl) ? (
+              {afterImageSrc ? (
                 <button
                   type="button"
-                  onClick={() => setExpandedPhoto({ url: draftAfter?.previewUrl || testimonial.afterImageUrl, label: `${user.userName} — After` })}
-                  className="w-full"
+                  onClick={() => setExpandedPhoto({ url: afterImageSrc, label: `${user.userName} — After` })}
+                  className="w-full overflow-hidden rounded-xl"
                 >
                   <img
-                    src={draftAfter?.previewUrl || testimonial.afterImageUrl}
+                    key={`after-${afterImageSrc}`}
+                    src={afterImageSrc}
                     alt="After"
                     className={`${PORTRAIT_IMAGE_CLASS_SM} w-full cursor-zoom-in`}
-                    loading="lazy"
                   />
                 </button>
               ) : (
@@ -667,7 +1798,7 @@ function MemberCard({
                   {editable ? <Plus className="h-7 w-7 text-purple-400" /> : <AlertCircle className="h-5 w-5 text-gray-300" />}
                 </button>
               )}
-              {editable && (draftAfter?.previewUrl || (hasAfter && testimonial?.afterImageUrl)) && (
+              {editable && afterImageSrc && (
                 <button
                   type="button"
                   onClick={() => setPickerSlot(pickerSlot === 'after' ? null : 'after')}
@@ -677,14 +1808,37 @@ function MemberCard({
                   <Pencil className="h-3 w-3" />
                 </button>
               )}
+              {isVerified && afterImageSrc && (
+                <span
+                  className="absolute top-1.5 left-1.5 h-6 w-6 rounded-full bg-green-500 text-white shadow flex items-center justify-center"
+                  aria-label="Verified"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+              )}
+              {draftAfter?.compressing && (
+                <div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center z-10">
+                  <div className="flex flex-col items-center gap-1">
+                    <div className="h-5 w-5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                    <span className="text-white text-[10px] font-bold">Preparing…</span>
+                  </div>
+                </div>
+              )}
             </div>
             {editable && pickerSlot === 'after' && (
-              <div className="flex gap-1.5 mt-1.5 justify-center">
-                <button type="button" onClick={() => { afterCamRef.current?.click(); setPickerSlot(null); }}
+              <div className="flex flex-wrap gap-1.5 mt-1.5 justify-center">
+                <button type="button" onClick={() => handleAdjustExisting('after')}
+                  disabled={coverCrop.isPreparing || !(draftAfter?.previewUrl || testimonial?.afterImageUrl)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold disabled:opacity-50">
+                  <Crop className="h-3 w-3" /> Adjust
+                </button>
+                <button type="button" onClick={() => openPhotoPicker(afterCamRef)}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-purple-600 text-white text-[10px] font-bold">
                   <Camera className="h-3 w-3" /> Camera
                 </button>
-                <button type="button" onClick={() => { afterGalRef.current?.click(); setPickerSlot(null); }}
+                <button type="button" onClick={() => openPhotoPicker(afterGalRef)}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold">
                   <Images className="h-3 w-3" /> Gallery
                 </button>
@@ -694,38 +1848,59 @@ function MemberCard({
                 </button>
               </div>
             )}
-            <input ref={afterCamRef} type="file" accept="image/*" capture="environment" className="hidden"
-              onChange={(e) => { if (e.target.files?.[0]) { handleImageFile('after', e.target.files[0]); setPickerSlot(null); } }} />
-            <input ref={afterGalRef} type="file" accept="image/*" className="hidden"
-              onChange={(e) => { if (e.target.files?.[0]) { handleImageFile('after', e.target.files[0]); setPickerSlot(null); } }} />
+            <input ref={afterCamRef} type="file" accept="image/*" capture="environment" className="hidden" aria-label="After camera upload"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) { handleImageFile('after', file); setPickerSlot(null); }
+              }} />
+            <input ref={afterGalRef} type="file" accept="image/*" className="hidden" aria-label="After gallery upload"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) { handleImageFile('after', file); setPickerSlot(null); }
+              }} />
             <div className="mt-1 space-y-0.5">
               <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">AFTER</p>
               {editable && expandedSlots.has('afterWeight') ? (
                 <div className="flex items-center justify-center gap-1 mt-1">
                   <input
-                    type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500" autoFocus
-                    defaultValue={draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : '') ?? ''}
-                    onBlur={(e) => {
-                      const v = parseFloat(e.target.value);
-                      if (v > 0) setDraftAfter(prev => ({ ...(prev || {}), weightKg: v }));
-                      toggleSlot('afterWeight');
+                    type="text"
+                    inputMode="decimal"
+                    enterKeyHint="done"
+                    autoComplete="off"
+                    autoFocus
+                    value={afterWeightText ?? ''}
+                    onChange={(e) => {
+                      const raw = sanitizeWeightTyping(e.target.value);
+                      setAfterWeightText(raw);
+                      commitAfterWeight(raw);
                     }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') toggleSlot('afterWeight'); }}
+                    onBlur={(e) => closeAfterWeightEdit(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur();
+                      if (e.key === 'Escape') closeAfterWeightEdit(null);
+                    }}
                     className="w-20 border border-purple-300 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-purple-400"
                   />
                   <span className="text-xs text-gray-400">kg</span>
-                  <button type="button" onClick={() => toggleSlot('afterWeight')} className="text-gray-400 hover:text-gray-600">
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => closeAfterWeightEdit(afterWeightText)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
                     <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
               ) : (
                 <div className="flex items-center justify-center gap-1">
                   <p className="text-sm font-bold text-gray-800">
-                    {draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : null) ?? '—'}
-                    {(draftAfter?.weightKg ?? (hasAfter ? testimonial?.afterWeightKg : null)) && <span className="text-xs font-normal text-gray-400"> kg</span>}
+                    {shownAfterKg ?? '—'}
+                    {shownAfterKg != null && shownAfterKg !== '' && <span className="text-xs font-normal text-gray-400"> kg</span>}
                   </p>
                   {editable && (
-                    <button type="button" onClick={() => toggleSlot('afterWeight')}
+                    <button type="button" onClick={openAfterWeightEdit}
                       className="p-0.5 rounded-full text-gray-300 hover:text-purple-600 transition-colors" aria-label="Edit after weight">
                       <Pencil className="h-2.5 w-2.5" />
                     </button>
@@ -737,17 +1912,25 @@ function MemberCard({
         </div>
       )}
 
-      {/* Compact metadata strip — visible when editable and photos are being edited */}
-      {editable && (draftBefore || draftAfter) && (
+      {/* Compact metadata strip — only when a new photo is being edited (not weight-only) */}
+      {editable && hasPhotoDraft && (
         <div className="grid grid-cols-2 gap-2 px-1">
           {draftBefore && (
             <>
               <div>
                 <label className="block text-[10px] font-medium text-gray-400 mb-1">Before weight (kg)</label>
-                <input type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500"
+                <input type="text" inputMode="decimal" autoComplete="off" step="0.1" min="1" max="500"
                   placeholder={String(testimonial?.beforeWeightKg ?? '')}
-                  value={draftBefore?.weightKg ?? ''}
-                  onChange={(e) => setDraftBefore(prev => ({ ...prev, weightKg: parseFloat(e.target.value) || undefined }))}
+                  value={draftBefore?.weightText ?? (draftBefore?.weightKg != null ? String(draftBefore.weightKg) : '')}
+                  onChange={(e) => {
+                    const text = sanitizeWeightTyping(e.target.value);
+                    const v = parseWeightKg(text);
+                    setDraftBefore((prev) => ({
+                      ...prev,
+                      weightText: text,
+                      weightKg: v != null ? v : undefined,
+                    }));
+                  }}
                   className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
               </div>
               <div>
@@ -759,35 +1942,45 @@ function MemberCard({
                   <option value="gain">Weight Gain</option>
                 </select>
               </div>
-              <div className="col-span-2">
-                <label className="block text-[10px] font-medium text-gray-400 mb-1">Duration (e.g. "3 months")</label>
-                <input type="text" placeholder={testimonial?.durationText || 'e.g. 3 months'}
-                  value={draftBefore?.durationText ?? ''}
-                  onChange={(e) => setDraftBefore(prev => ({ ...prev, durationText: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
-              </div>
             </>
           )}
           {draftAfter && (
             <div className={draftBefore ? '' : 'col-span-2'}>
               <label className="block text-[10px] font-medium text-gray-400 mb-1">After weight (kg)</label>
-              <input type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500"
+              <input type="text" inputMode="decimal" autoComplete="off" step="0.1" min="1" max="500"
                 placeholder={String(hasAfter ? (testimonial?.afterWeightKg ?? '') : '')}
-                value={draftAfter?.weightKg ?? ''}
-                onChange={(e) => setDraftAfter(prev => ({ ...prev, weightKg: parseFloat(e.target.value) || undefined }))}
+                value={draftAfter?.weightText ?? (draftAfter?.weightKg != null ? String(draftAfter.weightKg) : '')}
+                onChange={(e) => {
+                  const text = sanitizeWeightTyping(e.target.value);
+                  const v = parseWeightKg(text);
+                  setDraftAfter((prev) => ({
+                    ...(prev || {}),
+                    weightText: text,
+                    weightKg: v != null ? v : undefined,
+                  }));
+                }}
                 className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
             </div>
           )}
         </div>
       )}
 
-      {/* Unified OTP — after submitting all edits */}
-      {editable && submitDone && (
-        <UnifiedOtpInline userId={userId} onVerified={handleUnifiedOtpVerified} />
+      {/* Unified OTP — after submit, or when a pending OTP is still open */}
+      {showUnifiedOtp && (
+        <UnifiedOtpInline
+          userId={userId}
+          sponsorName={testimonial?.sponsorName}
+          otpExpiresAt={testimonial?.otpExpiresAt}
+          otpValidityHours={testimonial?.otpValidityHours}
+          otpExpired={testimonial?.otpExpired}
+          onVerified={handleUnifiedOtpVerified}
+          onOtpMetaUpdate={handleUnifiedOtpMetaUpdate}
+          onClose={handleUnifiedOtpClose}
+        />
       )}
 
-      {/* Existing pending OTP (from old per-slot flow) — only show if not yet in new submit flow */}
-      {editable && !submitDone && testimonial?.status === 'pending' && testimonial?.id && (
+      {/* Legacy per-slot OTP — only when no unified OTP is pending */}
+      {editable && !showUnifiedOtp && !unifiedOtpDismissed && testimonial?.status === 'pending' && testimonial?.id && (
         <OtpInline
           testimonialId={testimonial.id}
           type="photo"
@@ -795,48 +1988,34 @@ function MemberCard({
         />
       )}
 
-      {/* Stats — single summary line + status badge */}
-      {testimonial && (
+      {/* Stats — Mine always; team only when branded card is not shown (redundant with card) */}
+      {testimonial && (editable || !showBrandedCard) && (
         <div className="space-y-1.5">
-          {/* "Lost X kgs in Y duration" sentence */}
-          {diff && hasAfter && (
+          {/* "Lost X kgs in Y duration" — uses live draft weights, not persisted hasAfter */}
+          {diff && (
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold border-2 ${testimonial.goalType === 'loss' ? 'bg-green-600 text-white border-green-700' : 'bg-blue-600 text-white border-blue-700'} shadow-sm`}>
-                {testimonial.goalType === 'loss'
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${weightIsLoss ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                {weightIsLoss
                   ? <TrendingDown className="h-3 w-3 shrink-0" />
                   : <TrendingUp   className="h-3 w-3 shrink-0" />
                 }
-                {testimonial.goalType === 'loss' ? 'Lost' : 'Gained'} {diff} kgs
-                {testimonial.durationText ? ` in ${testimonial.durationText}` : ''}
+                {weightIsLoss ? 'Lost' : 'Gained'} {diff} kgs
+                {usableDuration ? ` in ${displayDuration}` : ''}
               </span>
-              {/* Pencil/Plus for duration edit (Mine only) */}
               {editable && (
                 expandedSlots.has('duration') ? (
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      autoFocus
-                      placeholder="e.g. 3 months"
-                      defaultValue={draftBefore?.durationText ?? testimonial?.durationText ?? ''}
-                      onBlur={(e) => {
-                        const val = e.target.value.trim();
-                        if (val) setDraftBefore(prev => ({ ...(prev || { weightKg: testimonial?.beforeWeightKg, goalType: testimonial?.goalType }), durationText: val }));
-                        toggleSlot('duration');
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') { e.target.blur(); }
-                        if (e.key === 'Escape') { toggleSlot('duration'); }
-                      }}
-                      className="w-28 border border-gray-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-green-400"
-                    />
-                    <button type="button" onClick={() => toggleSlot('duration')} className="text-gray-400 hover:text-gray-600">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  <DurationEditor
+                    valueText={durationValueText}
+                    unit={durationUnitDraft}
+                    onValueChange={setDurationValueText}
+                    onUnitChange={setDurationUnitDraft}
+                    onCommit={commitDurationEdit}
+                    onCancel={closeDurationEdit}
+                  />
                 ) : (
                   <button
                     type="button"
-                    onClick={() => toggleSlot('duration')}
+                    onClick={openDurationEdit}
                     className="p-1 rounded-full border border-gray-200 text-gray-400 hover:text-green-700 hover:border-green-300 transition-colors"
                     aria-label="Edit duration"
                   >
@@ -846,53 +2025,108 @@ function MemberCard({
               )}
             </div>
           )}
-          {/* No diff yet — show before weight or add prompt */}
-          {(!diff || !hasAfter) && testimonial.beforeWeightKg && (
-            <span className="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-[11px] text-gray-600 font-medium">
-              {testimonial.beforeWeightKg} kg → ?
-            </span>
-          )}
-          {/* Status badge */}
-          <div className="flex gap-1.5 flex-wrap items-center">
-            {testimonial.status === 'verified' && (
-              <>
-                <span className="bg-green-100 border border-green-200 rounded-full px-2 py-0.5 text-[11px] text-green-800 font-bold flex items-center gap-0.5">
-                  <CheckCircle className="h-2.5 w-2.5" /> Photo Verified
-                </span>
-                {/* Share card — only for Mine (editable) */}
-                {editable && hasAfter && (
+          {/* No diff yet — show before weight or add prompt + duration */}
+          {!diff && displayBeforeKg > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-[11px] text-gray-600 font-medium">
+                {displayBeforeKg} kg → ?
+                {usableDuration ? ` · ${displayDuration}` : ''}
+              </span>
+              {editable && (
+                expandedSlots.has('duration') ? (
+                  <DurationEditor
+                    valueText={durationValueText}
+                    unit={durationUnitDraft}
+                    onValueChange={setDurationValueText}
+                    onUnitChange={setDurationUnitDraft}
+                    onCommit={commitDurationEdit}
+                    onCancel={closeDurationEdit}
+                  />
+                ) : (
                   <button
                     type="button"
-                    onClick={() => setShowShareCard(true)}
-                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-green-600 text-white text-[11px] font-bold hover:bg-green-700 transition-colors"
+                    onClick={openDurationEdit}
+                    className="p-1 rounded-full border border-gray-200 text-gray-400 hover:text-green-700 hover:border-green-300 transition-colors"
+                    aria-label={usableDuration ? 'Edit duration' : 'Add duration'}
                   >
-                    <Share2 className="h-2.5 w-2.5" /> Share Card
+                    <Pencil className="h-3 w-3" />
                   </button>
-                )}
-              </>
-            )}
-            {testimonial.status === 'pending' && (
-              <span className="bg-amber-100 border border-amber-200 rounded-full px-2 py-0.5 text-[11px] text-amber-800 font-bold flex items-center gap-0.5">
-                <Clock className="h-2.5 w-2.5" /> Awaiting OTP
-              </span>
-            )}
-          </div>
+                )
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Videos — always show on Mine so Edit/Add is available */}
-      {(editable || testimonial) && (
-        <div className="space-y-1.5">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
-            <Video className="h-3 w-3" /> Result Videos
+      {/* Health Issues — Mine editable. Team chips only when branded card is hidden. */}
+      {(editable || (testimonial && !showBrandedCard)) && (
+        <div className="space-y-1.5 overflow-visible relative z-20">
+          <p className="text-[10px] font-bold text-gray-400 tracking-normal whitespace-normal">
+            Health Issues while joining this community{editable ? ' (optional · up to 10)' : ''}
           </p>
+          {editable ? (
+            <HealthIssueCoachEditor
+              userId={userId || user?.userId}
+              coachId={coachId}
+              currentIssues={draftIssues ?? issues}
+              approvedIssues={approvedIssues}
+              knownHealthIssues={knownHealthIssues}
+              persist={false}
+              allowRemove
+              editable
+              disabled={false}
+              onSaved={handleHealthIssuesSaved}
+              onRemove={handleHealthIssueRemoved}
+            />
+          ) : (
+            <div className="rounded-lg border border-indigo-100 bg-indigo-50/40 px-2.5 py-2">
+              {(issues || []).length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {issues.map((issue) => (
+                    <span
+                      key={issue}
+                      className="inline-flex max-w-[11rem] truncate rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-800"
+                    >
+                      {issue}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 italic">No health issues recorded.</p>
+              )}
+              <p className="mt-1.5 text-[10px] text-gray-400 italic">
+                View only — only the member can edit health issues.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Result Video above divider — Mine upload only.
+          Direct/Full with branded card: videos live under the card (no duplicate). */}
+      {(editable || (testimonial && !showBrandedCard)) && (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1 flex-1 min-w-0">
+              <Video className="h-3 w-3 shrink-0" /> Result Video
+              <span className="font-normal normal-case tracking-normal">· max {MAX_HEALTH_VIDEO_MB} MB each</span>
+            </p>
+            {!showBrandedCard && canShareVideo && (
+              <TransformationShareActions
+                variant="icon"
+                kind="video"
+                userName={user.userName}
+                testimonial={testimonial}
+                onBeforeAction={prepareShareCard}
+              />
+            )}
+          </div>
           {editable && videoUploadError && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex items-start gap-2">
               <ShieldCheck className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
               <p className="text-xs text-amber-800 leading-relaxed">{videoUploadError}</p>
             </div>
           )}
-          {/* Health video — pencil/plus overlay, clicking directly opens file picker */}
           <div className="flex gap-3">
             <div className="flex-1 space-y-1">
               <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Health</p>
@@ -905,6 +2139,7 @@ function MemberCard({
                         localPreviewUrl={draftHealthPreview}
                         label="Health Results"
                         accentColor="bg-green-600"
+                        onNeedUrl={!testimonial?.healthVideoUrl && testimonial?.healthVideoPath ? loadHealthVideoUrl : undefined}
                       />
                       {!uploadingHealth && (
                         <button type="button" onClick={() => healthVidRef.current?.click()}
@@ -925,18 +2160,23 @@ function MemberCard({
                     <div className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center z-10">
                       <div className="flex flex-col items-center gap-1">
                         <Upload className="h-5 w-5 text-white animate-bounce" />
-                        <span className="text-white text-[10px] font-bold">Uploading…</span>
+                        <span className="text-white text-[10px] font-bold">Preparing…</span>
                       </div>
                     </div>
                   )}
-                  <input ref={healthVidRef} type="file" accept="video/*" className="hidden"
-                    onChange={(e) => e.target.files?.[0] && handleVideoFile('health', e.target.files[0])} />
+                  <input ref={healthVidRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/3gpp,video/*" className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (file) handleVideoFile('health', file);
+                    }} />
                 </div>
               ) : (
                 <VideoThumbnailCard
                   url={testimonial?.healthVideoUrl ?? null}
                   label="Health Results"
                   accentColor="bg-green-600"
+                  onNeedUrl={!testimonial?.healthVideoUrl && testimonial?.healthVideoPath ? loadHealthVideoUrl : undefined}
                 />
               )}
             </div>
@@ -951,6 +2191,7 @@ function MemberCard({
                         localPreviewUrl={draftBusinessPreview}
                         label="Business Results"
                         accentColor="bg-blue-600"
+                        onNeedUrl={!testimonial?.businessVideoUrl && testimonial?.businessVideoPath ? loadBusinessVideoUrl : undefined}
                       />
                       {!uploadingBusiness && (
                         <button type="button" onClick={() => businessVidRef.current?.click()}
@@ -971,18 +2212,23 @@ function MemberCard({
                     <div className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center z-10">
                       <div className="flex flex-col items-center gap-1">
                         <Upload className="h-5 w-5 text-white animate-bounce" />
-                        <span className="text-white text-[10px] font-bold">Uploading…</span>
+                        <span className="text-white text-[10px] font-bold">Preparing…</span>
                       </div>
                     </div>
                   )}
-                  <input ref={businessVidRef} type="file" accept="video/*" className="hidden"
-                    onChange={(e) => e.target.files?.[0] && handleVideoFile('business', e.target.files[0])} />
+                  <input ref={businessVidRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/3gpp,video/*" className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (file) handleVideoFile('business', file);
+                    }} />
                 </div>
               ) : (
                 <VideoThumbnailCard
                   url={testimonial?.businessVideoUrl ?? null}
                   label="Business Results"
                   accentColor="bg-blue-600"
+                  onNeedUrl={!testimonial?.businessVideoUrl && testimonial?.businessVideoPath ? loadBusinessVideoUrl : undefined}
                 />
               )}
             </div>
@@ -993,8 +2239,7 @@ function MemberCard({
             </p>
           )}
 
-          {/* Existing video OTP (old per-slot flow, not yet migrated) */}
-          {editable && !submitDone && testimonial?.videoStatus === 'pending' && testimonial?.id && (
+          {editable && !showUnifiedOtp && !unifiedOtpDismissed && testimonial?.videoStatus === 'pending' && testimonial?.id && (
             <div className="bg-white rounded-2xl border border-amber-200 shadow-sm px-4 py-4 space-y-1 mt-1">
               <p className="text-xs font-bold text-amber-700 uppercase tracking-wide flex items-center gap-1.5">
                 <ShieldCheck className="h-3.5 w-3.5" /> Verify Your Videos
@@ -1017,59 +2262,21 @@ function MemberCard({
         </div>
       )}
 
-      {/* Recovered health issues — always show on Mine */}
-      {(editable || testimonial) && (
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
-              <HeartPulse className="h-3 w-3" /> Recovered Health Issues
-            </p>
-            {editable && (
-              <button
-                type="button"
-                onClick={() => toggleSlot('issues')}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border bg-white text-[10px] font-bold transition-colors shrink-0 ${expandedSlots.has('issues') ? 'border-rose-400 text-rose-700 bg-rose-50' : 'border-gray-200 text-gray-600 hover:border-rose-400 hover:text-rose-700'}`}
-              >
-                <Pencil className="h-3 w-3" /> {issues.length > 0 ? 'Edit' : 'Add'}
-              </button>
-            )}
-          </div>
-          {issues.length > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {issues.map((issue) => (
-                <span key={issue} className="inline-flex items-center max-w-full px-2 py-0.5 bg-rose-50 border border-rose-200 rounded-full text-[10px] sm:text-[11px] font-medium text-rose-800">
-                  <span className="truncate">{issue}</span>
-                </span>
-              ))}
-            </div>
-          ) : (
-            <p className="text-[11px] text-gray-400 italic">Not added yet</p>
-          )}
-
-          {/* Issues inline — opens immediately on pencil tap */}
-          {editable && expandedSlots.has('issues') && (
-            <DiseaseMultiSelect
-              value={draftIssues ?? issues}
-              onChange={(val) => setDraftIssues(val)}
-              autoFocus
-            />
-          )}
-        </div>
+      {/* ── Submit for Approval (Mine, dirty edits) — above Transformation card so it is not buried under the preview ── */}
+      {editable && submitError && (
+        <p className="text-xs text-red-600 text-center bg-red-50 rounded-xl px-3 py-2">{submitError}</p>
       )}
-
-      {/* ── Submit for Approval button (Mine, when any slot has draft changes) ── */}
       {editable && hasDirtySlots && !submitDone && (
         <div className="space-y-2 pt-1">
-          {submitError && (
-            <p className="text-xs text-red-600 text-center bg-red-50 rounded-xl px-3 py-2">{submitError}</p>
-          )}
           <button
             type="button"
             onClick={handleSubmitAll}
-            disabled={isSubmitting || anyVideoUploading}
+            disabled={isSubmitting || anyVideoUploading || anyPhotoCompressing}
             className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold shadow-sm disabled:opacity-60 transition-colors"
           >
-            {isSubmitting
+            {anyPhotoCompressing
+              ? <><div className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Preparing photo…</>
+              : isSubmitting
               ? <><div className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Submitting…</>
               : anyVideoUploading
               ? <><Upload className="h-4 w-4 animate-bounce" /> Uploading video…</>
@@ -1077,8 +2284,89 @@ function MemberCard({
             }
           </button>
           <p className="text-[10px] text-gray-400 text-center">
-            {dirtySlots.length} item{dirtySlots.length > 1 ? 's' : ''} changed — your sponsor will receive one verification email
+            {changedCount} item{changedCount === 1 ? '' : 's'} changed — your sponsor will receive one verification email
           </p>
+        </div>
+      )}
+
+      {/* Branded Transformation Results card + videos.
+          Mine: divider + share next to TRANSFORMATION CARD.
+          Direct/Full: no divider; photo share stays in the member header. */}
+      {showBrandedCard && (
+        <div className="space-y-3 pt-1">
+          {editable && (
+            <div className="flex items-center gap-2" role="separator" aria-label="Transformation card">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="flex-1 border-t border-gray-200" />
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                  Transformation card
+                </p>
+                <div className="flex-1 border-t border-gray-200" />
+              </div>
+              {canSharePhoto && (
+                <TransformationShareActions
+                  variant="icon"
+                  kind="photo"
+                  cardRef={shareCardRef}
+                  userName={user.userName}
+                  testimonial={shareCardTestimonial}
+                />
+              )}
+            </div>
+          )}
+          <VisibleTransformationCard
+            testimonial={shareCardTestimonial}
+            userName={shareCardUserName}
+          />
+
+          {/* Health + Business videos under the branded card (tap → preview) */}
+          {(draftHealthPreview || draftBusinessPreview
+            || testimonial?.healthVideoUrl || testimonial?.businessVideoUrl
+            || testimonial?.healthVideoPath || testimonial?.businessVideoPath) && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1 flex-1 min-w-0">
+                  <Video className="h-3 w-3 shrink-0" /> Result Video
+                </p>
+                {canShareVideo && (
+                  <TransformationShareActions
+                    variant="icon"
+                    kind="video"
+                    userName={user.userName}
+                    testimonial={testimonial}
+                    onBeforeAction={prepareShareCard}
+                  />
+                )}
+              </div>
+              <div className="flex gap-3">
+                <div className="flex-1 space-y-1">
+                  <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Health</p>
+                  <VideoThumbnailCard
+                    url={testimonial?.healthVideoUrl ?? null}
+                    localPreviewUrl={draftHealthPreview}
+                    label="Health Results"
+                    accentColor="bg-green-600"
+                    onNeedUrl={!testimonial?.healthVideoUrl && testimonial?.healthVideoPath ? loadHealthVideoUrl : undefined}
+                  />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Business</p>
+                  <VideoThumbnailCard
+                    url={testimonial?.businessVideoUrl ?? null}
+                    localPreviewUrl={draftBusinessPreview}
+                    label="Business Results"
+                    accentColor="bg-blue-600"
+                    onNeedUrl={!testimonial?.businessVideoUrl && testimonial?.businessVideoPath ? loadBusinessVideoUrl : undefined}
+                  />
+                </div>
+              </div>
+              {testimonial?.videoStatus === 'verified' && (
+                <p className="text-[11px] text-green-700 font-medium flex items-center gap-1">
+                  <CheckCircle className="h-3 w-3 shrink-0" /> Videos verified
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1099,21 +2387,61 @@ function MemberCard({
       )}
 
       {expandedPhoto && (
-        <PhotoModal url={expandedPhoto.url} label={expandedPhoto.label} onClose={() => setExpandedPhoto(null)} />
-      )}
-      {showShareCard && testimonial && (
-        <TransformationShareCard
-          testimonial={testimonial}
-          userName={user.userName}
-          hasAfter={hasAfter}
-          onClose={() => setShowShareCard(false)}
+        <FullscreenProfilePhotoViewer
+          isOpen
+          src={expandedPhoto.url}
+          alt={expandedPhoto.label}
+          title={expandedPhoto.label}
+          onClose={() => setExpandedPhoto(null)}
+          onViewProfile={user?.userId != null ? () => {
+            setExpandedPhoto(null);
+            setProfileOpen(true);
+          } : undefined}
         />
+      )}
+      <TeamMemberProfileModal
+        isOpen={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        memberEmail={user?.email || user?.Email}
+        memberUserId={user?.userId}
+        apiBaseUrl={getApiBaseUrl()}
+      />
+      <CustomAlertModal
+        isOpen={Boolean(videoSizeAlert)}
+        onClose={() => setVideoSizeAlert(null)}
+        title="Video too large"
+        message={videoSizeAlert}
+        type="warning"
+        confirmText="OK"
+      />
+
+      {/* Hidden full-size share card for sharp html2canvas capture (preview above is scaled). */}
+      {shareCardTestimonial && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            left: 0,
+            top: 0,
+            width: CARD_W,
+            height: CARD_H,
+            opacity: 0.02,
+            pointerEvents: 'none',
+            zIndex: -1,
+            overflow: 'hidden',
+          }}
+        >
+          <TransformationCardContent
+            ref={shareCardRef}
+            testimonial={shareCardTestimonial}
+            userName={shareCardUserName}
+          />
+        </div>
       )}
       </div>
     </div>
   );
 }
-
 
 export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisitKey = 0 }) {
   const [directRows, setDirectRows]   = useState([]);
@@ -1126,121 +2454,183 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
   const [uploadFilter,          setUploadFilter]          = useState(UPLOAD_FILTERS.ALL);
   const [teamScope,             setTeamScope]             = useState(TEAM_SCOPES.MINE);
   const [searchQuery,           setSearchQuery]           = useState('');
+  const [healthIssueQuery,      setHealthIssueQuery]      = useState('');
+  const [committedHealthIssue,  setCommittedHealthIssue]  = useState('');
   const [isSearchOpen,          setIsSearchOpen]          = useState(false);
+  const [isIssueSearchOpen,     setIsIssueSearchOpen]     = useState(false);
+  const [listReloadKey,         setListReloadKey]         = useState(0);
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
+  const [highlightedIssue,      setHighlightedIssue]      = useState(-1);
 
   const [teamPerformanceByUserId, setTeamPerformanceByUserId] = useState({});
+  /** Unfiltered Direct/Full sizes for tab badges — never overwritten by upload filters. */
+  const [directTeamMemberCount, setDirectTeamMemberCount] = useState(null);
+  const [fullTeamMemberCount, setFullTeamMemberCount] = useState(null);
   const [fullLoading, setFullLoading] = useState(false);
   const [fullLoaded, setFullLoaded] = useState(false);
+  const [directPagination, setDirectPagination] = useState({ page: 1, hasMore: false, total: 0 });
+  const [fullPagination, setFullPagination] = useState({ page: 1, hasMore: false, total: 0 });
+  const [directUploadCounts, setDirectUploadCounts] = useState({
+    fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
+  });
+  const [fullUploadCounts, setFullUploadCounts] = useState({
+    fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
+  });
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreSentinelRef = useRef(null);
   const loadGenerationRef = useRef(0);
+  const pageCacheRef = useRef(new Map());
+  const inFlightRef = useRef(new Map());
+  const mineRowRef = useRef(null);
 
-  const coachId = user?.userId || user?.id;
+  const coachId = user?.userId || user?.id || null;
+  const userName = user?.userName || user?.displayName || user?.name || null;
+  const profileImage = user?.profileImage || user?.photoURL || null;
+  const phoneNumber = user?.phoneNumber || user?.PhoneNumber || null;
+  mineRowRef.current = mineRow;
 
   const buildMineRow = useCallback(async () => {
     if (!coachId) return null;
     const userPayload = {
-      userId:       coachId,
-      userName:     user?.userName || user?.displayName || user?.name || 'You',
-      profileImage: user?.profileImage || user?.photoURL || null,
-      phoneNumber:  user?.phoneNumber || user?.PhoneNumber || null,
+      userId: coachId,
+      userName,
+      profileImage,
+      phoneNumber,
     };
     try {
-      const [testimonial, video] = await Promise.all([
+      const [testimonial, video, profileResult] = await Promise.all([
         getMyTestimonial(coachId),
         getMyVideoTestimonial(coachId).catch(() => null),
+        getProfile({ userId: coachId, cacheBust: true }).catch(() => null),
       ]);
-      if (!testimonial && !video) {
+      const latestWeightKg = profileResult?.success && profileResult?.data?.latestWeight != null
+        ? Number(profileResult.data.latestWeight)
+        : NaN;
+      if (Number.isFinite(latestWeightKg) && latestWeightKg > 0) {
+        userPayload.latestWeightKg = latestWeightKg;
+      }
+      // New users with Left/Centre/Right: Left defaults into Transformation Before (After mirrors until real After).
+      const leftUrl = profileResult?.success
+        ? profileResult?.data?.transformationPhotos?.left
+        : null;
+      const seeded = seedMineTestimonialFromProfileSlots(testimonial, {
+        leftUrl,
+        weightKg: Number.isFinite(latestWeightKg) ? latestWeightKg : null,
+      });
+      if (!seeded && !video) {
         return { user: userPayload, testimonial: null };
       }
-      // Merge video verification fields so Mine can show "Videos verified"
       const merged = {
-        ...(testimonial || {
+        ...(seeded || {
           healthVideoUrl: null,
           businessVideoUrl: null,
           status: 'incomplete',
           recoveredHealthIssues: [],
         }),
-        id:              testimonial?.id ?? video?.testimonialId ?? null,
-        videoStatus:     video?.videoStatus ?? testimonial?.videoStatus ?? 'none',
-        videoVerifiedAt: video?.videoVerifiedAt ?? testimonial?.videoVerifiedAt ?? null,
+        id:              seeded?.id ?? testimonial?.id ?? video?.testimonialId ?? null,
+        videoStatus:     video?.videoStatus ?? seeded?.videoStatus ?? testimonial?.videoStatus ?? 'none',
+        videoVerifiedAt: video?.videoVerifiedAt ?? seeded?.videoVerifiedAt ?? testimonial?.videoVerifiedAt ?? null,
       };
       return { user: userPayload, testimonial: merged };
     } catch {
       return { user: userPayload, testimonial: null };
     }
-  }, [coachId, user]);
+  }, [coachId, userName, profileImage, phoneNumber]);
+
+  /** Refresh Mine card only — no full-page loading skeleton (used after photo/video save). */
+  const refreshMineRow = useCallback(async (patchedTestimonial = null) => {
+    if (!coachId) return;
+    if (patchedTestimonial) {
+      setMineRow((prev) => ({
+        user: prev?.user || {
+          userId: coachId,
+          userName,
+          profileImage,
+          phoneNumber,
+        },
+        testimonial: (() => {
+          const merged = { ...(prev?.testimonial || {}), ...patchedTestimonial };
+          if (hasStoredTransformationBefore(merged)) merged.photosFromProfileSeed = false;
+          return merged;
+        })(),
+      }));
+      return;
+    }
+    try {
+      const mine = await buildMineRow();
+      setMineRow(mine);
+    } catch {
+      // Keep existing card if refresh fails.
+    }
+  }, [coachId, buildMineRow, userName, profileImage, phoneNumber]);
 
   const loadDirectAndMine = useCallback(async () => {
     if (!coachId) return;
+    if (isCaptureFlowBusy()) return;
     const generation = loadGenerationRef.current + 1;
     loadGenerationRef.current = generation;
-    setLoading(true);
-    setError(null);
+    const isFirstLoad = mineRowRef.current == null;
+    if (isFirstLoad) {
+      setLoading(true);
+      setError(null);
+    }
     setFullRows([]);
     setFullLoaded(false);
+    setDirectTeamMemberCount(null);
+    setFullTeamMemberCount(null);
+    setListReloadKey((key) => key + 1);
     try {
-      const [directResult, mine, teamReport] = await Promise.all([
-        listForCoach(coachId, TEAM_SCOPES.DIRECT),
+      // First page only (limit 10) — never hydrate the full team on open.
+      const [directResult, mine] = await Promise.all([
+        listForCoach(coachId, { scope: 'direct', page: 1, limit: 10 }),
         buildMineRow(),
-        getTeamTestimonialReport(coachId).catch(() => null),
       ]);
       if (generation !== loadGenerationRef.current) return;
 
-      const direct = Array.isArray(directResult) ? directResult : [];
+      const direct = Array.isArray(directResult?.data) ? directResult.data : [];
       setDirectRows(direct);
+      setDirectPagination(directResult?.pagination || { page: 1, hasMore: false, total: direct.length });
+      setDirectUploadCounts(directResult?.uploadCounts || {
+        fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
+      });
       setMineRow(mine);
-
-      let downline = direct.length > 0;
-      if (!downline && teamReport?.photoReport) {
-        const directStats = teamReport.photoReport.directTeam ?? {};
-        const fullStats = teamReport.photoReport.fullTeam ?? {};
-        const directCount = (directStats.uploaded ?? 0) + (directStats.notUploaded ?? 0);
-        const fullCount = (fullStats.uploaded ?? 0) + (fullStats.notUploaded ?? 0);
-        downline = directCount > 0 || fullCount > 0;
-      }
-      setHasDownline(downline);
-      if (!downline) setTeamScope(TEAM_SCOPES.MINE);
-
-      if (teamReport) {
-        setTeamPerformanceByUserId(teamReport.teamPerformanceByUserId ?? {});
-      }
+      const total = directResult?.pagination?.total ?? direct.length;
+      setDirectTeamMemberCount(total);
+      setHasDownline(total > 0);
+      if (total === 0) setTeamScope(TEAM_SCOPES.MINE);
     } catch (err) {
       if (generation !== loadGenerationRef.current) return;
-      setError(err.message || 'Failed to load testimonials');
+      if (isFirstLoad) setError(err.message || 'Failed to load testimonials');
     } finally {
       if (generation === loadGenerationRef.current) {
         setLoading(false);
       }
     }
+
+    // Deferred: badges + Full tab count from team-report
+    getTeamTestimonialReport(coachId)
+      .then((teamReport) => {
+        if (generation !== loadGenerationRef.current || !teamReport) return;
+        setTeamPerformanceByUserId(teamReport.teamPerformanceByUserId ?? {});
+        const fullStats = teamReport.photoReport?.fullTeam ?? {};
+        const fullCount =
+          fullStats.totalMembers
+          ?? ((fullStats.uploaded ?? 0) + (fullStats.notUploaded ?? 0));
+        if (Number.isFinite(fullCount) && fullCount > 0) {
+          setFullTeamMemberCount(fullCount);
+          setHasDownline(true);
+        } else {
+          const directStats = teamReport.photoReport?.directTeam ?? {};
+          const directCount =
+            directStats.totalMembers
+            ?? ((directStats.uploaded ?? 0) + (directStats.notUploaded ?? 0));
+          if (directCount > 0) setHasDownline(true);
+        }
+      })
+      .catch(() => {});
   }, [coachId, buildMineRow]);
 
-  const loadFullTeam = useCallback(async () => {
-    if (!coachId || fullLoaded || fullLoading) return;
-    const generation = loadGenerationRef.current;
-    setFullLoading(true);
-    setError(null);
-    try {
-      const fullResult = await listForCoach(coachId, TEAM_SCOPES.FULL);
-      if (generation !== loadGenerationRef.current) return;
-      setFullRows(Array.isArray(fullResult) ? fullResult : []);
-      setFullLoaded(true);
-    } catch (err) {
-      if (generation !== loadGenerationRef.current) return;
-      setError(err.message || 'Failed to load full team');
-    } finally {
-      if (generation === loadGenerationRef.current) {
-        setFullLoading(false);
-      }
-    }
-  }, [coachId, fullLoaded, fullLoading]);
-
   useEffect(() => { loadDirectAndMine(); }, [loadDirectAndMine, tabVisitKey]);
-
-  useEffect(() => {
-    if (teamScope === TEAM_SCOPES.FULL && hasDownline && !fullLoaded && !fullLoading) {
-      loadFullTeam();
-    }
-  }, [teamScope, hasDownline, fullLoaded, fullLoading, loadFullTeam]);
 
   // Soft-refresh Mine after edit modal so pending OTP UI appears (no full loading flash)
   useEffect(() => {
@@ -1266,14 +2656,27 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     return () => { cancelled = true; };
   }, [reloadSignal, buildMineRow, hasDownline, coachId]);
 
-  useEffect(() => {
+  const resetTeamSearch = useCallback(() => {
     setSearchQuery('');
+    setHealthIssueQuery('');
+    setCommittedHealthIssue('');
     setIsSearchOpen(false);
+    setIsIssueSearchOpen(false);
     setHighlightedSuggestion(-1);
+    setHighlightedIssue(-1);
     setUploadFilter(UPLOAD_FILTERS.ALL);
-  }, [teamScope]);
+  }, []);
+
+  const handleTeamScopeChange = useCallback((value) => {
+    if (value === teamScope) return;
+    resetTeamSearch();
+    if (value === TEAM_SCOPES.FULL) setFullLoaded(false);
+    setTeamScope(value);
+  }, [teamScope, resetTeamSearch]);
 
   // ── Derived state ──────────────────────────────────────────────────────────
+
+  const isMineScope = !hasDownline || teamScope === TEAM_SCOPES.MINE;
 
   const scopeRows = useMemo(() => {
     if (!hasDownline || teamScope === TEAM_SCOPES.MINE) return mineRow ? [mineRow] : [];
@@ -1281,27 +2684,192 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     return directRows;
   }, [hasDownline, teamScope, mineRow, directRows, fullRows]);
 
-  const teamScopeCounts = useMemo(
-    () => countRowsByTeamScope(mineRow, directRows, fullRows),
-    [mineRow, directRows, fullRows],
+  const teamScopeCounts = useMemo(() => {
+    const directTotal = directTeamMemberCount
+      ?? (Number.isFinite(directPagination.total) ? directPagination.total : directRows.length);
+    const fullTotal = fullTeamMemberCount
+      ?? (Number.isFinite(fullPagination.total) ? fullPagination.total : fullRows.length);
+
+    return {
+      [TEAM_SCOPES.MINE]: mineRow ? 1 : 0,
+      // Always total Direct/Full members — Partial / Not Uploaded only filter the list.
+      [TEAM_SCOPES.DIRECT]: resolveTeamScopeCount(uploadFilter, directUploadCounts, directTotal),
+      [TEAM_SCOPES.FULL]: resolveTeamScopeCount(uploadFilter, fullUploadCounts, fullTotal),
+    };
+  }, [
+    mineRow, uploadFilter, directUploadCounts, fullUploadCounts,
+    directTeamMemberCount, directPagination.total, directRows.length,
+    fullTeamMemberCount, fullPagination.total, fullRows.length,
+  ]);
+
+  // Server-provided completeness counts (search-scoped); avoid recounting only the loaded page.
+  const uploadCounts = teamScope === TEAM_SCOPES.FULL ? fullUploadCounts : directUploadCounts;
+
+  // Server already filtered — use scopeRows as filteredRows for team scopes.
+  const filteredRows = scopeRows;
+
+  const knownHealthIssues = useMemo(() => {
+    const seen = new Set();
+    const labels = [];
+    const rows = [mineRow, ...directRows, ...fullRows].filter(Boolean);
+    for (const row of rows) {
+      const issueList = row.testimonial?.recoveredHealthIssues;
+      for (const issue of (Array.isArray(issueList) ? issueList : [])) {
+        const label = String(issue || '').trim();
+        if (!label) continue;
+        const key = label.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        labels.push(label);
+      }
+    }
+    return labels;
+  }, [mineRow, directRows, fullRows]);
+
+  const nameSuggestions = useMemo(
+    () => buildSearchSuggestions(filteredRows, searchQuery),
+    [filteredRows, searchQuery],
   );
 
-  const uploadCounts = useMemo(() => countRowsByUpload(scopeRows), [scopeRows]);
-
-  const uploadFilteredRows = useMemo(
-    () => filterRowsByUpload(scopeRows, uploadFilter),
-    [scopeRows, uploadFilter],
+  const issueSuggestions = useMemo(
+    () => buildHealthIssueSuggestions(healthIssueQuery, knownHealthIssues),
+    [healthIssueQuery, knownHealthIssues],
   );
 
-  const suggestions = useMemo(
-    () => buildSearchSuggestions(uploadFilteredRows, searchQuery),
-    [uploadFilteredRows, searchQuery],
-  );
+  const activePagination = teamScope === TEAM_SCOPES.FULL ? fullPagination : directPagination;
 
-  const filteredRows = useMemo(
-    () => filterRowsBySearch(uploadFilteredRows, searchQuery),
-    [uploadFilteredRows, searchQuery],
-  );
+  const loadMoreTeam = useCallback(async () => {
+    if (isMineScope || loadingMore || loading || fullLoading) return;
+    if (!activePagination.hasMore) return;
+    const scope = teamScope === TEAM_SCOPES.FULL ? 'full' : 'direct';
+    const nextPage = (activePagination.page || 1) + 1;
+    const cacheKey = `${scope}|${normalizeSearchQuery(searchQuery)}|${normalizeSearchQuery(committedHealthIssue)}|${uploadFilter}|${nextPage}`;
+    if (pageCacheRef.current.has(cacheKey)) {
+      const cached = pageCacheRef.current.get(cacheKey);
+      if (scope === 'full') {
+        setFullRows((prev) => [...prev, ...cached.data]);
+        setFullPagination(cached.pagination);
+      } else {
+        setDirectRows((prev) => [...prev, ...cached.data]);
+        setDirectPagination(cached.pagination);
+      }
+      return;
+    }
+    if (inFlightRef.current.has(cacheKey)) return;
+
+    setLoadingMore(true);
+    const promise = listForCoach(coachId, {
+      scope,
+      page: nextPage,
+      limit: 10,
+      search: normalizeSearchQuery(searchQuery),
+      healthIssue: normalizeSearchQuery(committedHealthIssue),
+      uploadFilter,
+    });
+    inFlightRef.current.set(cacheKey, promise);
+    try {
+      const result = await promise;
+      pageCacheRef.current.set(cacheKey, result);
+      const pageData = Array.isArray(result?.data) ? result.data : [];
+      if (scope === 'full') {
+        setFullRows((prev) => [...prev, ...pageData]);
+        setFullPagination(result.pagination || { page: nextPage, hasMore: false });
+        if (result.uploadCounts) setFullUploadCounts(result.uploadCounts);
+      } else {
+        setDirectRows((prev) => [...prev, ...pageData]);
+        setDirectPagination(result.pagination || { page: nextPage, hasMore: false });
+        if (result.uploadCounts) setDirectUploadCounts(result.uploadCounts);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to load more');
+    } finally {
+      inFlightRef.current.delete(cacheKey);
+      setLoadingMore(false);
+    }
+  }, [
+    isMineScope, loadingMore, loading, fullLoading, activePagination,
+    teamScope, searchQuery, committedHealthIssue, uploadFilter, coachId,
+  ]);
+
+  // Load / refetch page 1 when scope, name search, committed health issue, or upload filter changes.
+  const prevTeamFetchRef = useRef({ teamScope, listReloadKey });
+  const fullRowsCountRef = useRef(0);
+  fullRowsCountRef.current = fullRows.length;
+  useEffect(() => {
+    if (!coachId || !hasDownline || isMineScope) {
+      prevTeamFetchRef.current = { teamScope, listReloadKey };
+      return undefined;
+    }
+    const scope = teamScope === TEAM_SCOPES.FULL ? 'full' : 'direct';
+    const scopeOrReloadChanged = prevTeamFetchRef.current.teamScope !== teamScope
+      || prevTeamFetchRef.current.listReloadKey !== listReloadKey;
+    prevTeamFetchRef.current = { teamScope, listReloadKey };
+
+    let cancelled = false;
+    const delay = scopeOrReloadChanged ? 0 : 300;
+    if (scope === 'full' && (scopeOrReloadChanged || fullRowsCountRef.current === 0)) {
+      setFullLoading(true);
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const result = await listForCoach(coachId, {
+          scope,
+          page: 1,
+          limit: 10,
+          search: normalizeSearchQuery(searchQuery),
+          healthIssue: normalizeSearchQuery(committedHealthIssue),
+          uploadFilter,
+        });
+        if (cancelled) return;
+        const pageData = Array.isArray(result?.data) ? result.data : [];
+        const pagination = result.pagination || { page: 1, hasMore: false, total: 0 };
+        const isUnfilteredList = (!uploadFilter || uploadFilter === UPLOAD_FILTERS.ALL)
+          && !normalizeSearchQuery(searchQuery)
+          && !normalizeSearchQuery(committedHealthIssue);
+        if (scope === 'full') {
+          setFullRows(pageData);
+          setFullPagination(pagination);
+          if (result.uploadCounts) setFullUploadCounts(result.uploadCounts);
+          // Only refresh Full badge total from unfiltered responses (filters shrink pagination.total).
+          if (isUnfilteredList && Number.isFinite(pagination.total)) {
+            setFullTeamMemberCount(pagination.total);
+          }
+          setFullLoaded(true);
+        } else {
+          setDirectRows(pageData);
+          setDirectPagination(pagination);
+          if (result.uploadCounts) setDirectUploadCounts(result.uploadCounts);
+          if (isUnfilteredList && Number.isFinite(pagination.total)) {
+            setDirectTeamMemberCount(pagination.total);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) setError(err?.message || 'Failed to load team');
+      } finally {
+        if (!cancelled) setFullLoading(false);
+      }
+    }, delay);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    searchQuery, committedHealthIssue, uploadFilter, teamScope, coachId,
+    hasDownline, isMineScope, listReloadKey,
+  ]);
+
+  // Infinite scroll sentinel
+  useEffect(() => {
+    if (isMineScope || !activePagination.hasMore) return undefined;
+    const node = loadMoreSentinelRef.current;
+    if (!node) return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) void loadMoreTeam();
+    }, { rootMargin: '240px' });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [isMineScope, activePagination.hasMore, loadMoreTeam, filteredRows.length]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -1315,10 +2883,29 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setHighlightedSuggestion(-1);
   }, []);
 
-  const handleSelectSuggestion = useCallback((row) => {
-    setSearchQuery(row.user?.userName || '');
+  const handleIssueSearchChange = useCallback((value) => {
+    setHealthIssueQuery(value);
+    setIsIssueSearchOpen(true);
+    setHighlightedIssue(-1);
+    if (!value.trim()) {
+      setCommittedHealthIssue('');
+    } else if (normalizeSearchQuery(value) !== normalizeSearchQuery(committedHealthIssue)) {
+      setCommittedHealthIssue('');
+    }
+  }, [committedHealthIssue]);
+
+  const handleSelectNameSuggestion = useCallback((row) => {
+    setSearchQuery(row?.user?.userName || '');
     setIsSearchOpen(false);
     setHighlightedSuggestion(-1);
+  }, []);
+
+  const handleSelectIssueSuggestion = useCallback((issue) => {
+    const label = typeof issue === 'string' ? issue : (issue?.label || '');
+    setHealthIssueQuery(label);
+    setCommittedHealthIssue(label);
+    setIsIssueSearchOpen(false);
+    setHighlightedIssue(-1);
   }, []);
 
   const handleSearchKeyDown = useCallback((event) => {
@@ -1327,22 +2914,22 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
 
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      if (!suggestions.length) return;
+      if (!nameSuggestions.length) return;
       setIsSearchOpen(true);
-      setHighlightedSuggestion((prev) => (prev < suggestions.length - 1 ? prev + 1 : 0));
+      setHighlightedSuggestion((prev) => (prev < nameSuggestions.length - 1 ? prev + 1 : 0));
       return;
     }
     if (event.key === 'ArrowUp') {
       event.preventDefault();
-      if (!suggestions.length) return;
+      if (!nameSuggestions.length) return;
       setIsSearchOpen(true);
-      setHighlightedSuggestion((prev) => (prev > 0 ? prev - 1 : suggestions.length - 1));
+      setHighlightedSuggestion((prev) => (prev > 0 ? prev - 1 : nameSuggestions.length - 1));
       return;
     }
     if (event.key === 'Enter') {
       event.preventDefault();
-      if (highlightedSuggestion >= 0 && suggestions[highlightedSuggestion]) {
-        handleSelectSuggestion(suggestions[highlightedSuggestion]);
+      if (highlightedSuggestion >= 0 && nameSuggestions[highlightedSuggestion]) {
+        handleSelectNameSuggestion(nameSuggestions[highlightedSuggestion]);
       } else {
         setIsSearchOpen(false);
         setHighlightedSuggestion(-1);
@@ -1353,12 +2940,48 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       setIsSearchOpen(false);
       setHighlightedSuggestion(-1);
     }
-  }, [searchQuery, suggestions, highlightedSuggestion, handleSelectSuggestion]);
+  }, [searchQuery, nameSuggestions, highlightedSuggestion, handleSelectNameSuggestion]);
 
-  const hasScopeData    = scopeRows.length > 0;
-  const hasActiveSearch = normalizeSearchQuery(searchQuery).length > 0;
+  const handleIssueSearchKeyDown = useCallback((event) => {
+    const hasQuery = normalizeSearchQuery(healthIssueQuery).length > 0;
+    if (!hasQuery) return;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (!issueSuggestions.length) return;
+      setIsIssueSearchOpen(true);
+      setHighlightedIssue((prev) => (prev < issueSuggestions.length - 1 ? prev + 1 : 0));
+      return;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!issueSuggestions.length) return;
+      setIsIssueSearchOpen(true);
+      setHighlightedIssue((prev) => (prev > 0 ? prev - 1 : issueSuggestions.length - 1));
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      if (highlightedIssue >= 0 && issueSuggestions[highlightedIssue]) {
+        handleSelectIssueSuggestion(issueSuggestions[highlightedIssue]);
+      } else {
+        setCommittedHealthIssue(healthIssueQuery.trim());
+        setIsIssueSearchOpen(false);
+        setHighlightedIssue(-1);
+      }
+      return;
+    }
+    if (event.key === 'Escape') {
+      setIsIssueSearchOpen(false);
+      setHighlightedIssue(-1);
+    }
+  }, [healthIssueQuery, issueSuggestions, highlightedIssue, handleSelectIssueSuggestion]);
+
+  const hasActiveSearch = normalizeSearchQuery(searchQuery).length > 0
+    || normalizeSearchQuery(committedHealthIssue).length > 0;
+  const hasActiveUploadFilter = uploadFilter && uploadFilter !== UPLOAD_FILTERS.ALL;
   const showTeamChrome  = hasDownline;
-  const isMineScope     = !hasDownline || teamScope === TEAM_SCOPES.MINE;
+  const showPageSkeleton = shouldShowTestimonialsPageSkeleton(loading, mineRow);
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-4 pb-24 space-y-4">
@@ -1392,7 +3015,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
               <button
                 key={value}
                 type="button"
-                onClick={() => setTeamScope(value)}
+                onClick={() => handleTeamScopeChange(value)}
                 aria-pressed={isActive}
                 className={`flex-1 py-2 rounded-lg text-[11px] sm:text-xs font-semibold transition-all duration-150 cursor-pointer min-w-0 px-1 ${
                   isActive ? 'bg-green-600 text-white shadow-sm' : 'text-green-800 hover:bg-green-50'
@@ -1407,19 +3030,52 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       )}
 
       {/* Search + upload filters — team scopes only (not Mine / not leaf members) */}
-      {!loading && showTeamChrome && hasScopeData && !isMineScope && (
+      {!loading && showTeamChrome && !isMineScope && (
         <>
-          <TestimonialSearchBar
-            value={searchQuery}
-            onChange={handleSearchChange}
-            suggestions={suggestions}
-            isOpen={isSearchOpen}
-            onOpenChange={setIsSearchOpen}
-            highlightedIndex={highlightedSuggestion}
-            onHighlightChange={setHighlightedSuggestion}
-            onSelectSuggestion={handleSelectSuggestion}
-            onKeyDown={handleSearchKeyDown}
-          />
+          <div className="space-y-3">
+            <div className="relative">
+              <p className="text-xs font-semibold text-gray-600 mb-1.5">Search health issue</p>
+              <TestimonialSearchBar
+                variant="issue"
+                value={healthIssueQuery}
+                onChange={handleIssueSearchChange}
+                suggestions={issueSuggestions}
+                isOpen={isIssueSearchOpen}
+                onOpenChange={(open) => {
+                  setIsIssueSearchOpen(open);
+                  if (open) {
+                    setIsSearchOpen(false);
+                    setHighlightedSuggestion(-1);
+                  }
+                }}
+                highlightedIndex={highlightedIssue}
+                onHighlightChange={setHighlightedIssue}
+                onSelectSuggestion={handleSelectIssueSuggestion}
+                onKeyDown={handleIssueSearchKeyDown}
+              />
+            </div>
+            <div className="relative">
+              <p className="text-xs font-semibold text-gray-600 mb-1.5">Search user name</p>
+              <TestimonialSearchBar
+                variant="name"
+                value={searchQuery}
+                onChange={handleSearchChange}
+                suggestions={nameSuggestions}
+                isOpen={isSearchOpen}
+                onOpenChange={(open) => {
+                  setIsSearchOpen(open);
+                  if (open) {
+                    setIsIssueSearchOpen(false);
+                    setHighlightedIssue(-1);
+                  }
+                }}
+                highlightedIndex={highlightedSuggestion}
+                onHighlightChange={setHighlightedSuggestion}
+                onSelectSuggestion={handleSelectNameSuggestion}
+                onKeyDown={handleSearchKeyDown}
+              />
+            </div>
+          </div>
 
           <div className="flex gap-1.5 overflow-x-auto scrollbar-hide sm:flex-wrap sm:gap-2 sm:overflow-visible" role="group" aria-label="Upload completeness filter">
             <UploadFilterChip
@@ -1445,7 +3101,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       )}
 
       {/* States */}
-      {loading && (
+      {showPageSkeleton && (
         <div className="space-y-3 animate-pulse">
           <div className="h-32 bg-gray-100 rounded-2xl" />
           <div className="h-6 bg-gray-100 rounded-xl w-3/4" />
@@ -1464,25 +3120,30 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         </div>
       )}
 
-      {!loading && !fullLoading && !error && !hasScopeData && (
+      {!showPageSkeleton && !fullLoading && !error && filteredRows.length === 0 && (
         <div className="text-center py-12 text-gray-400">
           <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
           <p className="font-medium">
-            {showTeamChrome ? 'No team members found' : 'Unable to load your transformation'}
+            {hasActiveSearch
+              ? 'No matching members found.'
+              : hasActiveUploadFilter
+                ? 'No records match the selected filter.'
+                : (showTeamChrome ? 'No team members found' : 'Unable to load your transformation')}
           </p>
-        </div>
-      )}
-
-      {!loading && !fullLoading && !error && hasScopeData && filteredRows.length === 0 && (
-        <div className="text-center py-8 text-gray-400">
-          <p className="font-medium text-sm">
-            {hasActiveSearch ? 'No matching members found.' : 'No records match the selected filter.'}
-          </p>
+          {(hasActiveSearch || hasActiveUploadFilter) ? (
+            <button
+              type="button"
+              onClick={resetTeamSearch}
+              className="mt-3 text-sm font-semibold text-green-700 hover:text-green-800"
+            >
+              Clear search
+            </button>
+          ) : null}
         </div>
       )}
 
       {/* Member cards */}
-      {!loading && !fullLoading && filteredRows.map((row) => (
+      {!showPageSkeleton && !fullLoading && filteredRows.map((row) => (
         <MemberCard
           key={row.user.userId}
           row={row}
@@ -1494,13 +3155,23 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
             reportType: 'photo',
           })}
           editable={isMineScope}
-          userId={isMineScope ? coachId : null}
-          onOtpVerified={isMineScope ? () => { loadDirectAndMine(); } : undefined}
+          userId={row.user.userId}
+          coachId={coachId}
+          knownHealthIssues={knownHealthIssues}
+          onMineRefresh={isMineScope ? refreshMineRow : undefined}
+          onOtpVerified={isMineScope ? () => loadDirectAndMine() : undefined}
         />
       ))}
+
+      {!showPageSkeleton && !fullLoading && !isMineScope && activePagination.hasMore && (
+        <div ref={loadMoreSentinelRef} className="py-4 flex justify-center">
+          {loadingMore ? (
+            <LoadingSpinner context="normal" />
+          ) : (
+            <p className="text-xs text-gray-400">Scroll for more</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
-
-
-

@@ -3,12 +3,13 @@ import { validateDiaryList } from '../../../features/background-analysis/analysi
 import { listDiaryEntries } from '../../../features/background-analysis/diary.service.js';
 
 /**
- * GET /api/diary/list?ownerUserId=&viewerUserId=&date=YYYY-MM-DD
+ * GET /api/diary/list?ownerUserId=&viewerUserId=&date=YYYY-MM-DD&limit=&offset=
  *
  * PR-B / ADR-0003 — Diary feed read-model.
  *
- * Returns the joined { food, weight, education, watch [, unknown] }
- * entries for one owner + one IST calendar day, sorted newest-first.
+ * Returns a paginated joined { food, weight, education, watch [, unknown] }
+ * list for one owner + one IST calendar day, sorted newest-first.
+ * Default page size is 20. List payloads are lean (no Base64 / AnalysisData).
  * `unknown` rows are gated on the `ff.diary-feed` server-side flag.
  *
  * Auth posture matches `retryPromotionToFood` (PR-A.2): owner OR a user

@@ -13,8 +13,8 @@ import {
   computeAverageTime, extractLocalDateString,
   groupRecordsByDate, pickEarliestRecordPerActivity,
 } from '../../utils/timeReportHelpers.js';
-import { getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculationsSupabase.js';
-import { isExemptedBeverageOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from '../../utils/foodTypeDetection.js';
+import { getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculationsQuery.js';
+import { isExemptedBeverageOnly, isNonMealNutritionOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from '../../utils/foodTypeDetection.js';
 
 const DEFAULT_WINDOWS = {
   weight:    { start: '03:00:00', end: '06:30:00' },
@@ -62,7 +62,7 @@ function buildWindowMap(twData) {
 }
 
 function indexRecords(results, usersInfo) {
-  const [twR, wR, eR, fR, wfR, sR, bmrR] = results;
+  const [twR, wR, eR, foodR, sR, bmrR] = results;
   const weightByUser = new Map(), educationByUser = new Map(), foodByUser = new Map();
   const waterFoodByUser = new Map(), stepByUser = new Map();
   const userBmrMap = {}, userBodyWeightMap = {};
@@ -77,17 +77,21 @@ function indexRecords(results, usersInfo) {
     if (!educationByUser.has(uid)) educationByUser.set(uid, []);
     educationByUser.get(uid).push({ CreatedAt: r.CreatedAt });
   }
-  for (const r of (fR.data || [])) {
-    if (isExemptedBeverageOnly(r.AnalysisData)) continue;
+  // Split one food payload into meal vs beverage-only buckets (same filters as before)
+  for (const r of (foodR.data || [])) {
     const uid = parseInt(r.UserID, 10);
-    if (!foodByUser.has(uid)) foodByUser.set(uid, []);
-    foodByUser.get(uid).push({ CreatedAt: r.CreatedAt, TotalCalories: r.TotalCalories, AnalysisData: r.AnalysisData });
-  }
-  for (const r of (wfR.data || [])) {
-    if (!isExemptedBeverageOnly(r.AnalysisData)) continue;
-    const uid = parseInt(r.UserID, 10);
-    if (!waterFoodByUser.has(uid)) waterFoodByUser.set(uid, []);
-    waterFoodByUser.get(uid).push(r);
+    if (isExemptedBeverageOnly(r.AnalysisData)) {
+      if (!waterFoodByUser.has(uid)) waterFoodByUser.set(uid, []);
+      waterFoodByUser.get(uid).push(r);
+    } else if (!isNonMealNutritionOnly(r.AnalysisData)) {
+      if (!foodByUser.has(uid)) foodByUser.set(uid, []);
+      foodByUser.get(uid).push({
+        CreatedAt: r.CreatedAt,
+        TotalCalories: r.TotalCalories,
+        AnalysisData: r.AnalysisData,
+      });
+    }
+    // Target Nutrition / supplements: neither meal nor water
   }
   for (const r of (sR.data || [])) {
     if (!stepByUser.has(r.UserId)) stepByUser.set(r.UserId, []);

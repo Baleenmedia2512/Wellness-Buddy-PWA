@@ -7,6 +7,7 @@
  * Triggered by App.js after profile load when weightGoalMode === null.
  */
 import React, { useState } from 'react';
+import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
 
 const HINTS = {
   loss: 'App will alert you when weight increases unexpectedly.',
@@ -52,7 +53,9 @@ export function WeightGoalSetupPrompt({ isOpen, onSave }) {
 
         {/* Header */}
         <div className="bg-gradient-to-r from-green-500 to-teal-500 p-6 text-white text-center">
-          <div className="text-4xl mb-2">🎯</div>
+          <div className="mb-2 flex justify-center">
+            <EmojiOrNative emoji="🎯" className="w-10 h-10" nativeClassName="text-4xl leading-none" />
+          </div>
           <h2 className="text-xl font-bold">Set Your Weight Goal</h2>
           <p className="text-sm text-green-100 mt-1">
             This helps us personalise your progress tracking
@@ -80,7 +83,7 @@ export function WeightGoalSetupPrompt({ isOpen, onSave }) {
                   font-bold text-sm text-white transition-all duration-300
                   ${isGain ? 'left-[calc(50%+2px)] bg-blue-500' : 'left-1 bg-red-500'}`}
               >
-                <span>{isGain ? '💪' : '🔥'}</span>
+                <EmojiOrNative emoji={isGain ? '💪' : '🔥'} className="w-4 h-4" nativeClassName="text-sm leading-none" />
                 <span>{isGain ? 'Gain Mode' : 'Loss Mode'}</span>
               </div>
             )}
@@ -89,11 +92,11 @@ export function WeightGoalSetupPrompt({ isOpen, onSave }) {
             <div className="flex w-full">
               <div className={`flex-1 flex items-center justify-center gap-1 text-sm font-semibold
                 ${selected !== null && !isGain ? 'text-transparent' : 'text-red-400'}`}>
-                <span>🔥</span><span>Loss Mode</span>
+                <EmojiOrNative emoji="🔥" className="w-4 h-4" nativeClassName="text-sm leading-none" /><span>Loss Mode</span>
               </div>
               <div className={`flex-1 flex items-center justify-center gap-1 text-sm font-semibold
                 ${selected !== null && isGain ? 'text-transparent' : 'text-blue-400'}`}>
-                <span>💪</span><span>Gain Mode</span>
+                <EmojiOrNative emoji="💪" className="w-4 h-4" nativeClassName="text-sm leading-none" /><span>Gain Mode</span>
               </div>
             </div>
           </div>

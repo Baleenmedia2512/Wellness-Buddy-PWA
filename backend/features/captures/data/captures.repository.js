@@ -16,9 +16,19 @@
  * ---------------------------------------------------------------------------
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
+import {
+  IANA_IST,
+  filterRowsByCalendarDateRange,
+} from '../../../shared/lib/datetime/index.js';
+import { applyDateRangeFilter } from '../../../shared/lib/datetime/applyDayFilter.js';
 
 const TABLE = 'captures_table';
+
+function isMissingColumn(error, columnName) {
+  const msg = String(error?.message || error || '');
+  return /column/i.test(msg) && new RegExp(columnName, 'i').test(msg);
+}
 
 /**
  * Insert a new pending capture row.
@@ -50,7 +60,7 @@ export async function insertPending({
   nutritionCenterId,
   centerName,
 }) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const row = {
     UserID: userId.toString(),
     PublicShareToken: publicShareToken,
@@ -77,7 +87,7 @@ export async function insertPending({
     row.NutritionCenterId = nutritionCenterId ?? null;
     row.CenterName = centerName ?? null;
   }
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .insert(row)
     .select()
@@ -91,8 +101,8 @@ export async function insertPending({
  * Used by both the public viewer (PR 3) and the dual-write update path.
  */
 export async function findByToken(token) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .select('*')
     .eq('"PublicShareToken"', token)
@@ -106,8 +116,8 @@ export async function findByToken(token) {
  * Look up a capture by short ShareCode. Returns null when not found.
  */
 export async function findByShareCode(shareCode) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .select('*')
     .eq('"ShareCode"', shareCode)
@@ -143,8 +153,8 @@ export async function findByShareIdentifier(identifier) {
  */
 export async function findByIdForOwner(captureId, userId) {
   if (!captureId || !userId) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .select('*')
     .eq('"ID"', captureId)
@@ -154,6 +164,69 @@ export async function findByIdForOwner(captureId, userId) {
     .maybeSingle();
   if (error) throw error;
   return data || null;
+}
+
+/** ImageKey only — other domains pointer to this object. */
+export async function getImageKeyById(captureId) {
+  if (!captureId) return null;
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from(TABLE)
+    .select('"ImageKey"')
+    .eq('"ID"', captureId)
+    .eq('"IsDeleted"', 0)
+    .maybeSingle();
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) return null;
+    throw error;
+  }
+  return data?.ImageKey || null;
+}
+
+export async function updateCaptureImageKey(captureId, userId, imageKey) {
+  const db = getMysqlClient();
+  const { error } = await db
+    .from(TABLE)
+    .update({ ImageKey: imageKey, ImageBase64: null })
+    .eq('"ID"', captureId)
+    .eq('"UserID"', String(userId));
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) {
+      throw new Error('Run migration add_image_key_to_captures_table.sql before capture R2');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Capture photos in the IST calendar window that have not been copied to R2 yet.
+ * CreatedAt is timestamptz UTC — filter with real UTC day bounds.
+ */
+export async function listPendingCaptureImageBackfill({
+  from = 0,
+  to = 49,
+  startYmd,
+  endYmd,
+} = {}) {
+  const db = getMysqlClient();
+  let query = db
+    .from(TABLE)
+    .select('"ID", "UserID", "ImageBase64", "ImageKey", "CreatedAt"')
+    .eq('"IsDeleted"', 0)
+    .is('ImageKey', null)
+    .not('ImageBase64', 'is', null);
+  query = applyDateRangeFilter(query, 'CreatedAt', startYmd, endYmd, IANA_IST);
+  const { data, error } = await query
+    .order('CreatedAt', { ascending: true })
+    .order('"ID"', { ascending: true })
+    .range(from, to);
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) {
+      throw new Error('Run migration add_image_key_to_captures_table.sql before backfill');
+    }
+    throw error;
+  }
+  return filterRowsByCalendarDateRange(data || [], startYmd, endYmd, IANA_IST, 'CreatedAt');
 }
 
 /**
@@ -168,8 +241,8 @@ export async function findByIdForOwner(captureId, userId) {
  */
 export async function findById(captureId) {
   if (!captureId) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .select('*')
     .eq('"ID"', captureId)
@@ -189,8 +262,8 @@ export async function findById(captureId) {
  * through `captures.service.updateType()` so `assertCanTransition` runs.
  */
 export async function updateImageTypeByToken({ token, userId, imageType }) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .update({ ImageType: imageType, UpdatedAt: new Date().toISOString() })
     .eq('"PublicShareToken"', token)
@@ -213,8 +286,8 @@ export async function updateImageTypeByToken({ token, userId, imageType }) {
  * `captures.service.updateTypeById()` so `assertCanTransition` runs.
  */
 export async function updateImageTypeById({ captureId, userId, imageType }) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .update({ ImageType: imageType, UpdatedAt: new Date().toISOString() })
     .eq('"ID"', captureId)
@@ -237,8 +310,8 @@ export async function updateImageTypeById({ captureId, userId, imageType }) {
  * Never throws on not-found — callers treat that as a no-op.
  */
 export async function softDeleteById({ captureId, userId }) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .update({ IsDeleted: 1, UpdatedAt: new Date().toISOString() })
     .eq('"ID"', captureId)
@@ -267,8 +340,8 @@ export async function softDeleteById({ captureId, userId }) {
  * Never throws on not-found — callers treat that as a no-op.
  */
 export async function undoSoftDeleteById({ captureId, userId }) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .update({ IsDeleted: 0, UpdatedAt: new Date().toISOString() })
     .eq('"ID"', captureId)

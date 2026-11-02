@@ -6,6 +6,14 @@
       "maxDuration": 60,
       "memory": 1024
     },
+    "pages/api/leaderboard/get-global-leaderboard.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "pages/api/coach/team-hierarchy.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
     "pages/api/**/*.js": {
       "maxDuration": 30,
       "memory": 1024
@@ -106,7 +114,7 @@
         },
         {
           "key": "Access-Control-Allow-Headers",
-          "value": "Content-Type, Authorization, Cache-Control, Pragma"
+          "value": "Content-Type, Authorization, Accept, Cache-Control, Pragma, X-App-Version, X-App-Version-Code, X-App-Platform"
         }
       ]
     }

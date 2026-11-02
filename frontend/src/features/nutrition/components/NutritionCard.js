@@ -5,10 +5,22 @@ import { getVersionString } from "../../../config/version";
 import EditableFoodItem from "./EditableFoodItem";
 import { getUserId } from "../../../shared/services/userIdentity";
 import { searchFoods } from "../services/foodCorrectionService";
-import { captureAndShare, shareImageDirectly, precaptureShareImage, shareCachedDataUrl } from "../../../shared/utils/shareUtils";
+import { captureAndShare, shareImageDirectly, precaptureShareImage, shareCachedDataUrl, composeBrandedShareCaption } from "../../../shared/utils/shareUtils";
 import { debugLog } from '../../../shared/utils/logger.js';
 import { computeMealGlycemicIndex } from "../domain/mealGlycemicIndex";
-
+import { updateMealNutrition } from "../services/nutritionDashboard/mealMutationsApi";
+import { recalculateTotals as sumMealNutrition } from "../services/nutritionDashboard/analysisHelpers";
+import {
+  DIARY_FOOD_ACTIVITY,
+  resolveFoodActivityType,
+  extractVolumeMl,
+  extractScoops,
+  extractShakeProducts,
+  extractFoodShareItems,
+} from "../../diary/domain/activityType";
+import { buildDiaryShareSuffix } from "../../diary/domain/share/suffixes";
+import { withMarathonWhatsAppNotice } from "../../marathon";
+import { pickShareAvatarSrc } from "../../user/services/avatarDisplayVersion";
 const NutritionCard = ({
   data,
   onDataUpdate,
@@ -148,12 +160,11 @@ const NutritionCard = ({
 
   // Generate meal name from food items
   const generateMealName = () => {
-    if (localDetailedItems.length === 0) return data?.category?.name || "Meal";
-    if (localDetailedItems.length === 1) return localDetailedItems[0].name;
-
-    const firstItem = localDetailedItems[0].name;
-    const remaining = localDetailedItems.length - 1;
-    return `${firstItem} + ${remaining} more`;
+    const names = localDetailedItems
+      .map((item) => String(item?.name || '').trim())
+      .filter(Boolean);
+    if (names.length === 0) return data?.category?.name || "Meal";
+    return names.join(", ");
   };
 
   const calculateNutritionFromSearchResult = (foodResult, quantity) => {
@@ -318,58 +329,7 @@ const NutritionCard = ({
       "🧮 [NutritionCard] recalculateTotals - Processing items:",
       items.length,
     );
-
-    const totals = items.reduce(
-      (acc, item, index) => {
-        const n = item.nutrition || {};
-        const itemCalories    = n.calories    ?? item.calories    ?? 0;
-        const itemProtein     = n.protein     ?? item.protein     ?? 0;
-        const itemCarbs       = n.carbs       ?? item.carbs       ?? 0;
-        const itemFat         = n.fat         ?? item.fat         ?? 0;
-        const itemFiber       = n.fiber       ?? item.fiber       ?? 0;
-        const itemSugar       = n.sugar       ?? item.sugar       ?? 0;
-        const itemSodium      = n.sodium      ?? item.sodium      ?? 0;
-        const itemCholesterol = n.cholesterol ?? item.cholesterol ?? 0;
-        const itemGI          = n.glycemic_index ?? item.glycemic_index ?? null;
-
-        debugLog(`   📊 Item ${index + 1}: ${item.name}`);
-        debugLog(
-          `      - calories: nutrition=${n.calories}, top-level=${item.calories}, using=${itemCalories}`,
-        );
-        debugLog(
-          `      - carbs: nutrition=${n.carbs}, top-level=${item.carbs}, using=${itemCarbs}`,
-        );
-        debugLog(
-          `      - GI: nutrition=${n.glycemic_index}, top-level=${item.glycemic_index}, using=${itemGI}`,
-        );
-
-        return {
-          calories:    acc.calories    + itemCalories,
-          protein:     acc.protein     + itemProtein,
-          carbs:       acc.carbs       + itemCarbs,
-          fat:         acc.fat         + itemFat,
-          fiber:       acc.fiber       + itemFiber,
-          sugar:       acc.sugar       + itemSugar,
-          sodium:      acc.sodium      + itemSodium,
-          cholesterol: acc.cholesterol + itemCholesterol,
-        };
-      },
-      { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, cholesterol: 0 },
-    );
-
-    // Round to 1 decimal; meal GI = available-carb weighted (never sum item GIs)
-    const rounded = {
-      calories:    Math.round(totals.calories),
-      protein:     Math.round(totals.protein * 10) / 10,
-      carbs:       Math.round(totals.carbs   * 10) / 10,
-      fat:         Math.round(totals.fat     * 10) / 10,
-      fiber:       Math.round(totals.fiber   * 10) / 10,
-      sugar:       Math.round(totals.sugar   * 10) / 10,
-      sodium:      Math.round(totals.sodium),
-      cholesterol: Math.round(totals.cholesterol),
-      glycemic_index: computeMealGlycemicIndex(items),
-    };
-
+    const rounded = sumMealNutrition(items);
     debugLog("   ✅ Final totals:", rounded);
     return rounded;
   };
@@ -407,68 +367,9 @@ const NutritionCard = ({
       throw new Error("User not authenticated or not found in database");
     }
 
-    // Prepare analysis data
-    const analysisData = {
-      foods: newItems.map((item) => {
-        // Keep the most specific quantity value for persistence.
-        const actualGrams =
-          item.serving?.grams || item.grams || item.weight_g || item.volume_ml || 100;
-        const isLiquid = item.isLiquid || false;
-        const unit = item.unit || (isLiquid ? "ml" : "g");
-
-        return {
-          name: item.name,
-          // Preserve correction metadata for database persistence.
-          originalAiName: item.originalAiName || item.name,
-          wasAutoCorrected: item.wasAutoCorrected || false,
-          correctionSource: item.correctionSource || null,
-          correctionMetadata: item.correctionMetadata || null,
-          portion:
-            item.serving?.description ||
-            item.portionDescription ||
-            item.portion ||
-            "1 serving",
-          weight_g: isLiquid ? null : actualGrams,
-          volume_ml: isLiquid ? actualGrams : null,
-          grams: actualGrams,
-          unit: unit,
-          isLiquid: isLiquid,
-          nutrition: {
-            calories: Math.round(item.nutrition?.calories || item.calories || 0),
-            protein: Math.round(item.nutrition?.protein || item.protein || 0),
-            carbs: Math.round(item.nutrition?.carbs || item.carbs || 0),
-            fat: Math.round(item.nutrition?.fat || item.fat || 0),
-            fiber: Math.round((item.nutrition?.fiber ?? item.fiber ?? 0) * 10) / 10,
-            sugar: Math.round((item.nutrition?.sugar ?? item.sugar ?? 0) * 10) / 10,
-            sodium: Math.round(item.nutrition?.sodium ?? item.sodium ?? 0),
-            cholesterol: Math.round(item.nutrition?.cholesterol ?? item.cholesterol ?? 0),
-            glycemic_index:
-              (item.nutrition?.glycemic_index ?? item.glycemic_index) != null
-                ? Math.round(item.nutrition?.glycemic_index ?? item.glycemic_index)
-                : null,
-          },
-        };
-      }),
-      total: {
-        calories: Math.round(newTotals.calories || 0),
-        protein: Math.round(newTotals.protein || 0),
-        carbs: Math.round(newTotals.carbs || 0),
-        fat: Math.round(newTotals.fat || 0),
-        fiber: Math.round((newTotals.fiber || 0) * 10) / 10,
-        sugar: Math.round((newTotals.sugar || 0) * 10) / 10,
-        sodium: Math.round(newTotals.sodium || 0),
-        cholesterol: Math.round(newTotals.cholesterol || 0),
-        glycemic_index:
-          newTotals.glycemic_index != null
-            ? Math.round(newTotals.glycemic_index)
-            : null,
-      },
-      confidence: "high",
-    };
-
     debugLog(
       "ðŸ” [NutritionCard] Sending to API - Foods with weights:",
-      analysisData.foods.map((f) => ({
+      newItems.map((f) => ({
         name: f.name,
         weight_g: f.weight_g,
         volume_ml: f.volume_ml,
@@ -481,32 +382,13 @@ const NutritionCard = ({
 
     debugLog("ðŸ“ [NutritionCard] Auto-saving update to meal ID:", savedMealId);
 
-    const response = await fetch(`${apiBaseUrl}/api/food-corrections/nutrition`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: savedMealId,
-        userId: userId,
-        analysisData: analysisData,
-        totalCalories: Math.round(newTotals.calories || 0),
-        totalProtein: Math.round(newTotals.protein || 0),
-        totalCarbs: Math.round(newTotals.carbs || 0),
-        totalFat: Math.round(newTotals.fat || 0),
-        totalFiber: Math.round(newTotals.fiber || 0),
-        totalSugar: Math.round(newTotals.sugar ?? 0),
-        totalSodium: Math.round(newTotals.sodium ?? 0),
-        totalCholesterol: Math.round(newTotals.cholesterol ?? 0),
-        glycemicIndex: newTotals.glycemic_index != null
-          ? Math.round(newTotals.glycemic_index)
-          : null,
-      }),
+    const { result } = await updateMealNutrition({
+      apiBaseUrl,
+      mealId: savedMealId,
+      userId,
+      newItems,
+      newTotals,
     });
-
-    const result = await response.json();
-
-    if (!response.ok || !result.success) {
-      throw new Error(result.message || "Failed to update meal");
-    }
 
     // If backend preserved/injected GI and local totals lacked it, sync local nutrition
     const serverGi =
@@ -806,58 +688,53 @@ const NutritionCard = ({
     try {
       const mealName = generateMealName();
       const calories = localNutrition?.calories || 0;
-
-      // Build detailed breakdown text
-      let breakdownText = `My ${mealName}\n`;
-      breakdownText += `${Math.round(calories)} kcal ðŸŽ\n\n`;
-
-      // Add nutrition summary
-      breakdownText += `📊 Nutrition Summary:\n`;
-      breakdownText += `• Calories: ${Math.round(
-        localNutrition.calories,
-      )} kcal\n`;
-      breakdownText += `• Protein: ${localNutrition.protein}g\n`;
-      breakdownText += `• Carbs: ${localNutrition.carbs}g\n`;
-      breakdownText += `• Fat: ${localNutrition.fat}g\n`;
-      breakdownText += `• Fiber: ${localNutrition.fiber}g\n\n`;
-
-      // Add food breakdown if multiple items
-      if (localDetailedItems.length > 0) {
-        breakdownText += `ðŸ½ï¸ Food Breakdown:\n`;
-        localDetailedItems.forEach((item, index) => {
-          const itemCals = item.nutrition?.calories || item.calories || 0;
-          const portion =
-            item.serving?.description ||
-            item.portionDescription ||
-            item.portion ||
-            "";
-          breakdownText += `${index + 1}. ${item.name}`;
-          if (portion) {
-            breakdownText += ` (${portion})`;
-          }
-          breakdownText += `\n   ${Math.round(itemCals)} kcal`;
-          breakdownText += ` • Protein: ${Math.round(
-            item.nutrition?.protein || item.protein || 0,
-          )}g`;
-          breakdownText += ` • Carbs: ${Math.round(
-            item.nutrition?.carbs || item.carbs || 0,
-          )}g`;
-          breakdownText += ` • Fat: ${Math.round(
-            item.nutrition?.fat || item.fat || 0,
-          )}g`;
-          if ((item.nutrition?.fiber || item.fiber || 0) > 0) {
-            breakdownText += ` • Fiber: ${Math.round(
-              item.nutrition?.fiber || item.fiber || 0,
-            )}g`;
-          }
-          breakdownText += `\n`;
+      const activityType = resolveFoodActivityType({
+        processedBy: data?.processedBy,
+        foodData: {
+          name: mealName,
+          detailedItems: localDetailedItems,
+          nutrition: localNutrition,
+        },
+      });
+      let activityCaption;
+      if (activityType === DIARY_FOOD_ACTIVITY.WATER) {
+        activityCaption = buildDiaryShareSuffix('water', {
+          volumeMl: extractVolumeMl({ detailedItems: localDetailedItems }),
         });
-        breakdownText += `\n`;
+      } else if (activityType === DIARY_FOOD_ACTIVITY.AFRESH) {
+        activityCaption = buildDiaryShareSuffix('afresh', {
+          scoops: extractScoops({ detailedItems: localDetailedItems }) ?? 1,
+          calories,
+        });
+      } else if (activityType === DIARY_FOOD_ACTIVITY.SHAKE) {
+        activityCaption = buildDiaryShareSuffix('shake', {
+          shakeName: mealName,
+          servings: 1,
+          shakeProducts: extractShakeProducts({ detailedItems: localDetailedItems }),
+        });
+      } else {
+        activityCaption = buildDiaryShareSuffix('food', {
+          foodName: mealName,
+          foodItems: extractFoodShareItems({ detailedItems: localDetailedItems }),
+          calories,
+          protein: localNutrition?.protein ?? 0,
+          carbs: localNutrition?.carbs ?? 0,
+          fat: localNutrition?.fat ?? 0,
+          fiber: localNutrition?.fiber ?? 0,
+          glycemicIndex: localNutrition?.glycemic_index
+            ?? localNutrition?.glycemicIndex
+            ?? computeMealGlycemicIndex(localDetailedItems)
+            ?? null,
+        });
       }
 
       // Capture and share the complete nutrition card (food image + all nutrition details)
       const shareOpts = {
         title: `${mealName} - Wellness Valley`,
+        text: withMarathonWhatsAppNotice(
+          composeBrandedShareCaption(activityCaption, { savedUserName, user }),
+          { user },
+        ),
         fileName: `wellness-valley-${mealName
           .toLowerCase()
           .replace(/\s+/g, "-")}.png`,
@@ -896,6 +773,11 @@ const NutritionCard = ({
     detailedItems,
     portionAnalysis,
   } = data;
+  const avatarSrc = pickShareAvatarSrc({
+    savedProfileImage,
+    sharePhotoBase64,
+    photoURL: user?.photoURL,
+  });
   return (
     <>
       {/* Hidden container for sharing - includes image + card at high resolution */}
@@ -925,13 +807,13 @@ const NutritionCard = ({
               gap: "24px",
             }}
           >
-            {(savedProfileImage || sharePhotoBase64 || user?.photoURL) ? (
+            {avatarSrc ? (
               <div style={{
                 width: 80,
                 height: 80,
                 borderRadius: "50%",
                 border: "3px solid rgba(255,255,255,0.95)",
-                backgroundImage: `url(${savedProfileImage || sharePhotoBase64 || user?.photoURL})`,
+                backgroundImage: `url(${avatarSrc})`,
                 backgroundSize: "cover",
                 backgroundPosition: "center",
                 flexShrink: 0,

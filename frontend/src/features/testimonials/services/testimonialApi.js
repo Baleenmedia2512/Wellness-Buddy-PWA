@@ -4,20 +4,14 @@
  */
 import { CapacitorHttp } from '@capacitor/core';
 import { getApiBaseUrl } from '../../../config/api.config.js';
+import { parseCapacitorHttpJson } from '../utils/testimonialMediaUrl.js';
 
 function base() {
   return `${getApiBaseUrl()}/api/testimonials`;
 }
 
 function parseApiResponse(res, fallbackMessage) {
-  let result = res?.data;
-  if (typeof result === 'string') {
-    try {
-      result = JSON.parse(result);
-    } catch {
-      result = null;
-    }
-  }
+  let result = parseCapacitorHttpJson(res?.data);
   if (res?.status >= 200 && res?.status < 300 && result?.success) {
     return result;
   }
@@ -51,14 +45,28 @@ export async function editTestimonial(payload) {
 }
 
 /**
+ * Sync Profile / BCM Left onto testimonial Before (no OTP). After is not updated from Profile Right.
+ * @param {{ userId, beforeImageBase64?, afterImageBase64?, beforeWeightKg?, goalType?, recoveredHealthIssues? }} payload
+ */
+export async function syncProfilePhotosToTestimonial(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/sync-profile-photos`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  return parseApiResponse(res, 'Failed to sync profile photos to testimonial');
+}
+
+/**
  * Fetch the current user's own testimonial.
  * @param {number} userId
  */
-export async function getMyTestimonial(userId) {
+export async function getMyTestimonial(userId, { cacheBust = true } = {}) {
+  const ts = cacheBust ? `&_t=${Date.now()}` : '';
   const res = await CapacitorHttp.get({
-    url: `${base()}/my-testimonial?userId=${encodeURIComponent(userId)}`,
+    url: `${base()}/my-testimonial?userId=${encodeURIComponent(userId)}${ts}`,
   });
-  const result = res.data;
+  const result = parseCapacitorHttpJson(res.data);
   if (!result?.success) throw new Error(result?.message || 'Failed to fetch testimonial');
   return result.data; // null if not submitted yet
 }
@@ -68,10 +76,11 @@ export async function getMyTestimonial(userId) {
  * @param {number} userId
  */
 export async function getMyVideoTestimonial(userId) {
+  const ts = `&_t=${Date.now()}`;
   const res = await CapacitorHttp.get({
-    url: `${base()}/my-video?userId=${encodeURIComponent(userId)}`,
+    url: `${base()}/my-video?userId=${encodeURIComponent(userId)}${ts}`,
   });
-  const result = res.data;
+  const result = parseCapacitorHttpJson(res.data);
   if (!result?.success) throw new Error(result?.message || 'Failed to fetch video testimonial');
   return result.data; // null if no videos uploaded
 }
@@ -92,34 +101,89 @@ export async function verifyTestimonialOtp(payload) {
 }
 
 /**
- * Coach: list direct-downline testimonials.
+ * Coach: paginated lean team list (thumbs only — no Base64, no video URLs).
  * @param {number} coachId
- * @param {'direct'|'full'} [scope='direct']
+ * @param {{
+ *   scope?: 'direct'|'full',
+ *   page?: number,
+ *   limit?: number,
+ *   search?: string,
+ *   healthIssue?: string,
+ *   uploadFilter?: string,
+ * }} [opts]
+ * @returns {Promise<{ data: Array, pagination: object, uploadCounts: object }>}
  */
-export async function listForCoach(coachId, scope = 'direct') {
+export async function listForCoach(coachId, opts = {}) {
+  const scope = typeof opts === 'string' ? opts : (opts.scope || 'direct');
+  const page = typeof opts === 'object' ? (opts.page ?? 1) : 1;
+  const limit = typeof opts === 'object' ? (opts.limit ?? 10) : 10;
+  const search = typeof opts === 'object' ? (opts.search || '') : '';
+  const healthIssue = typeof opts === 'object' ? (opts.healthIssue || '') : '';
+  const uploadFilter = typeof opts === 'object' ? (opts.uploadFilter || 'all') : 'all';
+
   const params = new URLSearchParams({
     coachId: String(coachId),
+    page: String(page),
+    limit: String(limit),
   });
   if (scope === 'full') params.set('scope', 'full');
+  if (search) params.set('search', search);
+  if (healthIssue) params.set('healthIssue', healthIssue);
+  if (uploadFilter && uploadFilter !== 'all') params.set('uploadFilter', uploadFilter);
+
   const res = await CapacitorHttp.get({
     url: `${base()}/list-for-coach?${params.toString()}`,
   });
   const result = res.data;
   if (!result?.success) throw new Error(result?.message || 'Failed to fetch team testimonials');
-  return result.data; // Array<{ user, testimonial }>
+
+  // Backward-compatible: older callers expected a bare array — still expose .data
+  return {
+    data: Array.isArray(result.data) ? result.data : [],
+    pagination: result.pagination || {
+      page: 1,
+      limit,
+      total: Array.isArray(result.data) ? result.data.length : 0,
+      totalPages: 1,
+      hasMore: false,
+    },
+    uploadCounts: result.uploadCounts || {
+      fully_uploaded: 0,
+      partial_upload: 0,
+      not_uploaded: 0,
+    },
+  };
 }
 
 /**
- * Request signed Supabase Storage upload URLs for testimonial videos.
+ * Full member detail (photos + videos + share fields). Lazy — not for list.
+ * @param {number} userId
+ * @param {number} [coachId]
+ */
+export async function getTestimonialDetail(userId, coachId) {
+  const params = new URLSearchParams({ userId: String(userId) });
+  if (coachId) params.set('coachId', String(coachId));
+  const res = await CapacitorHttp.get({
+    url: `${base()}/detail?${params.toString()}`,
+  });
+  const result = res.data;
+  if (!result?.success) throw new Error(result?.message || 'Failed to fetch testimonial detail');
+  return result.data; // { userId, testimonial }
+}
+
+/**
+ * Request signed MySQL Storage upload URLs for testimonial videos.
  * @param {{ userId, uploadHealth?: boolean, uploadBusiness?: boolean }} payload
  */
 export async function prepareTestimonialVideoUpload(payload) {
   const res = await CapacitorHttp.post({
     url:     `${base()}/prepare-video-upload`,
     headers: { 'Content-Type': 'application/json' },
+    connectTimeout: 30000,
+    readTimeout: 60000,
     data:    payload,
   });
-  const result = res.data;
+  const result = parseCapacitorHttpJson(res.data);
   if (res.status < 200 || res.status >= 300 || !result?.success) {
     throw new Error(result?.message || 'Failed to prepare video upload');
   }
@@ -127,7 +191,7 @@ export async function prepareTestimonialVideoUpload(payload) {
 }
 
 /**
- * Upload a video file in chunks via the backend (Capacitor-safe, no direct Supabase fetch).
+ * Upload a video file in chunks via the backend (Capacitor-safe, no direct MySQL fetch).
  * @param {File} file
  * @param {{ path: string, sessionId: string }} uploadInfo
  * @param {'health'|'business'} slot
@@ -146,9 +210,7 @@ export async function submitTestimonialVideo(payload) {
     headers: { 'Content-Type': 'application/json' },
     data:    payload,
   });
-  const result = res.data;
-  if (!result?.success) throw new Error(result?.message || 'Failed to upload video testimonial');
-  return result;
+  return parseApiResponse(res, 'Failed to upload video testimonial');
 }
 
 /**
@@ -215,6 +277,7 @@ export async function getTeamTestimonialReport(coachId) {
  *   healthVideoPath?: string,
  *   businessVideoPath?: string,
  *   recoveredHealthIssues?: string[],
+ *   shareCardImageBase64?: string,
  * }} payload
  */
 export async function submitAllEdits(payload) {
@@ -238,4 +301,43 @@ export async function verifyUnifiedOtp(payload) {
     data:    payload,
   });
   return parseApiResponse(res, 'OTP verification failed');
+}
+
+/**
+ * Resend unified OTP to sponsor after expiry.
+ * @param {{ userId: number }} payload
+ */
+export async function resendUnifiedOtp(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/resend-unified-otp`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  return parseApiResponse(res, 'Failed to resend OTP');
+}
+
+/**
+ * Cancel pending unified OTP and revert pending photo/video edits.
+ * @param {{ userId: number, restoreData?: object }} payload
+ */
+export async function cancelUnifiedOtp(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/cancel-unified-otp`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  return parseApiResponse(res, 'Failed to cancel OTP');
+}
+
+/**
+ * Legacy coach health-issue update (API always rejects — members edit on Mine).
+ * @param {{ coachId: number, userId: number, recoveredHealthIssues: string[] }} payload
+ */
+export async function updateMemberHealthIssues(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/update-health-issues`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  return parseApiResponse(res, 'Failed to update health issue');
 }

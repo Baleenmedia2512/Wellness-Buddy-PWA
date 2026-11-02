@@ -1,4 +1,4 @@
-// Eight-tab app navigation — responsive from iPhone SE (320px) to Pro Max.
+// App top navigation — responsive from iPhone SE (320px) to Pro Max.
 // The container uses overflow-x-auto so extra tabs scroll naturally on small screens.
 import React from 'react';
 import {
@@ -10,8 +10,12 @@ import {
   Map,
   Trophy,
   FileBarChart,
+  Megaphone,
+  CalendarPlus,
 } from 'lucide-react';
 import NavTabButton from './NavTabButton';
+import { isFlagEnabled } from '../../config/featureFlags';
+import { canAccessNavPage } from '../../features/nav-page-access/domain/navAccess.rules.js';
 
 export default function AppNavTabs({
   activePage,
@@ -22,104 +26,156 @@ export default function AppNavTabs({
   onShowWellnessCounselling,
   onShowNutritionCentersMap,
   onShowTestimonials,
+  onShowBroadcast,
+  onShowCreateEvent,
   onShowReports,
   reportsEnabled = false,
+  /** null = fail-open (all tabs); object = role page map from DB */
+  allowedPages = null,
 }) {
+  const allow = (pageKey) => canAccessNavPage(allowedPages, pageKey);
+  const broadcastEnabled = isFlagEnabled('ff.broadcast');
+  const createEventEnabled = isFlagEnabled('ff.create-event');
+
   return (
     <div
       className="max-w-lg mx-auto px-0.5 xxs:px-1 xs:px-2 flex items-center justify-around overflow-x-auto scrollbar-hide w-full"
       style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}
     >
-      <NavTabButton
-        onClick={onShowHome ?? (() => {})}
-        active={activePage === 'home'}
-        icon={Home}
-        label="Home"
-      />
-      <NavTabButton
-        onClick={() => (onShowBackgroundHistory ?? (() => {}))()}
-        active={activePage === 'dashboard'}
-        icon={LayoutDashboard}
-        label="Diary"
-      />
-      <NavTabButton
-        onClick={onShowActivityReport ?? (() => {})}
-        active={activePage === 'activity-report'}
-        activeBg="bg-violet-100"
-        hoverBg="hover:bg-violet-50"
-        icon={BarChart2}
-        iconActiveClass="text-teal-700"
-        iconClass="text-teal-600"
-        labelActiveClass="text-teal-900"
-        labelClass="text-teal-800"
-        label="Activity"
-        ariaLabel="Activity Report"
-      />
-      <NavTabButton
-        onClick={onShowWellnessEnrollment ?? (() => {})}
-        active={activePage === 'enrollment'}
-        activeBg="bg-emerald-100"
-        hoverBg="hover:bg-emerald-50"
-        icon={GraduationCap}
-        iconActiveClass="text-emerald-800"
-        iconClass="text-emerald-700"
-        labelActiveClass="text-emerald-900"
-        labelClass="text-emerald-800"
-        label="Programs"
-        ariaLabel="Enrollment"
-      />
-      <NavTabButton
-        onClick={onShowWellnessCounselling ?? (() => {})}
-        active={activePage === 'counselling'}
-        activeBg="bg-pink-100"
-        hoverBg="hover:bg-pink-50"
-        icon={Heart}
-        iconActiveClass="text-teal-700"
-        iconClass="text-teal-600"
-        labelActiveClass="text-teal-900"
-        labelClass="text-teal-800"
-        label="BCM"
-        ariaLabel="Counselling"
-      />
-      <NavTabButton
-        onClick={onShowNutritionCentersMap ?? (() => {})}
-        active={activePage === 'physical-club'}
-        activeBg="bg-teal-100"
-        hoverBg="hover:bg-teal-50"
-        icon={Map}
-        iconActiveClass="text-teal-700"
-        iconClass="text-teal-600"
-        labelActiveClass="text-teal-900"
-        labelClass="text-teal-800"
-        label="Club"
-        ariaLabel="Physical Club"
-      />
-      <NavTabButton
-        onClick={onShowTestimonials ?? (() => {})}
-        active={activePage === 'testimonials'}
-        activeBg="bg-yellow-100"
-        hoverBg="hover:bg-yellow-50"
-        icon={Trophy}
-        iconActiveClass="text-yellow-700"
-        iconClass="text-yellow-600"
-        labelActiveClass="text-yellow-900"
-        labelClass="text-yellow-800"
-        label="Transformation"
-        ariaLabel="Testimonials"
-      />
-      {reportsEnabled && (
+      {allow('home') && (
+        <NavTabButton
+          onClick={onShowHome ?? (() => {})}
+          active={activePage === 'home'}
+          icon={Home}
+          label="Home"
+        />
+      )}
+      {allow('dashboard') && (
+        <NavTabButton
+          onClick={() => (onShowBackgroundHistory ?? (() => {}))()}
+          active={activePage === 'dashboard'}
+          icon={LayoutDashboard}
+          label="Diary"
+        />
+      )}
+      {allow('activity-report') && (
+        <NavTabButton
+          onClick={onShowActivityReport ?? (() => {})}
+          active={activePage === 'activity-report'}
+          activeBg="bg-violet-100"
+          hoverBg="hover:bg-violet-50"
+          icon={BarChart2}
+          iconActiveClass="text-teal-700"
+          iconClass="text-teal-600"
+          labelActiveClass="text-teal-900"
+          labelClass="text-teal-800"
+          label="Activity"
+          ariaLabel="Activity Report"
+        />
+      )}
+      {allow('enrollment') && (
+        <NavTabButton
+          onClick={onShowWellnessEnrollment ?? (() => {})}
+          active={activePage === 'enrollment'}
+          activeBg="bg-emerald-100"
+          hoverBg="hover:bg-emerald-50"
+          icon={GraduationCap}
+          iconActiveClass="text-emerald-800"
+          iconClass="text-emerald-700"
+          labelActiveClass="text-emerald-900"
+          labelClass="text-emerald-800"
+          label="Programmes"
+          ariaLabel="Enrollment"
+        />
+      )}
+      {allow('counselling') && (
+        <NavTabButton
+          onClick={onShowWellnessCounselling ?? (() => {})}
+          active={activePage === 'counselling'}
+          activeBg="bg-pink-100"
+          hoverBg="hover:bg-pink-50"
+          icon={Heart}
+          iconActiveClass="text-teal-700"
+          iconClass="text-teal-600"
+          labelActiveClass="text-teal-900"
+          labelClass="text-teal-800"
+          label="BCM"
+          ariaLabel="Counselling"
+        />
+      )}
+      {allow('physical-club') && (
+        <NavTabButton
+          onClick={onShowNutritionCentersMap ?? (() => {})}
+          active={activePage === 'physical-club'}
+          activeBg="bg-teal-100"
+          hoverBg="hover:bg-teal-50"
+          icon={Map}
+          iconActiveClass="text-teal-700"
+          iconClass="text-teal-600"
+          labelActiveClass="text-teal-900"
+          labelClass="text-teal-800"
+          label="Club"
+          ariaLabel="Physical Club"
+        />
+      )}
+      {allow('testimonials') && (
+        <NavTabButton
+          onClick={onShowTestimonials ?? (() => {})}
+          active={activePage === 'testimonials'}
+          activeBg="bg-teal-100"
+          hoverBg="hover:bg-teal-50"
+          icon={Trophy}
+          iconActiveClass="text-teal-700"
+          iconClass="text-teal-600"
+          labelActiveClass="text-teal-900"
+          labelClass="text-teal-700"
+          label="Transformation"
+          ariaLabel="Testimonials"
+        />
+      )}
+      {reportsEnabled && allow('reports') && (
         <NavTabButton
           onClick={onShowReports ?? (() => {})}
           active={activePage === 'reports'}
-          activeBg="bg-indigo-100"
-          hoverBg="hover:bg-indigo-50"
+          activeBg="bg-teal-100"
+          hoverBg="hover:bg-teal-50"
           icon={FileBarChart}
-          iconActiveClass="text-indigo-700"
-          iconClass="text-indigo-600"
-          labelActiveClass="text-indigo-900"
-          labelClass="text-indigo-800"
-          label="Ideal Weight"
-          ariaLabel="Ideal Weight"
+          iconActiveClass="text-teal-700"
+          iconClass="text-teal-600"
+          labelActiveClass="text-teal-900"
+          labelClass="text-teal-700"
+          label="Reports"
+          ariaLabel="Reports Dashboard"
+        />
+      )}
+      {broadcastEnabled && allow('broadcast') && (
+        <NavTabButton
+          onClick={onShowBroadcast ?? (() => {})}
+          active={activePage === 'broadcast'}
+          activeBg="bg-emerald-100"
+          hoverBg="hover:bg-emerald-50"
+          icon={Megaphone}
+          iconActiveClass="text-emerald-800"
+          iconClass="text-emerald-700"
+          labelActiveClass="text-emerald-900"
+          labelClass="text-emerald-800"
+          label="BroadCast"
+          ariaLabel="BroadCast"
+        />
+      )}
+      {createEventEnabled && allow('create-event') && (
+        <NavTabButton
+          onClick={onShowCreateEvent ?? (() => {})}
+          active={activePage === 'create-event'}
+          activeBg="bg-emerald-100"
+          hoverBg="hover:bg-emerald-50"
+          icon={CalendarPlus}
+          iconActiveClass="text-emerald-800"
+          iconClass="text-emerald-700"
+          labelActiveClass="text-emerald-900"
+          labelClass="text-emerald-800"
+          label="Create Event"
+          ariaLabel="Create Event"
         />
       )}
     </div>

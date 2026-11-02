@@ -6,19 +6,19 @@
  * be promoted to 'unknown' so the feed shows Manual Log instead of
  * "Analyzing…" indefinitely.
  *
- * Budget mirrors frontend Phase-1 orchestrator: 3 attempts + 15 s grace.
+ * Budget mirrors frontend Phase-1 orchestrator: Flash → Pro (2 attempts) + grace.
  */
 
 /** Must stay aligned with orchestratorService.js MAX_ATTEMPTS */
-export const PHASE1_MAX_ATTEMPTS = 3;
+export const PHASE1_MAX_ATTEMPTS = 2;
 /** Must stay aligned with orchestratorService.js REQUEST_TIMEOUT_MS */
-export const PHASE1_REQUEST_TIMEOUT_MS = 40_000;
-/** Back-off between retries: 1.5 s + 3 s */
-export const PHASE1_RETRY_DELAYS_MS = 1_500 + 3_000;
+export const PHASE1_REQUEST_TIMEOUT_MS = 59_500;
+/** Back-off between Flash and Pro escalation */
+export const PHASE1_RETRY_DELAYS_MS = 1_500;
 /** Grace after the last attempt before Manual Log */
 export const MANUAL_MODE_GRACE_MS = 15_000;
 
-/** 3 × 40 s + 4.5 s back-off + 15 s grace ≈ 139.5 s */
+/** 2 × 58 s + 1.5 s back-off + 15 s grace ≈ 132.5 s */
 export const STALE_PENDING_MS =
   PHASE1_MAX_ATTEMPTS * PHASE1_REQUEST_TIMEOUT_MS
   + PHASE1_RETRY_DELAYS_MS

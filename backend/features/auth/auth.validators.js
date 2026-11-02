@@ -1,5 +1,9 @@
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import { isValidPhoneE164 } from './domain/contactIdentifier.js';
+import {
+  isValidOtpForContactType,
+  otpValidationMessageForContactType,
+} from './domain/otp-length.rules.js';
 
 function normalizeRecipient(raw, contactType) {
   const trimmed = raw ? String(raw).trim() : raw;
@@ -39,6 +43,9 @@ export function validateVerifyOtp(body) {
   if (!recipient || !otp) throw new ValidationError(400, 'Recipient and OTP are required');
   if (contactType === 'phone' && !isValidPhoneE164(recipient)) {
     throw new ValidationError(400, 'Invalid phone number');
+  }
+  if (!isValidOtpForContactType(String(otp).trim(), contactType)) {
+    throw new ValidationError(400, otpValidationMessageForContactType(contactType));
   }
   return {
     recipient,

@@ -34,9 +34,17 @@ import { useNutritionRefresh } from "../../../shared/context/NutritionRefreshCon
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { saveNutritionAnalysis } from '../../../shared/services/nutritionPersistence';
 import ShakeCalculatorModal from './ShakeCalculatorModal';
+import { allowHerbalifeShakePost } from '../services/allowHerbalifeShakePost';
 import { mealFromDiaryRow } from '../services/nutritionDashboard/diaryRowMapper';
+import {
+  fetchMealDetailCached,
+  getCachedMealDetail,
+  mealHasFullAnalysis,
+  mergeMealRows,
+  invalidateMealDetail,
+} from '../services/mealDetailCache';
 import { computeMealGlycemicIndex } from '../domain/mealGlycemicIndex';
-import { resolveBusinessTimezone } from '../../../shared/utils/datetimeUtils';
+import { resolveBusinessTimezone, formatPickerDayButtonLabel } from '../../../shared/utils/datetimeUtils';
 import { getProfile } from '../../user/services/user.api';
 import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone';
 
@@ -57,7 +65,7 @@ const UNDO_SECONDS = 5; // cooldown duration
  *      them everything they need via explicit props.
  *
  * WHY HOOKS OWN ASYNC ORCHESTRATION:
- *   All async / side-effectful work (Supabase fetches, retry/refresh, infinite
+ *   All async / side-effectful work (MySQL fetches, retry/refresh, infinite
  *   scroll, meal mutations, swipe panel height measurement, calorie chart
  *   transforms) is encapsulated in `../hooks/`. Hooks own:
  *     - data shape and loading/error state for that concern,
@@ -102,6 +110,11 @@ const NutritionDashboard = ({
   openRef = null,
   /** Owner IANA TZ from diary API (preferred over user object fallback). */
   timezoneIana: timezoneIanaProp = null,
+  /**
+   * Timeline modal-host mode: skip list/overview network until first openRef
+   * call. Meal open still works via mealFromDiaryRow from the diary payload.
+   */
+  deferDataFetch = false,
 }) => {
   const isIOS = Capacitor.getPlatform() === "ios";
   // Use parent's selectedDate if provided, otherwise use local state
@@ -111,8 +124,11 @@ const NutritionDashboard = ({
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [selectedMeal, setSelectedMeal] = useState(null);
+  const [mealDetailStatus, setMealDetailStatus] = useState('idle'); // idle | loading | ready | error
+  const [mealDetailError, setMealDetailError] = useState(null);
   const [isClosingModal, setIsClosingModal] = useState(false);
   const [profileTimezoneIana, setProfileTimezoneIana] = useState(null);
+  const [dataFetchEnabled, setDataFetchEnabled] = useState(!deferDataFetch);
 
   // Hydrate owner timezone when `user` lacks timezone (common for selectedMember / session user).
   useEffect(() => {
@@ -127,7 +143,7 @@ const NutritionDashboard = ({
       return undefined;
     }
     let cancelled = false;
-    getProfile(email, { cacheBust: true })
+    getProfile(email)
       .then((res) => {
         if (cancelled) return;
         const tz = res?.data?.timezone || res?.data?.timezoneIana || getDeviceTimezoneIana() || null;
@@ -170,6 +186,9 @@ const NutritionDashboard = ({
   const shakeCalculatorEnabled = isFlagEnabled('ff.shake-calculator');
   const [shakeOpen, setShakeOpen] = useState(false);
 
+  // Overview panels are hidden in diary timeline host — skip their network fan-out.
+  const overviewFetchEnabled = dataFetchEnabled && !hideOverview;
+
   // Stage 17 — NutritionDashboard mounted (logged via useEffect for mount-only semantics)
   React.useEffect(() => {
     const tr = window.__captureTrace;
@@ -197,10 +216,22 @@ const NutritionDashboard = ({
     setError,
     fetchDayAnalyses,
     applyDailyDelta,
-  } = useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId, nutritionRefreshKey });
+  } = useDayAnalyses({
+    user,
+    selectedDate,
+    apiBaseUrl,
+    resolveUserId,
+    nutritionRefreshKey,
+    enabled: dataFetchEnabled,
+  });
 
   // Calorie target from user's BMR (fallback handled inside the hook)
-  const { calorieTarget } = useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey });
+  const { calorieTarget } = useUserCalorieTarget({
+    user,
+    apiBaseUrl,
+    bmrUpdateKey,
+    enabled: overviewFetchEnabled,
+  });
 
   // Burn-to-Balance: today's calories burned (steps disabled, watch-derived only)
   const { burnedCalories, watchBurned, stepsBurned } = useBurnedCalories({
@@ -210,10 +241,15 @@ const NutritionDashboard = ({
     resolveUserId,
     watchBurnedCalories,
     nutritionRefreshKey,
+    enabled: overviewFetchEnabled,
   });
 
   // Latest body weight + gender for personalised macro targets on the summary panel.
-  const { latestWeight, gender } = useUserLatestWeight({ user, apiBaseUrl });
+  const { latestWeight, gender } = useUserLatestWeight({
+    user,
+    apiBaseUrl,
+    enabled: overviewFetchEnabled,
+  });
   const { proteinTarget, fatTarget, carbsTarget } = computeMacroTargets({
     latestWeight,
     calorieTarget,
@@ -228,6 +264,7 @@ const NutritionDashboard = ({
     apiBaseUrl,
     resolveUserId,
     calorieTarget,
+    enabled: overviewFetchEnabled,
   });
 
   // Overview panel swipe + dynamic height (re-measure when content changes).
@@ -282,49 +319,67 @@ const NutritionDashboard = ({
 
   // Initialize local editable data when meal changes
   useEffect(() => {
-    if (selectedMeal) {
-      const foodData = parseAnalysisData(selectedMeal.AnalysisData);
+    if (!selectedMeal) return;
 
-      // Ã°Å¸â€Â DEBUG: Log what we're loading from database
-      debugLog("Ã°Å¸â€Â [NutritionDashboard] Loading from database:", {
-        foods: foodData.detailedItems?.map((item) => ({
-          name: item.name,
-          weight_g: item.weight_g,
-          volume_ml: item.volume_ml,
-          grams: item.grams,
-          unit: item.unit,
-          isLiquid: item.isLiquid,
-          portion: item.portion,
-        })),
-      });
-
-      // Transform database format to EditableFoodItem expected format
-      const transformedItems = (foodData.detailedItems || []).map((item) => {
-        const transformed = transformDbItemToEditable(item);
-        debugLog("[NutritionDashboard] Transformed item:", {
-          name: item.name,
-          originalAiName: transformed.originalAiName,
-          wasAutoCorrected: transformed.wasAutoCorrected,
-          needsReverseLookup: transformed.needsReverseLookup,
-          correctionMetadataAiDetected: item.correctionMetadata?.aiDetected,
-        });
-        return transformed;
-      });
-      setLocalDetailedItems(transformedItems);
-      const nutrition = { ...(foodData.nutrition || {}) };
-      const mealGi = computeMealGlycemicIndex(transformedItems);
-      if (mealGi != null) nutrition.glycemic_index = mealGi;
-      setLocalNutrition(nutrition);
-
-      // Only reset editing states if NOT from auto-save
-      if (!isAutoSaveUpdateRef.current) {
-        setIsEditing(false);
-        setEditingStates({});
-      }
-
-      // Reset the flag
-      isAutoSaveUpdateRef.current = false;
+    const foodData = parseAnalysisData(selectedMeal.AnalysisData);
+    let items = foodData.detailedItems || [];
+    // Lean diary rows have listSummary but no AnalysisData until detail fetch.
+    if (items.length === 0 && Array.isArray(selectedMeal.listSummary?.items)) {
+      items = selectedMeal.listSummary.items.map((item) => ({
+        name: item.name,
+        calories: item.calories,
+        nutrition: { calories: item.calories || 0 },
+      }));
     }
+
+    // Ã°Å¸â€Â DEBUG: Log what we're loading from database
+    debugLog("Ã°Å¸â€Â [NutritionDashboard] Loading from database:", {
+      foods: items.map((item) => ({
+        name: item.name,
+        weight_g: item.weight_g,
+        volume_ml: item.volume_ml,
+        grams: item.grams,
+        unit: item.unit,
+        isLiquid: item.isLiquid,
+        portion: item.portion,
+      })),
+    });
+
+    // Transform database format to EditableFoodItem expected format
+    const transformedItems = items.map((item) => {
+      const transformed = transformDbItemToEditable(item, true);
+      debugLog("[NutritionDashboard] Transformed item:", {
+        name: item.name,
+        originalAiName: transformed.originalAiName,
+        wasAutoCorrected: transformed.wasAutoCorrected,
+        needsReverseLookup: transformed.needsReverseLookup,
+        correctionMetadataAiDetected: item.correctionMetadata?.aiDetected,
+      });
+      return transformed;
+    });
+    setLocalDetailedItems(transformedItems);
+    const fromParse = foodData.nutrition || {};
+    const hasParsedCalories = Number(fromParse.calories) > 0;
+    const nutrition = hasParsedCalories ? { ...fromParse } : {
+      calories: selectedMeal.TotalCalories ?? fromParse.calories ?? 0,
+      protein: selectedMeal.TotalProtein ?? fromParse.protein ?? 0,
+      carbs: selectedMeal.TotalCarbs ?? fromParse.carbs ?? 0,
+      fat: selectedMeal.TotalFat ?? fromParse.fat ?? 0,
+      fiber: selectedMeal.TotalFiber ?? fromParse.fiber ?? 0,
+      glycemic_index: selectedMeal.GlycemicIndex ?? fromParse.glycemic_index ?? null,
+    };
+    const mealGi = computeMealGlycemicIndex(transformedItems);
+    if (mealGi != null) nutrition.glycemic_index = mealGi;
+    setLocalNutrition(nutrition);
+
+    // Only reset editing states if NOT from auto-save
+    if (!isAutoSaveUpdateRef.current) {
+      setIsEditing(false);
+      setEditingStates({});
+    }
+
+    // Reset the flag
+    isAutoSaveUpdateRef.current = false;
   }, [selectedMeal]);
 
   // Check if any item is being edited
@@ -417,40 +472,142 @@ const NutritionDashboard = ({
   }, [initialMealId, analyses, loading]);
 
   const pendingOpenRef = useRef(null);
+  const openGenerationRef = useRef(0);
+  const lastOpenEntryRef = useRef(null);
+
+  const hydrateSelectedMeal = useCallback((meal, { status = 'ready' } = {}) => {
+    setSelectedMeal(meal);
+    setMealDetailStatus(status);
+    if (status === 'ready') setMealDetailError(null);
+  }, []);
+
+  const openMealDetail = useCallback(async (entryOrId) => {
+    if (deferDataFetch && !dataFetchEnabled) {
+      setDataFetchEnabled(true);
+    }
+
+    const generation = openGenerationRef.current + 1;
+    openGenerationRef.current = generation;
+    lastOpenEntryRef.current = entryOrId;
+
+    let mealId = null;
+    let stubMeal = null;
+
+    if (entryOrId && typeof entryOrId === 'object' && entryOrId.kind === 'food') {
+      stubMeal = mealFromDiaryRow(entryOrId);
+      mealId = stubMeal?.ID ?? entryOrId.payload?.id ?? null;
+    } else if (entryOrId != null && entryOrId !== '') {
+      mealId = String(entryOrId);
+    }
+
+    if (!mealId) return;
+
+    const foundInAnalyses = (analyses || []).find(
+      (m) => m.ID && String(m.ID) === String(mealId),
+    );
+    if (foundInAnalyses && mealHasFullAnalysis(foundInAnalyses)) {
+      pendingOpenRef.current = null;
+      hydrateSelectedMeal(mergeMealRows(foundInAnalyses, stubMeal), { status: 'ready' });
+      return;
+    }
+
+    const userId = await resolveUserId();
+    if (!userId) {
+      setMealDetailError('Unable to load food details.');
+      setMealDetailStatus('error');
+      if (stubMeal || foundInAnalyses) {
+        hydrateSelectedMeal(mergeMealRows(foundInAnalyses, stubMeal), { status: 'error' });
+      }
+      return;
+    }
+
+    const cached = getCachedMealDetail(userId, mealId);
+    if (cached && mealHasFullAnalysis(cached)) {
+      pendingOpenRef.current = null;
+      hydrateSelectedMeal(mergeMealRows(cached, stubMeal), { status: 'ready' });
+      setAnalyses((prev) => prev.map((m) => (
+        String(m.ID) === String(mealId) ? mergeMealRows(cached, m) : m
+      )));
+      return;
+    }
+
+    const initialMeal = mergeMealRows(
+      cached || foundInAnalyses,
+      stubMeal,
+    ) || { ID: mealId, AnalysisData: null };
+    hydrateSelectedMeal(initialMeal, {
+      status: mealHasFullAnalysis(initialMeal) ? 'ready' : 'loading',
+    });
+
+    if (mealHasFullAnalysis(initialMeal)) return;
+
+    try {
+      const fullMeal = await fetchMealDetailCached({
+        userId,
+        mealId,
+        apiBaseUrl,
+      });
+      if (openGenerationRef.current !== generation) return;
+      pendingOpenRef.current = null;
+      const merged = mergeMealRows(fullMeal, stubMeal);
+      hydrateSelectedMeal(merged, { status: 'ready' });
+      setAnalyses((prev) => {
+        const idx = prev.findIndex((m) => m.ID && String(m.ID) === String(mealId));
+        if (idx === -1) return prev;
+        const next = prev.slice();
+        next[idx] = mergeMealRows(fullMeal, prev[idx]);
+        return next;
+      });
+    } catch (err) {
+      if (openGenerationRef.current !== generation) return;
+      setMealDetailError(err?.message || 'Unable to load food details.');
+      setMealDetailStatus('error');
+      if (initialMeal) {
+        hydrateSelectedMeal(initialMeal, { status: 'error' });
+      }
+    }
+  }, [
+    analyses,
+    apiBaseUrl,
+    dataFetchEnabled,
+    deferDataFetch,
+    hydrateSelectedMeal,
+    resolveUserId,
+    setAnalyses,
+  ]);
+
+  const retryMealDetail = useCallback(async () => {
+    const entryOrId = lastOpenEntryRef.current;
+    if (!entryOrId) return;
+    let mealId = null;
+    if (entryOrId && typeof entryOrId === 'object' && entryOrId.kind === 'food') {
+      mealId = entryOrId.payload?.id ?? null;
+    } else {
+      mealId = entryOrId;
+    }
+    if (!mealId) return;
+    const userId = await resolveUserId();
+    if (userId) invalidateMealDetail(userId, mealId);
+    setMealDetailError(null);
+    await openMealDetail(entryOrId);
+  }, [openMealDetail, resolveUserId]);
 
   // Open once analyses load when the user tapped before fetch completed.
   useEffect(() => {
     const pendingId = pendingOpenRef.current;
     if (!pendingId || loading) return;
     const meal = (analyses || []).find((m) => m.ID && String(m.ID) === String(pendingId));
-    if (meal) {
+    if (meal && mealHasFullAnalysis(meal)) {
       pendingOpenRef.current = null;
-      setSelectedMeal(meal);
+      hydrateSelectedMeal(meal, { status: 'ready' });
     }
-  }, [loading, analyses]);
+  }, [loading, analyses, hydrateSelectedMeal]);
 
   // Imperative open handle for the timeline shell (ff.diary-timeline).
   // Accepts a diary food entry (preferred) or legacy mealId string.
   if (openRef) {
     openRef.current = (entryOrId) => {
-      if (entryOrId && typeof entryOrId === 'object' && entryOrId.kind === 'food') {
-        const p = entryOrId.payload || {};
-        const found = (analyses || []).find((m) => m.ID && String(m.ID) === String(p.id));
-        const meal = found || mealFromDiaryRow(entryOrId);
-        if (meal) {
-          pendingOpenRef.current = null;
-          setSelectedMeal(meal);
-        }
-        return;
-      }
-      const mealId = entryOrId;
-      const meal = (analyses || []).find((m) => m.ID && String(m.ID) === String(mealId));
-      if (meal) {
-        pendingOpenRef.current = null;
-        setSelectedMeal(meal);
-      } else if (mealId != null && mealId !== '') {
-        pendingOpenRef.current = String(mealId);
-      }
+      void openMealDetail(entryOrId);
     };
   }
 
@@ -529,14 +686,9 @@ const NutritionDashboard = ({
   // Infinite scroll pagination moved to useInfiniteScroll hook.
 
   const formatDateHeader = (date) => {
+    const label = formatPickerDayButtonLabel(date, ownerTimezoneIana);
+    if (label === 'Today' || label === 'Yesterday') return label;
     const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    if (date.toDateString() === today.toDateString()) return "Today";
-    if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
-    if (date.toDateString() === tomorrow.toDateString()) return "Tomorrow";
     return date.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
@@ -559,6 +711,8 @@ const NutritionDashboard = ({
     setIsClosingModal(true);
     setTimeout(() => {
       setSelectedMeal(null);
+      setMealDetailStatus('idle');
+      setMealDetailError(null);
       setIsClosingModal(false);
     }, 300);
   };
@@ -823,6 +977,7 @@ const NutritionDashboard = ({
                 handleOptimisticDelete={handleOptimisticDelete}
                 isIOS={isIOS}
                 user={user}
+                apiBaseUrl={apiBaseUrl}
                 timezoneIana={ownerTimezoneIana}
                 setAnalyses={setAnalyses}
                 setUndoState={setUndoState}
@@ -836,6 +991,9 @@ const NutritionDashboard = ({
       {/* Modal */}
       <MealAnalysisModal
         selectedMeal={selectedMeal}
+        mealDetailStatus={mealDetailStatus}
+        mealDetailError={mealDetailError}
+        onRetryMealDetail={retryMealDetail}
         isClosingModal={isClosingModal}
         isEditing={isEditing}
         isSaving={isSaving}
@@ -854,6 +1012,7 @@ const NutritionDashboard = ({
         handleCloseModal={handleCloseModal}
         handleDeleteMeal={handleDeleteMeal}
         user={user}
+        apiBaseUrl={apiBaseUrl}
         timezoneIana={ownerTimezoneIana}
         persistMealItems={persistMealItems}
         setLocalDetailedItems={setLocalDetailedItems}
@@ -865,6 +1024,11 @@ const NutritionDashboard = ({
         <ShakeCalculatorModal
           isOpen={shakeOpen}
           onClose={() => setShakeOpen(false)}
+          onBeforeLog={async (payload) => {
+            const userId = await resolveUserId();
+            if (!userId) return true;
+            return allowHerbalifeShakePost({ userId, analysisResult: payload });
+          }}
           onLog={async (payload) => {
             const userId = await resolveUserId();
             if (!userId) throw new Error('User not authenticated');

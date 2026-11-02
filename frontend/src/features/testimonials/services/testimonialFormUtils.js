@@ -29,11 +29,36 @@ const MIN_WEIGHT_KG = 1;
 const MAX_WEIGHT_KG = 500;
 
 /**
+ * Keep decimal typing intact (e.g. "72." → "72.", "72,5" → "72.5").
+ * Caps at 3 integer digits + 2 decimals to match DB numeric(5,2).
+ */
+export function sanitizeWeightTyping(raw) {
+  let s = String(raw ?? '').replace(',', '.');
+  s = s.replace(/[^\d.]/g, '');
+  const dot = s.indexOf('.');
+  if (dot !== -1) {
+    s = `${s.slice(0, dot + 1)}${s.slice(dot + 1).replace(/\./g, '')}`;
+  }
+  const match = s.match(/^(\d{0,3})(?:\.(\d{0,2}))?/);
+  if (!match) return '';
+  return match[2] !== undefined ? `${match[1]}.${match[2]}` : (match[1] || (s.startsWith('.') ? '.' : ''));
+}
+
+/** Parse a weight field to a positive number, or null when incomplete/invalid. */
+export function parseWeightKg(raw) {
+  const trimmed = String(raw ?? '').trim().replace(',', '.');
+  if (!trimmed || trimmed === '.') return null;
+  const n = parseFloat(trimmed);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
  * Validate a weight field before submit (1–500 kg, no zero/empty).
+ * Accepts decimals (e.g. 72.5) and comma decimals (e.g. 72,5).
  * @returns {string|null} Error message, or null when valid.
  */
 export function validateWeightKg(value, label = 'Weight') {
-  const trimmed = String(value ?? '').trim();
+  const trimmed = String(value ?? '').trim().replace(',', '.');
   if (!trimmed) return `${label} is required`;
   const n = parseFloat(trimmed);
   if (!Number.isFinite(n) || n < MIN_WEIGHT_KG || n > MAX_WEIGHT_KG) {
@@ -64,9 +89,127 @@ export function formatDurationText(durationUnit, durationValue) {
   return `${n} ${unit}`;
 }
 
-/** CSS class for portrait testimonial thumbnails — contain shows full photo without cropping. */
+/** True when durationText matches the API "N days|months" contract. */
+export function isUsableDurationText(durationText) {
+  const parsed = parseDurationText(durationText);
+  return !validateDurationFields(parsed.durationUnit, parsed.durationValue);
+}
+
+/** Stub / unset durations that must not be POSTed (backend rejects "—"). */
+export function isPlaceholderDurationText(durationText) {
+  const trimmed = String(durationText ?? '').trim();
+  if (!trimmed || trimmed === '—' || trimmed === '-') return true;
+  return !isUsableDurationText(trimmed);
+}
+
+/**
+ * Live kg change from the weights on screen (including drafts).
+ * Incomplete seeded cards hide persisted "hasAfter" — drafts must still count.
+ */
+export function liveWeightDiffKg(beforeKg, afterKg) {
+  const before = Number(beforeKg);
+  const after = Number(afterKg);
+  if (!Number.isFinite(before) || !Number.isFinite(after) || before <= 0 || after <= 0) {
+    return null;
+  }
+  if (before === after) return null;
+  return Math.abs(after - before).toFixed(1);
+}
+
+/**
+ * Direction of the on-screen weight change (drafts included).
+ * Must not use goalType — a gain-program member can still lose kg on the card.
+ * @returns {boolean|null} true = loss, false = gain, null = not comparable / unchanged
+ */
+export function isTransformationWeightLoss(beforeKg, afterKg) {
+  const before = Number(beforeKg);
+  const after = Number(afterKg);
+  if (!Number.isFinite(before) || !Number.isFinite(after) || before <= 0 || after <= 0) {
+    return null;
+  }
+  if (before === after) return null;
+  return after < before;
+}
+
+/**
+ * Photo share only after coach approval.
+ * Pending / incomplete / unverified cards must not expose Share.
+ */
+export function canShareTransformationPhoto(testimonial) {
+  if (!testimonial?.beforeImageUrl) return false;
+  if (testimonial.status !== 'verified') return false;
+  if (testimonial.hasPendingOtp || testimonial.otpPending) return false;
+  return true;
+}
+
+const VIDEO_ONLY_SUFFIX = '_video_only_placeholder.jpg';
+
+/**
+ * Profile Left may paint Before on Mine. That display is not a Transformation upload.
+ */
+export function isProfileSeededTransformation(testimonial) {
+  return Boolean(testimonial?.photosFromProfileSeed);
+}
+
+export function isRealTransformationImagePath(path) {
+  return typeof path === 'string' && path.trim().length > 0 && !path.endsWith(VIDEO_ONLY_SUFFIX);
+}
+
+/** A Before file saved on the testimonial row, including when a stale profile flag remains. */
+export function hasStoredTransformationBefore(testimonial) {
+  return isRealTransformationImagePath(
+    testimonial?.beforeImagePath ?? testimonial?.before_image_path,
+  );
+}
+
+/**
+ * After counts only when it is a different file from Before.
+ * The same path, the same URL, or a profile-only paint does not count.
+ */
+export function hasDistinctTransformationAfter(testimonial) {
+  if (!testimonial) return false;
+  if (isProfileSeededTransformation(testimonial) && !hasStoredTransformationBefore(testimonial)) {
+    return false;
+  }
+  const beforePath = testimonial.beforeImagePath ?? testimonial.before_image_path ?? null;
+  const afterPath = testimonial.afterImagePath ?? testimonial.after_image_path ?? null;
+  if (isRealTransformationImagePath(afterPath)) {
+    if (isRealTransformationImagePath(beforePath) && afterPath === beforePath) return false;
+    return true;
+  }
+  if (typeof afterPath === 'string' && afterPath.endsWith(VIDEO_ONLY_SUFFIX)) return false;
+  const afterUrl = testimonial.afterImageUrl;
+  if (!afterUrl) return false;
+  if (testimonial.beforeImageUrl && afterUrl === testimonial.beforeImageUrl) return false;
+  return true;
+}
+
+/**
+ * True when Before is ready for coach approval OTP:
+ * fresh draft bytes, or a real stored Transformation photo (not profile seed).
+ */
+export function hasApprovalReadyBeforePhoto({ testimonial, draftBefore } = {}) {
+  if (draftBefore?.imageBase64) return true;
+  if (hasStoredTransformationBefore(testimonial)) return true;
+  if (isProfileSeededTransformation(testimonial)) return false;
+  return Boolean(testimonial?.id && testimonial?.beforeImageUrl);
+}
+
+/**
+ * Visible Before+After that can start sponsor OTP without re-uploading.
+ * Profile-seeded clones and a Before file reused as After do not count.
+ */
+export function hasStoredTransformationPhotoCard(testimonial) {
+  if (!testimonial?.beforeImageUrl || !hasDistinctTransformationAfter(testimonial)) return false;
+  if (isProfileSeededTransformation(testimonial) && !hasStoredTransformationBefore(testimonial)) {
+    return false;
+  }
+  return true;
+}
+
+/** CSS class for portrait testimonial thumbnails — cover fills the frame; top-anchored so faces stay visible. */
 export const PORTRAIT_IMAGE_CLASS =
-  'w-full aspect-[9/16] object-contain bg-gray-50 rounded-2xl border-2';
+  'w-full aspect-[9/16] object-cover object-top overflow-hidden rounded-2xl border-2';
 
 export const PORTRAIT_IMAGE_CLASS_SM =
-  'w-full aspect-[9/16] object-contain bg-gray-50 rounded-xl border border-gray-200';
+  'w-full aspect-[9/16] object-cover object-top overflow-hidden rounded-xl border border-gray-200';

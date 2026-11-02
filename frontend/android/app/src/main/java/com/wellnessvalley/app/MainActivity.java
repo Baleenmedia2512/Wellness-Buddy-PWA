@@ -21,7 +21,6 @@ import com.wellnessvalley.app.plugins.WhatsAppSharePlugin;
 import androidx.core.splashscreen.SplashScreen;
 
 public class MainActivity extends BridgeActivity {
-    private InAppUpdateManager updateManager;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -40,6 +39,8 @@ public class MainActivity extends BridgeActivity {
         // ✅ Register InAppUpdatePlugin for Play Store updates
         registerPlugin(InAppUpdatePlugin.class);
 
+        registerPlugin(com.wellnessvalley.app.plugins.CashfreeCheckoutPlugin.class);
+
         // ✅ Register WhatsAppSharePlugin for high-quality image sharing
         registerPlugin(WhatsAppSharePlugin.class);
         
@@ -48,24 +49,34 @@ public class MainActivity extends BridgeActivity {
 
         // ✅ Save transformation / share cards into the device photo gallery
         registerPlugin(com.wellnessvalley.app.plugins.SaveToGalleryPlugin.class);
+
+        // OEM-safe BCM address-book insert (OPPO/ColorOS rejects community Contacts plugin)
+        registerPlugin(com.wellnessvalley.app.plugins.BcmContactsPlugin.class);
         
-        // ✅ ANDROID PERFORMANCE: Enable hardware acceleration for faster image rendering
-        getWindow().setFlags(
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
-        );
+        // Android 7 and 8 draw the page with an old Chrome WebView. A hardware
+        // window makes that WebView fail eglChooseConfig and stay white.
+        // Android 9+ keeps hardware acceleration.
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.P) {
+            WebView.enableSlowWholeDocumentDraw();
+            getWindow().setFlags(0, WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
+        }
         
         super.onCreate(savedInstanceState);
+
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.P) {
+            getWindow().setFlags(0, WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
+        }
         
         // ✅ CRITICAL FIX: Ensure splash screen window is completely removed
         // This prevents the splash screen from appearing in text selection overlays
         splashScreen.setKeepOnScreenCondition(() -> false);
         
-        // Enable hardware acceleration for better animation performance
-        getWindow().setFlags(
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
-        );
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            getWindow().setFlags(
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+            );
+        }
         
         // ✅ ANDROID PERFORMANCE: Optimize WebView for fast image operations
         optimizeWebView();
@@ -134,16 +145,20 @@ public class MainActivity extends BridgeActivity {
         // ✅ Background service enabled — will run silently without notifications
         android.util.Log.d("MainActivity", "✅ Background service enabled (silent mode)");
         
-        // ✅ Check for app updates after app is fully initialized
-        checkForAppUpdates();
+        // Mandatory updates are driven by the JS version-policy gate + InAppUpdatePlugin
+        // (server update_required → Play IMMEDIATE). No unconditional native check here.
         
         // Check if app was opened from notification
         handleNotificationIntent(getIntent());
         
         android.util.Log.d("MainActivity", "✅ GalleryMonitorPlugin registered in MainActivity");
         
-        // ✅ Diagnose autofill configuration
-        diagnoseAutofillSetup();
+        // Diagnostic only. A missing autofill method must not stop launch.
+        try {
+            diagnoseAutofillSetup();
+        } catch (Throwable t) {
+            android.util.Log.e("MainActivity", "Autofill diagnostic skipped", t);
+        }
     }
     
     /**
@@ -159,8 +174,9 @@ public class MainActivity extends BridgeActivity {
         android.util.Log.d("MainActivity", "Android SDK: " + android.os.Build.VERSION.SDK_INT + 
             " (" + android.os.Build.VERSION.RELEASE + ")");
         
-        // Check AutofillManager availability (Android 8.0+)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        // AutofillManager.getAutofillServiceComponentName() is Android 9+ (API 28).
+        // Android 7 and 8 skip the autofill framework so startup can finish.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
             android.view.autofill.AutofillManager afm = getSystemService(android.view.autofill.AutofillManager.class);
             if (afm != null) {
                 boolean isEnabled = afm.isEnabled();
@@ -181,8 +197,7 @@ public class MainActivity extends BridgeActivity {
                 android.util.Log.e("MainActivity", "AutofillManager: ❌ NOT AVAILABLE");
             }
         } else {
-            android.util.Log.w("MainActivity", "AutofillManager: ❌ NOT SUPPORTED (Android < 8.0)");
-            android.util.Log.w("MainActivity", "   Fallback: Using deprecated setSaveFormData()");
+            android.util.Log.w("MainActivity", "Autofill skipped (Android < 9). User types the SMS code.");
         }
         
         // Check WebView configuration
@@ -195,7 +210,7 @@ public class MainActivity extends BridgeActivity {
                 android.util.Log.d("MainActivity", "  - Database: " + (settings.getDatabaseEnabled() ? "✅" : "❌"));
                 android.util.Log.d("MainActivity", "  - JavaScript: " + (settings.getJavaScriptEnabled() ? "✅" : "❌"));
                 
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
                     int autofillMode = webView.getImportantForAutofill();
                     String modeStr = autofillMode == View.IMPORTANT_FOR_AUTOFILL_YES ? "✅ YES" :
                                     autofillMode == View.IMPORTANT_FOR_AUTOFILL_NO ? "❌ NO" :
@@ -283,8 +298,13 @@ public class MainActivity extends BridgeActivity {
         try {
             WebView webView = getBridge().getWebView();
             if (webView != null) {
-                // Enable hardware acceleration at view level
-                webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+                // Android 7 and 8 GPUs often leave a permanent white page when
+                // the WebView is forced onto a hardware layer. Android 9+ keeps it.
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+                } else {
+                    webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+                }
                 
                 WebSettings settings = webView.getSettings();
                 
@@ -325,12 +345,16 @@ public class MainActivity extends BridgeActivity {
                 
                 // ✅ CRITICAL FIX: Disable smart text selection that includes images
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    // Disable ALL smart selection features that capture images
-                    webView.getSettings().setDisabledActionModeMenuItems(
-                        WebSettings.MENU_ITEM_PROCESS_TEXT | 
-                        WebSettings.MENU_ITEM_WEB_SEARCH |
-                        WebSettings.MENU_ITEM_SHARE
-                    );
+                    try {
+                        // Disable ALL smart selection features that capture images
+                        webView.getSettings().setDisabledActionModeMenuItems(
+                            WebSettings.MENU_ITEM_PROCESS_TEXT |
+                            WebSettings.MENU_ITEM_WEB_SEARCH |
+                            WebSettings.MENU_ITEM_SHARE
+                        );
+                    } catch (Throwable t) {
+                        android.util.Log.w("MainActivity", "Smart selection menu skipped", t);
+                    }
                 }
                 
                 // ✅ ADDITIONAL FIX: Disable text classifier to prevent image capture in selection
@@ -338,28 +362,45 @@ public class MainActivity extends BridgeActivity {
                     try {
                         // Remove text classifier that includes images in selection context
                         webView.setTextClassifier(android.view.textclassifier.TextClassifier.NO_OP);
-                    } catch (Exception e) {
-                        android.util.Log.w("MainActivity", "Could not disable text classifier", e);
+                    } catch (Throwable t) {
+                        android.util.Log.w("MainActivity", "Could not disable text classifier", t);
                     }
                 }
+
+                // Swallow long-press on dashboard text so Android does not show
+                // Copy / Select all. Leave input fields alone so OTP/email paste works.
+                webView.setOnLongClickListener(v -> {
+                    try {
+                        WebView.HitTestResult result = webView.getHitTestResult();
+                        if (result != null
+                                && result.getType() == WebView.HitTestResult.EDIT_TEXT_TYPE) {
+                            return false;
+                        }
+                    } catch (Exception e) {
+                        android.util.Log.w("MainActivity", "Long-click hit test failed", e);
+                    }
+                    return true;
+                });
                 
                 // ═══════════════════════════════════════════════════════════════
                 // COMPLETE AUTOFILL CONFIGURATION FOR WEBVIEW
                 // ═══════════════════════════════════════════════════════════════
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
                     try {
-                        // Step 1: Enable autofill on the WebView
+                        // Android 9+: message autofill is available.
                         webView.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_YES);
                         
-                        // Step 2: Check AutofillManager status
                         android.view.autofill.AutofillManager afm = getSystemService(android.view.autofill.AutofillManager.class);
                         if (afm != null) {
                             boolean isEnabled = afm.isEnabled();
                             boolean hasService = afm.hasEnabledAutofillServices();
+                            String serviceName = hasService
+                                ? ", service=" + afm.getAutofillServiceComponentName()
+                                : "";
                             android.util.Log.d("MainActivity", 
                                 "Autofill Status: enabled=" + isEnabled + 
                                 ", hasService=" + hasService +
-                                (hasService ? ", service=" + afm.getAutofillServiceComponentName() : ""));
+                                serviceName);
                             
                             if (!isEnabled) {
                                 android.util.Log.w("MainActivity", 
@@ -367,16 +408,17 @@ public class MainActivity extends BridgeActivity {
                             }
                         }
                         
-                        // Step 3: Enable form data storage for older Android versions
-                        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) {
-                            settings.setSaveFormData(true);
-                            android.util.Log.d("MainActivity", "✅ Form data saving enabled (Android < 8)");
-                        }
-                        
                         android.util.Log.d("MainActivity", "✅ WebView autofill enabled for keyboard suggestions");
-                    } catch (Exception e) {
-                        android.util.Log.e("MainActivity", "❌ Could not enable autofill", e);
+                    } catch (Throwable t) {
+                        android.util.Log.e("MainActivity", "❌ Could not enable autofill", t);
                     }
+                } else {
+                    try {
+                        settings.setSaveFormData(true);
+                    } catch (Throwable t) {
+                        android.util.Log.w("MainActivity", "Form data save skipped", t);
+                    }
+                    android.util.Log.d("MainActivity", "Autofill skipped on Android < 9. OTP is typed by hand.");
                 }
                 
                 // ═══════════════════════════════════════════════════════════════
@@ -393,8 +435,8 @@ public class MainActivity extends BridgeActivity {
                 
                 android.util.Log.d("MainActivity", "✅ WebView optimized: images, text selection, autofill, storage");
             }
-        } catch (Exception e) {
-            android.util.Log.e("MainActivity", "Failed to optimize WebView", e);
+        } catch (Throwable t) {
+            android.util.Log.e("MainActivity", "Failed to optimize WebView", t);
         }
     }
 
@@ -422,87 +464,6 @@ public class MainActivity extends BridgeActivity {
                 };
             }
             requestPermissions(permissions, 1001);
-        }
-    }
-    
-    /**
-     * ✅ IN-APP UPDATES: Check for app updates on launch
-     */
-    private void checkForAppUpdates() {
-        // Delay update check to not interfere with app initialization
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-            try {
-                updateManager = new InAppUpdateManager(this);
-                updateManager.setUpdateListener(new InAppUpdateManager.UpdateListener() {
-                    @Override
-                    public void onUpdateAvailable(int updateType, int availableVersionCode) {
-                        android.util.Log.d("MainActivity", "✅ Update available: " + availableVersionCode);
-                    }
-                    
-                    @Override
-                    public void onUpdateNotAvailable() {
-                        android.util.Log.d("MainActivity", "✅ App is up to date");
-                    }
-                    
-                    @Override
-                    public void onUpdateDownloading(long bytesDownloaded, long totalBytes) {
-                        int progress = totalBytes > 0 ? (int) ((bytesDownloaded * 100) / totalBytes) : 0;
-                        android.util.Log.d("MainActivity", "⬇️ Downloading update: " + progress + "%");
-                    }
-                    
-                    @Override
-                    public void onUpdateDownloaded() {
-                        android.util.Log.d("MainActivity", "✅ Update downloaded, ready to install");
-                    }
-                    
-                    @Override
-                    public void onUpdateInstalling() {
-                        android.util.Log.d("MainActivity", "⚙️ Installing update...");
-                    }
-                    
-                    @Override
-                    public void onUpdateInstalled() {
-                        android.util.Log.d("MainActivity", "✅ Update installed successfully");
-                    }
-                    
-                    @Override
-                    public void onUpdateFailed(int errorCode, String message) {
-                        android.util.Log.e("MainActivity", "❌ Update failed: " + message);
-                    }
-                    
-                    @Override
-                    public void onUpdateCanceled() {
-                        android.util.Log.w("MainActivity", "⚠️ Update canceled by user");
-                    }
-                });
-                
-                updateManager.checkForUpdate();
-                android.util.Log.d("MainActivity", "✅ Update check initiated");
-            } catch (Exception e) {
-                android.util.Log.e("MainActivity", "Failed to check for updates", e);
-            }
-        }, 2000); // 2 second delay
-    }
-    
-    /**
-     * ✅ IN-APP UPDATES: Handle onResume for immediate updates
-     */
-    @Override
-    public void onResume() {
-        super.onResume();
-        if (updateManager != null) {
-            updateManager.onResume();
-        }
-    }
-    
-    /**
-     * ✅ IN-APP UPDATES: Handle activity result
-     */
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (updateManager != null) {
-            updateManager.handleActivityResult(requestCode, resultCode);
         }
     }
 

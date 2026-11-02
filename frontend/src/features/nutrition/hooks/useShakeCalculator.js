@@ -1,17 +1,17 @@
 /**
  * frontend/src/features/nutrition/hooks/useShakeCalculator.js
  *
- * Shake Calculator state. Nutrition uses the same canonical Herbalife Shake
- * profile as the AI path (herbalifeShakeProfile.js), scaled by powder grams
- * from scoop counts — not the old incorrect per-scoop macros.
+ * Shake Calculator state. A mix of Formula 1 with Shakemate or Personalized
+ * Protein uses the canonical Herbalife Shake profile. Formula 1 alone,
+ * Shakemate alone, and Personalized Protein alone use their canister labels
+ * (resolveLoggedShakeItem).
  */
 
 import { useCallback, useMemo, useState } from 'react';
 import { SHAKE_PRODUCTS, SHAKE_PRODUCT_IDS } from '../domain/shakeProductProfiles';
 import {
-  HERBALIFE_SHAKE_NAME,
   powderGramsFromServings,
-  scaleHerbalifeShakeNutrition,
+  resolveLoggedShakeItem,
 } from '../domain/herbalifeShakeProfile';
 
 function buildDefaultServings() {
@@ -54,13 +54,13 @@ export function useShakeCalculator() {
   }, []);
 
   const powderGrams = useMemo(
-    () => powderGramsFromServings(servings, SHAKE_PRODUCTS),
+    () => powderGramsFromServings(servings, SHAKE_PRODUCTS, { includeAdditive: true }),
     [servings],
   );
 
   const shakeItem = useMemo(
-    () => (powderGrams > 0 ? scaleHerbalifeShakeNutrition(powderGrams) : null),
-    [powderGrams],
+    () => resolveLoggedShakeItem(servings, SHAKE_PRODUCTS),
+    [servings],
   );
 
   const totals = useMemo(() => {
@@ -85,19 +85,28 @@ export function useShakeCalculator() {
         detailedItems: [],
         confidence: 'high',
         processedBy: 'shake_calculator',
+        source: 'manual',
       };
     }
     const n = shakeItem.nutrition;
+    const shakeProducts = {
+      formula1: Number(servings.formula1) || 0,
+      shakemate: Number(servings.shakemate) || 0,
+      protein: Number(servings.protein) || 0,
+      activeFibre: Number(servings.activeFibre) || 0,
+    };
     return {
       nutrition: { ...n },
+      shakeProducts,
       detailedItems: [{
-        name: HERBALIFE_SHAKE_NAME,
+        name: shakeItem.name,
         portionDescription: shakeItem.portion,
         weight_g: shakeItem.weight_g,
         volume_ml: shakeItem.volume_ml,
         estimatedWeight: shakeItem.weight_g,
         unit: shakeItem.unit,
-        isLiquid: true,
+        isLiquid: shakeItem.isLiquid === true,
+        shakeProducts,
         calories: n.calories,
         protein: n.protein,
         carbs: n.carbs,
@@ -111,8 +120,9 @@ export function useShakeCalculator() {
       }],
       confidence: 'high',
       processedBy: 'shake_calculator',
+      source: 'manual',
     };
-  }, [shakeItem, totals]);
+  }, [shakeItem, servings, totals]);
 
   return {
     servings,

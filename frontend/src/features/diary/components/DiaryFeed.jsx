@@ -26,10 +26,11 @@
 import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { useDiary } from '../hooks/useDiary';
+import { useDiaryWeightPreviousMap } from '../hooks/useDiaryWeightPreviousMap';
 import ROWS_BY_KIND, { OtherRow } from './rows';
 import DiaryUndoRow, { DIARY_UNDO_SECONDS } from './DiaryUndoRow';
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
-import { formatBusinessTime, todayBusinessDate } from '../../../shared/utils/datetimeUtils';
+import { formatBusinessTime, formatOwnerDayLabel } from '../../../shared/utils/datetimeUtils';
 import { resolveDiaryTimezone } from '../utils/diaryTimezone';
 import { isStalePendingAnalysis, filterPendingCaptureMetaForOwner } from '../utils/stalePending';
 import { getProfile } from '../../user/services/user.api';
@@ -133,30 +134,7 @@ function formatTimelineTime(iso, timezoneIana) {
  * `dateStr` is `YYYY-MM-DD` business calendar date from the API.
  */
 function formatTimelineDate(dateStr, timezoneIana) {
-  if (!dateStr) return '';
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const target = new Date(y, m - 1, d);
-  const todayYmd = todayBusinessDate(timezoneIana);
-  const [ty, tm, td] = todayYmd.split('-').map(Number);
-  const today = new Date(ty, tm - 1, td);
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-
-  const isToday =
-    target.getFullYear() === today.getFullYear() &&
-    target.getMonth() === today.getMonth() &&
-    target.getDate() === today.getDate();
-  const isYesterday =
-    target.getFullYear() === yesterday.getFullYear() &&
-    target.getMonth() === yesterday.getMonth() &&
-    target.getDate() === yesterday.getDate();
-
-  const long = target.toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  });
-  if (isToday)     return `Today \u00b7 ${long}`;
-  if (isYesterday) return `Yesterday \u00b7 ${long}`;
-  return long;
+  return formatOwnerDayLabel(dateStr, timezoneIana);
 }
 
 /**
@@ -290,6 +268,7 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
  * @param {Object} props
  * @param {string} props.ownerUserId   the diary subject
  * @param {string} props.viewerUserId  the authenticated session user
+ * @param {object|null} [props.shareUser] session user for WhatsApp brand line
  * @param {Date|string} props.date     selected calendar day
  * @param {object|null} [props.timezoneSource] Owner user for business-calendar TZ (matches backend owner TZ)
  * @param {number} [props.refreshKey]  bump from parent to trigger background re-fetch without unmounting
@@ -320,6 +299,7 @@ function FeedEmpty({ date, isSelf, filterKinds }) {
 export default function DiaryFeed({
   ownerUserId,
   viewerUserId,
+  shareUser = null,
   date,
   timezoneSource = null,
   refreshKey: externalRefreshKey = 0,
@@ -336,6 +316,8 @@ export default function DiaryFeed({
   analyzingCaptureIds = null,
   pendingCaptureMeta = null,
   onOwnerTimezoneChange = null,
+  /** Called when diary entries load — used for background meal detail prefetch. */
+  onFoodEntriesLoaded = null,
 }) {
   const pendingUndoList = useMemo(() => {
     if (Array.isArray(pendingUndos)) return pendingUndos.filter((u) => u?.entryId != null);
@@ -371,7 +353,7 @@ export default function DiaryFeed({
     }
 
     let cancelled = false;
-    getProfile(email, { cacheBust: true })
+    getProfile(email)
       .then((res) => {
         if (cancelled) return;
         const tz = res?.data?.timezone || res?.data?.timezoneIana || null;
@@ -384,9 +366,18 @@ export default function DiaryFeed({
     return () => { cancelled = true; };
   }, [timezoneSource?.email, timezoneSource?.Email, ownerUserId, viewerUserId]);
 
-  const { loading, error, data, refresh } = useDiary({
+  const {
+    loading,
+    loadingMore,
+    error,
+    data,
+    hasMore,
+    loadMoreSentinelRef,
+    refresh,
+  } = useDiary({
     ownerUserId,
     viewerUserId,
+    viewerEmail: shareUser?.email || shareUser?.Email || null,
     date,
     timezoneSource: profileOwnerTimezone || fallbackTimezoneIana,
     refreshKey: externalRefreshKey,
@@ -402,11 +393,30 @@ export default function DiaryFeed({
     }
   }, [ownerTimezoneIana, onOwnerTimezoneChange]);
 
+  useEffect(() => {
+    if (loading || !data?.entries || typeof onFoodEntriesLoaded !== 'function') return;
+    onFoodEntriesLoaded(data.entries);
+  }, [loading, data?.entries, onFoodEntriesLoaded]);
+
   /** In-flight captures scoped to this diary owner (coach uploads must not leak). */
   const scopedPendingCaptureMeta = useMemo(
     () => filterPendingCaptureMetaForOwner(pendingCaptureMeta, ownerUserId, viewerUserId),
     [pendingCaptureMeta, ownerUserId, viewerUserId],
   );
+
+  const hasWeightEntries = useMemo(
+    () => (data?.entries || []).some(
+      (e) => e?.kind === 'weight' && !e.isUndoPlaceholder && e.payload?.id != null,
+    ),
+    [data?.entries],
+  );
+
+  const previousWeightById = useDiaryWeightPreviousMap({
+    ownerUserId,
+    viewerUserId,
+    refreshKey: externalRefreshKey,
+    enabled: hasWeightEntries,
+  });
 
   // Pre-bind onClick and onDelete once per entry kind to keep child renders cheap.
   // The mapping itself is identity-stable (frozen module-level object).
@@ -465,6 +475,9 @@ export default function DiaryFeed({
       const captureMeta = (isAnalyzing || isBackgroundPending) && captureIdStr !== ''
         ? (scopedPendingCaptureMeta?.get(captureIdStr) ?? null)
         : null;
+      const weightId = entry.kind === 'weight' && entry.payload?.id != null
+        ? String(entry.payload.id)
+        : null;
       return (
         <Row
           key={`${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`}
@@ -474,6 +487,12 @@ export default function DiaryFeed({
           canDelete={canDelete}
           hideTime={hideTime}
           timezoneIana={ownerTimezoneIana}
+          ownerUserId={ownerUserId}
+          viewerUserId={viewerUserId}
+          shareUser={shareUser}
+          {...(entry.kind === 'weight'
+            ? { previousWeight: weightId ? (previousWeightById.get(weightId) ?? null) : null }
+            : {})}
           {...(entry.kind === 'unknown'
             ? {
                 isAnalyzing,
@@ -493,8 +512,12 @@ export default function DiaryFeed({
       analyzingCaptureIds,
       scopedPendingCaptureMeta,
       ownerTimezoneIana,
+      previousWeightById,
       handleUndoRestore,
       handleUndoExpire,
+      ownerUserId,
+      viewerUserId,
+      shareUser,
     ],
   );
 
@@ -616,12 +639,31 @@ export default function DiaryFeed({
                   ? `undo-${entry.undo?.kind}-${entry.undo?.entryId}`
                   : `${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`
               }
-              isLast={idx === visibleEntries.length - 1}
+              isLast={idx === visibleEntries.length - 1 && !hasMore}
             >
               {renderRow(entry)}
             </TimelineEntryWrapper>
           ))}
         </div>
+
+        <div ref={loadMoreSentinelRef} className="h-4" aria-hidden="true" />
+        {loadingMore && (
+          <div className="flex justify-center py-3" data-testid="diary-loading-more">
+            <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" aria-label="Loading more" />
+          </div>
+        )}
+        {error && data && (
+          <div className="px-2 py-3 text-center">
+            <p className="text-xs text-red-600 mb-2">{error.message || 'Failed to load more'}</p>
+            <button
+              type="button"
+              onClick={refresh}
+              className="text-xs font-semibold text-emerald-700"
+            >
+              Retry
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -632,6 +674,24 @@ export default function DiaryFeed({
       <div className="space-y-3">
         {visibleEntries.map(renderRow)}
       </div>
+      <div ref={loadMoreSentinelRef} className="h-4" aria-hidden="true" />
+      {loadingMore && (
+        <div className="flex justify-center py-3" data-testid="diary-loading-more">
+          <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" aria-label="Loading more" />
+        </div>
+      )}
+      {error && data && (
+        <div className="px-2 py-3 text-center">
+          <p className="text-xs text-red-600 mb-2">{error.message || 'Failed to load more'}</p>
+          <button
+            type="button"
+            onClick={refresh}
+            className="text-xs font-semibold text-emerald-700"
+          >
+            Retry
+          </button>
+        </div>
+      )}
     </div>
   );
 }

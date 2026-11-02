@@ -1,9 +1,11 @@
 /**
- * Wellness Score — 34 individual parameters (admin-configurable max points each).
+ * Wellness Score — 35 individual parameters (admin-configurable max points each).
  *
  * scoringMode:
- *   binary       — on-time log → full; late/missed → 0
- *   progress     — moved toward goal → full; no progress → 0 (weight improvement)
+ *   binary       — logged as required → full; missed → 0
+ *                  (meal/weight/edu use a time window; good_habit_post is any time today)
+ *   progress     — moved toward goal → full; no progress → 0 (weight improvement);
+ *                  maintain / maintenance goal mode → full points
  *   proportional — consumed / target × maxPoints (cap at max); used for protein, fiber, vitamins, minerals
  *   limit        — loss: full points within limit, exceeding → 0; gain: proportional up to limit
  *                   GI loss: low/medium → full, high → 0; GI gain: average ≤ limit → full
@@ -29,6 +31,7 @@ export const WELLNESS_PARAMETERS = Object.freeze([
   { key: 'breakfast_post', label: 'Breakfast Post', section: 'logging', scoringMode: 'binary', defaultMaxPoints: 100 },
   { key: 'lunch_post', label: 'Lunch Post', section: 'logging', scoringMode: 'binary', defaultMaxPoints: 100 },
   { key: 'dinner_post', label: 'Dinner Post', section: 'logging', scoringMode: 'binary', defaultMaxPoints: 100 },
+  { key: 'good_habit_post', label: 'Today Task Given by Coach', section: 'logging', scoringMode: 'binary', defaultMaxPoints: 100 },
 
   { key: 'calories', label: 'Calories', section: 'nutrition', scoringMode: 'limit', dailyStatsKey: 'totalCalories', defaultMaxPoints: 100 },
   { key: 'carbohydrates', label: 'Carbohydrates', section: 'nutrition', scoringMode: 'limit', dailyStatsKey: 'totalCarbs', defaultMaxPoints: 100 },

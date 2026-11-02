@@ -1,0 +1,68 @@
+/**
+ * Run: node --test frontend/src/features/reports/utils/__tests__/reportsDashboardTabs.test.js
+ */
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  REPORT_DASHBOARD_TABS,
+  getReportsDashboardTitle,
+  resolveReportsDashboardTab,
+} from '../reportsDashboardTabs.js';
+
+describe('resolveReportsDashboardTab', () => {
+  it('defaults to Ideal Weight', () => {
+    assert.equal(
+      resolveReportsDashboardTab(undefined, true),
+      REPORT_DASHBOARD_TABS.IDEAL_WEIGHT,
+    );
+    assert.equal(
+      resolveReportsDashboardTab(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT, true),
+      REPORT_DASHBOARD_TABS.IDEAL_WEIGHT,
+    );
+  });
+
+  it('opens Wellness Score when requested and flag-enabled', () => {
+    assert.equal(
+      resolveReportsDashboardTab(REPORT_DASHBOARD_TABS.WELLNESS_SCORE, true),
+      REPORT_DASHBOARD_TABS.WELLNESS_SCORE,
+    );
+  });
+
+  it('falls back to Ideal Weight when WS flag is off', () => {
+    assert.equal(
+      resolveReportsDashboardTab(REPORT_DASHBOARD_TABS.WELLNESS_SCORE, false),
+      REPORT_DASHBOARD_TABS.IDEAL_WEIGHT,
+    );
+  });
+
+  it('titles the page after the active tab', () => {
+    assert.equal(
+      getReportsDashboardTitle(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT),
+      'Ideal Weight',
+    );
+    assert.equal(
+      getReportsDashboardTitle(REPORT_DASHBOARD_TABS.WELLNESS_SCORE),
+      'Wellness Score',
+    );
+    assert.equal(
+      getReportsDashboardTitle(REPORT_DASHBOARD_TABS.NUTRITION),
+      'Nutrition',
+    );
+    assert.equal(
+      getReportsDashboardTitle(REPORT_DASHBOARD_TABS.TREND),
+      'Trend',
+    );
+    assert.equal(getReportsDashboardTitle('unknown'), 'Ideal Weight');
+  });
+
+  it('opens Nutrition and Trend when requested', () => {
+    assert.equal(
+      resolveReportsDashboardTab(REPORT_DASHBOARD_TABS.NUTRITION, true),
+      REPORT_DASHBOARD_TABS.NUTRITION,
+    );
+    assert.equal(
+      resolveReportsDashboardTab(REPORT_DASHBOARD_TABS.TREND, false),
+      REPORT_DASHBOARD_TABS.TREND,
+    );
+  });
+});

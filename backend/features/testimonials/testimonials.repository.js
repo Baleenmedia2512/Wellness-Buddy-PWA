@@ -1,10 +1,17 @@
 /**
- * testimonials.repository.js — Data layer for testimonials_table + Supabase Storage.
+ * testimonials.repository.js — Data layer for testimonials_table + MySQL Storage.
  * The ONLY place in this feature that talks to the database or storage.
  */
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import logger from '../../shared/lib/logger.js';
+import {
+  memberHasVisibleTransformationPhoto,
+  seedTestimonialFromProfilePhotos,
+} from './domain/profileTransformationPhotos.seed.js';
+import { resolveCoCoachPartnerId } from './domain/otpRecipient.rules.js';
+import { isRealImagePath } from './domain/testimonials-list.pagination.js';
+import { isActiveTeamStatus } from '../../utils/teamHierarchyBuilder.js';
 
 const TABLE = 'testimonials_table';
 const BUCKET = 'testimonials';
@@ -20,22 +27,32 @@ export function isVideoOnlyPlaceholder(path) {
 const SIGNED_URL_EXPIRY_SECONDS = 1800;       // 30 min — in-app display
 const EMAIL_SIGNED_URL_EXPIRY_SECONDS = 604800; // 7 days — coach email
 
+/** Stable path for the Transformation share card embedded in coach OTP emails. */
+export function shareCardStoragePath(userId) {
+  return `${userId}/share_card.jpg`;
+}
+
+/** Previous share card kept one generation back for Previous | New email compare. */
+export function previousShareCardStoragePath(userId) {
+  return `${userId}/share_card_prev.jpg`;
+}
+
 // ─── Storage helpers ──────────────────────────────────────────────────────────
 
 /**
- * Upload a base64-encoded image to the testimonials Supabase Storage bucket.
+ * Upload a base64-encoded image to the testimonials MySQL Storage bucket.
  * @param {string} base64 - raw base64 string (no data URI prefix)
  * @param {string} path   - storage object path, e.g. "42/before_1720000000000.jpg"
  * @returns {string} path stored
  */
 export async function uploadImage(base64, path) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
 
   // Strip data-URI prefix if present (e.g. "data:image/jpeg;base64,...")
   const cleaned = base64.replace(/^data:[^;]+;base64,/, '');
   const buffer = Buffer.from(cleaned, 'base64');
 
-  const { error } = await supabase.storage
+  const { error } = await db.storage
     .from(BUCKET)
     .upload(path, buffer, { contentType: 'image/jpeg', upsert: true });
 
@@ -47,7 +64,7 @@ export async function uploadImage(base64, path) {
 }
 
 /**
- * Upload a base64-encoded video to the testimonials Supabase Storage bucket.
+ * Upload a base64-encoded video to the testimonials MySQL Storage bucket.
  * Supports mp4 / mov / quicktime — content-type is set based on the data-URI prefix
  * or defaults to video/mp4.
  * @param {string} base64 - raw base64 string (with or without data-URI prefix)
@@ -55,7 +72,7 @@ export async function uploadImage(base64, path) {
  * @returns {string} path stored
  */
 export async function uploadVideo(base64, path) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
 
   // Detect MIME type from data-URI prefix, fallback to video/mp4
   const mimeMatch = base64.match(/^data:([^;]+);base64,/);
@@ -64,7 +81,7 @@ export async function uploadVideo(base64, path) {
   const cleaned = base64.replace(/^data:[^;]+;base64,/, '');
   const buffer  = Buffer.from(cleaned, 'base64');
 
-  const { error } = await supabase.storage
+  const { error } = await db.storage
     .from(BUCKET)
     .upload(path, buffer, { contentType: mimeType, upsert: true });
 
@@ -81,8 +98,8 @@ export async function uploadVideo(base64, path) {
  * @returns {Promise<{ path: string, token: string, signedUrl: string }>}
  */
 export async function createSignedUploadUrl(path) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.storage
+  const db = getMysqlClient();
+  const { data, error } = await db.storage
     .from(BUCKET)
     .createSignedUploadUrl(path, { upsert: true });
 
@@ -91,6 +108,53 @@ export async function createSignedUploadUrl(path) {
     throw error;
   }
   return data;
+}
+
+/**
+ * Save baseline snapshot for a member undergoing edit approval.
+ */
+export async function saveBaselineSnapshot(userId, snapshot) {
+  if (!userId || !snapshot) return;
+  try {
+    const db = getMysqlClient();
+    const buffer = Buffer.from(JSON.stringify(snapshot));
+    await db.storage
+      .from(BUCKET)
+      .upload(`${userId}/baseline_snapshot.json`, buffer, { contentType: 'application/json', upsert: true });
+  } catch (err) {
+    logger.warn('[testimonials.repo] saveBaselineSnapshot failed', { userId, error: err?.message });
+  }
+}
+
+/**
+ * Retrieve baseline snapshot for reverting pending edits.
+ */
+export async function getBaselineSnapshot(userId) {
+  if (!userId) return null;
+  try {
+    const db = getMysqlClient();
+    const { data, error } = await db.storage
+      .from(BUCKET)
+      .download(`${userId}/baseline_snapshot.json`);
+    if (error || !data) return null;
+    const text = await data.text();
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Clear baseline snapshot after verification or cancellation.
+ */
+export async function clearBaselineSnapshot(userId) {
+  if (!userId) return;
+  try {
+    const db = getMysqlClient();
+    await db.storage
+      .from(BUCKET)
+      .remove([`${userId}/baseline_snapshot.json`]);
+  } catch {}
 }
 
 /**
@@ -104,8 +168,8 @@ export async function objectExists(path) {
   const folder = slash >= 0 ? path.slice(0, slash) : '';
   const filename = slash >= 0 ? path.slice(slash + 1) : path;
 
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.storage
+  const db = getMysqlClient();
+  const { data, error } = await db.storage
     .from(BUCKET)
     .list(folder, { search: filename, limit: 1 });
 
@@ -133,11 +197,17 @@ function throwStorageError(operation, path, error) {
  * @param {string} [contentType='video/mp4']
  */
 export async function uploadBuffer(path, buffer, contentType = 'video/mp4') {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const body = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-  const { error } = await supabase.storage
+  const isImage = String(contentType || '').startsWith('image/');
+  const { error } = await db.storage
     .from(BUCKET)
-    .upload(path, body, { contentType, upsert: true });
+    .upload(path, body, {
+      contentType,
+      upsert: true,
+      // Share-card JPEGs reuse one path. A cached object kept the previous card in coach mail.
+      ...(isImage ? { cacheControl: '0' } : {}),
+    });
 
   if (error) throwStorageError('upload', path, error);
   return path;
@@ -150,11 +220,11 @@ export async function uploadBuffer(path, buffer, contentType = 'video/mp4') {
  * @returns {Promise<Buffer>}
  */
 export async function downloadBuffer(path, { retries = 3 } = {}) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   let lastError;
 
   for (let attempt = 0; attempt < retries; attempt++) {
-    const { data, error } = await supabase.storage.from(BUCKET).download(path);
+    const { data, error } = await db.storage.from(BUCKET).download(path);
     if (!error && data) {
       return Buffer.from(await data.arrayBuffer());
     }
@@ -173,8 +243,8 @@ export async function downloadBuffer(path, { retries = 3 } = {}) {
  */
 export async function removePaths(paths) {
   if (!paths?.length) return;
-  const supabase = getSupabaseClient();
-  const { error } = await supabase.storage.from(BUCKET).remove(paths);
+  const db = getMysqlClient();
+  const { error } = await db.storage.from(BUCKET).remove(paths);
   if (error) {
     logger.warn('[testimonials.repo] Failed to remove storage paths', { paths, error });
   }
@@ -187,8 +257,8 @@ export async function removePaths(paths) {
  */
 export async function getSignedUrl(path) {
   if (!path) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.storage
+  const db = getMysqlClient();
+  const { data, error } = await db.storage
     .from(BUCKET)
     .createSignedUrl(path, SIGNED_URL_EXPIRY_SECONDS);
   if (error) {
@@ -205,8 +275,8 @@ export async function getSignedUrl(path) {
  */
 export async function getEmailSignedUrl(path) {
   if (!path) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase.storage
+  const db = getMysqlClient();
+  const { data, error } = await db.storage
     .from(BUCKET)
     .createSignedUrl(path, EMAIL_SIGNED_URL_EXPIRY_SECONDS);
   if (error) {
@@ -224,8 +294,8 @@ export async function getEmailSignedUrl(path) {
  * @returns {object|null}
  */
 export async function findByUserId(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .select('*')
     .eq('user_id', userId)
@@ -242,8 +312,8 @@ export async function findByUserId(userId) {
  * @returns {object|null}
  */
 export async function findById(id) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .select('*')
     .eq('id', id)
@@ -259,9 +329,9 @@ export async function findById(id) {
  * @returns {object} inserted row
  */
 export async function insertTestimonial(payload) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const now = nowUtc();
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .insert({
       user_id:                  payload.userId,
@@ -313,7 +383,7 @@ export async function insertVideoOnlyTestimonial({ userId, coachId }) {
  * @returns {object} updated row
  */
 export async function updateTestimonial(id, payload) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const updates = { updated_at: nowUtc() };
   if (payload.beforeImagePath       !== undefined) updates.before_image_path        = payload.beforeImagePath;
   if (payload.afterImagePath         !== undefined) updates.after_image_path         = payload.afterImagePath;
@@ -327,7 +397,7 @@ export async function updateTestimonial(id, payload) {
   if (payload.verifiedAt             !== undefined) updates.verified_at              = payload.verifiedAt;
   if (payload.recoveredHealthIssues  !== undefined) updates.recovered_health_issues  = payload.recoveredHealthIssues;
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .update(updates)
     .eq('id', id)
@@ -345,7 +415,7 @@ export async function updateTestimonial(id, payload) {
  * @returns {object} updated row
  */
 export async function updateTestimonialVideos(id, payload) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const updates  = { updated_at: nowUtc() };
   if (payload.healthVideoPath    !== undefined) updates.health_video_path      = payload.healthVideoPath;
   if (payload.businessVideoPath  !== undefined) updates.business_video_path    = payload.businessVideoPath;
@@ -354,7 +424,7 @@ export async function updateTestimonialVideos(id, payload) {
   if (payload.videoOtpExpiresAt  !== undefined) updates.video_otp_expires_at   = payload.videoOtpExpiresAt;
   if (payload.videoVerifiedAt    !== undefined) updates.video_verified_at      = payload.videoVerifiedAt;
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .update(updates)
     .eq('id', id)
@@ -374,24 +444,52 @@ export async function updateTestimonialVideos(id, payload) {
  * @param {'direct'|'full'} [scope='direct']
  * @returns {Array<{ user: object, testimonial: object|null }>}
  */
+/**
+ * List reporting members + latest testimonial rows (narrow columns — no SELECT *).
+ * Does NOT sign URLs — caller paginates then signs only the page.
+ *
+ * @param {number} coachId
+ * @param {'direct'|'full'} [scope='direct']
+ * @returns {Promise<Array<{ user: object, testimonial: object|null }>>}
+ */
 export async function listForCoach(coachId, scope = 'direct') {
-  const members = await fetchReportingTeamMembers(coachId, scope);
+  const resolvedContext = await loadTeamReportingContext(coachId);
+  const members = await fetchReportingTeamMembers(coachId, scope, resolvedContext);
 
   if (!members || members.length === 0) return [];
 
   const memberIds = members.map((m) => m.UserId);
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
 
-  // 2. Fetch testimonials for those members (non-deleted, most recent per user)
-  const { data: testimonials, error: testErr } = await supabase
+  // Narrow select — never pull otp_hash / unused columns into list payloads.
+  const LIST_COLUMNS = [
+    'id',
+    'user_id',
+    'before_image_path',
+    'after_image_path',
+    'before_weight_kg',
+    'after_weight_kg',
+    'goal_type',
+    'duration_text',
+    'status',
+    'verified_at',
+    'created_at',
+    'updated_at',
+    'health_video_path',
+    'business_video_path',
+    'video_status',
+    'video_verified_at',
+    'recovered_health_issues',
+  ].join(', ');
+
+  const { data: testimonials, error: testErr } = await db
     .from(TABLE)
-    .select('*')
+    .select(LIST_COLUMNS)
     .in('user_id', memberIds)
     .eq('is_deleted', false)
     .order('id', { ascending: false });
   if (testErr) throw testErr;
 
-  // 3. Build a map: userId → latest testimonial
   const testimonialMap = {};
   for (const t of (testimonials || [])) {
     if (!testimonialMap[t.user_id]) {
@@ -399,10 +497,81 @@ export async function listForCoach(coachId, scope = 'direct') {
     }
   }
 
-  return members.map((m) => ({
+  // Coaches may view downline health issues but never edit them on Transformation.
+  const rows = members.map((m) => ({
     user:        m,
     testimonial: testimonialMap[m.UserId] ?? null,
+    canEditHealthIssues: false,
   }));
+
+  if (scope === 'full') {
+    await mergeProfileTransformationPhotosIntoRows(rows);
+  }
+
+  return rows;
+}
+
+/**
+ * Fetch transformation_photos JSONB for user ids (profile left-slot seeding).
+ * @param {number[]} userIds
+ * @returns {Promise<Map<number, unknown>>}
+ */
+export async function fetchTransformationPhotosByUserIds(userIds) {
+  const ids = [...new Set((userIds || []).map((id) => Number(id)).filter(Number.isFinite))];
+  if (!ids.length) return new Map();
+
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from('team_table')
+    .select('"UserId", transformation_photos')
+    .in('UserId', ids);
+  if (error) throw error;
+
+  const map = new Map();
+  for (const row of (data || [])) {
+    map.set(Number(row.UserId), row.transformation_photos ?? null);
+  }
+  return map;
+}
+
+/**
+ * Build a synthetic testimonial row from profile transformation_photos when no DB row exists.
+ * @param {number} userId
+ * @returns {Promise<object|null>}
+ */
+export async function buildTestimonialFromProfilePhotos(userId) {
+  const photoMap = await fetchTransformationPhotosByUserIds([userId]);
+  const raw = photoMap.get(Number(userId));
+  return seedTestimonialFromProfilePhotos(null, raw);
+}
+
+function rowNeedsProfilePhotoSeed(row) {
+  const t = row?.testimonial;
+  if (!t) return true;
+  if (isVideoOnlyPlaceholder(t.before_image_path)) {
+    return !t.health_video_path && !t.business_video_path;
+  }
+  return !isRealImagePath(t.before_image_path);
+}
+
+/**
+ * Full Team: seed missing before/after from profile transformation_photos (left slot).
+ * @param {Array<{ user: object, testimonial: object|null }>} rows
+ */
+async function mergeProfileTransformationPhotosIntoRows(rows) {
+  const needsSeed = (rows || []).filter(rowNeedsProfilePhotoSeed);
+  if (!needsSeed.length) return;
+
+  const ids = needsSeed.map((row) => row.user.UserId);
+  const photoMap = await fetchTransformationPhotosByUserIds(ids);
+
+  for (const row of needsSeed) {
+    const userId = Number(row.user.UserId);
+    const raw = photoMap.get(userId);
+    if (raw == null) continue;
+    const seeded = seedTestimonialFromProfilePhotos(row.testimonial, raw);
+    if (seeded) row.testimonial = seeded;
+  }
 }
 
 /**
@@ -411,8 +580,8 @@ export async function listForCoach(coachId, scope = 'direct') {
  * @returns {string|null}
  */
 export async function findCoachEmail(coachId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"Email", "UserName"')
     .eq('"UserId"', coachId)
@@ -426,11 +595,11 @@ export async function findCoachEmail(coachId) {
 /**
  * Look up a user's CoachId.
  * @param {number} userId
- * @returns {number|null}
+ * @returns {Promise<{ coachId: number|null, userName: string|null }|null>}
  */
 export async function findCoachIdForUser(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"CoachId", "UserName"')
     .eq('"UserId"', userId)
@@ -438,6 +607,35 @@ export async function findCoachIdForUser(userId) {
   if (error) throw error;
   if (!Array.isArray(data) || data.length === 0) return null;
   return { coachId: data[0].CoachId, userName: data[0].UserName };
+}
+
+/**
+ * Active co-coach partner for a lead (Sponsor ↔ Co-Sponsor on coach_teams_table).
+ * Used when the member has no CoachId (top-level admin / no upline).
+ * @param {number} userId
+ * @returns {Promise<number|null>}
+ */
+export async function findCoCoachPartnerId(userId) {
+  const id = Number(userId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from('coach_teams_table')
+    .select('CoachId, CoCoachId')
+    .or(`CoachId.eq.${id},CoCoachId.eq.${id}`)
+    .eq('Status', 'active')
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  return resolveCoCoachPartnerId({
+    userId: id,
+    coachId: data.CoachId,
+    coCoachId: data.CoCoachId,
+  });
 }
 
 /**
@@ -453,9 +651,9 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
   if (!members || members.length === 0) return [];
 
   const memberIds = members.map((m) => m.UserId);
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
 
-  const { data: testimonials, error: testErr } = await supabase
+  const { data: testimonials, error: testErr } = await db
     .from(TABLE)
     .select('user_id, video_status, health_video_path, business_video_path, video_verified_at')
     .in('user_id', memberIds)
@@ -472,7 +670,7 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
   return members.map((m) => {
     const t = testimonialMap[m.UserId];
     return {
-      user: { userId: m.UserId, userName: m.UserName, email: m.Email, profileImage: m.ProfileImage },
+      user: { userId: m.UserId, userName: m.UserName, email: m.Email, profileImage: null },
       videoStatus:      t?.video_status      ?? 'none',
       hasHealthVideo:   !!(t?.health_video_path),
       hasBusinessVideo: !!(t?.business_video_path),
@@ -482,30 +680,62 @@ export async function listVideoReportForCoach(coachId, scope = 'direct') {
 }
 
 /**
- * Load team rows once for reporting hierarchy resolution (direct/full scopes).
+ * Load reporting context for one coach subtree (indexed CoachId walk + 60s cache).
+ * Avoids full team_table scan used by legacy loadReportingContext().
+ * @param {number} coachId
  * @returns {Promise<import('../../utils/reportingHierarchyService.js').ReportingContext>}
  */
-export async function loadTeamReportingContext() {
-  const supabase = getSupabaseClient();
-  const { loadReportingContext } = await import('../../utils/reportingHierarchyService.js');
-  return loadReportingContext(supabase);
+export async function loadTeamReportingContext(coachId) {
+  const db = getMysqlClient();
+  const { loadReportingContextForCoach } = await import('../../utils/reportingHierarchyService.js');
+  return loadReportingContextForCoach(db, coachId);
 }
 
 /**
  * Reporting team members for a coach (direct or full hierarchy).
- * Applies inactive-coach rollup via reportingHierarchyService.
+ * Applies inactive-coach rollup via reportingHierarchyService, then keeps
+ * only active members for Transformation lists (inactive never shown).
  * @param {number} coachId
  * @param {'direct'|'full'} [scope='direct']
  * @param {import('../../utils/reportingHierarchyService.js').ReportingContext} [context]
- * @returns {Promise<Array<{ UserId: number, UserName: string, Email?: string, ProfileImage?: string|null, PhoneNumber?: string|null }>>}
+ * @returns {Promise<Array<{ UserId: number, UserName: string, Email?: string, ProfileImage?: string|null, PhoneNumber?: string|null, Status?: string }>>}
  */
 async function fetchReportingTeamMembers(coachId, scope = 'direct', context = null) {
-  const resolvedContext = context ?? await loadTeamReportingContext();
-  const { getReportingMembers } = await import('../../utils/reportingHierarchyService.js');
-  const members = getReportingMembers(coachId, scope, resolvedContext);
+  const resolvedContext = context ?? await loadTeamReportingContext(coachId);
+  const {
+    getSharedTeamDirectMembers,
+    getSharedTeamFullMembersWithUplines,
+  } = await import('../../utils/sharedTeamReporting.js');
+  const members = scope === 'full'
+    ? getSharedTeamFullMembersWithUplines(coachId, resolvedContext)
+    : getSharedTeamDirectMembers(coachId, resolvedContext);
   return members
     .filter((member) => member.UserId !== Number(coachId))
+    .filter((member) => isActiveTeamStatus(member.Status))
     .sort((a, b) => String(a.UserName || '').localeCompare(String(b.UserName || '')));
+}
+
+/**
+ * True when userId is in coach's reporting hierarchy (no testimonial query).
+ * Full scope includes uplines for *view* (transformation photos).
+ * @param {number} coachId
+ * @param {number} userId
+ * @param {'direct'|'full'} [scope='full']
+ */
+export async function isReportingMember(coachId, userId, scope = 'full') {
+  if (Number(coachId) === Number(userId)) return true;
+  const members = await fetchReportingTeamMembers(coachId, scope);
+  return members.some((m) => Number(m.UserId) === Number(userId));
+}
+
+/**
+ * Coaches cannot edit another member's Transformation health issues.
+ * Only true when viewing own record (Mine).
+ * @param {number} coachId
+ * @param {number} userId
+ */
+export async function isEditableReportingMember(coachId, userId) {
+  return Number(coachId) === Number(userId);
 }
 
 /**
@@ -534,8 +764,8 @@ export async function countPhotoUploadStatsForCoach(coachId, scope = 'direct', c
   if (!total) return { uploaded: 0, notUploaded: 0 };
 
   const memberIds = members.map((m) => m.UserId);
-  const supabase = getSupabaseClient();
-  const { data: testimonials, error } = await supabase
+  const db = getMysqlClient();
+  const { data: testimonials, error } = await db
     .from(TABLE)
     .select('user_id, before_image_path')
     .in('user_id', memberIds)
@@ -548,10 +778,23 @@ export async function countPhotoUploadStatsForCoach(coachId, scope = 'direct', c
     if (!testimonialMap[t.user_id]) testimonialMap[t.user_id] = t;
   }
 
+  let profilePhotoMap = new Map();
+  if (scope === 'full') {
+    const needsProfileCheck = members.filter(
+      (m) => !memberHasVisibleTransformationPhoto(testimonialMap[m.UserId], null),
+    );
+    if (needsProfileCheck.length) {
+      profilePhotoMap = await fetchTransformationPhotosByUserIds(
+        needsProfileCheck.map((m) => m.UserId),
+      );
+    }
+  }
+
   let uploaded = 0;
   for (const m of members) {
     const t = testimonialMap[m.UserId];
-    if (t && !isVideoOnlyPlaceholder(t.before_image_path)) uploaded += 1;
+    const raw = profilePhotoMap.get(m.UserId);
+    if (memberHasVisibleTransformationPhoto(t, raw)) uploaded += 1;
   }
 
   return { uploaded, notUploaded: total - uploaded };
@@ -571,8 +814,8 @@ export async function countVideoUploadStatsForCoach(coachId, scope = 'direct', c
   if (!total) return { uploaded: 0, notUploaded: 0 };
 
   const memberIds = members.map((m) => m.UserId);
-  const supabase = getSupabaseClient();
-  const { data: testimonials, error } = await supabase
+  const db = getMysqlClient();
+  const { data: testimonials, error } = await db
     .from(TABLE)
     .select('user_id, video_status')
     .in('user_id', memberIds)
@@ -674,19 +917,20 @@ function collectDescendantUserIds(coachUserId, childrenIndex, activeMemberIds) {
  * @returns {Promise<Record<string, { photo: object, video: object }>>}
  */
 export async function buildTeamUploadPerformanceByUserId(rootCoachId, context = null) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const {
-    getFullReportingMembers,
     buildReportingChildrenIndex,
     isCoachRole,
   } = await import('../../utils/reportingHierarchyService.js');
+  const { getSharedTeamFullMembers } = await import('../../utils/sharedTeamReporting.js');
   const { isActiveTeamStatus } = await import('../../utils/teamHierarchyBuilder.js');
 
-  const resolvedContext = context ?? await loadTeamReportingContext();
-  const reportingMembers = getFullReportingMembers(rootCoachId, resolvedContext);
+  const resolvedContext = context ?? await loadTeamReportingContext(rootCoachId);
+  const reportingMembers = getSharedTeamFullMembers(rootCoachId, resolvedContext);
 
   const activeMemberIds = new Set(
     reportingMembers
+      .filter((m) => isActiveTeamStatus(m.Status))
       .map((m) => m.UserId)
       .filter((id) => id !== rootCoachId),
   );
@@ -700,7 +944,7 @@ export async function buildTeamUploadPerformanceByUserId(rootCoachId, context = 
     reportingMembers.map((member) => [member.UserId, member.UserName]),
   );
 
-  const { data: testimonials, error } = await supabase
+  const { data: testimonials, error } = await db
     .from(TABLE)
     .select('user_id, before_image_path, video_status')
     .in('user_id', memberIds)

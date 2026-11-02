@@ -20,6 +20,22 @@ export function hasLocalConsentAcceptance() {
   return getStoredConsentVersion() === CURRENT_CONSENT_VERSION;
 }
 
+/**
+ * Whether to show the post-auth consent gate from API/session flags.
+ * Prevents stale profile cache from re-opening after a successful Agree.
+ *
+ * @param {boolean|undefined} consentRequired
+ * @param {{ consentRequired?: boolean }|null|undefined} [user]
+ * @returns {boolean}
+ */
+export function shouldOpenConsentGate(consentRequired, user = null) {
+  // Asked once, on the signup screen, before the account is created.
+  // Do not open a second consent page after login.
+  void consentRequired;
+  void user;
+  return false;
+}
+
 export function persistLocalConsentAcceptance(version = CURRENT_CONSENT_VERSION) {
   storage.set(STORAGE_KEY, version);
 }

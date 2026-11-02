@@ -8,7 +8,7 @@
  * Database table: wellness_counselling_assessments
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import logger from '../../../shared/lib/logger.js';
 
 export default async function handler(req, res) {
@@ -51,13 +51,13 @@ export default async function handler(req, res) {
 
     logger.debug('📋 Fetching counselling assessments for userId:', userIdInt);
 
-    // Get Supabase client
-    const supabase = getSupabaseClient();
+    // Get MySQL client
+    const db = getMysqlClient();
 
     // Fetch ALL assessments with user and counsellor details via join
     // Join with team_table to get current names and emails
     // Note: Constraint names might be fk_user/fk_counsellor depending on your DB
-    const { data: assessments, error } = await supabase
+    const { data: assessments, error } = await db
       .from('wellness_counselling_assessments')
       .select(`
         *,

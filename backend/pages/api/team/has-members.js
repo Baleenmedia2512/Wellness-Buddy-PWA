@@ -1,13 +1,17 @@
 /**
- * Check if a user is a coach by team_table linkage.
+ * Check if a user should get team UI (search / Mine-Direct-Full).
  * GET /api/team/has-members?userId=123
  *
- * Returns true when any row in team_table has CoachId equal to the given userId.
- * Used by the frontend to grant coach capabilities (e.g. enrollment member search)
- * without relying on the Role column.
+ * True when any team_table row has CoachId = userId (own downline).
+ * Community ID / coach_teams Sponsor|Co-Sponsor seats alone do NOT count —
+ * that is a joint coaching account, not product Sponsor access.
+ *
+ * Used by Diary search, Programs enrollment search, Activity Report scope,
+ * and nav page-access elevation to the Sponsor matrix.
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
+import { userHasSponsorTeam } from '../../../utils/coachTeamSeats.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -41,24 +45,12 @@ export default async function handler(req, res) {
       return;
     }
 
-    const supabase = getSupabaseClient();
-    const { count, error } = await supabase
-      .from('team_table')
-      .select('UserId', { count: 'exact', head: true })
-      .eq('CoachId', userId);
-
-    if (error) {
-      console.error('[has-members] Query error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to check team membership',
-      });
-      return;
-    }
+    const db = getMysqlClient();
+    const hasTeamMembers = await userHasSponsorTeam(db, userId);
 
     res.status(200).json({
       success: true,
-      hasTeamMembers: (count ?? 0) > 0,
+      hasTeamMembers,
     });
   } catch (err) {
     console.error('[has-members] Server error:', err);

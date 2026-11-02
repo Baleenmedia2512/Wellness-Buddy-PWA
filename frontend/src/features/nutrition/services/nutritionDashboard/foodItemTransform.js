@@ -1,6 +1,8 @@
 // Convert a DB-format detailed food item into the shape EditableFoodItem expects.
 // Used by the analysis-edit hook when (re)loading a selected meal.
 
+import { derivePer100g } from '../nutritionMath/computeNutrition';
+
 const LIQUID_KEYWORDS = [
   'shake', 'juice', 'milk', 'lassi', 'coffee', 'tea', 'water', 'smoothie',
   'soup', 'drink', 'beverage', 'cola', 'soda', 'beer', 'wine', 'cocktail',
@@ -9,6 +11,9 @@ const LIQUID_KEYWORDS = [
 
 const isLiquidByName = (name) => {
   const lower = (name || '').toLowerCase();
+  // "Shakemate" contains "shake" but the canister serving is powder grams.
+  if (lower.includes('shakemate') || lower.includes('shake mate')) return false;
+  if (lower.includes('formula 1') || lower.includes('formula1')) return false;
   return LIQUID_KEYWORDS.some((kw) => lower.includes(kw));
 };
 
@@ -16,14 +21,6 @@ const detectIsLiquid = (item) =>
   item.isLiquid === true ||
   (item.volume_ml !== null && item.volume_ml !== undefined) ||
   isLiquidByName(item.name);
-
-const buildPer100g = (nutrition, actualGrams) => ({
-  calories: (nutrition.calories || 0) * (100 / actualGrams),
-  protein:  (nutrition.protein  || 0) * (100 / actualGrams),
-  carbs:    (nutrition.carbs    || 0) * (100 / actualGrams),
-  fat:      (nutrition.fat      || 0) * (100 / actualGrams),
-  fiber:    (nutrition.fiber    || 0) * (100 / actualGrams),
-});
 
 /**
  * @param {object} item    DB-format food item
@@ -61,7 +58,12 @@ export function transformDbItemToEditable(item, withPer100g = true) {
   };
 
   if (withPer100g) {
-    base.per100g = item.per100g || buildPer100g(item.nutrition || {}, actualGrams);
+    base.per100g = derivePer100g({
+      ...item,
+      grams: actualGrams,
+      serving: { ...(item.serving || {}), grams: actualGrams },
+      nutrition: item.nutrition || {},
+    });
   }
   return base;
 }

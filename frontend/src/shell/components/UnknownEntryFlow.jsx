@@ -24,8 +24,9 @@ import {
   buildAnalysisFromGeminiAnalysis,
   hasRecognizedFood,
 } from '../../features/captures';
-import { SmartFoodSearchModal } from '../../features/nutrition';
+import { SmartFoodSearchModal, allowHerbalifeShakePost } from '../../features/nutrition';
 import { buildAnalysisFromManualFood as buildManualFoodAnalysis } from '../../features/nutrition';
+import { seedMealAfterPromotion } from '../../features/nutrition/services/seedMealAfterPromotion';
 import { ManualWeightEntryModal, saveWeight, warmLatestWeightCache } from '../../features/weight';
 import { ManualEducationEntryModal, saveLog } from '../../features/education';
 import { ManualWatchEntryModal } from '../../features/activity';
@@ -37,7 +38,8 @@ import { isFlagEnabled } from '../../config/featureFlags';
 import {
   reserveAiCredit,
   confirmAiCredit,
-  releaseAiCredit,
+  releaseReservedAiCredit,
+  reserveFailureMessage,
 } from '../../features/ai-credits';
 
 function base64ToImageFile(b64, filename = 'capture.jpg') {
@@ -257,11 +259,7 @@ export default function UnknownEntryFlow({
         const reserved = await reserveAiCredit({ userId, apiBaseUrl });
         if (!reserved?.allowed || !reserved.reservationId) {
           setRetrying(false);
-          setError(
-            reserved?.reason === 'limit_reached'
-              ? 'Daily AI limit reached'
-              : 'AI Mode is unavailable right now',
-          );
+          setError(reserveFailureMessage(reserved?.reason));
           setStage('view');
           return;
         }
@@ -269,13 +267,14 @@ export default function UnknownEntryFlow({
       }
 
       const file = base64ToImageFile(imageBase64);
-      // Do NOT pass captureId — avoids idempotency guard returning cached "other"
+      // Pass captureId + fresh retries handled inside analyzeImage (attempt>1).
       const detectedType = await analyzeImage(file, {
+        captureId: captureId ? String(captureId) : null,
         userId,
         userName,
         userEmail,
         reservationId,
-        creditGated: Boolean(creditsEnabled && reservationId),
+        creditGated: Boolean(creditsEnabled && !!reservationId),
       });
 
       const creditPayload = {
@@ -299,14 +298,22 @@ export default function UnknownEntryFlow({
 
       if (detectedType.type === 'food') {
         const analysis = detectedType.details;
-        await settleRetryCredit();
         if (!hasRecognizedFood(analysis)) {
+          if (creditsEnabled && !!reservationId) {
+            await releaseReservedAiCredit({
+              userId,
+              reservationId,
+              apiBaseUrl,
+              reason: 'unknown_entry_food_unrecognized',
+            });
+          }
           setRetrying(false);
           setStage('view');
           return;
         }
-        // Success: transition to AI review stage so the user can inspect and
-        // confirm the detected food before it is saved.
+        // Success: transition to AI review — charge after user confirms save
+        // would be ideal; charge here only once recognized food is ready for save.
+        await settleRetryCredit();
         setRetrying(false);
         setAiFood({
           analysisResult: buildAnalysisFromGeminiAnalysis(analysis),
@@ -352,8 +359,13 @@ export default function UnknownEntryFlow({
         setStage('view');
       }
     } catch {
-      if (creditsEnabled && reservationId) {
-        await releaseAiCredit({ userId, reservationId, apiBaseUrl }).catch(() => {});
+      if (creditsEnabled && !!reservationId) {
+        await releaseReservedAiCredit({
+          userId,
+          reservationId,
+          apiBaseUrl,
+          reason: 'unknown_entry_retry_failed',
+        });
       }
       setRetrying(false);
       setStage('view');
@@ -395,30 +407,59 @@ export default function UnknownEntryFlow({
   };
 
   const handleFoodSave = async (manualData) => {
+    let analysisResult;
     try {
-      const analysisResult = buildAnalysisFromManualFood(manualData);
-      await promoteUnknownToFood({
-        captureId,
-        viewerUserId: userId,
-        analysisResult,
-        originalCapturedAt,
-      });
-      finish({ kind: 'food', captureId });
+      analysisResult = buildAnalysisFromManualFood(manualData);
     } catch {
       setError("Couldn't save — please try again.");
-      setStage('view');
+      return;
     }
+    const allowShake = await allowHerbalifeShakePost({
+      userId,
+      analysisResult,
+    });
+    if (!allowShake) return;
+    // Close immediately; promote continues in background.
+    finish({ kind: 'food', captureId });
+    void promoteUnknownToFood({
+      captureId,
+      viewerUserId: userId,
+      analysisResult,
+      originalCapturedAt,
+    })
+      .then((result) => {
+        seedMealAfterPromotion({
+          ownerUserId: userId,
+          result,
+          analysisResult,
+          capturedAt: originalCapturedAt,
+        });
+      })
+      .catch(() => {
+        // Modal already closed — diary refresh will show if promotion failed.
+      });
   };
 
   /** Saves the AI-detected food result that the user confirmed on the review screen. */
   const handleAiFoodConfirm = async () => {
     if (!aiFood?.analysisResult) return;
+    const allowShake = await allowHerbalifeShakePost({
+      userId,
+      analysisResult: aiFood.analysisResult,
+    });
+    if (!allowShake) return;
     try {
-      await promoteUnknownToFood({
+      const result = await promoteUnknownToFood({
         captureId,
         viewerUserId: userId,
         analysisResult: aiFood.analysisResult,
         originalCapturedAt,
+      });
+      seedMealAfterPromotion({
+        ownerUserId: userId,
+        result,
+        analysisResult: aiFood.analysisResult,
+        capturedAt: originalCapturedAt,
       });
       finish({ kind: 'food', captureId });
     } catch {

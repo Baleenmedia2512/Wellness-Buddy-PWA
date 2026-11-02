@@ -1,7 +1,7 @@
 {
   "name": "wellness-buddy-pwa",
   "private": true,
-  "version": "3.4.0",
+  "version": "3.5.5",
   "scripts": {
     "vsa:check": "node scripts/vsa-diagnostic.js",
     "smoke": "node scripts/smoke-test.js",
@@ -13,16 +13,21 @@
     "governance:forbidden": "node scripts/forbidden-patterns.js",
     "governance:size": "node scripts/file-size-guard.js",
     "governance:duplicates": "node scripts/find-duplicates.js",
-    "governance:arch": "npm run vsa:check && npx dependency-cruiser --config .dependency-cruiser.cjs backend frontend/src"
+    "governance:arch": "npm run vsa:check && npx dependency-cruiser --config .dependency-cruiser.cjs backend frontend/src",
+    "playwright": "playwright test",
+    "playwright:ui": "playwright test --ui",
+    "playwright:headed": "playwright test --headed",
+    "playwright:debug": "playwright test --debug",
+    "playwright:report": "playwright show-report"
   },
   "dependencies": {
     "@capacitor/push-notifications": "^8.1.1",
     "ai-token-monitor": "^1.0.8",
     "joi": "^18.2.1",
-    "pg": "^8.16.3",
     "react-easy-crop": "^5.5.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "eslint": "^10.5.0"
   }
 }

@@ -5,24 +5,23 @@
 
 const PLACEHOLDER_PHONE_USER_RE = /^user_\d+$/i;
 export const VALID_GENDERS = ['Male', 'Female'];
-
-function emailLocalPart(email) {
-  const local = String(email || '').split('@')[0]?.trim().toLowerCase();
-  return local || '';
-}
+export const MIN_BODY_FAT_PCT = 1;
+export const MAX_BODY_FAT_PCT = 70;
 
 function usernameFromPhoneE164(phoneNumber) {
   const cleaned = String(phoneNumber || '').replace(/[^\d]/g, '');
   return cleaned ? `user_${cleaned}` : '';
 }
 
-export function isPlaceholderUserName(userName, { email, phoneNumber } = {}) {
+/**
+ * True when UserName was auto-generated at signup and the user has not chosen a real name.
+ * Phone OTP may set `user_<digits>`; empty names are also treated as incomplete.
+ * Matching an email local-part is NOT a placeholder — people often use name@gmail.com.
+ */
+export function isPlaceholderUserName(userName, { phoneNumber } = {}) {
   const name = String(userName || '').trim();
   if (!name) return true;
   if (PLACEHOLDER_PHONE_USER_RE.test(name)) return true;
-
-  const emailLocal = emailLocalPart(email);
-  if (emailLocal && name.toLowerCase() === emailLocal) return true;
 
   const fromPhone = usernameFromPhoneE164(phoneNumber);
   if (fromPhone && name.toLowerCase() === fromPhone.toLowerCase()) return true;
@@ -35,6 +34,20 @@ export function hasValidProfileName(userName, context = {}) {
   return name.length > 0 && !isPlaceholderUserName(userName, context);
 }
 
+/**
+ * First onboarding gate: chosen display name only.
+ * Email verification is Profile KYC (non-blocking) — not part of identity.
+ * @param {{ userName?: string|null, email?: string|null, phoneNumber?: string|null }} input
+ * @returns {boolean}
+ */
+export function isOnboardingIdentityComplete({
+  userName,
+  email,
+  phoneNumber,
+} = {}) {
+  return hasValidProfileName(userName, { email, phoneNumber });
+}
+
 export function hasValidProfileGender(gender, bodyMetrics = null) {
   const fromProfile = String(gender || '').trim();
   if (VALID_GENDERS.includes(fromProfile)) return true;
@@ -42,6 +55,33 @@ export function hasValidProfileGender(gender, bodyMetrics = null) {
   return VALID_GENDERS.includes(fromCard);
 }
 
+export function hasValidBodyFatPercent(value) {
+  if (value === undefined || value === null || value === '') return false;
+  const n = parseFloat(value);
+  return Number.isFinite(n) && n >= MIN_BODY_FAT_PCT && n <= MAX_BODY_FAT_PCT;
+}
+
+/**
+ * Body fat is satisfied from weight_records_table.BodyFat or BPC fat%.
+ * Users who already have any source are not prompted again.
+ * `bodyFat` is an alias for weight BodyFat (API / form payload).
+ */
+export function hasValidBodyFatSource({
+  bodyFat = null,
+  latestWeightBodyFat = null,
+  bodyMetrics = null,
+} = {}) {
+  if (hasValidBodyFatPercent(bodyFat)) return true;
+  if (hasValidBodyFatPercent(latestWeightBodyFat)) return true;
+  if (hasValidBodyFatPercent(bodyMetrics?.fatPercent)) return true;
+  return false;
+}
+
+/**
+ * Field completeness for remaining-profile onboarding.
+ * Avatar is Centre transformation photo (separate step) — not required here.
+ * Email is Profile KYC — not required to finish setup or use the app.
+ */
 export function isProfileComplete({
   height,
   dietType,
@@ -50,16 +90,16 @@ export function isProfileComplete({
   phoneNumber,
   gender = null,
   bodyMetrics = null,
-  profileImage = undefined,
+  profileImage: _profileImage = undefined,
+  bodyFat = null,
+  latestWeightBodyFat = null,
+  bodyFatRequired = true,
 }) {
   const hasHeight = typeof height === 'number' && height >= 50 && height <= 250;
   const hasDiet = typeof dietType === 'string' && dietType.trim() !== '';
-  const hasEmail = typeof email === 'string' && email.trim() !== '' && email.includes('@');
   const hasName = hasValidProfileName(userName, { email, phoneNumber });
   const hasGender = hasValidProfileGender(gender, bodyMetrics);
-  const hasPhoto = profileImage === undefined
-    ? true
-    : typeof profileImage === 'string'
-      && (profileImage.startsWith('data:image/') || profileImage.startsWith('https://'));
-  return !!(hasHeight && hasDiet && hasEmail && hasName && hasGender && hasPhoto);
+  const hasBodyFat = !bodyFatRequired
+    || hasValidBodyFatSource({ bodyFat, latestWeightBodyFat, bodyMetrics });
+  return !!(hasHeight && hasDiet && hasName && hasGender && hasBodyFat);
 }

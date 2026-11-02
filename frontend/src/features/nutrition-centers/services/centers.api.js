@@ -13,6 +13,21 @@ export async function getCenters(params) {
   return res.json();
 }
 
+/**
+ * Paginated Physical Club Report list.
+ * @param {object} params — userId, teamFilter, scope, dates, page, limit, search
+ */
+export async function getCentersPage(params, { signal } = {}) {
+  const qs = new URLSearchParams(
+    Object.entries(params).reduce((acc, [k, v]) => {
+      if (v != null && v !== '') acc[k] = String(v);
+      return acc;
+    }, {}),
+  ).toString();
+  const res = await fetch(`${base()}/api/nutrition-centers?${qs}`, { signal });
+  return res.json();
+}
+
 export async function register(payload) {
   const res = await fetch(`${base()}/api/nutrition-centers`, {
     method: 'POST',

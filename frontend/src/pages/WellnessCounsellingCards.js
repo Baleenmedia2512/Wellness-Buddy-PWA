@@ -1,155 +1,650 @@
 // src/pages/WellnessCounsellingCards.js
-import React, { useState, useEffect, useRef } from "react";
-import { Search, Plus, RefreshCw, FileHeart, Edit2 } from "lucide-react";
+import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
+import { Plus, RefreshCw, FileHeart, Edit2, Trash2, Share2, Loader2, BadgeCheck } from "lucide-react";
 import {
   BodyParamsForm,
   BodyParamsShareSheet,
+  BodyParamsSearchBar,
   preloadBodyParamsShareAssets,
-  listBodyParamsCards
+  listBodyParamsCards,
+  getBodyParamsCard,
+  deleteBodyParamsCard,
+  buildBpcSearchSuggestions,
+  buildOnboardingShareUrl,
 } from "../features/body-parameters-card";
-import { CapacitorHttp } from '@capacitor/core';
+import { getApiBaseUrl } from "../config/api.config.js";
 import { debugLog } from '../shared/utils/logger.js';
-import { format } from 'date-fns';
+import { getUserId } from '../shared/services/userIdentity.js';
+import CustomAlertModal from '../shared/components/CustomAlertModal';
+import PhoneContactActions from '../shared/components/PhoneContactActions.jsx';
+import {
+  formatBcmListCardDateTime,
+  resolveBcmDisplayTimezone,
+  resolveBcmCardAppointmentDate,
+} from '../features/body-parameters-card/domain/bcmCardDateTime.rules.js';
+import { dismissNetworkFailure } from '../shared/services/networkNotice.js';
+import { isBcmDeviceContactSaved } from '../features/body-parameters-card/utils/bcmDeviceContact.js';
+
+const PAGE_SIZE = 20;
+
+/** Skeleton placeholder matching the card grid tile. */
+function CardSkeleton() {
+  return (
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden animate-pulse">
+      <div className="p-4">
+        <div className="h-4 bg-gray-200 rounded w-2/3 mb-2" />
+        <div className="h-3 bg-gray-100 rounded w-1/2 mb-4" />
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="bg-gray-50 rounded-lg p-2 h-12" />
+          ))}
+        </div>
+        <div className="h-3 bg-gray-100 rounded w-full" />
+      </div>
+    </div>
+  );
+}
+
+/** Memoized grid tile — avoids re-rendering unchanged cards on load-more. */
+const BodyParamsCardTile = memo(function BodyParamsCardTile({
+  card,
+  onEdit,
+  onDelete,
+  onShare,
+  isDeleting = false,
+  isSharing = false,
+  contactStatus = 'idle',
+  timezoneIana,
+}) {
+  return (
+    <div
+      onClick={() => onEdit(card)}
+      className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
+    >
+      <div className="p-4">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-gray-900 truncate">{card.name}</h3>
+            {card.phoneNumber ? (
+              <div onClick={(e) => e.stopPropagation()}>
+                <PhoneContactActions
+                  phone={card.phoneNumber}
+                  size="sm"
+                  numberClassName="text-gray-500 font-normal"
+                  stopPropagation
+                />
+              </div>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-0.5 flex-shrink-0">
+            {contactStatus === 'saving' ? (
+              <span
+                className="p-1.5"
+                role="status"
+                aria-label="Saving contact"
+                title="Saving contact"
+              >
+                <Loader2 size={16} className="text-green-600 animate-spin" />
+              </span>
+            ) : contactStatus === 'saved' ? (
+              <span
+                className="p-1.5"
+                aria-label="Contact saved"
+                title="Contact saved"
+              >
+                <BadgeCheck size={16} className="text-green-600" />
+              </span>
+            ) : null}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onShare(card);
+              }}
+              disabled={isSharing}
+              className="p-1.5 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
+              aria-label={`Share ${card.name || 'card'}`}
+            >
+              <Share2 size={16} className={isSharing ? 'text-green-300 animate-pulse' : 'text-green-600'} />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(card);
+              }}
+              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label={`Edit ${card.name || 'card'}`}
+            >
+              <Edit2 size={16} className="text-gray-400" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(card);
+              }}
+              disabled={isDeleting}
+              className="p-1.5 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+              aria-label={`Delete ${card.name || 'card'}`}
+            >
+              <Trash2 size={16} className={isDeleting ? 'text-red-300' : 'text-red-400'} />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="bg-blue-50 rounded-lg p-2">
+            <p className="text-xs text-blue-600 font-medium">Height</p>
+            <p className="text-sm font-semibold text-blue-900">{card.heightCm} cm</p>
+          </div>
+          <div className="bg-green-50 rounded-lg p-2">
+            <p className="text-xs text-green-600 font-medium">Weight</p>
+            <p className="text-sm font-semibold text-green-900">{card.weightKg} kg</p>
+          </div>
+          <div className="bg-purple-50 rounded-lg p-2">
+            <p className="text-xs text-purple-600 font-medium">BMI</p>
+            <p className="text-sm font-semibold text-purple-900">{card.bmi}</p>
+          </div>
+          <div className="bg-orange-50 rounded-lg p-2">
+            <p className="text-xs text-orange-600 font-medium">Age</p>
+            <p className="text-sm font-semibold text-orange-900">{card.age} yrs</p>
+          </div>
+        </div>
+
+        <div className="pt-2 border-t border-gray-100 space-y-1">
+          <div className="flex items-center justify-between text-xs text-gray-500">
+            <span>{card.gender || '—'}</span>
+            <span>
+              Date:{' '}
+              {formatBcmListCardDateTime(card, timezoneIana)}
+            </span>
+          </div>
+          {card.locationName ? (
+            <p className="text-xs text-gray-600 truncate">
+              Venue: <span className="font-medium text-gray-800">{card.locationName}</span>
+            </p>
+          ) : null}
+          {(() => {
+            const appt = resolveBcmCardAppointmentDate(card);
+            return appt ? (
+              <p className="text-xs text-gray-600 truncate">
+                Appointment: <span className="font-medium text-gray-800">{appt}</span>
+              </p>
+            ) : null;
+          })()}
+        </div>
+      </div>
+    </div>
+  );
+});
 
 /**
  * Wellness Counselling - Body Parameters Cards View
  * Shows body parameter cards for team members in a tile/grid layout
  */
 const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = null }) => {
+  const displayTimezone = resolveBcmDisplayTimezone(user);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const [bodyParamsCards, setBodyParamsCards] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
   const [refreshing, setRefreshing] = useState(false);
+  const [deletingCardId, setDeletingCardId] = useState(null);
+  const [cardPendingDelete, setCardPendingDelete] = useState(null);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState(null);
+  const [sharingCardId, setSharingCardId] = useState(null);
+  /** Card ids whose phone contact write is in flight. */
+  const [contactSavingIds, setContactSavingIds] = useState(() => new Set());
+  /** Card ids whose phone contact was saved in this session. */
+  const [contactSavedIds, setContactSavedIds] = useState(() => new Set());
+  const [shareErrorMessage, setShareErrorMessage] = useState(null);
+  /** List-card share should not reload the grid when the sheet closes. */
+  const skipRefreshOnShareCloseRef = useRef(false);
+  /** True from the moment a share sheet is requested until it closes. */
+  const shareSessionRef = useRef(false);
+  const [pagination, setPagination] = useState({
+    totalRecords: 0,
+    currentPage: 0,
+    hasNextPage: false,
+  });
 
-  // Body Parameters Card states
   const [isBodyParamsFormOpen, setIsBodyParamsFormOpen] = useState(false);
-  const [selectedCard, setSelectedCard] = useState(null); // for editing
+  const [selectedCard, setSelectedCard] = useState(null);
   const [bodyParamsShareData, setBodyParamsShareData] = useState(null);
   const [bodyParamsPreCapCard, setBodyParamsPreCapCard] = useState(null);
+  /** Editable page-level Venue — shown in header only, applied when saving a card. */
+  const [headerVenue, setHeaderVenue] = useState('');
+  const headerVenueInitializedRef = useRef(false);
 
-  // Fetch generation counter — incremented before every new fetch, checked
-  // inside async bodies before calling setState so that an older in-flight
-  // request that resolves after a newer one never overwrites fresh data.
-  const fetchGenerationRef = useRef(0);
+  const coachIdRef = useRef(null);
+  /** Cache: `${search}::${page}` → { cards, pagination } */
+  const pageCacheRef = useRef(new Map());
+  /** Accumulated cards for autocomplete (survives paginated / filtered list swaps). */
+  const [suggestionPool, setSuggestionPool] = useState([]);
+  const scrollRef = useRef(null);
+  const sentinelRef = useRef(null);
+  /** Monotonic request id — only the latest request may write state. */
+  const requestIdRef = useRef(0);
+  /** Keys currently fetching — prevents duplicate load-more, not remount. */
+  const inFlightPagesRef = useRef(new Set());
 
-  // Warm share-card images
+  useEffect(() => {
+    preloadBodyParamsShareAssets();
+  }, []);
+
   useEffect(() => {
     if (!isBodyParamsFormOpen) return;
     preloadBodyParamsShareAssets();
   }, [isBodyParamsFormOpen]);
 
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
 
-  const getUserId = async (email) => {
-    if (!email) throw new Error("User email is required");
-    
-    const response = await CapacitorHttp.get({
-      url: `${apiBaseUrl}/api/user/lookup?email=${encodeURIComponent(email)}`
+  // Grow autocomplete pool whenever cards load (page 1, load-more, or search hits).
+  useEffect(() => {
+    setSuggestionPool((prev) => {
+      const map = new Map(prev.map((c) => [c.id, c]));
+      let changed = false;
+      for (const card of bodyParamsCards) {
+        if (card?.id == null) continue;
+        const next = {
+          id: card.id,
+          name: card.name,
+          phoneNumber: card.phoneNumber,
+        };
+        const existing = map.get(card.id);
+        if (
+          existing
+          && existing.name === next.name
+          && existing.phoneNumber === next.phoneNumber
+        ) {
+          continue;
+        }
+        map.set(card.id, next);
+        changed = true;
+      }
+      return changed ? Array.from(map.values()) : prev;
     });
-    const data = response.data;
-    
-    if (!data.success) throw new Error(data.message || "User not found");
-    return data.userId;
-  };
+  }, [bodyParamsCards]);
 
-  const fetchData = async (isBackground = false) => {
-    if (!user?.email) {
+  const suggestions = useMemo(
+    () => buildBpcSearchSuggestions(suggestionPool, searchQuery),
+    [suggestionPool, searchQuery],
+  );
+
+  const handleSelectSuggestion = useCallback((suggestion) => {
+    setSearchQuery(suggestion?.term || '');
+    setIsSearchOpen(false);
+    setHighlightedSuggestion(-1);
+  }, []);
+
+  const handleSearchKeyDown = useCallback((e) => {
+    if (!searchQuery.trim()) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!suggestions.length) return;
+      setIsSearchOpen(true);
+      setHighlightedSuggestion((prev) => (prev < suggestions.length - 1 ? prev + 1 : 0));
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!suggestions.length) return;
+      setIsSearchOpen(true);
+      setHighlightedSuggestion((prev) => (prev > 0 ? prev - 1 : suggestions.length - 1));
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (highlightedSuggestion >= 0 && suggestions[highlightedSuggestion]) {
+        handleSelectSuggestion(suggestions[highlightedSuggestion]);
+      } else {
+        setIsSearchOpen(false);
+        setHighlightedSuggestion(-1);
+      }
+      return;
+    }
+    if (e.key === 'Escape') {
+      setIsSearchOpen(false);
+      setHighlightedSuggestion(-1);
+    }
+  }, [searchQuery, suggestions, highlightedSuggestion, handleSelectSuggestion]);
+
+  const handleSearchChange = useCallback((value) => {
+    setSearchQuery(value);
+    setIsSearchOpen(true);
+    setHighlightedSuggestion(-1);
+  }, []);
+
+  /** Resolve coach/user id — phone sessions may have userId with no email. */
+  const resolveCoachId = useCallback(async () => {
+    if (coachIdRef.current) return coachIdRef.current;
+    const id = await getUserId(user);
+    if (!id) return null;
+    coachIdRef.current = id;
+    return id;
+  }, [user]);
+
+  const applyPageResult = useCallback((page, append, cards, meta) => {
+    setPagination(meta);
+    setBodyParamsCards((prev) => {
+      if (!append) return cards;
+      const seen = new Set(prev.map((c) => c.id));
+      return [...prev, ...cards.filter((c) => !seen.has(c.id))];
+    });
+  }, []);
+
+  const fetchPage = useCallback(async ({
+    page,
+    search,
+    append,
+    isBackground = false,
+    bustCache = false,
+  }) => {
+    const coachId = await resolveCoachId();
+    if (!coachId) {
       setError("User information not available. Please log in again.");
+      setLoading(false);
+      setLoadingMore(false);
+      setRefreshing(false);
       return;
     }
 
-    // Capture this fetch's generation. Any concurrent or older fetch that resolves
-    // after us will see its generation doesn't match and will silently bail out,
-    // preventing it from overwriting the fresh data we are about to write.
-    const myGeneration = ++fetchGenerationRef.current;
+    const key = `${search || ''}::${page}`;
 
-    if (!isBackground) setLoading(true);
-    else setRefreshing(true);
+    if (!bustCache && pageCacheRef.current.has(key)) {
+      const cached = pageCacheRef.current.get(key);
+      applyPageResult(page, append, cached.cards, cached.pagination);
+      setLoading(false);
+      setLoadingMore(false);
+      setRefreshing(false);
+      return;
+    }
+
+    // Block duplicate load-more for the same page only (never block a fresh page-1 remount)
+    if (append && inFlightPagesRef.current.has(key)) return;
+
+    const requestId = ++requestIdRef.current;
+    inFlightPagesRef.current.add(key);
+
+    if (append) setLoadingMore(true);
+    else if (!isBackground) setLoading(true);
     setError(null);
 
     try {
-      console.log('🔍 [WellnessCounselling] Step 1: Getting userId for email:', user.email);
-      const userId = await getUserId(user.email);
+      if (requestId !== requestIdRef.current) return;
 
-      // Guard: bail out if a newer fetch has already started (component navigated
-      // away and back, or the user hit Refresh while this was in-flight).
-      if (myGeneration !== fetchGenerationRef.current) return;
+      const { cards, pagination: meta } = await listBodyParamsCards(coachId, {
+        page,
+        limit: PAGE_SIZE,
+        search,
+      });
 
-      console.log('✅ [WellnessCounselling] Step 2: Got userId:', userId, 'Type:', typeof userId);
-      
-      debugLog('📋 [WellnessCounselling] Step 3: Fetching body params cards for coach:', userId);
-      console.log('📋 [WellnessCounselling] Step 3: Calling listBodyParamsCards with userId:', userId);
-      
-      const cards = await listBodyParamsCards(userId);
+      if (requestId !== requestIdRef.current) return;
 
-      // Guard again after second await — another fetch may have fired in between.
-      if (myGeneration !== fetchGenerationRef.current) return;
-
-      console.log('🎯 [WellnessCounselling] Step 4: Received cards:', cards.length, 'cards');
-      debugLog('✅ [WellnessCounselling] Fetched cards:', cards.length);
-      
-      setBodyParamsCards(cards || []);
-      console.log('✅ [WellnessCounselling] Step 5: State updated with', (cards || []).length, 'cards');
+      pageCacheRef.current.set(key, { cards, pagination: meta });
+      applyPageResult(page, append, cards, meta);
+      debugLog('[WellnessCounselling] page loaded', {
+        page,
+        count: cards.length,
+        total: meta.totalRecords,
+      });
     } catch (err) {
-      if (myGeneration !== fetchGenerationRef.current) return; // stale — discard error
-      console.error("💥 [WellnessCounselling] Error fetching cards:", err);
-      console.error("💥 Error details:", err.message, err.stack);
+      if (requestId !== requestIdRef.current) return;
+      console.error("[WellnessCounselling] Error fetching cards:", err);
       setError(err.message || "Failed to load body parameter cards.");
     } finally {
-      if (myGeneration !== fetchGenerationRef.current) return; // stale — skip loading state
-      if (!isBackground) setLoading(false);
-      else setRefreshing(false);
+      inFlightPagesRef.current.delete(key);
+      // Always clear loading for the latest request; stale requests leave loading alone
+      // so the active request can finish the UI transition.
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+        setLoadingMore(false);
+        setRefreshing(false);
+      }
     }
-  };
+  }, [resolveCoachId, applyPageResult]);
 
+  /** True after the first successful page-1 load for the current user/refreshKey. */
+  const hasLoadedOnceRef = useRef(false);
+  const prevListDriversRef = useRef({ user, refreshKey, debouncedSearch });
+
+  // Load page 1 when user / search / refreshKey changes.
+  // Search-only changes soft-update in the background so typing does not flash
+  // the full-page Loading skeleton or unmount the search bar.
   useEffect(() => {
-    fetchData();
-    // Cancel any in-flight fetch when the component unmounts or user changes.
-    // Incrementing the generation makes every pending setBodyParamsCards a no-op.
-    return () => { fetchGenerationRef.current++; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchData reads user via closure; user + refreshKey are the meaningful deps
+    const prev = prevListDriversRef.current;
+    const hardReset = prev.user !== user || prev.refreshKey !== refreshKey;
+    prevListDriversRef.current = { user, refreshKey, debouncedSearch };
+
+    pageCacheRef.current.clear();
+    inFlightPagesRef.current.clear();
+    setError(null);
+
+    if (hardReset) {
+      coachIdRef.current = null;
+      hasLoadedOnceRef.current = false;
+      setBodyParamsCards([]);
+      setPagination({ totalRecords: 0, currentPage: 0, hasNextPage: false });
+      setLoading(true);
+    }
+
+    const softSearch = hasLoadedOnceRef.current && !hardReset;
+
+    let cancelled = false;
+    const run = async () => {
+      await fetchPage({
+        page: 1,
+        search: debouncedSearch,
+        append: false,
+        // Keep current cards + search UI visible while filtered results load.
+        isBackground: softSearch,
+      });
+      if (cancelled) return;
+      hasLoadedOnceRef.current = true;
+    };
+    run();
+
+    return () => {
+      cancelled = true;
+      // Invalidate in-flight writers without blocking the next mount's fetch
+      requestIdRef.current += 1;
+    };
+  }, [user, refreshKey, debouncedSearch, fetchPage]);
+
+  // Clear suggestion pool when the coach or external refresh key changes.
+  useEffect(() => {
+    setSuggestionPool([]);
   }, [user, refreshKey]);
 
-  const handleRefresh = () => fetchData(true);
+  const handleRefresh = () => {
+    pageCacheRef.current.clear();
+    inFlightPagesRef.current.clear();
+    setSuggestionPool([]);
+    setRefreshing(true);
+    fetchPage({
+      page: 1,
+      search: debouncedSearch,
+      append: false,
+      isBackground: true,
+      bustCache: true,
+    });
+  };
 
-  // Filter cards by search query
-  const filteredCards = bodyParamsCards.filter(card => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      card.name?.toLowerCase().includes(query) ||
-      card.phoneNumber?.toLowerCase().includes(query)
+  const loadMore = useCallback(() => {
+    if (loading || loadingMore || refreshing) return;
+    if (!pagination.hasNextPage) return;
+    const nextPage = (pagination.currentPage || 1) + 1;
+    fetchPage({ page: nextPage, search: debouncedSearch, append: true });
+  }, [loading, loadingMore, refreshing, pagination, debouncedSearch, fetchPage]);
+
+  useEffect(() => {
+    const root = scrollRef.current;
+    const sentinel = sentinelRef.current;
+    if (!root || !sentinel) return undefined;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMore();
+      },
+      { root, rootMargin: '200px', threshold: 0 },
     );
-  });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loadMore, bodyParamsCards.length]);
 
-  const fetchFreshCard = async (cardId) => {
-    if (!user?.email || !cardId) return null;
+  const handleContactSaveState = useCallback(({ cardId, state }) => {
+    if (cardId == null) return;
+    const id = String(cardId);
+    setContactSavingIds((prev) => {
+      const next = new Set(prev);
+      if (state === 'saving') next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    if (state === 'saved') {
+      setContactSavedIds((prev) => {
+        if (prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+    }
+  }, []);
+
+  const handleEditCard = async (card) => {
+    // Open immediately with list data so Edit never waits on the network.
+    // Detail fields (fat%, BMR, etc.) merge in when the refresh succeeds —
+    // BodyParamsForm already re-hydrates from a late existingCard snapshot.
+    headerVenueInitializedRef.current = true;
+    setHeaderVenue(String(card.locationName || '').trim());
+    setSelectedCard(card);
+    setIsBodyParamsFormOpen(true);
+
     try {
-      const userId = await getUserId(user.email);
-      const cards = await listBodyParamsCards(userId);
-      setBodyParamsCards(cards || []);
-      return (cards || []).find((c) => c.id === cardId) ?? null;
-    } catch {
-      return null;
+      const userId = await resolveCoachId();
+      if (!userId || !card?.id) return;
+      const fresh = await getBodyParamsCard(userId, card.id);
+      if (!fresh || typeof fresh !== 'object' || Array.isArray(fresh)) return;
+      const merged = {
+        ...card,
+        ...fresh,
+        phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null,
+        locationName: fresh.locationName ?? card.locationName ?? null,
+        appointmentDate: resolveBcmCardAppointmentDate(fresh) || resolveBcmCardAppointmentDate(card) || null,
+      };
+      setSelectedCard((prev) => (prev?.id === card.id ? merged : prev));
+      setHeaderVenue(String(merged.locationName || '').trim());
+    } catch (err) {
+      // List card is enough to edit; do not keep the global connection overlay up.
+      dismissNetworkFailure();
+      debugLog('[WellnessCounselling] edit using list card', err?.message);
     }
   };
 
-  const handleEditCard = async (card) => {
-    const fresh = await fetchFreshCard(card.id);
-    const merged = fresh
-      ? { ...fresh, phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null }
-      : card;
-    setSelectedCard(merged);
-    setIsBodyParamsFormOpen(true);
-  };
+  const handleShareCard = useCallback(async (card) => {
+    if (!card?.id || shareSessionRef.current) return;
+    shareSessionRef.current = true;
+    setSharingCardId(card.id);
+    setShareErrorMessage(null);
+    preloadBodyParamsShareAssets();
+    try {
+      const coachId = await resolveCoachId();
+      let full = card;
+      if (coachId) {
+        try {
+          const fresh = await getBodyParamsCard(coachId, card.id);
+          if (fresh && typeof fresh === 'object' && !Array.isArray(fresh)) {
+            full = {
+              ...card,
+              ...fresh,
+              phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null,
+              locationName: fresh.locationName ?? card.locationName ?? null,
+              appointmentDate: fresh.appointmentDate ?? fresh.appointment_date ?? card.appointmentDate ?? card.appointment_date ?? null,
+            };
+          }
+        } catch (err) {
+          dismissNetworkFailure();
+          debugLog('[WellnessCounselling] share using list card', err?.message);
+        }
+      }
+      const { previousCard: prevCard = null, ...cardCore } = full;
+      const creatorName = String(
+        user?.userName || user?.name || user?.username || user?.displayName || ''
+      ).trim();
+      const resolvedAppointment = resolveBcmCardAppointmentDate(full);
+      skipRefreshOnShareCloseRef.current = true;
+      setBodyParamsPreCapCard(null);
+      setBodyParamsShareData({
+        card: {
+          ...cardCore,
+          appointmentDate: resolvedAppointment,
+          creatorName: cardCore.creatorName || creatorName,
+        },
+        shareUrl: buildOnboardingShareUrl(getApiBaseUrl()),
+        previousCard: prevCard,
+      });
+    } catch (err) {
+      shareSessionRef.current = false;
+      skipRefreshOnShareCloseRef.current = false;
+      setShareErrorMessage(err?.message || 'Failed to share card. Please try again.');
+    } finally {
+      setSharingCardId(null);
+    }
+  }, [resolveCoachId, user]);
 
-  if (loading) {
+  const handleDeleteCard = useCallback((card) => {
+    if (!card?.id || deletingCardId != null) return;
+    setDeleteErrorMessage(null);
+    setCardPendingDelete(card);
+  }, [deletingCardId]);
+
+  const confirmDeleteCard = useCallback(async () => {
+    const card = cardPendingDelete;
+    if (!card?.id || deletingCardId != null) return;
+
+    setCardPendingDelete(null);
+    setDeletingCardId(card.id);
+    try {
+      const coachId = await resolveCoachId();
+      await deleteBodyParamsCard({ id: card.id, coachId });
+      pageCacheRef.current.clear();
+      setBodyParamsCards((prev) => prev.filter((c) => c.id !== card.id));
+      setSuggestionPool((prev) => prev.filter((c) => c.id !== card.id));
+      setPagination((prev) => ({
+        ...prev,
+        totalRecords: Math.max(0, (prev.totalRecords || 1) - 1),
+      }));
+      debugLog('[WellnessCounselling] card deleted', { id: card.id });
+    } catch (err) {
+      console.error('[WellnessCounselling] Error deleting card:', err);
+      setDeleteErrorMessage(err.message || 'Failed to delete card. Please try again.');
+    } finally {
+      setDeletingCardId(null);
+    }
+  }, [cardPendingDelete, deletingCardId, resolveCoachId]);
+
+  if (loading && bodyParamsCards.length === 0 && !error) {
     return (
-      <div className="h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading body parameters...</p>
+      <div className="h-screen bg-gradient-to-br from-green-50 to-blue-50 overflow-hidden flex flex-col">
+        <div className="flex-shrink-0 bg-white shadow-sm px-4 py-3">
+          <h1 className="text-lg font-bold text-gray-900">Body Composition Metrics</h1>
+          <p className="text-xs text-gray-500">Loading...</p>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <CardSkeleton key={i} />
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -157,41 +652,57 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
 
   return (
     <div className="h-screen bg-gradient-to-br from-green-50 to-blue-50 overflow-hidden flex flex-col">
-      {/* Header */}
       <div className="flex-shrink-0 bg-white shadow-sm">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">Body Composition Metrics</h1>
-              <p className="text-xs text-gray-500">{filteredCards.length} Cards</p>
-            </div>
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-lg font-bold text-gray-900 min-w-0">Body Composition Metrics</h1>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
+            >
+              <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
+            </button>
           </div>
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
-          >
-            <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
-          </button>
+          <div className="mt-1 flex w-full min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto py-0.5 sm:gap-2">
+            <label
+              className="whitespace-nowrap text-[11px] text-gray-500 sm:text-xs"
+              htmlFor="bpc-header-venue"
+            >
+              Checked At:
+            </label>
+            <input
+              id="bpc-header-venue"
+              type="text"
+              value={headerVenue}
+              onChange={(e) => {
+                headerVenueInitializedRef.current = true;
+                setHeaderVenue(e.target.value);
+              }}
+              className="h-7 w-20 min-w-[4.5rem] flex-shrink-0 rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-800 outline-none focus:border-green-500 focus:ring-1 focus:ring-inset focus:ring-green-500 sm:w-28 md:w-36"
+            />
+            <p className="ml-auto flex-shrink-0 whitespace-nowrap text-[11px] text-gray-500 sm:text-xs">
+              {pagination.totalRecords || bodyParamsCards.length} Cards
+            </p>
+          </div>
         </div>
 
-        {/* Search Bar */}
         <div className="px-4 pb-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input
-              type="text"
-              placeholder="Search by name or phone..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-            />
-          </div>
+          <BodyParamsSearchBar
+            value={searchQuery}
+            onChange={handleSearchChange}
+            suggestions={suggestions}
+            isOpen={isSearchOpen}
+            onOpenChange={setIsSearchOpen}
+            highlightedIndex={highlightedSuggestion}
+            onHighlightChange={setHighlightedSuggestion}
+            onSelectSuggestion={handleSelectSuggestion}
+            onKeyDown={handleSearchKeyDown}
+          />
         </div>
       </div>
 
-      {/* Content Area */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         {error ? (
           <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
@@ -200,85 +711,61 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Error Loading Cards</h3>
             <p className="text-sm text-gray-500 mb-4">{error}</p>
             <button
-              onClick={() => fetchData()}
+              onClick={() => fetchPage({ page: 1, search: debouncedSearch, append: false, bustCache: true })}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
             >
               Try Again
             </button>
           </div>
-        ) : filteredCards.length === 0 ? (
+        ) : bodyParamsCards.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
               <FileHeart className="w-8 h-8 text-gray-400" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              {searchQuery ? 'No matching cards' : 'No body parameters yet'}
+              {debouncedSearch ? 'No matching cards' : 'No body parameters yet'}
             </h3>
             <p className="text-sm text-gray-500 mb-4">
-              {searchQuery
-                ? `No cards match "${searchQuery}"`
+              {debouncedSearch
+                ? `No cards match "${debouncedSearch}"`
                 : 'Create your first body parameters card using the + button below'}
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
-            {filteredCards.map((card) => (
-              <div
-                key={card.id}
-                onClick={() => handleEditCard(card)}
-                className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow cursor-pointer overflow-hidden"
-              >
-                <div className="p-4">
-                  {/* Header */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-gray-900 truncate">{card.name}</h3>
-                      <p className="text-sm text-gray-500">{card.phoneNumber}</p>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditCard(card);
-                      }}
-                      className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      <Edit2 size={16} className="text-gray-400" />
-                    </button>
-                  </div>
-
-                  {/* Stats Grid */}
-                  <div className="grid grid-cols-2 gap-2 mb-3">
-                    <div className="bg-blue-50 rounded-lg p-2">
-                      <p className="text-xs text-blue-600 font-medium">Height</p>
-                      <p className="text-sm font-semibold text-blue-900">{card.heightCm} cm</p>
-                    </div>
-                    <div className="bg-green-50 rounded-lg p-2">
-                      <p className="text-xs text-green-600 font-medium">Weight</p>
-                      <p className="text-sm font-semibold text-green-900">{card.weightKg} kg</p>
-                    </div>
-                    <div className="bg-purple-50 rounded-lg p-2">
-                      <p className="text-xs text-purple-600 font-medium">BMI</p>
-                      <p className="text-sm font-semibold text-purple-900">{card.bmi}</p>
-                    </div>
-                    <div className="bg-orange-50 rounded-lg p-2">
-                      <p className="text-xs text-orange-600 font-medium">Age</p>
-                      <p className="text-sm font-semibold text-orange-900">{card.age} yrs</p>
-                    </div>
-                  </div>
-
-                  {/* Footer */}
-                  <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-100">
-                    <span>{card.gender}</span>
-                    <span>{card.recordedDate ? format(new Date(card.recordedDate), 'MMM d, yyyy') : 'N/A'}</span>
-                  </div>
-                </div>
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
+              {bodyParamsCards.map((card) => (
+                <BodyParamsCardTile
+                  key={card.id}
+                  card={card}
+                  onEdit={handleEditCard}
+                  onDelete={handleDeleteCard}
+                  onShare={handleShareCard}
+                  isDeleting={deletingCardId === card.id}
+                  isSharing={sharingCardId === card.id}
+                  contactStatus={
+                    contactSavingIds.has(String(card.id))
+                      ? 'saving'
+                      : contactSavedIds.has(String(card.id)) || isBcmDeviceContactSaved(card.phoneNumber)
+                        ? 'saved'
+                        : 'idle'
+                  }
+                  timezoneIana={displayTimezone}
+                />
+              ))}
+            </div>
+            {loadingMore && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <CardSkeleton key={`more-${i}`} />
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+            <div ref={sentinelRef} className="h-8 pb-20" aria-hidden="true" />
+          </>
         )}
       </div>
 
-      {/* Floating Action Button */}
       <button
         onClick={() => {
           setSelectedCard(null);
@@ -290,7 +777,6 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         <Plus size={28} />
       </button>
 
-      {/* Body Parameters Card Form */}
       <BodyParamsForm
         isOpen={isBodyParamsFormOpen}
         onClose={() => {
@@ -300,26 +786,38 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         user={user}
         selectedMember={null}
         existingCard={selectedCard}
+        externalVenue={headerVenue}
+        onVenueChange={(venue) => {
+          headerVenueInitializedRef.current = true;
+          setHeaderVenue(venue);
+        }}
+        onContactSaveState={handleContactSaveState}
         onSaveStart={(formData) => {
-          setBodyParamsPreCapCard(formData);
+          const venue = String(formData.locationName || '').trim();
+          if (venue) {
+            headerVenueInitializedRef.current = true;
+            setHeaderVenue(venue);
+          }
+          setBodyParamsPreCapCard({
+            ...formData,
+            locationName: venue,
+          });
         }}
         onSaveSuccess={(card, shareUrl, previousCard) => {
           setIsBodyParamsFormOpen(false);
           onCardSaved?.(card);
+          const savedVenue = String(card?.locationName || '').trim();
+          headerVenueInitializedRef.current = true;
+          setHeaderVenue(savedVenue);
 
-          // Optimistic update — new card appears in the grid immediately.
-          // Do NOT call fetchData here: a background fetch that completes while
-          // the native share sheet is open can overwrite this optimistic state
-          // with a server snapshot that may not yet include the new record,
-          // causing the card to disappear from the UI mid-share.
-          // The authoritative re-sync happens in BodyParamsShareSheet.onClose
-          // below, once the user is back and looking at the grid.
+          pageCacheRef.current.clear();
           setBodyParamsCards((prevCards) => {
             const idx = prevCards.findIndex((c) => c.id === card.id);
             const merged = {
               ...(idx >= 0 ? prevCards[idx] : {}),
               ...card,
               phoneNumber: card.phoneNumber ?? (idx >= 0 ? prevCards[idx].phoneNumber : null),
+              locationName: savedVenue || null,
             };
             if (idx >= 0) {
               const next = [...prevCards];
@@ -330,26 +828,72 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
           });
 
           setSelectedCard(null);
-          setBodyParamsShareData({ card, shareUrl, previousCard: previousCard || null });
+          shareSessionRef.current = true;
+          skipRefreshOnShareCloseRef.current = false;
+          setBodyParamsShareData({
+            card: {
+              ...card,
+              locationName: savedVenue,
+            },
+            shareUrl,
+            previousCard: previousCard || null,
+          });
         }}
       />
 
-      {/* Body Parameters Share Sheet */}
       <BodyParamsShareSheet
         isOpen={!!bodyParamsShareData}
         onClose={() => {
+          const skipRefresh = skipRefreshOnShareCloseRef.current;
+          skipRefreshOnShareCloseRef.current = false;
+          shareSessionRef.current = false;
           setBodyParamsShareData(null);
           setBodyParamsPreCapCard(null);
-          // Re-fetch from server when the share sheet closes so the grid
-          // always shows confirmed server data the moment it becomes visible
-          // (the background fetch started in onSaveSuccess may have been
-          // interrupted if the app went to WhatsApp and back on Android).
-          fetchData(true);
+          if (skipRefresh) return;
+          pageCacheRef.current.clear();
+          fetchPage({
+            page: 1,
+            search: debouncedSearch,
+            append: false,
+            isBackground: true,
+            bustCache: true,
+          });
         }}
         card={bodyParamsShareData?.card}
         shareUrl={bodyParamsShareData?.shareUrl}
         preCapCard={bodyParamsPreCapCard}
         previousCard={bodyParamsShareData?.previousCard ?? null}
+        user={user}
+      />
+
+      <CustomAlertModal
+        isOpen={!!cardPendingDelete}
+        onClose={() => setCardPendingDelete(null)}
+        title="Delete card?"
+        message={`Delete ${String(cardPendingDelete?.name || 'this card').trim() || 'this card'}? This cannot be undone.`}
+        type="warning"
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={confirmDeleteCard}
+        onCancel={() => setCardPendingDelete(null)}
+      />
+
+      <CustomAlertModal
+        isOpen={!!deleteErrorMessage}
+        onClose={() => setDeleteErrorMessage(null)}
+        title="Delete failed"
+        message={deleteErrorMessage || ''}
+        type="error"
+        confirmText="OK"
+      />
+
+      <CustomAlertModal
+        isOpen={!!shareErrorMessage}
+        onClose={() => setShareErrorMessage(null)}
+        title="Share failed"
+        message={shareErrorMessage || ''}
+        type="error"
+        confirmText="OK"
       />
     </div>
   );

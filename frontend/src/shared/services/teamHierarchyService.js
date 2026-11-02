@@ -4,6 +4,9 @@ import { cacheManager } from "./cacheManager";
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
 
+/** Cache version — bump when search/full response shape changes. */
+const TEAM_HIERARCHY_CACHE_VERSION = "v6-purpose-search";
+
 /**
  * Team Hierarchy Service
  * Handles all team hierarchy-related API calls
@@ -13,21 +16,32 @@ export const teamHierarchyService = {
    * Fetch hierarchical team structure
    * @param {number} coachId - ID of the coach requesting the hierarchy
    * @param {boolean} includeInactive - Whether to include inactive users
+   * @param {{ purpose?: 'search'|'full' }} [options]
+   *   purpose=search → lighter backend path for Diary / Reports search (no weight enrich)
    * @returns {Promise<Object>} - Hierarchical team data
    */
-  async getTeamHierarchy(coachId, includeInactive = false) {
-    const cacheKey = cacheManager.generateKey("teamHierarchy", coachId, includeInactive);
+  async getTeamHierarchy(coachId, includeInactive = false, options = {}) {
+    const purpose = options.purpose === "search" ? "search" : "full";
+    const cacheKey = cacheManager.generateKey(
+      "teamHierarchy",
+      TEAM_HIERARCHY_CACHE_VERSION,
+      coachId,
+      includeInactive,
+      purpose,
+    );
     return cacheManager.execute(
       cacheKey,
       async () => {
+        const params = {
+          coachId,
+          includeInactive: includeInactive ? "true" : "false",
+        };
+        if (purpose === "search") {
+          params.purpose = "search";
+        }
         const response = await axios.get(
           `${API_BASE_URL}/api/coach/team-hierarchy`,
-          {
-            params: {
-              coachId,
-              includeInactive: includeInactive ? "true" : "false",
-            },
-          },
+          { params },
         );
         return response.data;
       },
@@ -42,19 +56,23 @@ export const teamHierarchyService = {
    * Get flat list of all Active team members under a coach.
    * Inactive users are excluded by the backend (includeInactive=false).
    * @param {number} coachId - ID of the coach
+   * @param {{ purpose?: 'search'|'full' }} [options]
+   *   purpose=search for Diary / team search; omit (full) for BCM weight prefill
    * @returns {Promise<Array>} - Flat array of active team members
    */
-  async getFlatTeamList(coachId) {
+  async getFlatTeamList(coachId, options = {}) {
     try {
-      const hierarchyData = await this.getTeamHierarchy(coachId, false);
+      const purpose = options.purpose === "search" ? "search" : "full";
+      const hierarchyData = await this.getTeamHierarchy(coachId, false, { purpose });
 
       // ✅ Use backend's pre-built flat array — already deduplicated, Active-only, and complete
       // Avoids members being dropped by broken nested tree walk
       if (hierarchyData.allMembers && hierarchyData.allMembers.length > 0) {
-        return hierarchyData.allMembers.map((member) => ({
+        const list = hierarchyData.allMembers.map((member) => ({
           userId: member.UserId,
           userName: member.UserName,
           email: member.Email || "",
+          communityId: member.CommunityId || member.communityId || null,
           role: member.Role || "user",
           coachId: member.CoachId,
           coCoachId: member.CoCoachId,
@@ -65,9 +83,24 @@ export const teamHierarchyService = {
           isCoachRelationship: true,
           level: 0,
           phoneNumber: member.phoneNumber || member.PhoneNumber || null,
+          clubName: member.clubName || null,
           heightCm: member.height != null ? member.height : (member.heightCm != null ? member.heightCm : null),
           bmr: member.bmr != null ? member.bmr : null,
+          gender: member.gender || member.Gender || null,
+          age: member.age != null ? member.age : null,
+          visceralFat: member.visceralFat != null ? member.visceralFat : null,
+          bodyAge: member.bodyAge != null ? member.bodyAge : null,
+          chestCm: member.chestCm != null ? member.chestCm : null,
+          waistCm: member.waistCm != null ? member.waistCm : null,
+          hipCm: member.hipCm != null ? member.hipCm : null,
+          weightKg: member.weightKg != null ? member.weightKg : null,
+          fatPercent: member.fatPercent != null ? member.fatPercent : null,
+          bmi: member.bmi != null ? member.bmi : null,
         }));
+        list.coachClubName = hierarchyData.coachClubName
+          || hierarchyData.loggedInCoach?.clubName
+          || null;
+        return list;
       }
 
       // Fallback: walk hierarchy tree if allMembers not available
@@ -81,6 +114,7 @@ export const teamHierarchyService = {
             userId: node.userId,
             userName: node.userName,
             email: node.email,
+            communityId: node.communityId || null,
             role: node.role,
             coachId: node.coachId,
             coCoachId: node.coCoachId,
@@ -91,8 +125,19 @@ export const teamHierarchyService = {
             isCoachRelationship: node.isCoachRelationship,
             level: 0,
             phoneNumber: node.phoneNumber || null,
+            clubName: node.clubName || null,
             heightCm: node.height != null ? node.height : (node.heightCm != null ? node.heightCm : null),
             bmr: node.bmr != null ? node.bmr : null,
+            gender: node.gender || null,
+            age: node.age != null ? node.age : null,
+            visceralFat: node.visceralFat != null ? node.visceralFat : null,
+            bodyAge: node.bodyAge != null ? node.bodyAge : null,
+            chestCm: node.chestCm != null ? node.chestCm : null,
+            waistCm: node.waistCm != null ? node.waistCm : null,
+            hipCm: node.hipCm != null ? node.hipCm : null,
+            weightKg: node.weightKg != null ? node.weightKg : null,
+            fatPercent: node.fatPercent != null ? node.fatPercent : null,
+            bmi: node.bmi != null ? node.bmi : null,
           });
         }
         if (node.teamMembers && node.teamMembers.length > 0) {
@@ -102,6 +147,9 @@ export const teamHierarchyService = {
       if (hierarchyData.hierarchy) {
         flatten(hierarchyData.hierarchy);
       }
+      flatList.coachClubName = hierarchyData.coachClubName
+        || hierarchyData.loggedInCoach?.clubName
+        || null;
       return flatList;
     } catch (error) {
       console.error("Flat team list error:", error);
@@ -117,7 +165,9 @@ export const teamHierarchyService = {
    */
   async searchInHierarchy(coachId, searchTerm) {
     try {
-      const hierarchyData = await this.getTeamHierarchy(coachId);
+      const hierarchyData = await this.getTeamHierarchy(coachId, false, {
+        purpose: "search",
+      });
       const results = [];
 
       const search = (node, path = []) => {
@@ -140,6 +190,20 @@ export const teamHierarchyService = {
 
       if (hierarchyData.hierarchy) {
         search(hierarchyData.hierarchy);
+      } else if (hierarchyData.allMembers?.length) {
+        const q = searchTerm.toLowerCase();
+        for (const member of hierarchyData.allMembers) {
+          const name = String(member.UserName || "").toLowerCase();
+          const email = String(member.Email || "").toLowerCase();
+          if (name.includes(q) || email.includes(q)) {
+            results.push({
+              userId: member.UserId,
+              userName: member.UserName,
+              email: member.Email || "",
+              path: member.UserName || "",
+            });
+          }
+        }
       }
 
       return results;

@@ -79,6 +79,12 @@ export function sumNutrition(nutritions) {
  * @returns {{ unit: 'pcs'|'cups'|'servings', shortLabel: string }}
  */
 export function resolveQuantityUnit(item) {
+  // Explicit g/ml base servings (custom foods) use the meal stepper as "servings".
+  const explicitUnit = String(item?.unit || '').toLowerCase();
+  if (explicitUnit === 'g' || explicitUnit === 'ml' || item?.customFood) {
+    return { unit: 'servings', shortLabel: 'servings' };
+  }
+
   const blob = [
     item?.portion,
     item?.portion_label,
@@ -93,7 +99,7 @@ export function resolveQuantityUnit(item) {
     return { unit: 'cups', shortLabel: 'cups' };
   }
   if (
-    /\b(piece|pieces|pcs|idli|idly|dosa|roti|chapati|paratha|vada|egg|biscuit|cookie|medium)\b/.test(blob)
+    /\b(piece|pieces|pcs|idli|idly|idaly|dosa|roti|chapati|chapathi|chappathi|paratha|porata|parotta|porotta|idiyappam|idyapam|idiappam|vada|egg|biscuit|cookie|medium)\b/.test(blob)
     || /\b1\s+(piece|idli|dosa|roti|medium)\b/.test(blob)
   ) {
     return { unit: 'pcs', shortLabel: 'pcs' };
@@ -132,8 +138,9 @@ export function formatServingPortion(item, servings) {
  * Deduplicate search buckets: master > my history > community (exact name).
  * Keeps distinct foods (Banana Chips stays even if Banana is in master).
  * @param {{ masterItems?: object[], myItems?: object[], communityItems?: object[] }} parts
+ * @param {string} [query] when set, each bucket is ranked by match position (prefix first)
  */
-export function dedupeSearchBuckets({ masterItems = [], myItems = [], communityItems = [] }) {
+export function dedupeSearchBuckets({ masterItems = [], myItems = [], communityItems = [] }, query = '') {
   const keyOf = (item) => String(item?.name || '').toLowerCase().trim();
   const master = [];
   const seen = new Set();
@@ -157,7 +164,34 @@ export function dedupeSearchBuckets({ masterItems = [], myItems = [], communityI
     seen.add(k);
     community.push(item);
   }
-  return { masterItems: master, myItems: my, communityItems: community };
+  return {
+    masterItems: sortFoodSearchByMatchPosition(master, query),
+    myItems: sortFoodSearchByMatchPosition(my, query),
+    communityItems: sortFoodSearchByMatchPosition(community, query),
+  };
+}
+
+/**
+ * Rank typeahead hits by earliest character index of `query` in the name.
+ * "o" → Onion (0) before Boiled (1) before Beetroot (4).
+ * @param {object[]} items
+ * @param {string} query
+ * @returns {object[]}
+ */
+export function sortFoodSearchByMatchPosition(items, query) {
+  if (!Array.isArray(items) || items.length < 2) return items || [];
+  const q = String(query || '').toLowerCase().trim();
+  if (!q) return items;
+  return items.slice().sort((a, b) => {
+    const na = String(a?.name || '').toLowerCase();
+    const nb = String(b?.name || '').toLowerCase();
+    const ia = na.indexOf(q);
+    const ib = nb.indexOf(q);
+    const ra = ia < 0 ? 9999 : ia;
+    const rb = ib < 0 ? 9999 : ib;
+    if (ra !== rb) return ra - rb;
+    return na.localeCompare(nb);
+  });
 }
 
 /**
@@ -182,9 +216,27 @@ export function buildAnalysisFromManualFood(m) {
     const item = { name: f.name || f.foodName, nutrition };
     if (f.portion) item.portion = f.portion;
     if (f.weight_g != null) item.weight_g = f.weight_g;
+    const servings = Number(f.servings ?? f.servingCount);
+    if (Number.isFinite(servings) && servings > 0) item.servings = servings;
     if (f.isLiquid != null) item.isLiquid = f.isLiquid;
     if (f.volume_ml != null) item.volume_ml = f.volume_ml;
+    if (f.unit) item.unit = f.unit;
+    if (f.profileId != null) item.profileId = f.profileId;
     return item;
+  };
+
+  const mealKind = typeof m.mealKind === 'string' && m.mealKind.trim()
+    ? m.mealKind.trim()
+    : undefined;
+  const intakeSlot = typeof m.intakeSlot === 'string' && m.intakeSlot.trim()
+    ? m.intakeSlot.trim()
+    : undefined;
+
+  const withMeta = (base) => {
+    const out = { ...base, source: 'manual' };
+    if (mealKind) out.mealKind = mealKind;
+    if (intakeSlot) out.intakeSlot = intakeSlot;
+    return out;
   };
 
   if (m.isPlate && Array.isArray(m.items)) {
@@ -192,7 +244,7 @@ export function buildAnalysisFromManualFood(m) {
     const total = m.total && Object.keys(pickNutrition(m.total)).length > 0
       ? pickNutrition(m.total)
       : sumNutrition(foods.map((f) => f.nutrition));
-    return { foods, total, confidence: 'high' };
+    return withMeta({ foods, total, confidence: 'high' });
   }
 
   const item = toItem({
@@ -207,5 +259,5 @@ export function buildAnalysisFromManualFood(m) {
     portion: m.portion,
     weight_g: m.weight_g,
   });
-  return { foods: [item], total: item.nutrition, confidence: 'high' };
+  return withMeta({ foods: [item], total: item.nutrition, confidence: 'high' });
 }

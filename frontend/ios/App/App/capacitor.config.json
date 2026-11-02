@@ -5,7 +5,8 @@
 	"bundledWebRuntime": false,
 	"android": {
 		"allowMixedContent": true,
-		"captureInput": true,
+		"initialFocus": true,
+		"captureInput": false,
 		"webContentsDebuggingEnabled": false,
 		"backgroundColor": "#ffffff",
 		"loggingBehavior": "none",
@@ -17,27 +18,29 @@
 	},
 	"server": {
 		"androidScheme": "https",
-		"hostname": "wellness-valley.vercel.app",
+		"hostname": "app.wellnessvalley.app",
 		"allowNavigation": [
+			"wellness-valley.vercel.app",
 			"wellness-valley-pwa-backend-test.vercel.app",
 			"wellness-buddy-pwa-backend-test.vercel.app",
-			"wellness-buddy-pwa-eta.vercel.app",
 			"*.vercel.app",
 			"*.googleapis.com",
 			"*.firebase.com",
 			"*.firebaseapp.com",
 			"*.firebaseio.com",
 			"share.wellnessvalley.app",
-			"*.wellnessvalley.app"
+			"*.wellnessvalley.app",
+			"wellnessvalley.in"
 		],
-		"cleartext": false
+		"cleartext": true
 	},
 	"ios": {
 		"contentInset": "automatic",
 		"allowsLinkPreview": false,
 		"scrollEnabled": true,
 		"backgroundColor": "#ffffff",
-		"limitsNavigationsToAppBoundDomains": false
+		"limitsNavigationsToAppBoundDomains": false,
+		"initialFocus": true
 	},
 	"plugins": {
 		"GoogleAuth": {
@@ -75,10 +78,12 @@
 		}
 	},
 	"packageClassList": [
+		"ContactsPlugin",
 		"AppPlugin",
 		"CAPCameraPlugin",
 		"FilesystemPlugin",
 		"GeolocationPlugin",
+		"KeyboardPlugin",
 		"PushNotificationsPlugin",
 		"SharePlugin",
 		"SplashScreenPlugin",

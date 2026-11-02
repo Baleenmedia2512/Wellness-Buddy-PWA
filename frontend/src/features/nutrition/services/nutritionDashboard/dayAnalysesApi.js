@@ -34,3 +34,48 @@ export async function fetchDayAnalyses({ apiBaseUrl, userId, date }) {
     return { success: false, list: [], error: 'network' };
   }
 }
+
+/**
+ * Inclusive range meal totals for home carousel (1 request instead of N days).
+ * Returns { success, byDate: { 'YYYY-MM-DD': dailyTotals } }.
+ */
+export async function fetchRangeMealTotals({ apiBaseUrl, userId, startDate, endDate }) {
+  if (!userId || !startDate || !endDate) {
+    return { success: false, byDate: {}, error: 'no-user' };
+  }
+  try {
+    const params = new URLSearchParams({
+      userId: String(userId),
+      startDate: String(startDate),
+      endDate: String(endDate),
+      totalsOnly: 'true',
+      _t: String(Date.now()),
+    });
+    const res = await fetch(
+      `${apiBaseUrl}/api/food-corrections/stats?${params.toString()}`,
+      { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } },
+    );
+    const data = await res.json();
+    if (!data?.success) return { success: false, byDate: {}, error: 'api-failed' };
+    return { success: true, byDate: data.byDate || {} };
+  } catch (error) {
+    console.error('[fetchRangeMealTotals] Error:', error);
+    return { success: false, byDate: {}, error: 'network' };
+  }
+}
+
+/**
+ * Detailed meal rows for a set of calendar days (food-breakdown modal).
+ * Fetches days in parallel; used after multi-day totals so rings paint first.
+ */
+export async function fetchRangeDayAnalyses({ apiBaseUrl, userId, dates = [] }) {
+  if (!userId || !Array.isArray(dates) || dates.length === 0) {
+    return { success: false, list: [], error: 'no-user' };
+  }
+  const results = await Promise.all(
+    dates.map((date) => fetchDayAnalyses({ apiBaseUrl, userId, date })),
+  );
+  const list = results.flatMap((r) => r.list || []);
+  const anyOk = results.some((r) => r.success);
+  return { success: anyOk || list.length > 0, list };
+}

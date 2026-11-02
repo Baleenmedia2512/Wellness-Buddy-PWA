@@ -7,8 +7,8 @@
  * Returns nested hierarchy with counselling status
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
-import { getDualCoachingTeamHierarchy } from '../../../utils/disciplineCalculationsSupabase.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
+import { getDualCoachingTeamHierarchy } from '../../../utils/disciplineCalculationsQuery.js';
 import { buildHierarchyWithMetricCounts } from '../../../utils/hierarchyHelpers.js';
 import logger from '../../../shared/lib/logger.js';
 
@@ -56,7 +56,7 @@ export default async function handler(req, res) {
 
     logger.debug('📋 [hierarchical-assessments] Fetching counselling data for userId:', userIdInt);
 
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
 
     // Step 1: Get team hierarchy using dual-coaching model
     const teamHierarchy = await getDualCoachingTeamHierarchy(userIdInt, false);
@@ -77,7 +77,7 @@ export default async function handler(req, res) {
     const allUserIds = teamHierarchy.map(m => m.UserId);
 
     // Step 3: Fetch ALL counselling assessments for the team
-    const { data: assessments, error } = await supabase
+    const { data: assessments, error } = await db
       .from('wellness_counselling_assessments')
       .select(`
         *,
@@ -165,7 +165,7 @@ export default async function handler(req, res) {
     }
 
     // Step 8b: Add co-coach partnership info if exists
-    const { data: managedTeam } = await supabase
+    const { data: managedTeam } = await db
       .from('coach_teams_table')
       .select('TeamId, CoachId, CoCoachId')
       .or(`CoachId.eq.${userIdInt},CoCoachId.eq.${userIdInt}`)

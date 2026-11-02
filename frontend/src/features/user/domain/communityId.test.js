@@ -1,0 +1,171 @@
+/**
+ * Unit tests for Community ID input rules on Personal Details.
+ * Run: node --test frontend/src/features/user/domain/communityId.test.js
+ */
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  COMMUNITY_ID_MAX_LENGTH,
+  COMMUNITY_ID_MIN_LENGTH,
+  normalizeCommunityId,
+  resolveDisplayCommunityId,
+  sanitizeCommunityIdInput,
+  validateCommunityId,
+  isCommunityIdConfirmed,
+  communityIdPendingApprovalMessage,
+  formatCommunityIdPairLabel,
+  communityIdPairDisplayParts,
+} from './communityId.js';
+
+describe('normalizeCommunityId', () => {
+  it('returns null for empty or whitespace-only values', () => {
+    assert.equal(normalizeCommunityId(''), null);
+    assert.equal(normalizeCommunityId('   '), null);
+    assert.equal(normalizeCommunityId(null), null);
+    assert.equal(normalizeCommunityId(undefined), null);
+  });
+
+  it('trims surrounding whitespace', () => {
+    assert.equal(normalizeCommunityId('  WB12345  '), 'WB12345');
+  });
+});
+
+describe('validateCommunityId', () => {
+  it('accepts alphanumeric values', () => {
+    const result = validateCommunityId('WB12345');
+    assert.equal(result.valid, true);
+    assert.equal(result.value, 'WB12345');
+  });
+
+  it('rejects values shorter than 4 characters', () => {
+    const result = validateCommunityId('ABC');
+    assert.equal(result.valid, false);
+    assert.match(result.message, /at least 4 characters/i);
+    assert.equal(COMMUNITY_ID_MIN_LENGTH, 4);
+  });
+
+  it('rejects values longer than max length', () => {
+    const result = validateCommunityId('a'.repeat(COMMUNITY_ID_MAX_LENGTH + 1));
+    assert.equal(result.valid, false);
+    assert.match(result.message, /at most 100 characters/i);
+  });
+
+  it('rejects special characters', () => {
+    const result = validateCommunityId('124-141');
+    assert.equal(result.valid, false);
+    assert.match(result.message, /letters and numbers/i);
+  });
+
+  it('treats cleared input as null', () => {
+    const result = validateCommunityId('   ');
+    assert.equal(result.valid, true);
+    assert.equal(result.value, null);
+  });
+});
+
+describe('sanitizeCommunityIdInput', () => {
+  it('strips non-alphanumeric characters, uppercases, and caps length', () => {
+    assert.equal(sanitizeCommunityIdInput('WB-12 345!'), 'WB12345');
+    assert.equal(
+      sanitizeCommunityIdInput('a'.repeat(COMMUNITY_ID_MAX_LENGTH + 5)).length,
+      COMMUNITY_ID_MAX_LENGTH,
+    );
+  });
+
+  it('does not cap at 10 characters', () => {
+    assert.equal(
+      sanitizeCommunityIdInput('w112072xxxextra'),
+      'W112072XXXEXTRA',
+    );
+  });
+});
+
+describe('resolveDisplayCommunityId', () => {
+  it('prefers saved community ID over onboarding team ID', () => {
+    assert.equal(
+      resolveDisplayCommunityId({ communityId: 'WB12345', teamId: 'W112072XXX' }),
+      'WB12345',
+    );
+  });
+
+  it('falls back to onboarding team ID when community ID is empty', () => {
+    assert.equal(
+      resolveDisplayCommunityId({ communityId: '', teamId: 'W112072XXX' }),
+      'W112072XXX',
+    );
+  });
+});
+
+describe('isCommunityIdConfirmed', () => {
+  it('treats a lead seat as confirmed', () => {
+    assert.equal(isCommunityIdConfirmed({ teamSeat: 'sponsor', communityId: 'WB12' }), true);
+  });
+
+  it('does not treat a typed code as confirmed', () => {
+    assert.equal(isCommunityIdConfirmed({ teamSeat: null, communityId: 'WB1234' }), false);
+  });
+});
+
+describe('communityIdPendingApprovalMessage', () => {
+  it('names the sponsor and email for the 4-digit code banner', () => {
+    const text = communityIdPendingApprovalMessage({
+      sponsorName: 'Nitheesh Lingam',
+      sponsorEmail: 'nitheesh@example.com',
+    });
+    assert.match(text, /4-digit code sent to Nitheesh Lingam \(nitheesh@example\.com\)/);
+    assert.match(text, /Enter the code to continue/);
+  });
+
+  it('falls back when the sponsor name is missing', () => {
+    assert.match(
+      communityIdPendingApprovalMessage({ sponsorName: '' }),
+      /4-digit code sent to your sponsor\./,
+    );
+  });
+});
+
+describe('formatCommunityIdPairLabel', () => {
+  it('shows partner first name when paired', () => {
+    assert.equal(
+      formatCommunityIdPairLabel({
+        sponsorName: 'Mohamed Yasheer',
+        coSponsorName: 'Balaji Kumar',
+      }),
+      'MOHAMED - BALAJI',
+    );
+  });
+
+  it('shows N/A when there is no co-sponsor', () => {
+    assert.equal(
+      formatCommunityIdPairLabel({
+        sponsorName: 'Yasheer',
+        coSponsorName: null,
+      }),
+      'YASHEER - N/A',
+    );
+  });
+
+  it('shows N/A for a missing coach and keeps the co-coach name', () => {
+    assert.deepEqual(
+      communityIdPairDisplayParts({
+        sponsorName: null,
+        coSponsorName: 'Balaji Kumar',
+      }),
+      { left: 'N/A', right: 'BALAJI' },
+    );
+  });
+
+  it('turns a stored NA label into N/A', () => {
+    assert.equal(
+      formatCommunityIdPairLabel({ label: 'YASHEER - NA' }),
+      'YASHEER - N/A',
+    );
+  });
+
+  it('prefers a server-provided label', () => {
+    assert.equal(
+      formatCommunityIdPairLabel({ label: 'YASHEER - BALAJI' }),
+      'YASHEER - BALAJI',
+    );
+  });
+});

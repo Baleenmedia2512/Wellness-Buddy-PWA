@@ -14,18 +14,20 @@ import {
 } from '../domain/credits.rules.js';
 
 describe('buildStatus', () => {
-  it('computes remaining from used and limit', () => {
+  it('computes remaining from used, pending, and limit', () => {
     const s = buildStatus({
       enabled: true,
       dailyLimit: 3,
       used: 1,
+      pendingReservations: 1,
       usageDate: '2026-07-27',
       timezoneIana: 'Asia/Kolkata',
     });
     assert.equal(s.enabled, true);
     assert.equal(s.dailyLimit, 3);
     assert.equal(s.used, 1);
-    assert.equal(s.remaining, 2);
+    assert.equal(s.pending, 1);
+    assert.equal(s.remaining, 1);
     assert.equal(s.usageDate, '2026-07-27');
   });
 
@@ -50,10 +52,24 @@ describe('canReserve', () => {
     );
   });
 
-  it('blocks when limit reached including pending holds', () => {
+  it('blocks when daily detections fully used', () => {
+    assert.deepEqual(
+      canReserve({ enabled: true, dailyLimit: 3, used: 3, pendingReservations: 0 }),
+      { allowed: false, reason: 'daily_exhausted' },
+    );
+  });
+
+  it('blocks with pending_holds when slots are held but not consumed', () => {
+    assert.deepEqual(
+      canReserve({ enabled: true, dailyLimit: 3, used: 0, pendingReservations: 3 }),
+      { allowed: false, reason: 'pending_holds' },
+    );
+  });
+
+  it('blocks when limit reached including pending holds (partial use)', () => {
     assert.deepEqual(
       canReserve({ enabled: true, dailyLimit: 3, used: 2, pendingReservations: 1 }),
-      { allowed: false, reason: 'limit_reached' },
+      { allowed: false, reason: 'pending_holds' },
     );
   });
 

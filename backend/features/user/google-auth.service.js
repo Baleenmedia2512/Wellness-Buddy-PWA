@@ -72,13 +72,14 @@ export async function saveGoogleUser({
     TargetWeightInKg: 0,
     Status: 'Active',
     CoachApproved: 0,
+    Role: 'user',
     Email: email,
   };
   if (photoURL) insertPayload.ProfileImage = photoURL;
 
   const { error: insertErr } = await repo.insertUser(insertPayload);
   if (insertErr) {
-    if (insertErr.code === '23505') {
+    if (insertErr.code === '1062') {
       const recheck = await repo.findByExactEmail(email, '"UserId", "UserName", "Email", "Status"');
       if (recheck) {
         await syncUserTimezoneIfChanged(recheck.UserId, timezoneIana);

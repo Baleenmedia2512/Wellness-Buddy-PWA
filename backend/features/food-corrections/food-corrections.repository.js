@@ -1,9 +1,10 @@
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import {
   applyDayFilter,
   applyDayFilterWidened,
   applyDateRangeFilter,
+  applyDateRangeFilterWidened,
   applySinceDayStartFilter,
 } from '../../shared/lib/datetime/applyDayFilter.js';
 import {
@@ -11,12 +12,13 @@ import {
   todayInTimezone,
   shiftDateYmd,
   filterFoodRowsByCalendarDay,
+  filterFoodRowsByCalendarDateRange,
 } from '../../shared/lib/datetime/index.js';
 
 // ─── corrections table ──────────────────────────────────────────────────────
 export async function listUserCorrections(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('food_corrections_table')
     .select('"Id", "AiDetected", "UserCorrected", "TimesCorrected", "CreatedAt", "LastCorrected"')
     .eq('"UserId"', userId)
@@ -27,8 +29,8 @@ export async function listUserCorrections(userId) {
 }
 
 export async function findCorrection(userId, aiDetected, userCorrected) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('food_corrections_table')
     .select('*')
     .eq('"UserId"', userId)
@@ -40,8 +42,8 @@ export async function findCorrection(userId, aiDetected, userCorrected) {
 }
 
 export async function updateCorrection(id, payload) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('food_corrections_table')
     .update(payload)
     .eq('"Id"', id)
@@ -52,8 +54,8 @@ export async function updateCorrection(id, payload) {
 }
 
 export async function insertCorrection(payload) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('food_corrections_table')
     .insert(payload)
     .select()
@@ -63,8 +65,8 @@ export async function insertCorrection(payload) {
 }
 
 export async function listAllCorrections() {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('food_corrections_table')
     .select(`
       "AiDetected", "UserCorrected", "UserId", "TimesCorrected", "LastCorrected",
@@ -78,8 +80,8 @@ export async function listAllCorrections() {
 
 // ─── nutrition table ────────────────────────────────────────────────────────
 export async function searchUserMeals(userId, term) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('food_nutrition_data_table')
     .select('"ID","AnalysisData","CreatedAt"')
     .eq('"UserID"', userId)
@@ -92,8 +94,8 @@ export async function searchUserMeals(userId, term) {
 }
 
 export async function searchCommunityMeals(userId, term) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('food_nutrition_data_table')
     .select('"ID","AnalysisData","CreatedAt"')
     .neq('"UserID"', userId)
@@ -106,21 +108,22 @@ export async function searchCommunityMeals(userId, term) {
 }
 
 export async function updateMealAnalysis(id, userId, payload) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  // Select ID only — bare .select() returns ImageBase64 and can add multi-second latency.
+  const { data, error } = await db
     .from('food_nutrition_data_table')
     .update(payload)
     .eq('"ID"', id)
     .eq('"UserID"', userId)
-    .select();
+    .select('"ID"');
   if (error) throw error;
   return data || [];
 }
 
 /** Read-only: existing GlycemicIndex for a meal owned by userId (edit preserve). */
 export async function fetchMealGlycemicIndex(id, userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('food_nutrition_data_table')
     .select('GlycemicIndex')
     .eq('"ID"', id)
@@ -132,17 +135,18 @@ export async function fetchMealGlycemicIndex(id, userId) {
 }
 
 export async function fetchMealsForDate(userId, date, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('food_nutrition_data_table')
+    // ImageBase64 omitted on purpose — list responses were multi-100KB; use meal-image API.
     .select([
-      'ID, ImagePath, ImageBase64, AnalysisData, ConfidenceScore',
+      'ID, ImagePath, AnalysisData, ConfidenceScore',
       'TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber',
       'TotalSugar, TotalSodium, TotalCholesterol, GlycemicIndex',
       'TotalVitaminA, TotalVitaminC, TotalVitaminD, TotalVitaminE, TotalVitaminK',
       'TotalVitaminB1, TotalVitaminB2, TotalVitaminB3, TotalVitaminB6, TotalVitaminB9, TotalVitaminB12',
       'TotalCalcium, TotalIron, TotalMagnesium, TotalPotassium, TotalZinc, TotalPhosphorus',
-      'ProcessedBy, DeviceInfo, CreatedAt',
+      'ProcessedBy, Source, DeviceInfo, CreatedAt',
     ].join(', '))
     .eq('UserID', String(userId))
     .eq('IsDeleted', 0)
@@ -159,40 +163,251 @@ export async function fetchMealsForDate(userId, date, timezoneIana = IANA_IST) {
   return filterFoodRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
 }
 
+/**
+ * Lightweight day totals — no AnalysisData / images (calorie trend, charts).
+ */
+export async function fetchMealTotalsForDate(userId, date, timezoneIana = IANA_IST) {
+  const db = getMysqlClient();
+  let query = db
+    .from('food_nutrition_data_table')
+    .select([
+      'TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber',
+      'TotalSugar, TotalSodium, TotalCholesterol, GlycemicIndex',
+      'TotalVitaminA, TotalVitaminC, TotalVitaminD, TotalVitaminE, TotalVitaminK',
+      'TotalVitaminB1, TotalVitaminB2, TotalVitaminB3, TotalVitaminB6, TotalVitaminB9, TotalVitaminB12',
+      'TotalCalcium, TotalIron, TotalMagnesium, TotalPotassium, TotalZinc, TotalPhosphorus',
+      'CreatedAt',
+    ].join(', '))
+    .eq('UserID', String(userId))
+    .eq('IsDeleted', 0)
+    .not('AnalysisData', 'is', null);
+  query = applyDayFilterWidened(query, 'CreatedAt', date, timezoneIana);
+  const { data, error } = await query;
+  if (error) throw error;
+  return filterFoodRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
+}
+
+/**
+ * Lightweight meal totals for an inclusive calendar range (home carousel / charts).
+ * Widened SQL bounds + post-filter for legacy IST wall-clock CreatedAt.
+ */
+export async function fetchMealTotalsForRange(userId, startDate, endDate, timezoneIana = IANA_IST) {
+  const db = getMysqlClient();
+  let query = db
+    .from('food_nutrition_data_table')
+    .select([
+      // AnalysisData: heal GI when GlycemicIndex column is null (legacy meals)
+      'TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber',
+      'TotalSugar, TotalSodium, TotalCholesterol, GlycemicIndex, AnalysisData',
+      'TotalVitaminA, TotalVitaminC, TotalVitaminD, TotalVitaminE, TotalVitaminK',
+      'TotalVitaminB1, TotalVitaminB2, TotalVitaminB3, TotalVitaminB6, TotalVitaminB9, TotalVitaminB12',
+      'TotalCalcium, TotalIron, TotalMagnesium, TotalPotassium, TotalZinc, TotalPhosphorus',
+      'CreatedAt',
+    ].join(', '))
+    .eq('UserID', String(userId))
+    .eq('IsDeleted', 0)
+    .not('AnalysisData', 'is', null);
+  query = applyDateRangeFilterWidened(query, 'CreatedAt', startDate, endDate, timezoneIana);
+  const { data, error } = await query;
+  if (error) throw error;
+  return filterFoodRowsByCalendarDateRange(data || [], startDate, endDate, timezoneIana, 'CreatedAt');
+}
+
+/** Columns for single/batch meal detail — includes AnalysisData, omits ImageBase64. */
+const MEAL_DETAIL_COLUMNS = [
+  'ID, ImagePath, AnalysisData, ConfidenceScore',
+  'TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber',
+  'TotalSugar, TotalSodium, TotalCholesterol, GlycemicIndex',
+  'TotalVitaminA, TotalVitaminC, TotalVitaminD, TotalVitaminE, TotalVitaminK',
+  'TotalVitaminB1, TotalVitaminB2, TotalVitaminB3, TotalVitaminB6, TotalVitaminB9, TotalVitaminB12',
+  'TotalCalcium, TotalIron, TotalMagnesium, TotalPotassium, TotalZinc, TotalPhosphorus',
+  'ProcessedBy, Source, DeviceInfo, CreatedAt',
+].join(', ');
+
+/** Full meal row by ID — indexed lookup, no day scan. */
+export async function fetchMealById(userId, id) {
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from('food_nutrition_data_table')
+    .select(MEAL_DETAIL_COLUMNS)
+    .eq('ID', id)
+    .eq('UserID', String(userId))
+    .eq('IsDeleted', 0)
+    .not('AnalysisData', 'is', null)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+/** Batch meal rows by IDs — one query for prefetch (max ids enforced in validator). */
+export async function fetchMealsByIds(userId, ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return [];
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from('food_nutrition_data_table')
+    .select(MEAL_DETAIL_COLUMNS)
+    .eq('UserID', String(userId))
+    .eq('IsDeleted', 0)
+    .not('AnalysisData', 'is', null)
+    .in('ID', ids);
+  if (error) throw error;
+  return data || [];
+}
+
+function isMissingColumn(error, columnName) {
+  const msg = String(error?.message || error || '');
+  return /column/i.test(msg) && new RegExp(columnName, 'i').test(msg);
+}
+
+/** Image bytes only — for lazy thumbnails / detail modal (keeps list payloads small). */
+export async function getMealImageById(userId, id) {
+  const db = getMysqlClient();
+  const withCaptureAndKey = 'ID, CaptureID, ImageBase64, ImagePath, ImageKey';
+  const withKey = 'ID, ImageBase64, ImagePath, ImageKey';
+  const noKey = 'ID, ImageBase64, ImagePath';
+  const run = async (columns) => {
+    const { data, error } = await db
+      .from('food_nutrition_data_table')
+      .select(columns)
+      .eq('ID', id)
+      .eq('UserID', String(userId))
+      .eq('IsDeleted', 0)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  };
+  try {
+    return await run(withCaptureAndKey);
+  } catch (err) {
+    if (isMissingColumn(err, 'CaptureID')) {
+      try {
+        const row = await run(withKey);
+        return row ? { ...row, CaptureID: null } : null;
+      } catch (err2) {
+        if (!isMissingColumn(err2, 'ImageKey')) throw err2;
+        const row = await run(noKey);
+        return row ? { ...row, CaptureID: null, ImageKey: null } : null;
+      }
+    }
+    if (!isMissingColumn(err, 'ImageKey')) throw err;
+    const row = await run(noKey);
+    return row ? { ...row, ImageKey: null, CaptureID: row.CaptureID ?? null } : null;
+  }
+}
+
+export async function findImageKeyByCaptureId(captureId) {
+  if (captureId == null || String(captureId).trim() === '') return null;
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from('food_nutrition_data_table')
+    .select('ImageKey')
+    .eq('CaptureID', captureId)
+    .not('ImageKey', 'is', null)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) return null;
+    throw error;
+  }
+  return data?.ImageKey || null;
+}
+
+export async function attachImageKeyByCaptureId(captureId, userId, imageKey) {
+  if (!captureId || !imageKey) return;
+  const db = getMysqlClient();
+  const { error } = await db
+    .from('food_nutrition_data_table')
+    .update({ ImageKey: imageKey, ImageBase64: null })
+    .eq('CaptureID', captureId)
+    .eq('UserID', String(userId))
+    .is('ImageKey', null);
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) return;
+    throw error;
+  }
+}
+
+export async function updateFoodImageKey(mealId, userId, imageKey) {
+  const db = getMysqlClient();
+  const { error } = await db
+    .from('food_nutrition_data_table')
+    .update({ ImageKey: imageKey, ImageBase64: null })
+    .eq('ID', mealId)
+    .eq('UserID', String(userId))
+    .eq('IsDeleted', 0);
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) {
+      throw new Error('Run migration add_image_key_to_food_nutrition_data_table.sql before food R2');
+    }
+    throw error;
+  }
+}
+
+/**
+ * Meal photos in the IST calendar window that have not been copied to R2 yet.
+ */
+export async function listPendingFoodImageBackfill({
+  from = 0,
+  to = 49,
+  startYmd,
+  endYmd,
+} = {}) {
+  const db = getMysqlClient();
+  const endExclusiveYmd = shiftDateYmd(endYmd, 1, IANA_IST);
+  const { data, error } = await db
+    .from('food_nutrition_data_table')
+    .select('ID, UserID, CaptureID, ImageBase64, ImageKey, CreatedAt')
+    .eq('IsDeleted', 0)
+    .is('ImageKey', null)
+    .not('ImageBase64', 'is', null)
+    .gte('CreatedAt', `${startYmd} 00:00:00`)
+    .lt('CreatedAt', `${endExclusiveYmd} 00:00:00`)
+    .order('CreatedAt', { ascending: true })
+    .order('ID', { ascending: true })
+    .range(from, to);
+  if (error) {
+    if (isMissingColumn(error, 'ImageKey')) {
+      throw new Error('Run migration add_image_key_to_food_nutrition_data_table.sql before backfill');
+    }
+    throw error;
+  }
+  return filterFoodRowsByCalendarDateRange(data || [], startYmd, endYmd, IANA_IST, 'CreatedAt');
+}
+
 export async function getStatsCounts(userId, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const todayYmd = todayInTimezone(timezoneIana);
   const weekAgoYmd = shiftDateYmd(todayYmd, -7, timezoneIana);
 
   const [totalR, todayR, weekR, bgR, weeklyR, recentR] = await Promise.all([
-    supabase.from('food_nutrition_data_table').select('*', { count: 'exact', head: true })
+    db.from('food_nutrition_data_table').select('*', { count: 'exact', head: true })
       .eq('UserID', userId).eq('IsDeleted', 0),
     applySinceDayStartFilter(
-      supabase.from('food_nutrition_data_table').select('*', { count: 'exact', head: true })
+      db.from('food_nutrition_data_table').select('*', { count: 'exact', head: true })
         .eq('UserID', userId).eq('IsDeleted', 0),
       'CreatedAt',
       todayYmd,
       timezoneIana,
     ),
     applySinceDayStartFilter(
-      supabase.from('food_nutrition_data_table').select('*', { count: 'exact', head: true })
+      db.from('food_nutrition_data_table').select('*', { count: 'exact', head: true })
         .eq('UserID', userId).eq('IsDeleted', 0),
       'CreatedAt',
       weekAgoYmd,
       timezoneIana,
     ),
-    supabase.from('food_nutrition_data_table').select('*', { count: 'exact', head: true })
+    db.from('food_nutrition_data_table').select('*', { count: 'exact', head: true })
       .eq('UserID', userId).eq('ProcessedBy', 'background_service').eq('IsDeleted', 0),
     applySinceDayStartFilter(
-      supabase.from('food_nutrition_data_table')
+      db.from('food_nutrition_data_table')
         .select('TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber, CreatedAt')
         .eq('UserID', userId).eq('IsDeleted', 0),
       'CreatedAt',
       weekAgoYmd,
       timezoneIana,
     ),
-    supabase.from('food_nutrition_data_table')
-      .select('ID, ImagePath, ImageBase64, TotalCalories, TotalProtein, TotalCarbs, TotalFat, ProcessedBy, CreatedAt')
+    db.from('food_nutrition_data_table')
+      .select('ID, ImagePath, TotalCalories, TotalProtein, TotalCarbs, TotalFat, ProcessedBy, CreatedAt')
       .eq('UserID', userId).eq('IsDeleted', 0).order('CreatedAt', { ascending: false }).limit(10),
   ]);
   for (const r of [totalR, todayR, weekR, bgR, weeklyR, recentR]) {
@@ -211,7 +426,7 @@ export async function getStatsCounts(userId, timezoneIana = IANA_IST) {
 export async function touchLastActive(userId) {
   if (!userId) return;
   try {
-    const supabase = getSupabaseClient();
-    await supabase.from('team_table').update({ LastActiveAt: nowUtc() }).eq('UserId', userId);
+    const db = getMysqlClient();
+    await db.from('team_table').update({ LastActiveAt: nowUtc() }).eq('UserId', userId);
   } catch (_) { /* ignore */ }
 }

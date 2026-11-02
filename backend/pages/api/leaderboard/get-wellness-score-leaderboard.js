@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import {
   resolveRequestedDateYmd,
@@ -8,12 +8,32 @@ import {
 import logger from '../../../shared/lib/logger.js';
 import { resolveSponsorAndIdealCoachForMembers } from '../../../utils/sponsorCoachResolution.js';
 import { filterPublicAggregateUsers } from '../../../features/user/domain/aggregate-eligibility.rules.js';
+import { cache } from '../../../utils/cache.js';
+import {
+  loadReportingContextForCoach,
+  collectVisibleHierarchyUsers,
+} from '../../../utils/reportingHierarchyService.js';
+import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
+import { rankWellnessLeaderboardEntries } from '../../../utils/wellnessScoreLeaderboard.js';
+import { computeDailyScoreForDate } from '../../../features/wellness-score/api/daily-score.handler.js';
+import { resolveLeaderboardViewerId } from '../../../utils/leaderboardViewer.js';
+
+const LEADERBOARD_CACHE_TTL_MS = 15 * 1000;
+
+/** PostgREST `.in()` URL limit — batch score lookups for large allowed sets. */
+const SCORE_LOOKUP_CHUNK = 150;
 
 /**
- * Global Wellness Score Leaderboard — top performers for today's IST score.
+ * Hierarchy-scoped Wellness Score Leaderboard — top performers for today's IST score.
  * Reads persisted rows from wellness_score_daily_table (not discipline %).
+ *
+ * Order of work (must NOT global-top then filter):
+ *   logged-in user → allowed hierarchy → app users (Active + public-aggregate) →
+ *   existing scores → sort → Top N.
+ *
  * Ranking: wellness % desc, then total_earned desc; equal scores share the same rank
  * (competition / “1224” ranking on the % + earned score pair).
+ * Display order: Rank 1 → Rank N (best first).
  */
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -38,27 +58,94 @@ export default async function handler(req, res) {
   }
 
   try {
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
     const topN = Math.min(parseInt(req.query.topN, 10) || 10, 10);
+    const viewerUserId = await resolveLeaderboardViewerId({
+      userId: req.query.userId,
+      email: req.query.email,
+    });
     const scoreDate = req.query.date
       ? resolveRequestedDateYmd(req.query.date, IANA_IST)
       : todayInTimezone(IANA_IST);
 
-    logger.debug(`[WELLNESS-LB] Top ${topN} for ${scoreDate}`);
+    if (!viewerUserId) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        topN,
+        scoreDate,
+        message: 'userId is required',
+      });
+    }
 
-    // Fetch a buffer so inactive users can be filtered without under-filling topN.
-    // Primary order: wellness %; tie-break: total earned (score-wise top N).
-    const { data: scores, error: scoresError } = await supabase
-      .from('wellness_score_daily_table')
-      .select('user_id, percentage, total_earned, total_possible, computed_at')
-      .eq('score_date', scoreDate)
-      .order('percentage', { ascending: false })
-      .order('total_earned', { ascending: false })
-      .limit(topN * 3);
+    const cacheKey = `lb:hierarchy:wellness:v2:${viewerUserId}:${topN}:${scoreDate}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      res.setHeader('X-Cache', 'HIT');
+      return res.status(200).json(cached);
+    }
 
-    if (scoresError) throw scoresError;
+    logger.debug(`[WELLNESS-LB] Top ${topN} for ${scoreDate} viewer=${viewerUserId}`);
 
-    if (!scores?.length) {
+    // Indexed subtree: viewer + ancestors (people only) + own downline + co-coach peers.
+    // Does not scan team_table and does not load other branches under an upline.
+    const context = await loadReportingContextForCoach(db, viewerUserId);
+    const visibleUsers = collectVisibleHierarchyUsers(viewerUserId, context);
+
+    // Only trust the hierarchy-scoped visible list.
+    // This prevents leaking peer-descendants via indexed subtree load.
+    const visibleById = new Map(
+      visibleUsers.map((u) => [Number(u.UserId), u]),
+    );
+
+    // Existing app-user rule: Active + public-aggregate (excludes prod developers).
+    const appUsers = filterPublicAggregateUsers(
+      [...visibleById.values()].filter((u) => isActiveTeamStatus(u.Status)),
+      { viewerUserId },
+    );
+
+    const allowedIds = appUsers
+      .map((u) => Number(u.UserId))
+      .filter((id) => Number.isFinite(id) && id > 0);
+
+    if (allowedIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        topN,
+        scoreDate,
+        message: 'No allowed users in hierarchy',
+      });
+    }
+
+    let scores = await fetchScoresForUsers(db, allowedIds, scoreDate);
+
+    // Keep the viewer's row in sync with Home (/daily). Missing OR stale
+    // snapshots used to leave you off Top 10 while the card already showed
+    // the live score (persist can lag or fail without blocking /daily).
+    const VIEWER_SCORE_MAX_AGE_MS = 20 * 1000;
+    if (allowedIds.includes(viewerUserId)) {
+      const viewerRow = scores.find((row) => Number(row.user_id) === viewerUserId);
+      const computedAtMs = viewerRow?.computed_at
+        ? Date.parse(viewerRow.computed_at)
+        : NaN;
+      const viewerStale =
+        !viewerRow
+        || !Number.isFinite(computedAtMs)
+        || Date.now() - computedAtMs > VIEWER_SCORE_MAX_AGE_MS;
+      if (viewerStale) {
+        try {
+          await computeDailyScoreForDate({ userId: viewerUserId, date: scoreDate });
+          scores = await fetchScoresForUsers(db, allowedIds, scoreDate);
+        } catch (computeErr) {
+          logger.debug('[WELLNESS-LB] Viewer score compute skipped', {
+            err: computeErr.message,
+          });
+        }
+      }
+    }
+
+    if (!scores.length) {
       return res.status(200).json({
         success: true,
         data: [],
@@ -68,83 +155,63 @@ export default async function handler(req, res) {
       });
     }
 
-    const userIds = [...new Set(scores.map((s) => s.user_id))];
-
-    const { data: usersRaw, error: usersError } = await supabase
-      .from('team_table')
-      .select('UserId, UserName, Email, CoachId, Status, ProfileImage, Role')
-      .in('UserId', userIds)
-      .ilike('Status', 'Active');
-
-    if (usersError) throw usersError;
-
-    const users = filterPublicAggregateUsers(usersRaw || []);
-
-    const activeMap = new Map((users || []).map((u) => [u.UserId, u]));
-
-    const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
-      (users || []).map((u) => ({ userId: u.UserId, coachId: u.CoachId })),
-    );
+    const activeMap = new Map(appUsers.map((u) => [Number(u.UserId), u]));
+    const scoreByUser = new Map();
+    for (const row of scores) {
+      const uid = Number(row.user_id);
+      if (!scoreByUser.has(uid)) scoreByUser.set(uid, row);
+    }
 
     const candidates = [];
-    for (const row of scores) {
-      const user = activeMap.get(row.user_id);
+    for (const [uid, row] of scoreByUser) {
+      const user = activeMap.get(uid);
       if (!user) continue;
-      const resolved = sponsorByUser.get(String(user.UserId));
-      const sponsorName = resolved?.sponsorName || null;
-
       candidates.push({
         userId: user.UserId,
         userName: user.UserName || 'Unknown',
         email: user.Email,
-        coachName: sponsorName || 'No Sponsor',
-        sponsorName: sponsorName || 'No Sponsor',
-        idealCoachId: resolved?.idealCoachId || null,
-        idealCoachName: resolved?.idealCoachName || null,
-        profileImage: user.ProfileImage || null,
+        coachName: 'No Sponsor',
+        sponsorName: 'No Sponsor',
+        idealCoachId: null,
+        idealCoachName: null,
+        profileImage: null,
         wellnessPercentage: Number(row.percentage) || 0,
         totalEarned: row.total_earned,
         totalPossible: row.total_possible,
       });
     }
 
-    // Score-wise order: % desc, then earned desc.
-    candidates.sort((a, b) => {
-      if (b.wellnessPercentage !== a.wellnessPercentage) {
-        return b.wellnessPercentage - a.wellnessPercentage;
-      }
-      return (Number(b.totalEarned) || 0) - (Number(a.totalEarned) || 0);
+    const ranked = rankWellnessLeaderboardEntries(candidates, topN);
+
+    const sponsorByUser = await resolveSponsorAndIdealCoachForMembers(
+      ranked.map((entry) => {
+        const user = activeMap.get(Number(entry.userId));
+        return { userId: entry.userId, coachId: user?.CoachId };
+      }),
+    );
+
+    const withSponsors = ranked.map((entry) => {
+      const resolved = sponsorByUser.get(String(entry.userId));
+      const sponsorName = resolved?.sponsorName || null;
+      return {
+        ...entry,
+        coachName: sponsorName || 'No Sponsor',
+        sponsorName: sponsorName || 'No Sponsor',
+        idealCoachId: resolved?.idealCoachId || null,
+        idealCoachName: resolved?.idealCoachName || null,
+      };
     });
 
-    // Same score (same % and same total earned) → same rank.
-    // Different scores get distinct ranks (e.g. 400 and 398 → #3 and #4).
-    const ranked = [];
-    let currentRank = 1;
-    let previousKey = null;
-
-    for (const entry of candidates) {
-      if (ranked.length >= topN) break;
-
-      const earned = Number(entry.totalEarned) || 0;
-      const scoreKey = `${entry.wellnessPercentage}:${earned}`;
-      if (previousKey !== null && scoreKey !== previousKey) {
-        currentRank = ranked.length + 1;
-      }
-
-      ranked.push({
-        ...entry,
-        rank: currentRank,
-      });
-      previousKey = scoreKey;
-    }
-
-    return res.status(200).json({
+    const payload = {
       success: true,
-      data: ranked,
+      data: withSponsors,
       topN,
       scoreDate,
-      totalEligible: ranked.length,
-    });
+      totalEligible: candidates.length,
+    };
+    cache.set(cacheKey, payload, LEADERBOARD_CACHE_TTL_MS);
+    res.setHeader('X-Cache', 'MISS');
+    return res.status(200).json(payload);
   } catch (error) {
     logger.error('[WELLNESS-LB] Error', { err: error.message });
     res.status(500).json({
@@ -153,4 +220,25 @@ export default async function handler(req, res) {
       error: error.message,
     });
   }
+}
+
+/**
+ * @param {object} db
+ * @param {number[]} userIds
+ * @param {string} scoreDate
+ * @returns {Promise<Array<{ user_id: number, percentage: number, total_earned: number, total_possible: number }>>}
+ */
+async function fetchScoresForUsers(db, userIds, scoreDate) {
+  const rows = [];
+  for (let i = 0; i < userIds.length; i += SCORE_LOOKUP_CHUNK) {
+    const chunk = userIds.slice(i, i + SCORE_LOOKUP_CHUNK);
+    const { data, error } = await db
+      .from('wellness_score_daily_table')
+      .select('user_id, percentage, total_earned, total_possible, computed_at')
+      .eq('score_date', scoreDate)
+      .in('user_id', chunk);
+    if (error) throw error;
+    if (data?.length) rows.push(...data);
+  }
+  return rows;
 }

@@ -3,24 +3,37 @@ import axios from 'axios';
 import { motion } from 'framer-motion';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 import useOtpInput from '../features/user/hooks/useOtpInput';
+import { EMAIL_OTP_LENGTH } from '../features/user/domain/otpLength';
 import useWebOtp from '../features/user/hooks/useWebOtp';
 import storage from '../shared/lib/storage';
 import { debugLog } from '../shared/utils/logger';
-import NativeInput, { otpAutoCompleteForCell, otpMaxLengthForCell } from '../shared/components/NativeInput.jsx';
+import OtpInputCells from '../shared/components/OtpInputCells.jsx';
+import { scheduleFocusInputForKeyboard } from '../shared/utils/focusInputForKeyboard.js';
+import { getStatus } from '../features/user/services/user.api.js';
+import { isAppUpdateRequiredResponse } from '../shared/services/appVersionEnforce.client.js';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL;
+const DEMO_EMAIL = 'testereasywork@gmail.com';
 
-const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false, userEmail: userEmailProp = '', coachName: coachNameProp = '' }) => {
+const ValidateOTP = ({
+  onClose,
+  onSuccess,
+  onLogout,
+  isReactivationFlow = false,
+  userEmail: userEmailProp = '',
+  userId: userIdProp = null,
+  coachName: _coachNameProp = '',
+}) => {
   // Canonical OTP input controller — handles change, keydown, paste, iOS autofill, fillAll.
-  const {
-    otp, refs, value: otpValue, isComplete,
-    handleChange, handleKeyDown: otpKeyDown, handlePaste: otpPaste, fillAll, reset: resetOtp,
-  } = useOtpInput(6);
+  const otpCtl = useOtpInput(EMAIL_OTP_LENGTH);
+  const { refs, value: otpValue, isComplete, fillAll, reset: resetOtp } = otpCtl;
   const [validating, setValidating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [requestInfo, setRequestInfo] = useState(null);
+  const [otpExpired, setOtpExpired] = useState(false);
+  const [resending, setResending] = useState(false);
   const [attemptsLeft, setAttemptsLeft] = useState(5);
   const isReactivationFlowRef = useRef(isReactivationFlow);
   const validatingRef = useRef(false);
@@ -42,10 +55,10 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
   // Auto-focus first cell on mount so the keyboard appears immediately and iOS
   // QuickType can surface the OTP suggestion without an extra tap.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    const t = setTimeout(() => refs.current[0]?.focus(), 300);
-    return () => clearTimeout(t);
-  }, []);
+  useEffect(
+    () => scheduleFocusInputForKeyboard(() => refs.current[0]),
+    [],
+  );
 
   // Fetch request info on load
   useEffect(() => {
@@ -62,14 +75,14 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
     fetchRequestInfo();
   }, [isReactivationFlow]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Demo account: auto-fill 000000 — verification runs via isComplete effect below.
+  // Demo account: auto-fill 0000 — verification runs via isComplete effect below.
   useEffect(() => {
     if (isReactivationFlow) return;
     const userEmail = userEmailProp || storage.get('userEmail') || '';
-    if (userEmail.toLowerCase().trim() !== 'testereasywork@gmail.com') return;
+    if (userEmail.toLowerCase().trim() !== DEMO_EMAIL) return;
     const timer = setTimeout(() => {
       debugLog("\ud83d\udfe6 [ValidateOTP] Demo account - auto-filling OTP");
-      fillAll('000000');
+      fillAll('0000');
     }, 800);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -91,32 +104,42 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
 
     try {
       const userEmail = userEmailProp || storage.get('userEmail');
-      if (!userEmail) {
-        setError('User email not found. Please login again.');
+      const userId = userIdProp
+        || storage.get('userId')
+        || storage.get('dbUserId')
+        || null;
+      if (!userEmail && !userId) {
+        setError('Session expired. Please login again.');
         return;
       }
 
       debugLog("\ud83d\udfe6 [ValidateOTP] Fetching user status from API...");
-      const response = await axios.get(
-        `${API_BASE}/api/user/status?email=${encodeURIComponent(userEmail)}`
-      );
+      const data = await getStatus(userEmail ? { email: userEmail } : { userId });
+      if (isAppUpdateRequiredResponse(data)) return;
 
-      debugLog("\ud83d\udfe6 [ValidateOTP] API Response:", response.data);
+      debugLog("\ud83d\udfe6 [ValidateOTP] API Response:", data);
 
-      if (response.data.pendingRequest) {
-        const request = response.data.pendingRequest;
+      if (data.pendingRequest) {
+        const request = data.pendingRequest;
         debugLog("\ud83d\udfe6 [ValidateOTP] Request info loaded:", request);
         setRequestInfo(request);
+        if (request.expired || data.pendingRequestExpired) {
+          setOtpExpired(true);
+          setError('This code expired. Ask your coach for a new one.');
+        } else {
+          setOtpExpired(false);
+        }
       } else if (isReactivationFlowRef.current) {
         debugLog("\ud83d\udfe6 [ValidateOTP] Reactivation flow \u2014 no pendingRequest returned, staying open");
       } else {
-        debugLog("\ud83d\udfe6 [ValidateOTP] No pending request found, closing modal");
-        if (onClose) onClose();
+        setError('No pending verification found. You can go back and select your coach again.');
       }
     } catch (err) {
       console.error("\ud83d\udd34 [ValidateOTP] Error fetching request info:", err);
       if (isReactivationFlowRef.current) {
         debugLog("\ud83d\udfe6 [ValidateOTP] Reactivation flow \u2014 ignoring fetch error, staying open");
+      } else {
+        setError('Could not load verification status. Check your connection and try again.');
       }
     }
   };
@@ -129,8 +152,8 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
     const otpCode = typeof otpCodeArg === 'string' ? otpCodeArg : otpValue;
     debugLog("\ud83d\udfe6 [ValidateOTP] Validating OTP (length):", otpCode.length);
 
-    if (otpCode.length !== 6) {
-      setError('Please enter all 6 digits');
+    if (otpCode.length !== EMAIL_OTP_LENGTH) {
+      setError(`Please enter all ${EMAIL_OTP_LENGTH} digits`);
       return;
     }
 
@@ -140,29 +163,20 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
 
     try {
       const userEmail = userEmailProp || storage.get('userEmail');
-      if (!userEmail) {
-        setError('User email not found. Please login again.');
-        return;
-      }
-
-      // Demo bypass for App Review — works for any user with OTP 000000.
-      const DEMO_OTP = '000000';
-      if (otpCode === DEMO_OTP) {
-        debugLog("\ud83d\udfe6 [ValidateOTP] Demo OTP used, auto-verifying");
-        setSuccess('Verified!');
-        storage.set('coachOtpVerified', 'true');
-        setTimeout(() => {
-          if (onSuccess) onSuccess();
-          else if (onClose) onClose();
-        }, 1500);
+      const userId = userIdProp
+        || storage.get('userId')
+        || storage.get('dbUserId')
+        || null;
+      if (!userEmail && !userId) {
+        setError('Session expired. Please login again.');
         return;
       }
 
       debugLog("\ud83d\udfe6 [ValidateOTP] Sending validation request to API...");
-      await axios.post(
-        `${API_BASE}/api/upline/validate-otp`,
-        { otp: otpCode, email: userEmail }
-      );
+      const body = { otp: otpCode };
+      if (userEmail) body.email = userEmail;
+      else body.userId = userId;
+      await axios.post(`${API_BASE}/api/upline/validate-otp`, body);
 
       debugLog("\u2705 [ValidateOTP] OTP verified successfully!");
       setSuccess('Verified!');
@@ -177,6 +191,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
       const errorData = err.response?.data;
 
       if (errorData?.expired) {
+        setOtpExpired(true);
         setError('Code expired. Please request a new one.');
       } else if (errorData?.attemptsLeft !== undefined) {
         setAttemptsLeft(errorData.attemptsLeft);
@@ -193,27 +208,62 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
     }
   };
 
-  // Auto-verify as soon as all 6 digits are entered (typing, paste, SMS autofill).
+  // Auto-verify as soon as all digits are entered (typing, paste, autofill).
   useEffect(() => {
-    if (!isComplete || validating || success) return;
+    if (!isComplete || validating || success || otpExpired) return;
     validateOtp(otpValue);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isComplete, otpValue, validating, success]);
+  }, [isComplete, otpValue, validating, success, otpExpired]);
+
+  const handleResendOtp = async () => {
+    if (resending) return;
+    const userEmail = userEmailProp || storage.get('userEmail');
+    const userId = userIdProp
+      || storage.get('userId')
+      || storage.get('dbUserId')
+      || null;
+    const coachId = requestInfo?.coachId;
+    if ((!userEmail && !userId) || !coachId) {
+      setError('Unable to request a new code. Go back and select your coach again.');
+      return;
+    }
+    setResending(true);
+    setError('');
+    try {
+      const body = { coachId };
+      if (userEmail) body.email = userEmail;
+      else body.userId = userId;
+      await axios.post(`${API_BASE}/api/upline/request`, body);
+      setOtpExpired(false);
+      setSuccess('A new code was sent to your coach.');
+      resetOtp();
+      await fetchRequestInfo();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to send a new code.');
+    } finally {
+      setResending(false);
+    }
+  };
 
   // Cancel verification
   const handleCancel = async () => {
     try {
       const userEmail = userEmailProp || storage.get('userEmail');
-      if (!userEmail) {
-        setError('User email not found. Please login again.');
+      const userId = userIdProp || storage.get('userId');
+      if (!userEmail && !userId) {
+        setError('Account not found. Please login again.');
         return;
       }
 
       setCancelling(true);
 
+      const body = {};
+      if (userEmail) body.email = userEmail;
+      if (userId) body.userId = userId;
+
       await axios.post(
         `${API_BASE}/api/upline/cancel-request`,
-        { email: userEmail }
+        body,
       );
 
       debugLog("\ud83d\udfe6 [ValidateOTP] User clicked Cancel, closing modal");
@@ -242,65 +292,53 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
         </button>
 
-        <div className="px-8 pt-10 pb-6 text-center shrink-0">
-          <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 overflow-hidden">
-            <img 
-              src={wellnessValleyIcon} 
-              alt="Wellness Valley" 
-              className="w-full h-full object-contain brand-logo"
-              draggable="false"
-              style={{ 
-                WebkitUserSelect: 'none', 
-                userSelect: 'none',
-                WebkitTouchCallout: 'none',
-                WebkitUserDrag: 'none'
-              }}
-            />
+        <div className="px-8 pt-6 pb-6 shrink-0">
+          <div className="flex items-center gap-3 pr-12 mb-4">
+            <div className="w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center overflow-hidden">
+              <img 
+                src={wellnessValleyIcon} 
+                alt="Wellness Valley" 
+                className="w-full h-full object-contain brand-logo"
+                draggable="false"
+                style={{ 
+                  WebkitUserSelect: 'none', 
+                  userSelect: 'none',
+                  WebkitTouchCallout: 'none',
+                  WebkitUserDrag: 'none'
+                }}
+              />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 text-left">
+              {otpExpired ? 'Code Expired' : 'Verify Request'}
+            </h1>
           </div>
-          
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Verify Request</h1>
           
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-4 text-left">
             <p className="text-blue-800 text-sm leading-relaxed">
-              We've sent a request to <span className="font-bold">{requestInfo?.coachName || coachNameProp || 'your sponsor'}</span>. 
-              Please contact them to approve your request and provide your 6-digit verification code.
+              {otpExpired
+                ? 'The previous verification code is no longer valid. Request a new code for your coach.'
+                : "We've sent OTP to your sponsor's email ID. Please contact them and get the OTP to proceed further."}
             </p>
           </div>
         </div>
 
         <div className="px-8 pb-10 flex-1 overflow-y-auto custom-scrollbar">
-          <div className="flex justify-center gap-2 sm:gap-3 mb-6">
-            {otp.map((digit, index) => (
-              <NativeInput
-                key={index}
-                otp
-                ref={(el) => { refs.current[index] = el; }}
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                autoComplete={otpAutoCompleteForCell(index)}
-                maxLength={otpMaxLengthForCell(index, otp.length)}
-                className={`w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl font-bold bg-gray-50 border-2 rounded-2xl transition-all outline-none focus:bg-white ${
-                  error ? 'border-red-200 bg-red-50 text-red-600' :
-                  success ? 'border-green-500 bg-green-50 text-green-600' :
-                  digit ? 'border-green-500 bg-white' : 'border-transparent focus:border-green-500'
-                }`}
-                value={digit}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  // iOS autoComplete="one-time-code" delivers all digits into first cell at once.
-                  if (raw.length >= 6) {
-                    fillAll(raw);
-                    return;
-                  }
-                  handleChange(index, raw);
-                }}
-                onKeyDown={(e) => otpKeyDown(index, e)}
-                onPaste={otpPaste}
-                disabled={validating}
-              />
-            ))}
-          </div>
+          <OtpInputCells
+            otpCtl={otpCtl}
+            length={EMAIL_OTP_LENGTH}
+            emailOtp
+            disabled={validating || otpExpired}
+            className="flex justify-center gap-2 sm:gap-3 mb-6"
+            cellClassName={`w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl font-bold bg-gray-50 border-2 rounded-2xl transition-all outline-none focus:bg-white focus:border-green-500 ${
+              error ? 'border-red-200 bg-red-50 text-red-600' :
+              success ? 'border-green-500 bg-green-50 text-green-600' : ''
+            }`}
+            cellStyle={(digit) => (
+              !error && !success && digit
+                ? { borderColor: '#22c55e', backgroundColor: '#ffffff' }
+                : undefined
+            )}
+          />
 
           <div className="text-center mb-8 min-h-[24px]">
             {error ? (
@@ -327,7 +365,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
                 : 'bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200'
             }`}
             onClick={() => validateOtp()}
-            disabled={validating || !isComplete}
+            disabled={validating || !isComplete || otpExpired}
           >
             {validating ? (
               <>
@@ -342,12 +380,22 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout, isReactivationFlow = false,
             )}
           </button>
 
+          {(otpExpired || error?.toLowerCase().includes('expired')) && (
+            <button
+              className="w-full mt-3 py-3.5 rounded-xl font-bold text-base bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+              onClick={handleResendOtp}
+              disabled={resending || validating}
+            >
+              {resending ? 'Sending new code...' : 'Request new code'}
+            </button>
+          )}
+
           {/* Demo Skip Button — only visible for demo/admin account */}
-          {(localStorage.getItem('userEmail') || '').toLowerCase().trim() === 'testereasywork@gmail.com' && (
+          {(localStorage.getItem('userEmail') || '').toLowerCase().trim() === DEMO_EMAIL && (
             <button
               className="w-full mt-3 py-3 rounded-xl font-semibold text-sm text-gray-500 border border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
               onClick={() => {
-                const filled = fillAll('000000');
+                const filled = fillAll('0000');
                 if (filled) validateOtp(filled);
               }}
               disabled={validating}

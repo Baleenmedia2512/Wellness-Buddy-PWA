@@ -1,7 +1,9 @@
 /**
  * medicalConditionSearch.js
  *
- * Search, rank, and recent-selection helpers for medical conditions.
+ * Search, rank, recent-selection, and custom-issue helpers for medical conditions.
+ * Custom labels (not in the built-in catalog) are remembered on this device
+ * so they appear in later suggestion searches.
  * Swap ALL_MEDICAL_CONDITIONS for an API response in future without UI changes.
  */
 
@@ -10,9 +12,12 @@ import {
   ALL_MEDICAL_CONDITIONS,
   POPULAR_MEDICAL_CONDITIONS,
 } from '../data/medicalConditions.js';
+import { uniqueConditions } from '../utils/uniqueConditions.js';
 
 const RECENT_STORAGE_KEY = 'testimonials.recentMedicalConditions';
+const CUSTOM_STORAGE_KEY = 'testimonials.customMedicalConditions';
 const MAX_RECENT = 8;
+const MAX_CUSTOM = 50;
 const VISIBLE_SUGGESTION_CAP = 8;
 
 /**
@@ -58,14 +63,50 @@ function scoreCondition(name, query, recentSet) {
  * @returns {string[]}
  */
 export function getRecentMedicalConditions() {
+  return uniqueConditions(readStoredLabels(RECENT_STORAGE_KEY));
+}
+
+function readStoredLabels(key) {
   try {
-    const raw = storage.get(RECENT_STORAGE_KEY);
+    const raw = storage.get(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((item) => typeof item === 'string' && item.trim())
+      : [];
   } catch {
     return [];
   }
+}
+
+function isBuiltInCondition(name) {
+  const key = String(name || '').trim().toLowerCase();
+  if (!key) return false;
+  return ALL_MEDICAL_CONDITIONS.some((item) => item.toLowerCase() === key);
+}
+
+/**
+ * Custom labels added by the user that are not in the built-in catalog.
+ * Shown in later suggestion searches on this device.
+ * @returns {string[]}
+ */
+export function getCustomMedicalConditions() {
+  return uniqueConditions(readStoredLabels(CUSTOM_STORAGE_KEY));
+}
+
+/**
+ * Persist a custom health issue so it appears in later suggestion searches.
+ * Built-in catalog names are ignored.
+ * @param {string} condition
+ */
+export function recordCustomMedicalCondition(condition) {
+  const trimmed = (condition ?? '').trim();
+  if (!trimmed || isBuiltInCondition(trimmed)) return;
+
+  const existing = getCustomMedicalConditions().filter(
+    (item) => item.toLowerCase() !== trimmed.toLowerCase(),
+  );
+  storage.set(CUSTOM_STORAGE_KEY, JSON.stringify([trimmed, ...existing].slice(0, MAX_CUSTOM)));
 }
 
 /**
@@ -78,6 +119,7 @@ export function recordRecentMedicalCondition(condition) {
   const recent = getRecentMedicalConditions().filter((item) => item !== trimmed);
   const updated = [trimmed, ...recent].slice(0, MAX_RECENT);
   storage.set(RECENT_STORAGE_KEY, JSON.stringify(updated));
+  recordCustomMedicalCondition(trimmed);
 }
 
 /**
@@ -85,6 +127,7 @@ export function recordRecentMedicalCondition(condition) {
  * @param {{
  *   conditions?: string[],
  *   recentSelections?: string[],
+ *   customConditions?: string[],
  * }} [options]
  * @returns {string[]}
  */
@@ -92,8 +135,13 @@ export function searchMedicalConditions(query, options = {}) {
   const q = query.trim();
   if (!q) return [];
 
-  const conditions = options.conditions ?? ALL_MEDICAL_CONDITIONS;
   const recent = options.recentSelections ?? getRecentMedicalConditions();
+  const custom = options.customConditions ?? getCustomMedicalConditions();
+  const conditions = uniqueConditions([
+    ...(options.conditions ?? ALL_MEDICAL_CONDITIONS),
+    ...custom,
+    ...recent,
+  ]);
   const recentSet = new Set(recent);
 
   return conditions

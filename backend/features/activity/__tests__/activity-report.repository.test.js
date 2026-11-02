@@ -8,6 +8,8 @@ import { filterFoodRowsByCalendarDateRange } from '../../../shared/lib/datetime/
 import {
   dedupeFirstLogPerMemberPerDay,
   filterFoodByMealTime,
+  isReportBeverageRecord,
+  isReportNonMealRecord,
 } from '../activity-report.repository.js';
 
 const DINNER_WINDOWS = {
@@ -49,5 +51,56 @@ describe('activity report food date filtering', () => {
     const deduped = dedupeFirstLogPerMemberPerDay(rows, IANA_IST, { foodTimestamp: true });
     assert.equal(deduped.length, 1);
     assert.equal(deduped[0].CreatedAt, '2026-07-30 18:00:00');
+  });
+});
+
+describe('isReportBeverageRecord', () => {
+  it('treats water_preset / afresh_preset as beverages without AnalysisData', () => {
+    assert.equal(isReportBeverageRecord({ ProcessedBy: 'water_preset' }), true);
+    assert.equal(isReportBeverageRecord({ ProcessedBy: 'afresh_preset' }), true);
+    assert.equal(isReportBeverageRecord({ ProcessedBy: null, AnalysisData: null }), false);
+  });
+
+  it('detects legacy water rows via embedded processedBy in AnalysisData', () => {
+    assert.equal(isReportBeverageRecord({
+      ProcessedBy: 'manual_app',
+      AnalysisData: { processedBy: 'water_preset', foods: [{ name: 'water', volume_ml: 200 }] },
+    }), true);
+  });
+
+  it('detects beverage-only meals from AnalysisData when ProcessedBy is missing', () => {
+    assert.equal(isReportBeverageRecord({
+      ProcessedBy: 'manual_app',
+      AnalysisData: { foods: [{ name: 'water', volume_ml: 250, calories: 0 }] },
+    }), true);
+  });
+});
+
+describe('isReportNonMealRecord', () => {
+  it('skips Target Nutrition Triphala for meal windows', () => {
+    assert.equal(isReportNonMealRecord({
+      ProcessedBy: 'manual_app',
+      AnalysisData: {
+        mealKind: 'dry-salad',
+        foods: [{ name: '*Vritilife Triphala* (Digestive Health)' }],
+      },
+    }), true);
+  });
+
+  it('keeps Formula 1 shake as a meal', () => {
+    assert.equal(isReportNonMealRecord({
+      ProcessedBy: 'shake_calculator',
+      AnalysisData: { foods: [{ name: 'Protein Shake' }] },
+    }), false);
+  });
+
+  it('does not treat Triphala as a water beverage', () => {
+    assert.equal(isReportBeverageRecord({
+      ProcessedBy: 'manual_app',
+      AnalysisData: {
+        mealKind: 'dry-salad',
+        foods: [{ name: '*Vritilife Triphala* (Digestive Health)' }],
+      },
+    }), false);
   });
 });

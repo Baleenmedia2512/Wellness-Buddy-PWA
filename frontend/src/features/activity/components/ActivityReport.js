@@ -1,16 +1,46 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
-  RefreshCw, Download, Search,
-  Scale, BookOpen, Coffee, Utensils, Moon, Droplets, Flame,
+  RefreshCw, Download, Share2, Eye,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
-import ReportDateRangeFilter from '../../../shared/components/common/ReportDateRangeFilter';
+import PhoneContactActions from '../../../shared/components/PhoneContactActions.jsx';
 import { ACTIVITY_REPORT_DATE_RANGES, formatCustomRangeLabel } from '../../../shared/domain/reportDateRanges';
-import { fetchHasTeamMembers } from '../../team/services/teamSearchService';
+import { fetchHasTeamMembers, invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
 import { TEAM_SCOPES, TEAM_SCOPE_OPTIONS } from '../../reports/utils/reportFilters';
+import {
+  buildActivityReportShareText,
+  formatActivityReportLevel,
+  formatActivityReportMemberType,
+} from '../utils/activityReportShareText';
+import {
+  ACTIVITY_REPORT_ATTENDANCE,
+  activeActivityReportTableFilters,
+  activityReportCategoryCounts,
+  activityReportFilterQuery,
+  emptyActivityReportFilterOptions,
+  emptyActivityReportTableFilterValues,
+  formatActivityReportAttendance,
+  normalizeActivityReportTableFilters,
+  removeActivityReportFilterValue,
+  serializeActivityReportTableFilters,
+} from '../utils/activityReportTableFilters';
+import { canManageActivityReportHiddenUsers } from '../utils/activityReportHiddenUsers';
+import {
+  hideActivityReportUser,
+  listActivityReportHiddenUsers,
+} from '../services/activityReportHiddenUsers.api';
+import ActivityReportTableFiltersSheet from './ActivityReportTableFiltersSheet';
+import ActivityReportFiltersBar from './ActivityReportFiltersBar';
+import ActivityReportHiddenUsersModal from './ActivityReportHiddenUsersModal';
+import ActivityReportHideUserMenu from './ActivityReportHideUserMenu';
+import ActivityReportMemberNameCell from './ActivityReportMemberNameCell';
+import TeamMemberProfileModal from '../../../shared/components/TeamMemberProfileModal';
+
+const DEFAULT_PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 300;
 
 function mapRoleForApi(userRole) {
   const n = String(userRole || 'member').toLowerCase();
@@ -24,62 +54,54 @@ function isBootstrapUnsupportedResponse(data) {
   return msg.includes('activitytype') || msg.includes('bootstrap');
 }
 
+function emptyPagination(page = 1, pageSize = DEFAULT_PAGE_SIZE) {
+  return {
+    totalRecords: 0,
+    totalPages: 0,
+    currentPage: page,
+    pageSize,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  };
+}
+
 // Activity type metadata
 const ACTIVITY_TYPES = [
-  { id: 'weight', label: 'Weight', icon: Scale, color: 'blue', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', textColor: 'text-blue-700' },
-  { id: 'education', label: 'Education', icon: BookOpen, color: 'indigo', bgColor: 'bg-indigo-50', borderColor: 'border-indigo-200', textColor: 'text-indigo-700' },
-  { id: 'breakfast', label: 'Breakfast', icon: Coffee, color: 'orange', bgColor: 'bg-orange-50', borderColor: 'border-orange-200', textColor: 'text-orange-700' },
-  { id: 'lunch', label: 'Lunch', icon: Utensils, color: 'green', bgColor: 'bg-green-50', borderColor: 'border-green-200', textColor: 'text-green-700' },
-  { id: 'dinner', label: 'Dinner', icon: Moon, color: 'purple', bgColor: 'bg-purple-50', borderColor: 'border-purple-200', textColor: 'text-purple-700' },
-  { id: 'water', label: 'Water', icon: Droplets, color: 'cyan', bgColor: 'bg-cyan-50', borderColor: 'border-cyan-200', textColor: 'text-cyan-700' },
-  { id: 'calories', label: 'Exercise', icon: Flame, color: 'red', bgColor: 'bg-red-50', borderColor: 'border-red-200', textColor: 'text-red-700' },
+  { id: 'weight', label: 'Weight' },
+  { id: 'education', label: 'Education' },
+  { id: 'breakfast', label: 'Breakfast' },
+  { id: 'lunch', label: 'Lunch' },
+  { id: 'dinner', label: 'Dinner' },
+  { id: 'water', label: 'Water' },
+  { id: 'calories', label: 'Exercise' },
 ];
-
-// Activity Badge Component
-const ActivityBadge = ({ activity, count, onClick, isSelected }) => {
-  const Icon = activity.icon;
-  
-  return (
-    <TouchFeedbackButton
-      onClick={onClick}
-      className={`relative p-4 rounded-xl border-2 transition-all ${
-        isSelected
-          ? `${activity.bgColor} ${activity.borderColor} shadow-md scale-105`
-          : 'bg-white border-gray-200 hover:border-gray-300 shadow-sm'
-      }`}
-    >
-      <div className="flex items-center gap-3">
-        <div className={`p-3 rounded-full ${activity.bgColor}`}>
-          <Icon className={`w-6 h-6 ${activity.textColor}`} />
-        </div>
-        <div className="flex-1 text-left">
-          <p className="text-sm font-medium text-gray-600">{activity.label}</p>
-          <p className={`text-2xl font-bold ${activity.textColor}`}>{count}</p>
-        </div>
-      </div>
-    </TouchFeedbackButton>
-  );
-};
 
 /** Returns '—' for null, undefined, empty string, or the literal string "N/A" */
 const display = (val) => (!val || val === 'N/A') ? '—' : val;
 
 // Main Component
-const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 }) => {
+const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, teamSearchRefreshKey = 0 }) => {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [shareLoading, setShareLoading] = useState(false);
   const [error, setError] = useState('');
   const [dateRange, setDateRange] = useState('today');
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
   const [summary, setSummary] = useState(null);
+  const [notPostedSummary, setNotPostedSummary] = useState(null);
   const [selectedActivity, setSelectedActivity] = useState('education');
   const [detailRecords, setDetailRecords] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [tableFilters, setTableFilters] = useState(() => emptyActivityReportTableFilterValues());
+  const [availableFilters, setAvailableFilters] = useState(() => emptyActivityReportFilterOptions());
   const [sortColumn, setSortColumn] = useState('date');
   const [sortDirection, setSortDirection] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 50;
+  const [pagination, setPagination] = useState(() => emptyPagination());
+  const itemsPerPage = DEFAULT_PAGE_SIZE;
 
   // Member summary state kept for legacy fallback responses (not rendered in UI).
   const [memberSummaries, setMemberSummaries] = useState([]);
@@ -90,8 +112,60 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
   const [teamScope, setTeamScope] = useState(TEAM_SCOPES.DIRECT);
   const [teamScopeCounts, setTeamScopeCounts] = useState(null);
   const [showTeamScope, setShowTeamScope] = useState(false);
+  const [attendanceStatus, setAttendanceStatus] = useState(ACTIVITY_REPORT_ATTENDANCE.POSTED);
+  const [showReportDatePicker, setShowReportDatePicker] = useState(false);
+  const [showTableFiltersSheet, setShowTableFiltersSheet] = useState(false);
+  const [showHiddenUsersModal, setShowHiddenUsersModal] = useState(false);
+  const [hideMenu, setHideMenu] = useState(null);
+  const [hideBusy, setHideBusy] = useState(false);
+  const [profileUserId, setProfileUserId] = useState(null);
+  /** Unhide button only when at least one team member is currently hidden. */
+  const [hiddenCount, setHiddenCount] = useState(0);
   const fetchAbortRef = useRef(null);
   const fetchGenerationRef = useRef(0);
+  const loadReportRef = useRef(null);
+  const fetchDetailsRef = useRef(null);
+  const selectedActivityRef = useRef(selectedActivity);
+  const inFlightKeyRef = useRef('');
+  const skipSearchSortFetchRef = useRef(true);
+  /** @type {React.MutableRefObject<Map<string, { records: Array, pagination: object }>>} */
+  const detailCacheRef = useRef(new Map());
+  selectedActivityRef.current = selectedActivity;
+
+  const formatDateForApi = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Debounce search so typing does not fire a request per keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+      setCurrentPage(1);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const tableFiltersKey = serializeActivityReportTableFilters(tableFilters);
+
+  const detailCacheKey = useCallback((activityType, page, search, sort, sortDir, filters, attendance) => (
+    [
+      teamScope,
+      dateRange,
+      customStartDate ? formatDateForApi(customStartDate) : '',
+      customEndDate ? formatDateForApi(customEndDate) : '',
+      activityType || '',
+      String(page || 1),
+      String(itemsPerPage),
+      search || '',
+      serializeActivityReportTableFilters(filters),
+      sort || 'date',
+      sortDir || 'desc',
+      attendance || attendanceStatus,
+    ].join('|')
+  ), [teamScope, dateRange, customStartDate, customEndDate, itemsPerPage, attendanceStatus]);
 
   // Resolve coach role once before the first report fetch (avoids duplicate bootstrap calls).
   useEffect(() => {
@@ -103,6 +177,9 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       return undefined;
     }
     setRoleReady(false);
+    if (teamSearchRefreshKey > 0) {
+      invalidateHasTeamMembersCache(user.id);
+    }
     fetchHasTeamMembers(user.id)
       .then((hasTeam) => {
         if (!cancelled) {
@@ -117,14 +194,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
         }
       });
     return () => { cancelled = true; };
-  }, [user?.id, userRole]);
-
-  const formatDateForApi = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
+  }, [user?.id, userRole, teamSearchRefreshKey]);
 
   const buildReportParams = useCallback((activityType, extra = {}) => {
     const params = new URLSearchParams({
@@ -133,6 +203,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       dateRange,
       role: effectiveRole,
       teamScope,
+      attendanceStatus,
     });
     Object.entries(extra).forEach(([key, value]) => {
       if (value != null && value !== '') params.set(key, String(value));
@@ -142,7 +213,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       params.set('endDate', formatDateForApi(customEndDate));
     }
     return params;
-  }, [user?.id, effectiveRole, dateRange, customStartDate, customEndDate, teamScope]);
+  }, [user?.id, effectiveRole, dateRange, customStartDate, customEndDate, teamScope, attendanceStatus]);
 
   const applyReportMeta = useCallback((data) => {
     if (data.teamScopeCounts) {
@@ -150,6 +221,25 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       setShowTeamScope(Boolean(data.teamScopeCounts.hasTeam));
     }
   }, []);
+
+  const applyPaginationMeta = useCallback((data, fallbackPage = 1) => {
+    if (data?.pagination) {
+      setPagination(data.pagination);
+      if (data.pagination.currentPage) {
+        setCurrentPage(data.pagination.currentPage);
+      }
+      return;
+    }
+    const records = Array.isArray(data?.records) ? data.records : [];
+    setPagination({
+      totalRecords: records.length,
+      totalPages: records.length > 0 ? 1 : 0,
+      currentPage: fallbackPage,
+      pageSize: itemsPerPage,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    });
+  }, [itemsPerPage]);
 
   const activeScopeLabel = useMemo(() => {
     const option = TEAM_SCOPE_OPTIONS.find((o) => o.value === teamScope);
@@ -167,52 +257,108 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     return preset?.label || 'Today';
   }, [dateRange, customStartDate, customEndDate]);
 
+  const paginationQuery = useCallback((page = currentPage, overrides = {}) => {
+    const filters = overrides.tableFilters ?? tableFilters;
+    return {
+      page: overrides.page ?? page,
+      limit: overrides.limit ?? itemsPerPage,
+      search: overrides.search ?? debouncedSearch,
+      sort: overrides.sort ?? sortColumn,
+      sortDir: overrides.sortDir ?? sortDirection,
+      ...activityReportFilterQuery(filters),
+      ...(overrides.exportAll ? { exportAll: '1' } : {}),
+    };
+  }, [currentPage, itemsPerPage, debouncedSearch, sortColumn, sortDirection, tableFilters]);
+
   const fetchLegacyReportBundle = useCallback(async (detailActivity = 'education') => {
-    const summaryRes = await fetch(
-      `${apiBaseUrl}/api/activity/report?${buildReportParams('summary')}`,
-      { cache: 'no-store' },
-    );
-    const summaryData = await summaryRes.json();
+    // Parallelize independent report GETs — previously sequential waterfalls (~3× RTT)
+    const pageParams = paginationQuery(1);
+    const [summaryRes, memberRes, detailRes] = await Promise.all([
+      fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams('summary')}`,
+        { cache: 'no-store' },
+      ),
+      fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams('member-summary')}`,
+        { cache: 'no-store' },
+      ),
+      fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams(detailActivity, pageParams)}`,
+        { cache: 'no-store' },
+      ),
+    ]);
+    const [summaryData, memberData, detailData] = await Promise.all([
+      summaryRes.json(),
+      memberRes.json(),
+      detailRes.json(),
+    ]);
     if (!summaryRes.ok || !summaryData.success) {
       throw new Error(summaryData.message || 'Failed to fetch activity summary');
     }
-
-    const memberRes = await fetch(
-      `${apiBaseUrl}/api/activity/report?${buildReportParams('member-summary')}`,
-      { cache: 'no-store' },
-    );
-    const memberData = await memberRes.json();
     if (!memberRes.ok || !memberData.success) {
       throw new Error(memberData.message || 'Failed to fetch member summaries');
     }
-
-    const detailRes = await fetch(
-      `${apiBaseUrl}/api/activity/report?${buildReportParams(detailActivity)}`,
-      { cache: 'no-store' },
-    );
-    const detailData = await detailRes.json();
     if (!detailRes.ok || !detailData.success) {
       throw new Error(detailData.message || 'Failed to fetch activity details');
     }
 
     setSummary(summaryData.summary || null);
+    setNotPostedSummary(summaryData.notPostedSummary || null);
     applyReportMeta(summaryData);
     setMemberSummaries(memberData.members || []);
     setMemberStats(memberData.stats || null);
-    setDetailRecords(detailData.records || []);
-    setCurrentPage(1);
-  }, [apiBaseUrl, buildReportParams, applyReportMeta]);
+    const records = detailData.records || [];
+    setDetailRecords(records);
+    applyPaginationMeta(detailData, 1);
+    detailCacheRef.current.set(
+      detailCacheKey(
+        detailActivity, 1, pageParams.search, pageParams.sort, pageParams.sortDir, tableFilters, attendanceStatus,
+      ),
+      { records, pagination: detailData.pagination || emptyPagination(1) },
+    );
+  }, [apiBaseUrl, buildReportParams, applyReportMeta, applyPaginationMeta, paginationQuery, detailCacheKey, tableFilters, attendanceStatus]);
 
-  const fetchDetails = useCallback(async (activityType, { signal } = {}) => {
+  const fetchDetails = useCallback(async (activityType, {
+    signal,
+    page = 1,
+    search = debouncedSearch,
+    sort = sortColumn,
+    sortDir = sortDirection,
+    filters = tableFilters,
+    attendance = attendanceStatus,
+  } = {}) => {
     if (!user?.id || !apiBaseUrl || !activityType) return;
     if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
+
+    const cacheKey = detailCacheKey(activityType, page, search, sort, sortDir, filters, attendance);
+    if (detailCacheRef.current.has(cacheKey)) {
+      const cached = detailCacheRef.current.get(cacheKey);
+      setDetailRecords(cached.records || []);
+      setPagination(cached.pagination || emptyPagination(page));
+      setCurrentPage(cached.pagination?.currentPage || page);
+      setDetailLoading(false);
+      setError('');
+      return;
+    }
+
+    // Prevent duplicate in-flight requests for the same page key.
+    if (inFlightKeyRef.current === cacheKey) return;
+    inFlightKeyRef.current = cacheKey;
 
     setDetailLoading(true);
     setError('');
 
     try {
       const response = await fetch(
-        `${apiBaseUrl}/api/activity/report?${buildReportParams(activityType)}`,
+        `${apiBaseUrl}/api/activity/report?${buildReportParams(activityType, {
+          page,
+          limit: itemsPerPage,
+          search,
+          sort,
+          sortDir,
+          attendanceStatus: attendance,
+          ...activityReportFilterQuery(filters),
+        })}`,
         { cache: 'no-store', signal },
       );
 
@@ -222,17 +368,50 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
         throw new Error(data.message || 'Failed to fetch activity details');
       }
 
-      setDetailRecords(data.records || []);
-      setCurrentPage(1);
+      const records = data.records || [];
+      const pageMeta = data.pagination || emptyPagination(page);
+      if (data.availableFilters && typeof data.availableFilters === 'object') {
+        setAvailableFilters({
+          ...emptyActivityReportFilterOptions(),
+          ...data.availableFilters,
+        });
+      } else if (Array.isArray(data.availableClubs)) {
+        setAvailableFilters((prev) => ({
+          ...emptyActivityReportFilterOptions(),
+          ...prev,
+          clubName: data.availableClubs,
+        }));
+      }
+      detailCacheRef.current.set(cacheKey, { records, pagination: pageMeta });
+      setDetailRecords(records);
+      setPagination(pageMeta);
+      setCurrentPage(pageMeta.currentPage || page);
     } catch (err) {
       if (err.name === 'AbortError') return;
       setError(err.message || 'Failed to load activity details');
     } finally {
+      if (inFlightKeyRef.current === cacheKey) {
+        inFlightKeyRef.current = '';
+      }
       setDetailLoading(false);
     }
-  }, [user?.id, apiBaseUrl, dateRange, customStartDate, customEndDate, buildReportParams]);
+  }, [
+    user?.id,
+    apiBaseUrl,
+    dateRange,
+    customStartDate,
+    customEndDate,
+    buildReportParams,
+    detailCacheKey,
+    debouncedSearch,
+    sortColumn,
+    sortDirection,
+    tableFilters,
+    attendanceStatus,
+    itemsPerPage,
+  ]);
 
-  /** Phase 1: team scope + summary pills. Phase 2: detail table (async, non-blocking). */
+  /** Phase 1 + 2 in parallel: summary pills (no records) + first table page (one activity). */
   const loadReport = useCallback(async (detailActivity = 'education', { signal } = {}) => {
     if (!user?.id || !apiBaseUrl) return;
     if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
@@ -240,35 +419,60 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     setSummaryLoading(true);
     setDetailLoading(true);
     setError('');
+    detailCacheRef.current.clear();
+    inFlightKeyRef.current = '';
+    skipSearchSortFetchRef.current = true;
+
+    const activity = detailActivity || 'education';
+    const pageParams = paginationQuery(1);
 
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/api/activity/report?${buildReportParams('bootstrap', {
-          detailActivity: detailActivity || 'education',
-          includeRecords: '0',
-        })}`,
-        { cache: 'no-store', signal },
-      );
-      const data = await response.json();
+      // Summary bootstrap skips record enrichment; detail hits only one activity table.
+      // Table can paint as soon as detail returns — often before pills finish.
+      const bootstrapPromise = (async () => {
+        const response = await fetch(
+          `${apiBaseUrl}/api/activity/report?${buildReportParams('bootstrap', {
+            detailActivity: activity,
+            includeRecords: '0',
+          })}`,
+          { cache: 'no-store', signal },
+        );
+        const data = await response.json();
 
-      if (response.status === 400 && isBootstrapUnsupportedResponse(data)) {
-        await fetchLegacyReportBundle(detailActivity);
+        if (response.status === 400 && isBootstrapUnsupportedResponse(data)) {
+          return { kind: 'legacy' };
+        }
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || 'Failed to load activity report');
+        }
+        return { kind: 'ok', data };
+      })();
+
+      const detailPromise = fetchDetails(activity, {
+        signal,
+        page: 1,
+        search: pageParams.search,
+        sort: pageParams.sort,
+        sortDir: pageParams.sortDir,
+      });
+
+      const bootstrapResult = await bootstrapPromise;
+
+      if (bootstrapResult.kind === 'legacy') {
+        await fetchLegacyReportBundle(activity);
         setSummaryLoading(false);
         setDetailLoading(false);
         return;
       }
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Failed to load activity report');
-      }
-
-      setSummary(data.summary || null);
-      applyReportMeta(data);
-      setMemberSummaries(data.members || []);
-      setMemberStats(data.stats || null);
+      setSummary(bootstrapResult.data.summary || null);
+      setNotPostedSummary(bootstrapResult.data.notPostedSummary || null);
+      applyReportMeta(bootstrapResult.data);
+      setMemberSummaries(bootstrapResult.data.members || []);
+      setMemberStats(bootstrapResult.data.stats || null);
       setSummaryLoading(false);
 
-      await fetchDetails(detailActivity, { signal });
+      await detailPromise;
     } catch (err) {
       if (err.name === 'AbortError') return;
       setError(err.message || 'Failed to load activity report');
@@ -284,25 +488,36 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     buildReportParams,
     fetchLegacyReportBundle,
     applyReportMeta,
+    paginationQuery,
     fetchDetails,
   ]);
 
-  // Fetch only when this page is open (component mounted) and role is resolved.
-  useEffect(() => {
-    if (!roleReady || !user?.id || !apiBaseUrl) return;
-    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return;
+  loadReportRef.current = loadReport;
+  fetchDetailsRef.current = fetchDetails;
 
-    fetchAbortRef.current?.abort();
+  // Fetch only when this page is open (component mounted) and role is resolved.
+  // Refs keep loadReport/selectedActivity out of deps so callback identity churn
+  // (and React Strict Mode) cannot fire duplicate bootstraps.
+  useEffect(() => {
+    if (!roleReady || !user?.id || !apiBaseUrl) return undefined;
+    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return undefined;
+
     const controller = new AbortController();
+    fetchAbortRef.current?.abort();
     fetchAbortRef.current = controller;
     const generation = fetchGenerationRef.current + 1;
     fetchGenerationRef.current = generation;
 
-    loadReport(selectedActivity, { signal: controller.signal }).finally(() => {
-      if (fetchGenerationRef.current !== generation) return;
-    });
+    const timer = setTimeout(() => {
+      const run = loadReportRef.current;
+      if (typeof run !== 'function') return;
+      run(selectedActivityRef.current || 'education', { signal: controller.signal }).finally(() => {
+        if (fetchGenerationRef.current !== generation) return;
+      });
+    }, 120);
 
     return () => {
+      clearTimeout(timer);
       controller.abort();
       if (fetchAbortRef.current === controller) {
         fetchAbortRef.current = null;
@@ -310,7 +525,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     };
   }, [
     roleReady,
-    loadReport,
     tabVisitKey,
     teamScope,
     dateRange,
@@ -321,25 +535,124 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     apiBaseUrl,
   ]);
 
+  // Refetch current tab when debounced search / sort changes (not on every keystroke).
+  // Skip the first run after bootstrap/filter reload — those already return page 1.
+  useEffect(() => {
+    if (!roleReady || !user?.id || !apiBaseUrl || !summary) return undefined;
+    if (dateRange === 'custom' && (!customStartDate || !customEndDate)) return undefined;
+    if (skipSearchSortFetchRef.current) {
+      skipSearchSortFetchRef.current = false;
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    fetchAbortRef.current?.abort();
+    fetchAbortRef.current = controller;
+
+    const timer = setTimeout(() => {
+      const run = fetchDetailsRef.current;
+      if (typeof run !== 'function') return;
+      run(selectedActivityRef.current || 'education', {
+        signal: controller.signal,
+        page: 1,
+        search: debouncedSearch,
+        sort: sortColumn,
+        sortDir: sortDirection,
+        filters: tableFilters,
+      });
+    }, 80);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  // intentionally omit selectedActivity — tab switches use handleActivityClick
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, sortColumn, sortDirection, tableFiltersKey, roleReady, user?.id, apiBaseUrl, summary]);
+
   const handleRefresh = () => {
     fetchAbortRef.current?.abort();
     const controller = new AbortController();
     fetchAbortRef.current = controller;
+    setCurrentPage(1);
     loadReport(selectedActivity, { signal: controller.signal });
   };
 
   const handleActivityClick = (activityId) => {
+    const clearedFilters = emptyActivityReportTableFilterValues();
+    if (activityId === selectedActivity && !detailLoading) {
+      const cacheKey = detailCacheKey(
+        activityId, currentPage, debouncedSearch, sortColumn, sortDirection, tableFilters, attendanceStatus,
+      );
+      if (detailCacheRef.current.has(cacheKey)) return;
+    }
     setSelectedActivity(activityId);
+    setTableFilters(clearedFilters);
+    setAvailableFilters(emptyActivityReportFilterOptions());
+    setCurrentPage(1);
+    skipSearchSortFetchRef.current = true;
     fetchAbortRef.current?.abort();
     const controller = new AbortController();
     fetchAbortRef.current = controller;
-    fetchDetails(activityId, { signal: controller.signal });
+    fetchDetails(activityId, {
+      signal: controller.signal,
+      page: 1,
+      search: debouncedSearch,
+      sort: sortColumn,
+      sortDir: sortDirection,
+      filters: clearedFilters,
+    });
+  };
+
+  const handlePageChange = (nextPage) => {
+    if (nextPage < 1) return;
+    if (pagination.totalPages > 0 && nextPage > pagination.totalPages) return;
+    if (nextPage === currentPage) return;
+
+    setCurrentPage(nextPage);
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    fetchDetails(selectedActivity, {
+      signal: controller.signal,
+      page: nextPage,
+      search: debouncedSearch,
+      sort: sortColumn,
+      sortDir: sortDirection,
+      filters: tableFilters,
+    });
+  };
+
+  const resetTableColumnFilter = () => {
+    setTableFilters(emptyActivityReportTableFilterValues());
+    setAvailableFilters(emptyActivityReportFilterOptions());
+  };
+
+  const handleRemoveTableFilterValue = (columnId, value) => {
+    setTableFilters((prev) => removeActivityReportFilterValue(prev, columnId, value));
+    setCurrentPage(1);
+  };
+
+  const handleApplyTableFilters = (nextFilters) => {
+    setTableFilters(normalizeActivityReportTableFilters(nextFilters));
+    setCurrentPage(1);
+  };
+
+  const handleClearTableFilters = () => {
+    setSearchQuery('');
+    setDebouncedSearch('');
+    setTableFilters(emptyActivityReportTableFilterValues());
+    setCurrentPage(1);
   };
 
   const handleTeamScopeChange = (scope) => {
     setTeamScope(scope);
     setSearchQuery('');
+    setDebouncedSearch('');
+    resetTableColumnFilter();
+    setCurrentPage(1);
     setDetailRecords([]);
+    setPagination(emptyPagination());
     setMemberSummaries([]);
     setMemberStats(null);
     setError('');
@@ -347,28 +660,59 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
 
   const handleDateRangeChange = (range) => {
     setDateRange(range);
+    resetTableColumnFilter();
+    setCurrentPage(1);
     setDetailRecords([]);
+    setPagination(emptyPagination());
     setMemberSummaries([]);
     setMemberStats(null);
     setError('');
     if (range !== 'custom') {
+      setShowReportDatePicker(false);
+    } else {
+      // Always reopen the calendar — native <select> will not fire onChange when
+      // "Custom" is already selected, so callers also open via the edit control.
       if (!customStartDate || !customEndDate) {
-        /* presets fetch immediately */
+        setSummary(null);
       }
-    } else if (!customStartDate || !customEndDate) {
-      setSummary(null);
+      setShowReportDatePicker(true);
     }
+  };
+
+  const handleAttendanceChange = (event) => {
+    const next = event.target.value || ACTIVITY_REPORT_ATTENDANCE.POSTED;
+    if (next === attendanceStatus) return;
+    setAttendanceStatus(next);
+    setCurrentPage(1);
+    setDetailRecords([]);
+    setPagination(emptyPagination());
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    fetchDetails(selectedActivity, {
+      signal: controller.signal,
+      page: 1,
+      search: debouncedSearch,
+      sort: sortColumn,
+      sortDir: sortDirection,
+      filters: tableFilters,
+      attendance: next,
+    });
   };
 
   const handleCustomDateSelect = (start, end) => {
     setCustomStartDate(start);
     setCustomEndDate(end);
+    setShowReportDatePicker(false);
+    resetTableColumnFilter();
+    setCurrentPage(1);
     setDetailRecords([]);
+    setPagination(emptyPagination());
     setMemberSummaries([]);
     setMemberStats(null);
   };
 
-  // Filter member summaries by search query
+  // Filter member summaries by search query (legacy fallback only)
   const filteredMemberSummaries = useMemo(() => {
     if (!memberSearchQuery) return memberSummaries;
     const q = memberSearchQuery.toLowerCase();
@@ -379,49 +723,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     );
   }, [memberSummaries, memberSearchQuery]);
 
-  // Filter and sort records
-  const filteredRecords = useMemo(() => {
-    let filtered = detailRecords;
-
-    // Apply search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(record =>
-        (record.memberName || '').toLowerCase().includes(query) ||
-        (record.phone || '').toLowerCase().includes(query) ||
-        (record.sponsorName || record.coachName || '').toLowerCase().includes(query) ||
-        (record.idealCoachName || '').toLowerCase().includes(query) ||
-        (record.city || '').toLowerCase().includes(query) ||
-        (record.village || '').toLowerCase().includes(query)
-      );
-    }
-
-    // Apply sorting
-    filtered = [...filtered].sort((a, b) => {
-      let aVal = a[sortColumn];
-      let bVal = b[sortColumn];
-
-      if (sortColumn === 'date' || sortColumn === 'time') {
-        aVal = aVal || '';
-        bVal = bVal || '';
-      }
-
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
-
-    return filtered;
-  }, [detailRecords, searchQuery, sortColumn, sortDirection]);
-
-  // Paginate records
-  const paginatedRecords = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredRecords.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredRecords, currentPage]);
-
-  const totalPages = Math.ceil(filteredRecords.length / itemsPerPage);
-
   const handleSort = (column) => {
     if (sortColumn === column) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -429,80 +730,198 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
       setSortColumn(column);
       setSortDirection('asc');
     }
+    setCurrentPage(1);
+  };
+
+  const canManageHidden = canManageActivityReportHiddenUsers({
+    activityAvailable: true,
+  });
+
+  /** Long-press Hide User is for inactive (Not Posted) members only. */
+  const canHideInactiveUsers = canManageHidden
+    && attendanceStatus === ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED;
+
+  const showUnhideButton = canManageHidden && hiddenCount > 0;
+
+  // Load how many team members are hidden — Unhide only appears when count > 0.
+  useEffect(() => {
+    if (!canManageHidden || !user?.id) {
+      setHiddenCount(0);
+      return undefined;
+    }
+    let cancelled = false;
+    listActivityReportHiddenUsers(user.id)
+      .then((data) => {
+        if (cancelled) return;
+        setHiddenCount(Array.isArray(data.members) ? data.members.length : 0);
+      })
+      .catch(() => {
+        if (!cancelled) setHiddenCount(0);
+      });
+    return () => { cancelled = true; };
+  }, [canManageHidden, user?.id, tabVisitKey]);
+
+  const refreshAfterVisibilityChange = useCallback(async () => {
+    // Soft refresh detail only — avoid full bootstrap (that made hide feel slow).
+    detailCacheRef.current.clear();
+    setCurrentPage(1);
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+    if (typeof fetchDetailsRef.current === 'function') {
+      await fetchDetailsRef.current(selectedActivityRef.current, {
+        signal: controller.signal,
+        page: 1,
+      });
+    }
+  }, []);
+
+  const handleHideUser = useCallback(async ({ userId: targetUserId }) => {
+    if (!user?.id || !targetUserId) return;
+    setHideBusy(true);
+    setError('');
+    try {
+      await hideActivityReportUser(user.id, targetUserId);
+      setHideMenu(null);
+      setHiddenCount((count) => count + 1);
+      // Instant UI update — remove row now; sync counts without waiting on network.
+      setDetailRecords((prev) => prev.filter((row) => Number(row.userId) !== Number(targetUserId)));
+      setPagination((prev) => {
+        const totalRecords = Math.max(0, (prev.totalRecords || 0) - 1);
+        const pageSize = prev.pageSize || itemsPerPage;
+        const totalPages = totalRecords === 0 ? 0 : Math.ceil(totalRecords / pageSize);
+        return {
+          ...prev,
+          totalRecords,
+          totalPages,
+          hasNextPage: (prev.currentPage || 1) < totalPages,
+          hasPreviousPage: (prev.currentPage || 1) > 1 && totalPages > 0,
+        };
+      });
+      detailCacheRef.current.clear();
+      // Background sync (do not block the Hide action).
+      void refreshAfterVisibilityChange();
+    } catch (err) {
+      setError(err?.message || 'Failed to hide user');
+      throw err;
+    } finally {
+      setHideBusy(false);
+    }
+  }, [user?.id, itemsPerPage, refreshAfterVisibilityChange]);
+
+  const handleUnhiddenUser = useCallback(async () => {
+    // Keep Hidden Users modal open — restore this member only (soft detail refresh).
+    setHiddenCount((count) => Math.max(0, count - 1));
+    detailCacheRef.current.clear();
+    void refreshAfterVisibilityChange();
+  }, [refreshAfterVisibilityChange]);
+
+  const handleHiddenUsersModalClose = useCallback(() => {
+    setShowHiddenUsersModal(false);
+    // Sync list once when the user closes the sheet.
+    void refreshAfterVisibilityChange();
+    if (user?.id) {
+      listActivityReportHiddenUsers(user.id)
+        .then((data) => {
+          setHiddenCount(Array.isArray(data.members) ? data.members.length : 0);
+        })
+        .catch(() => { /* keep count */ });
+    }
+  }, [refreshAfterVisibilityChange, user?.id]);
+
+  const buildCsvFromRecords = (records) => {
+    const selectedActivityMeta = ACTIVITY_TYPES.find(a => a.id === selectedActivity);
+    const activityLabel = selectedActivityMeta?.label || 'Activity';
+
+    let headers = [
+      'Member Name',
+      'Type',
+      'Level',
+      'Club',
+      'Sponsor Name',
+      'Reg. Date',
+      'Reg. Time',
+      'Coach Name',
+      'Phone Number',
+      'City',
+      'Village'
+    ];
+
+    // Activity metrics sit after Club + Sponsor (index 5).
+    if (selectedActivity === 'weight') {
+      headers.splice(5, 0, 'Weight (kg)');
+    } else if (['breakfast', 'lunch', 'dinner'].includes(selectedActivity)) {
+      headers.splice(5, 0, 'Meal Type', 'Calories');
+    } else if (selectedActivity === 'water') {
+      headers.splice(5, 0, 'Water (L)');
+    } else if (selectedActivity === 'calories') {
+      headers.splice(5, 0, 'Calories Burned');
+    }
+
+    const csvRows = [headers.join(',')];
+
+    records.forEach((record) => {
+      const displayClub = record.clubName && record.clubName !== 'N/A' ? record.clubName : 'Remote';
+      const baseRow = [
+        `"${record.memberName || 'N/A'}"`,
+        `"${formatActivityReportMemberType(record.memberType)}"`,
+        formatActivityReportLevel(record.level),
+        `"${displayClub}"`,
+        `"${record.sponsorName || record.coachName || 'N/A'}"`,
+        record.date || 'N/A',
+        record.time || 'N/A',
+        `"${record.idealCoachName || ''}"`,
+        `"${record.phone || 'N/A'}"`,
+        `"${record.city || 'N/A'}"`,
+        `"${record.village || 'N/A'}"`,
+      ];
+
+      if (selectedActivity === 'weight') {
+        baseRow.splice(5, 0, record.weight || 'N/A');
+      } else if (['breakfast', 'lunch', 'dinner'].includes(selectedActivity)) {
+        baseRow.splice(5, 0, `"${record.mealType || 'N/A'}"`, record.calories || 0);
+      } else if (selectedActivity === 'water') {
+        baseRow.splice(5, 0, record.waterLiters || 0);
+      } else if (selectedActivity === 'calories') {
+        baseRow.splice(5, 0, record.caloriesBurned || 0);
+      }
+
+      csvRows.push(baseRow.join(','));
+    });
+
+    return {
+      csv: csvRows.join('\n'),
+      fileName: `activity-report-${activityLabel.toLowerCase().replace(/\s+/g, '-')}-${dateRange}-${new Date().toISOString().slice(0, 10)}.csv`,
+    };
   };
 
   const handleDownload = async () => {
-    if (filteredRecords.length === 0) {
+    if ((pagination.totalRecords || 0) === 0 && detailRecords.length === 0) {
       alert('No records to export');
       return;
     }
 
+    setExportLoading(true);
     try {
-      const selectedActivityMeta = ACTIVITY_TYPES.find(a => a.id === selectedActivity);
-      const activityLabel = selectedActivityMeta?.label || 'Activity';
-
-      // 1. Base headers re-ordered to match your new UI table
-      let headers = [
-        'Member Name',
-        // Dynamic columns will go here (index 1)
-        'Club',
-        'Reg. Date',
-        'Reg. Time',
-        'Sponsor Name',
-        'Coach Name',
-        'Phone Number',
-        'City',
-        'Village'
-      ];
-      
-      // 2. Insert dynamic headers (Education has NO extra columns)
-      if (selectedActivity === 'weight') {
-        headers.splice(1, 0, 'Weight (kg)');
-      } else if (['breakfast', 'lunch', 'dinner'].includes(selectedActivity)) {
-        headers.splice(1, 0, 'Meal Type', 'Calories');
-      } else if (selectedActivity === 'water') {
-        headers.splice(1, 0, 'Water (L)');
-      } else if (selectedActivity === 'calories') {
-        headers.splice(1, 0, 'Steps', 'Calories Burned');
+      // Export the complete filtered dataset (not just the current page).
+      const response = await fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams(selectedActivity, {
+          ...paginationQuery(1, { exportAll: true }),
+        })}`,
+        { cache: 'no-store' },
+      );
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to export activity report');
       }
 
-      const csvRows = [headers.join(',')];
+      const exportRecords = Array.isArray(data.records) ? data.records : [];
+      if (exportRecords.length === 0) {
+        alert('No records to export');
+        return;
+      }
 
-      filteredRecords.forEach((record) => {
-        // Handle "Remote" logic for Club Name
-        const displayClub = record.clubName && record.clubName !== 'N/A' ? record.clubName : 'Remote';
-
-        // 3. Base row data matching the new re-ordered headers
-        const baseRow = [
-          `"${record.memberName || 'N/A'}"`,
-          // Dynamic data will go here (index 1)
-          `"${displayClub}"`,
-          record.date || 'N/A',
-          record.time || 'N/A',
-          `"${record.sponsorName || record.coachName || 'N/A'}"`,
-          `"${record.idealCoachName || ''}"`,
-          `"${record.phone || 'N/A'}"`,
-          `"${record.city || 'N/A'}"`,
-          `"${record.village || 'N/A'}"`,
-        ];
-
-        // 4. Insert dynamic data into the row
-        if (selectedActivity === 'weight') {
-          baseRow.splice(1, 0, record.weight || 'N/A');
-        } else if (['breakfast', 'lunch', 'dinner'].includes(selectedActivity)) {
-          baseRow.splice(1, 0, `"${record.mealType || 'N/A'}"`, record.calories || 0);
-        } else if (selectedActivity === 'water') {
-          baseRow.splice(1, 0, record.waterLiters || 0);
-        } else if (selectedActivity === 'calories') {
-          baseRow.splice(1, 0, record.steps || 0, record.caloriesBurned || 0);
-        }
-
-        csvRows.push(baseRow.join(','));
-      });
-
-      const csv = csvRows.join('\n');
-      const fileName = `activity-report-${activityLabel.toLowerCase().replace(/\s+/g, '-')}-${dateRange}-${new Date().toISOString().slice(0, 10)}.csv`;
-
+      const { csv, fileName } = buildCsvFromRecords(exportRecords);
       const isNative = Capacitor.isNativePlatform();
 
       if (isNative) {
@@ -525,7 +944,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
           alert(`File saved to: ${result.uri}`);
         }
       } else {
-        // Web fallback
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -539,11 +957,104 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
     } catch (err) {
       console.error('Export failed:', err);
       alert('Failed to export report. Please try again.');
+    } finally {
+      setExportLoading(false);
     }
   };
 
+  const handleShare = async () => {
+    if ((pagination.totalRecords || 0) === 0 && detailRecords.length === 0) {
+      alert('No records to share');
+      return;
+    }
+
+    setShareLoading(true);
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/api/activity/report?${buildReportParams(selectedActivity, {
+          ...paginationQuery(1, { exportAll: true }),
+        })}`,
+        { cache: 'no-store' },
+      );
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to load activity report for sharing');
+      }
+
+      const exportRecords = Array.isArray(data.records) ? data.records : [];
+      if (exportRecords.length === 0) {
+        alert('No records to share');
+        return;
+      }
+
+      const activityMeta = ACTIVITY_TYPES.find((a) => a.id === selectedActivity);
+      const text = buildActivityReportShareText({
+        activityLabel: activityMeta?.label || 'Activity',
+        dateLabel: activeDateLabel,
+        scopeLabel: activeScopeLabel,
+        clubFilter: (tableFilters.clubName || []).join(', '),
+        columnFilter: activeActivityReportTableFilters(tableFilters)
+          .map((chip) => `${chip.label}: ${chip.displayValue}`)
+          .join(' · '),
+        searchQuery,
+        attendanceLabel: formatActivityReportAttendance(attendanceStatus),
+        totalRecords: data.pagination?.totalRecords ?? exportRecords.length,
+        records: exportRecords,
+        activityId: selectedActivity,
+      });
+
+      const isNative = Capacitor.isNativePlatform();
+      if (isNative) {
+        const canShare = await Share.canShare().catch(() => ({ value: false }));
+        if (canShare.value) {
+          await Share.share({
+            title: 'Activity Report',
+            text,
+            dialogTitle: 'Share Activity Report',
+          });
+        } else if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+          alert('Report copied to clipboard');
+        } else {
+          alert('Sharing is not available on this device');
+        }
+      } else if (navigator.share) {
+        try {
+          await navigator.share({ title: 'Activity Report', text });
+        } catch (shareErr) {
+          const cancelled = (shareErr?.name === 'AbortError')
+            || (shareErr?.message || '').toLowerCase().includes('cancel');
+          if (!cancelled) throw shareErr;
+        }
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        alert('Report copied to clipboard');
+      } else {
+        alert('Sharing is not supported in this browser');
+      }
+    } catch (err) {
+      console.error('Share failed:', err);
+      alert('Failed to share report. Please try again.');
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
+  const totalPages = pagination.totalPages || 0;
+  const totalRecords = pagination.totalRecords || 0;
+  const pageSize = pagination.pageSize || itemsPerPage;
+  const showingFrom = totalRecords === 0 ? 0 : ((pagination.currentPage || currentPage) - 1) * pageSize + 1;
+  const showingTo = Math.min((pagination.currentPage || currentPage) * pageSize, totalRecords);
+  const categorySummary = activityReportCategoryCounts(
+    attendanceStatus,
+    summary,
+    notPostedSummary,
+  );
+  const activeFilterChips = activeActivityReportTableFilters(tableFilters);
+  const hasActiveTableFilters = Boolean(searchQuery.trim() || activeFilterChips.length > 0);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 pb-20">
+    <div className="bg-gradient-to-br from-green-50 to-green-100 pb-16">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 py-2">
@@ -562,140 +1073,145 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* Date Range Filter */}
-        <div className="mb-4">
-          <ReportDateRangeFilter
-            ranges={ACTIVITY_REPORT_DATE_RANGES}
-            dateRange={dateRange}
-            onDateRangeChange={handleDateRangeChange}
-            customStartDate={customStartDate}
-            customEndDate={customEndDate}
-            onCustomDateSelect={handleCustomDateSelect}
-            variant="compact"
-          />
-        </div>
+      <div className="max-w-7xl mx-auto px-4 py-3">
+        <ActivityReportFiltersBar
+          dateRange={dateRange}
+          customStartDate={customStartDate}
+          customEndDate={customEndDate}
+          showDatePicker={showReportDatePicker}
+          onDateRangeChange={handleDateRangeChange}
+          onOpenCustomPicker={() => setShowReportDatePicker(true)}
+          onCustomDateSelect={handleCustomDateSelect}
+          onCloseDatePicker={() => setShowReportDatePicker(false)}
+          showTeamScope={showTeamScope}
+          teamScope={teamScope}
+          teamScopeCounts={teamScopeCounts}
+          onTeamScopeChange={handleTeamScopeChange}
+          selectedActivity={selectedActivity}
+          activityTypes={ACTIVITY_TYPES}
+          summary={categorySummary}
+          onActivityChange={handleActivityClick}
+          attendanceStatus={attendanceStatus}
+          onAttendanceChange={handleAttendanceChange}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          activeFilterChips={activeFilterChips}
+          onOpenTableFilters={() => setShowTableFiltersSheet(true)}
+          onRemoveTableFilter={handleRemoveTableFilterValue}
+          onClearTableFilters={handleClearTableFilters}
+          summaryLoading={summaryLoading}
+          detailLoading={detailLoading}
+        />
 
-        {/* Team scope: Mine / Direct / Full */}
-        {showTeamScope && (
-          <div
-            className="mb-4 bg-white rounded-xl border border-gray-200 shadow-sm px-1 py-1 flex gap-1 w-full"
-            role="group"
-            aria-label="Team scope filter"
-          >
-            {TEAM_SCOPE_OPTIONS.map(({ value, label, short }) => {
-              const isActive = teamScope === value;
-              const count = teamScopeCounts?.[value] ?? 0;
-              const showCount = value !== TEAM_SCOPES.MINE;
-              const desktopLabel = showCount ? `${label} (${count})` : label;
-              const mobileLabel = showCount ? `${short} (${count})` : short;
-              return (
-                <TouchFeedbackButton
-                  key={value}
-                  onClick={() => handleTeamScopeChange(value)}
-                  disabled={summaryLoading || detailLoading}
-                  className={`flex-1 min-w-0 py-2 rounded-lg text-[11px] sm:text-xs font-semibold transition-all px-1 sm:px-2 disabled:opacity-50 ${
-                    isActive
-                      ? 'bg-green-600 text-white shadow-sm'
-                      : 'text-green-800 hover:bg-green-50'
-                  }`}
-                  title={desktopLabel}
-                >
-                  <span className="hidden sm:inline truncate">{desktopLabel}</span>
-                  <span className="sm:hidden truncate">{mobileLabel}</span>
-                </TouchFeedbackButton>
-              );
-            })}
-          </div>
-        )}
+        <ActivityReportTableFiltersSheet
+          isOpen={showTableFiltersSheet}
+          onClose={() => setShowTableFiltersSheet(false)}
+          appliedFilters={tableFilters}
+          availableFilters={availableFilters}
+          onApply={handleApplyTableFilters}
+          disabled={detailLoading}
+        />
 
-        {(showTeamScope || summary) && (
-          <p className="mb-3 text-[11px] sm:text-xs text-gray-500">
-            Activity counts for{' '}
-            <span className="font-semibold text-gray-700">{activeScopeLabel || 'your team'}</span>
-            {' · '}
-            <span className="font-semibold text-gray-700">{activeDateLabel}</span>
-          </p>
-        )}
+        <ActivityReportHiddenUsersModal
+          isOpen={showHiddenUsersModal}
+          onClose={handleHiddenUsersModalClose}
+          viewerUserId={user?.id}
+          onUnhidden={handleUnhiddenUser}
+        />
 
-        {/* Error Display */}
+        <ActivityReportHideUserMenu
+          open={Boolean(hideMenu)}
+          anchor={hideMenu}
+          memberName={hideMenu?.memberName}
+          onHide={() => handleHideUser(hideMenu)}
+          onClose={() => setHideMenu(null)}
+          busy={hideBusy}
+        />
+
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div className="mb-3 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-red-700 text-sm">{error}</p>
           </div>
         )}
 
-        {/* Activity Type Tabs */}
-        {summary && (
-          <div className="flex flex-wrap gap-2 pb-2 mb-5">
-            {ACTIVITY_TYPES.map((activity) => {
-              const Icon = activity.icon;
-              const isActive = selectedActivity === activity.id;
-              return (
-                <TouchFeedbackButton
-                  key={activity.id}
-                  onClick={() => handleActivityClick(activity.id)}
-                  className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border shadow-sm active:scale-95 transition-all ${
-                    isActive
-                      ? `${activity.bgColor} ${activity.borderColor}`
-                      : 'bg-white border-gray-200'
-                  }`}
-                >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? activity.textColor : 'text-gray-400'}`} />
-                  <span className={`text-sm font-bold ${isActive ? activity.textColor : 'text-gray-500'}`}>
-                    {summary[activity.id] || 0}
-                  </span>
-                  <span className={`text-xs font-medium whitespace-nowrap ${isActive ? 'text-gray-600' : 'text-gray-400'}`}>
-                    {activity.label}
-                  </span>
-                </TouchFeedbackButton>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Detail Grid */}
         {selectedActivity && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="p-4 border-b border-gray-200">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-gray-900">
-                  {ACTIVITY_TYPES.find(a => a.id === selectedActivity)?.label} Records
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+            <div className="px-3 py-2 sm:px-4 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-bold text-gray-900">
+                  {ACTIVITY_TYPES.find(a => a.id === selectedActivity)?.label}
+                  {' · '}
+                  {formatActivityReportAttendance(attendanceStatus)}
                 </h2>
-                <div className="flex items-center gap-2">
-                  {filteredRecords.length > 0 && (
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {(totalRecords > 0 || detailRecords.length > 0) && (
+                    <>
+                      <TouchFeedbackButton
+                        onClick={handleShare}
+                        disabled={shareLoading || exportLoading || detailLoading}
+                        ariaLabel={shareLoading ? 'Sharing report' : 'Share report'}
+                        className="flex items-center justify-center p-1.5 bg-white border border-green-600 text-green-700 rounded-md hover:bg-green-50 disabled:opacity-50"
+                      >
+                        <Share2 className={`w-3.5 h-3.5 ${shareLoading ? 'animate-pulse' : ''}`} />
+                      </TouchFeedbackButton>
+                      <TouchFeedbackButton
+                        onClick={handleDownload}
+                        disabled={exportLoading || shareLoading || detailLoading}
+                        ariaLabel={exportLoading ? 'Exporting report' : 'Export report'}
+                        className="flex items-center justify-center p-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
+                      >
+                        <Download className={`w-3.5 h-3.5 ${exportLoading ? 'animate-pulse' : ''}`} />
+                      </TouchFeedbackButton>
+                    </>
+                  )}
+                  {showUnhideButton && (
                     <TouchFeedbackButton
-                      onClick={handleDownload}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700"
+                      onClick={() => setShowHiddenUsersModal(true)}
+                      disabled={detailLoading || hideBusy}
+                      ariaLabel="Unhide users"
+                      className="flex items-center gap-1 px-2 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 text-xs font-medium"
                     >
-                      <Download className="w-4 h-4" />
-                      Export
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Unhide</span>
                     </TouchFeedbackButton>
                   )}
                 </div>
               </div>
-
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search by name, phone, coach, city, or village..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-              </div>
             </div>
 
-            <div className="overflow-x-auto overflow-y-auto max-h-[65vh]">
+            <div className="overflow-x-auto relative">
+              {detailLoading && (
+                <div className="absolute inset-0 z-40 flex items-center justify-center bg-white/70">
+                  <RefreshCw className="w-8 h-8 text-green-600 animate-spin" />
+                </div>
+              )}
               <table className="w-full">
-                <thead className="border-b border-gray-200 sticky top-0 z-20">
+                <thead className="border-b border-gray-200 bg-gray-50">
                   <tr>
                     <th
-                      className="sticky left-0 z-30 bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase min-w-[130px] cursor-pointer hover:bg-gray-100 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]"
+                      className="sticky left-0 z-30 bg-gray-50 px-3 py-2 text-left text-[10px] sm:text-xs font-semibold text-gray-600 uppercase min-w-[130px] cursor-pointer hover:bg-gray-100 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]"
                       onClick={() => handleSort('memberName')}
                     >
                       Member Name {sortColumn === 'memberName' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th
+                      className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('memberType')}
+                    >
+                      Type {sortColumn === 'memberType' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th
+                      className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('level')}
+                    >
+                      Level {sortColumn === 'level' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Club</th>
+                    <th
+                      className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleSort('sponsorName')}
+                    >
+                      Sponsor {sortColumn === 'sponsorName' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
 
                     {/* --- DYNAMIC ACTIVITY COLUMNS --- */}
@@ -713,14 +1229,10 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                       <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Water (L)</th>
                     )}
                     {selectedActivity === 'calories' && (
-                      <>
-                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Steps</th>
-                        <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories Burned</th>
-                      </>
+                      <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Calories Burned</th>
                     )}
 
-                    {/* --- COMMON COLUMNS REORDERED --- */}
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Club</th>
+                    {/* --- COMMON COLUMNS --- */}
                     <th
                       className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap cursor-pointer hover:bg-gray-100"
                       onClick={() => handleSort('date')}
@@ -728,7 +1240,6 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                       Reg. Date {sortColumn === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
                     </th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase whitespace-nowrap">Reg. Time</th>
-                    <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Sponsor</th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Coach</th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Phone</th>
                     <th className="bg-gray-50 px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">City</th>
@@ -736,11 +1247,23 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {paginatedRecords.map((record, index) => (
+                  {detailRecords.map((record, index) => (
                     <tr key={`${record.userId}-${record.date}-${record.time}-${index}`} className="hover:bg-gray-50">
-                      <td className="sticky left-0 z-10 bg-white px-4 py-3 text-sm font-medium text-gray-900 min-w-[130px] shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">
-                        {display(record.memberName)}
+                      <ActivityReportMemberNameCell
+                        record={record}
+                        canHide={canHideInactiveUsers}
+                        onOpenHideMenu={setHideMenu}
+                        onOpenProfile={setProfileUserId}
+                      />
+                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{formatActivityReportMemberType(record.memberType)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{formatActivityReportLevel(record.level)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {record.clubName && record.clubName !== 'N/A'
+                          ? <span className="text-green-700 font-medium">{record.clubName}</span>
+                          : <span className="text-gray-400 italic">Remote</span>
+                        }
                       </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.sponsorName || record.coachName)}</td>
 
                       {/* --- DYNAMIC ACTIVITY DATA --- */}
                       {selectedActivity === 'weight' && (
@@ -757,24 +1280,16 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
                         <td className="px-4 py-3 text-sm font-semibold text-cyan-600">{record.waterLiters}</td>
                       )}
                       {selectedActivity === 'calories' && (
-                        <>
-                          <td className="px-4 py-3 text-sm text-gray-600">{record.steps}</td>
-                          <td className="px-4 py-3 text-sm font-semibold text-red-600">{record.caloriesBurned}</td>
-                        </>
+                        <td className="px-4 py-3 text-sm font-semibold text-red-600">{record.caloriesBurned}</td>
                       )}
 
-                      {/* --- COMMON DATA REORDERED --- */}
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {record.clubName && record.clubName !== 'N/A'
-                          ? <span className="text-green-700 font-medium">{record.clubName}</span>
-                          : <span className="text-gray-400 italic">Remote</span>
-                        }
-                      </td>
+                      {/* --- COMMON DATA --- */}
                       <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{display(record.date)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{display(record.time)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.sponsorName || record.coachName)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{record.idealCoachName ? display(record.idealCoachName) : '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{display(record.phone)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        <PhoneContactActions phone={record.phone} size="sm" />
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{display(record.city)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{display(record.village)}</td>
                     </tr>
@@ -787,22 +1302,22 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
             {totalPages > 1 && (
               <div className="p-4 border-t border-gray-200 flex items-center justify-between">
                 <p className="text-sm text-gray-600">
-                  Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredRecords.length)} of {filteredRecords.length} records
+                  Showing {showingFrom} to {showingTo} of {totalRecords} records
                 </p>
                 <div className="flex items-center gap-2">
                   <TouchFeedbackButton
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={!pagination.hasPreviousPage || detailLoading || currentPage <= 1}
                     className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Previous
                   </TouchFeedbackButton>
                   <span className="text-sm text-gray-600">
-                    Page {currentPage} of {totalPages}
+                    Page {pagination.currentPage || currentPage} of {totalPages}
                   </span>
                   <TouchFeedbackButton
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={!pagination.hasNextPage || detailLoading || currentPage >= totalPages}
                     className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Next
@@ -811,15 +1326,15 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
               </div>
             )}
 
-            {paginatedRecords.length === 0 && !detailLoading && (
+            {detailRecords.length === 0 && !detailLoading && (
               <div className="p-12 text-center">
-                <p className="text-gray-500">No records found</p>
-              </div>
-            )}
-
-            {detailLoading && (
-              <div className="p-12 flex justify-center">
-                <RefreshCw className="w-8 h-8 text-green-600 animate-spin" />
+                <p className="text-gray-500">
+                  {hasActiveTableFilters
+                    ? 'No records found'
+                    : attendanceStatus === ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED
+                      ? 'Everyone in this team logged this activity'
+                      : 'No records found'}
+                </p>
               </div>
             )}
           </div>
@@ -832,6 +1347,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0 })
           </div>
         )}
       </div>
+      <TeamMemberProfileModal
+        isOpen={profileUserId != null}
+        onClose={() => setProfileUserId(null)}
+        memberUserId={profileUserId}
+        apiBaseUrl={apiBaseUrl}
+      />
     </div>
   );
 };

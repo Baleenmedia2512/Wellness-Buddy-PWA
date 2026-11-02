@@ -5,6 +5,7 @@ import CarouselPeriodHeader from '../../nutrition/components/dashboard/carousel/
 import { useBusinessToday } from '../../../shared/hooks/useBusinessToday';
 import { useWellnessScore } from '../hooks/useWellnessScore';
 import { prefetchTimeWindows } from '../hooks/useTimeWindows';
+import { pickLiveDailyScore } from '../domain/historyPaint';
 
 /** Ring diameter + stroke that fit carousel card width on small phones... */
 function useResponsiveRing() {
@@ -27,6 +28,10 @@ function useResponsiveRing() {
 
 /**
  * Home carousel card — large ring + score hero, fills carousel slide height.
+ *
+ * For single-day ranges (Today / Yesterday), keeps a live `useWellnessScore` fetch
+ * so food-save refresh updates this card even when the parent carousel cache is stale.
+ * Multi-day ranges keep using parent-aggregated `scoreData`.
  */
 export default function WellnessScoreCarouselCard({
   user,
@@ -38,13 +43,16 @@ export default function WellnessScoreCarouselCard({
   loading: loadingProp,
   scoreSubtitle = 'Daily Score',
   periodContext,
+  /** YYYY-MM-DD for Today/Yesterday live fetch; null for multi-day parent totals */
+  liveScoreDate = null,
 }) {
   const today = useBusinessToday(user);
-  const internal = useWellnessScore({
-    user: scoreDataProp == null ? user : null,
+  const liveEnabled = Boolean(liveScoreDate);
+  const live = useWellnessScore({
+    user: liveEnabled ? user : null,
     apiBaseUrl,
-    date: today,
-    nutritionRefreshKey,
+    date: liveScoreDate || today,
+    nutritionRefreshKey: liveEnabled ? nutritionRefreshKey : 0,
   });
   const { size: ringSize, strokeWidth } = useResponsiveRing();
 
@@ -52,10 +60,21 @@ export default function WellnessScoreCarouselCard({
   // hints on first open instead of the generic fallback.
   useEffect(() => {
     prefetchTimeWindows();
+    import('../components/WellnessScorePage.jsx');
   }, []);
 
-  const loading = loadingProp ?? internal.loading;
-  const data = scoreDataProp ?? internal.data;
+  // Prefer live daily score when it is actually for this pill's date.
+  // Do not fall back to the previous Today/Yesterday total while /daily loads.
+  const data = liveEnabled
+    ? pickLiveDailyScore({
+      liveScore: live.data,
+      parentScore: scoreDataProp,
+      dateYmd: liveScoreDate,
+    })
+    : (scoreDataProp ?? live.data);
+  const loading = liveEnabled
+    ? (Boolean(live.loading) && !data)
+    : (loadingProp ?? live.loading);
 
   const progressPct = data?.percentage ?? 0;
   const earned = Math.round(data?.totalEarned ?? 0);
@@ -65,10 +84,17 @@ export default function WellnessScoreCarouselCard({
 
   if (!user) return null;
 
+  const openSheet = () => {
+    onOpen?.({
+      scoreData: liveEnabled ? (data || null) : null,
+      scoreDate: liveEnabled ? (liveScoreDate || today) : null,
+    });
+  };
+
   const handleCardKeyDown = (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      onOpen?.();
+      openSheet();
     }
   };
 
@@ -77,7 +103,7 @@ export default function WellnessScoreCarouselCard({
       <div
         role="button"
         tabIndex={0}
-        onClick={onOpen}
+        onClick={openSheet}
         onKeyDown={handleCardKeyDown}
         className="group flex h-full w-full min-h-[148px] flex-col rounded-xl bg-gradient-to-br from-white via-white to-emerald-50/70 p-2.5 text-left shadow-lg ring-1 ring-emerald-100/80 transition-all hover:shadow-xl hover:ring-emerald-200 active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 cursor-pointer"
         data-testid="wellness-score-home-tile"

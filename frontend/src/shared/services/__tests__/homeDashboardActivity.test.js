@@ -15,6 +15,7 @@ import {
   setWellnessScoreSnapshot,
   getWellnessScoreSnapshot,
   clearHomeDashboardSnapshot,
+  invalidateWellnessScoreSnapshot,
   __resetHomeDashboardActivityForTests,
 } from '../homeDashboardActivity';
 
@@ -87,5 +88,18 @@ describe('homeDashboardActivity', () => {
     clearHomeDashboardSnapshot();
     expect(getWellnessScoreSnapshot()).toBeNull();
     expect(getLastProcessedWellnessScoreActivityLogId()).toBeNull();
+  });
+
+  it('invalidates wellness snapshot without resetting processed watermark', () => {
+    markWellnessScoreProcessed(0);
+    setWellnessScoreSnapshot({
+      rangeKey: '2026-07-14__2026-07-14',
+      days: [{ date: '2026-07-14', totalEarned: 10 }],
+    });
+
+    invalidateWellnessScoreSnapshot();
+    expect(getWellnessScoreSnapshot()).toBeNull();
+    expect(getLastProcessedWellnessScoreActivityLogId()).toBe(0);
+    expect(shouldRefreshWellnessScore()).toBe(false);
   });
 });

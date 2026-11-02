@@ -108,6 +108,7 @@ export function buildAnalysisFromGeminiAnalysis(analysis) {
         glycemic_index: computeMealGlycemicIndex(foods) ?? total.glycemic_index ?? null,
       },
       confidence: analysis.confidence || 'medium',
+      source: 'ai',
     };
   }
   // Legacy geminiService format: detailedItems + nutrition
@@ -130,6 +131,7 @@ export function buildAnalysisFromGeminiAnalysis(analysis) {
       glycemic_index: computeMealGlycemicIndex(foods) ?? total.glycemic_index ?? null,
     },
     confidence: analysis?.confidence || 'medium',
+    source: 'ai',
   };
 }
 

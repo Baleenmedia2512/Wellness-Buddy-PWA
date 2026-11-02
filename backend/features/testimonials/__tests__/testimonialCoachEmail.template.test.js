@@ -1,0 +1,230 @@
+/**
+ * Coach verification emails must not lock photo height.
+ * Fixed height + fluid width stretches/squashes portrait shots in Gmail.
+ * Run: node --test backend/features/testimonials/__tests__/testimonialCoachEmail.template.test.js
+ */
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  buildTestimonialCoachEmailHtml,
+  buildUnifiedSubmitEmailHtml,
+  buildShareCardRow,
+  buildTransformationCardEmailBlock,
+  buildTransformationCardCompareRow,
+} from '../testimonialCoachEmail.template.js';
+
+function photoImgs(html) {
+  return [...html.matchAll(/<img\b[^>]*>/gi)].map((m) => m[0]);
+}
+
+function assertPhotoKeepsAspectRatio(img) {
+  assert.match(img, /height:\s*auto/);
+  assert.match(img, /\bwidth="\d+"/);
+  assert.doesNotMatch(img, /\bheight="\d+"/);
+  assert.doesNotMatch(img, /height:\s*\d+px/);
+}
+
+describe('testimonial coach email photos keep aspect ratio', () => {
+  it('does not lock img height on the initial verification email', () => {
+    const html = buildTestimonialCoachEmailHtml({
+      memberName: 'Alex',
+      goalType: 'loss',
+      beforeWeight: 80,
+      afterWeight: 70,
+      durationText: '12 weeks',
+      otp: '1234',
+      beforeUrl: 'https://example.com/before.jpg',
+      afterUrl: 'https://example.com/after.jpg',
+      recoveredHealthIssues: [],
+    });
+    const imgs = photoImgs(html);
+    assert.equal(imgs.length, 2);
+    imgs.forEach(assertPhotoKeepsAspectRatio);
+    assert.doesNotMatch(html, /\.photo-img\s*\{[^}]*height:\s*\d+px/);
+  });
+
+  it('embeds Transformation card with Before left and After right from real photo URLs', () => {
+    const html = buildTestimonialCoachEmailHtml({
+      memberName: 'Alex',
+      goalType: 'loss',
+      beforeWeight: 80,
+      afterWeight: 70,
+      durationText: '12 weeks',
+      otp: '1234',
+      beforeUrl: 'cid:transformation-before@wellnessvalley',
+      afterUrl: 'cid:transformation-after@wellnessvalley',
+      recoveredHealthIssues: ['Knee Pain'],
+    });
+    assert.match(html, /Transformation Card/);
+    assert.match(html, /cid:transformation-before@wellnessvalley/);
+    assert.match(html, /cid:transformation-after@wellnessvalley/);
+    assert.match(html, /Before on the left, After on the right/);
+    // Before CID must appear before After CID in the card markup.
+    const beforeIdx = html.indexOf('cid:transformation-before@wellnessvalley');
+    const afterIdx = html.indexOf('cid:transformation-after@wellnessvalley');
+    assert.ok(beforeIdx > 0 && afterIdx > beforeIdx);
+    const imgs = photoImgs(html);
+    assert.equal(imgs.length, 2);
+    imgs.forEach(assertPhotoKeepsAspectRatio);
+  });
+
+  it('buildTransformationCardEmailBlock puts before left and after right', () => {
+    const html = buildTransformationCardEmailBlock({
+      memberName: 'Alex',
+      beforeUrl: 'https://example.com/before.jpg',
+      afterUrl: 'https://example.com/after.jpg',
+      beforeWeight: 90.9,
+      afterWeight: 60.8,
+      goalType: 'loss',
+      durationText: '6 months',
+      recoveredHealthIssues: [],
+    });
+    assert.match(html, /https:\/\/example\.com\/before\.jpg/);
+    assert.match(html, /https:\/\/example\.com\/after\.jpg/);
+    assert.ok(html.indexOf('before.jpg') < html.indexOf('after.jpg'));
+    assert.match(html, /Lost 30\.1 kgs in 6 months/);
+  });
+
+  it('buildTransformationCardEmailBlock uses weight delta even when goalType is gain', () => {
+    const html = buildTransformationCardEmailBlock({
+      memberName: 'Alex',
+      beforeUrl: 'https://example.com/before.jpg',
+      afterUrl: 'https://example.com/after.jpg',
+      beforeWeight: 90.9,
+      afterWeight: 60.8,
+      goalType: 'gain',
+      durationText: '6 months',
+      recoveredHealthIssues: [],
+    });
+    assert.match(html, /Lost 30\.1 kgs in 6 months/);
+    assert.doesNotMatch(html, /Gained 30\.1/);
+  });
+
+  it('shows duration when weight is unchanged and fills the disclaimer to the card edges', () => {
+    const html = buildTransformationCardEmailBlock({
+      memberName: 'Alex',
+      beforeUrl: 'https://example.com/before.jpg',
+      afterUrl: 'https://example.com/after.jpg',
+      beforeWeight: 70,
+      afterWeight: 70,
+      goalType: 'loss',
+      durationText: '4 months',
+      recoveredHealthIssues: [],
+    });
+    assert.match(html, /4 months/);
+    assert.doesNotMatch(html, /Lost /);
+    assert.match(html, />DISCLAIMER</);
+    assert.match(html, /text-align:left;">The views expressed are those of individuals\./);
+    assert.match(html, /text-align:left;">These products are not intended to diagnose, treat or cure any disease\./);
+    assert.doesNotMatch(html, /that of individuals/);
+    assert.doesNotMatch(html, /border-radius:6px;color:#111827/);
+  });
+
+  it('buildShareCardRow returns empty when src missing', () => {
+    assert.equal(buildShareCardRow(null), '');
+    assert.equal(buildShareCardRow(''), '');
+  });
+
+  it('first update without previous After shows only the new Transformation Card', () => {
+    const html = buildUnifiedSubmitEmailHtml({
+      memberName: 'Alex',
+      otp: '1234',
+      changedSlots: ['before', 'after'],
+      goalType: 'loss',
+      beforeWeight: 80,
+      afterWeight: 70,
+      durationText: '12 weeks',
+      beforeUrl: 'https://example.com/before-new.jpg',
+      afterUrl: 'https://example.com/after-new.jpg',
+      previousBeforeUrl: 'https://example.com/before-old.jpg',
+      previousAfterUrl: null,
+      healthVideoUrl: null,
+      businessVideoUrl: null,
+      recoveredHealthIssues: [],
+      isComplete: true,
+    });
+    const imgs = photoImgs(html);
+    assert.equal(imgs.length, 2); // current card Before + After only
+    imgs.forEach(assertPhotoKeepsAspectRatio);
+    assert.match(html, /New Transformation Card|Transformation Card/);
+    assert.doesNotMatch(html, /Previous Transformation Card/);
+    assert.doesNotMatch(html, /New Upload/);
+    assert.match(html, /80 kg|Lost 10/);
+    assert.doesNotMatch(html, /\.photo-img\s*\{[^}]*height:\s*\d+px/);
+  });
+
+  it('unified email shows Previous and New Transformation Cards side by side', () => {
+    const html = buildUnifiedSubmitEmailHtml({
+      memberName: 'Alex',
+      otp: '1234',
+      changedSlots: ['after'],
+      goalType: 'loss',
+      beforeWeight: 90.9,
+      afterWeight: 60.8,
+      durationText: '6 months',
+      beforeUrl: 'https://example.com/before-new.jpg',
+      afterUrl: 'https://example.com/after-new.jpg',
+      previousBeforeUrl: 'https://example.com/before-old.jpg',
+      previousAfterUrl: 'https://example.com/after-old.jpg',
+      previousBeforeWeight: 90.9,
+      previousAfterWeight: 70,
+      previousCardImageUrl: 'https://example.com/prev-card.jpg',
+      currentCardImageUrl: 'https://example.com/new-card.jpg',
+      previousPreviewHref: 'https://example.com/prev-card.jpg',
+      currentPreviewHref: 'https://example.com/new-card.jpg',
+      healthVideoUrl: null,
+      businessVideoUrl: null,
+      recoveredHealthIssues: ['Knee Pain'],
+      isComplete: true,
+    });
+    assert.match(html, /Previous Transformation Card/);
+    assert.match(html, /New Transformation Card/);
+    assert.match(html, /Tap for full Transformation Card/);
+    assert.match(html, /https:\/\/example\.com\/prev-card\.jpg/);
+    assert.match(html, /https:\/\/example\.com\/new-card\.jpg/);
+    // Full card JPEGs preferred — thumb and tap are the same file.
+    const prevIdx = html.indexOf('Previous Transformation Card');
+    const newIdx = html.indexOf('New Transformation Card');
+    assert.ok(prevIdx >= 0 && newIdx > prevIdx);
+    assert.equal(photoImgs(html).length, 2);
+  });
+
+  it('compare row requires both previous and new pairs', () => {
+    assert.equal(buildTransformationCardCompareRow({
+      previousBeforeUrl: null,
+      previousAfterUrl: null,
+      beforeUrl: 'https://example.com/b.jpg',
+      afterUrl: 'https://example.com/a.jpg',
+      beforeWeight: 80,
+      afterWeight: 70,
+    }), '');
+  });
+
+  it('unified email shows New-only share card when Previous is missing', () => {
+    const html = buildUnifiedSubmitEmailHtml({
+      memberName: 'Alex',
+      otp: '1234',
+      changedSlots: ['after'],
+      goalType: 'loss',
+      beforeWeight: 90.9,
+      afterWeight: 60.8,
+      durationText: '6 months',
+      beforeUrl: null,
+      afterUrl: null,
+      previousBeforeUrl: null,
+      previousAfterUrl: null,
+      currentCardImageUrl: 'cid:transformation-card@wellnessvalley',
+      currentPreviewHref: 'https://example.com/new-card.jpg',
+      healthVideoUrl: null,
+      businessVideoUrl: null,
+      recoveredHealthIssues: [],
+      isComplete: true,
+    });
+    assert.match(html, /Transformation Card/);
+    assert.match(html, /cid:transformation-card@wellnessvalley/);
+    assert.match(html, /https:\/\/example\.com\/new-card\.jpg/);
+    assert.doesNotMatch(html, />Previous</);
+    // Must not fall back to stats-only email when a share card exists.
+    assert.doesNotMatch(html, /has gained|has lost/i);
+  });
+});

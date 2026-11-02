@@ -4,25 +4,21 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import {
+  getAiCreditUiState,
+  isAutoDetectEnabled,
+  autoDetectButtonLabel,
+  autoDetectButtonSubtitle,
+} from '../domain/creditUiState.js';
 
-/**
- * Pure helper mirroring ManualEntryPage AI Mode enablement rules.
- * Status comes from API only — never hardcode dailyLimit here.
- */
+/** @deprecated use isAutoDetectEnabled from creditUiState.js */
 export function isAiModeButtonEnabled(status, { running = false } = {}) {
-  if (running) return false;
-  if (!status) return false;
-  if (!status.enabled) return false;
-  if ((status.remaining ?? 0) <= 0) return false;
-  return true;
+  return isAutoDetectEnabled(getAiCreditUiState(status), { running });
 }
 
+/** @deprecated use autoDetectButtonLabel from creditUiState.js */
 export function aiModeButtonLabel(status, { running = false } = {}) {
-  if (running) return 'Analysing…';
-  if (!status) return 'AI Mode';
-  if (!status.enabled) return 'AI Mode disabled';
-  if ((status.remaining ?? 0) <= 0) return 'Daily AI limit reached';
-  return 'AI Mode';
+  return autoDetectButtonLabel(getAiCreditUiState(status), { running });
 }
 
 describe('isAiModeButtonEnabled', () => {
@@ -33,7 +29,20 @@ describe('isAiModeButtonEnabled', () => {
     );
   });
 
-  it('disabled at limit', () => {
+  it('still enabled while busy (pending holds)', () => {
+    assert.equal(
+      isAiModeButtonEnabled({
+        enabled: true,
+        remaining: 0,
+        dailyLimit: 2,
+        used: 0,
+        pending: 2,
+      }),
+      true,
+    );
+  });
+
+  it('disabled when daily detections fully used', () => {
     assert.equal(
       isAiModeButtonEnabled({ enabled: true, remaining: 0, dailyLimit: 3, used: 3 }),
       false,
@@ -49,10 +58,22 @@ describe('isAiModeButtonEnabled', () => {
 });
 
 describe('aiModeButtonLabel', () => {
-  it('shows limit reached from API remaining', () => {
+  it('shows unlock only when exhausted', () => {
     assert.equal(
       aiModeButtonLabel({ enabled: true, remaining: 0, dailyLimit: 3, used: 3 }),
-      'Daily AI limit reached',
+      'Unlock on',
     );
+  });
+
+  it('shows try again when busy', () => {
+    const ui = getAiCreditUiState({
+      enabled: true,
+      remaining: 0,
+      dailyLimit: 2,
+      used: 0,
+      pending: 2,
+    });
+    assert.equal(autoDetectButtonLabel(ui), 'Unavailable');
+    assert.equal(autoDetectButtonSubtitle(ui), 'Try again later');
   });
 });

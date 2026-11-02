@@ -10,6 +10,7 @@
 import React, { useRef } from 'react';
 import { Video, CheckCircle, Plus, Trash2, Upload } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import { MAX_HEALTH_VIDEO_MB, MAX_BUSINESS_VIDEO_MB } from '../utils/videoLimits.js';
 
 function VideoPicker({ label, description, video, inputRef, onChange, onRemove }) {
   return (
@@ -133,7 +134,7 @@ export default function TestimonialVideoForm({
 
       <VideoPicker
         label="Health Results Video"
-        description="max 1 min"
+        description={`max 1 min · ${MAX_HEALTH_VIDEO_MB} MB`}
         video={healthVideo}
         inputRef={healthRef}
         onChange={handleHealthVideoChange}
@@ -142,7 +143,7 @@ export default function TestimonialVideoForm({
 
       <VideoPicker
         label="Business Results Video"
-        description="max 2 min"
+        description={`max 2 min · ${MAX_BUSINESS_VIDEO_MB} MB`}
         video={businessVideo}
         inputRef={businessRef}
         onChange={handleBusinessVideoChange}

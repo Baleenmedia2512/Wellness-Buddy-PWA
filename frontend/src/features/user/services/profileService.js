@@ -1,30 +1,33 @@
 // Profile REST helpers — fetch, save, snooze profile picture reminder.
 import { getApiBaseUrl } from '../../../config/api.config.js';
+import { getProfile } from './user.api.js';
+import cacheManager from '../../../shared/services/cacheManager.js';
+import { apiFetch } from '../../../shared/services/apiFetch.js';
 
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
 export const isDemoAccount = (email) =>
   DEMO_ACCOUNTS.includes((email || '').toLowerCase().trim());
 export const demoStorageKey = (email) => `demo_profile_${email}`;
 
-const PROFILE_FETCH_TIMEOUT_MS = 12000;
+function clearProfileCaches({ email, userId } = {}) {
+  if (email) {
+    cacheManager.clear(cacheManager.generateKey('userProfile', String(email).toLowerCase()));
+  }
+  if (userId != null && String(userId).trim() !== '') {
+    cacheManager.clear(cacheManager.generateKey('userProfile', `id:${userId}`));
+  }
+}
 
-export const fetchProfile = async (email) => {
-  const apiBase = getApiBaseUrl();
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = controller
-    ? setTimeout(() => controller.abort(), PROFILE_FETCH_TIMEOUT_MS)
-    : null;
+export const fetchProfile = async (emailOrUserId) => {
   try {
-    const res = await fetch(
-      `${apiBase}/api/user/profile?email=${encodeURIComponent(email)}&_t=${Date.now()}`,
-      {
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
-        signal: controller?.signal,
-      },
-    );
-    if (!res.ok) throw new Error('Failed to load profile.');
-    const data = await res.json();
+    const opts = typeof emailOrUserId === 'object' && emailOrUserId != null
+      ? emailOrUserId
+      : (String(emailOrUserId || '').includes('@')
+        ? { email: emailOrUserId }
+        : { userId: emailOrUserId });
+    const email = opts.email;
+    // Shared getProfile cache/dedup — avoids parallel Home profile storms.
+    const data = await getProfile(opts);
     // Demo accounts: API returns top-level fields with no `data` wrapper.
     if (data.success && !data.data && isDemoAccount(email)) {
       const stored = localStorage.getItem(demoStorageKey(email));
@@ -36,18 +39,39 @@ export const fetchProfile = async (email) => {
     }
     return data;
   } catch (err) {
-    if (err?.name === 'AbortError') {
-      throw new Error('Profile is taking too long to load. Please try again.');
-    }
-    throw err;
-  } finally {
-    if (timer) clearTimeout(timer);
+    throw err instanceof Error ? err : new Error('Failed to load profile.');
   }
+};
+
+/**
+ * Attach display name (and optional email) for phone-OTP / BCM users.
+ * POST /api/user/save-email — email may be omitted; name is required.
+ */
+export const saveEmailIdentity = async ({ userId, email, name }) => {
+  const apiBase = getApiBaseUrl();
+  const body = { userId, name };
+  if (email) body.email = email;
+  const res = await apiFetch(`${apiBase}/api/user/save-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || 'Failed to save. Please try again.');
+  }
+  if (userId != null && userId !== '') {
+    cacheManager.clear(cacheManager.generateKey('userProfile', `id:${userId}`));
+  }
+  if (email) {
+    cacheManager.clear(cacheManager.generateKey('userProfile', String(email).toLowerCase()));
+  }
+  return data;
 };
 
 export const saveProfile = async (payload) => {
   const apiBase = getApiBaseUrl();
-  const res = await fetch(`${apiBase}/api/user/profile`, {
+  const res = await apiFetch(`${apiBase}/api/user/profile`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -58,10 +82,13 @@ export const saveProfile = async (payload) => {
   }
   const data = await res.json();
   if (!res.ok || !data.success) {
-    // Never surface raw Supabase / PostgREST error strings to the user.
+    // Never surface raw MySQL / PostgREST error strings to the user.
     const raw = data.message || '';
     const isDbInternals = /PGRST|JSON object requested|multiple.*rows|no rows returned|relation.*does not exist|violates check constraint|check constraint/i.test(raw);
     throw new Error(isDbInternals ? 'Failed to save profile. Please try again.' : raw || 'Failed to save profile.');
+  }
+  if (payload?.email || payload?.userId) {
+    clearProfileCaches({ email: payload.email, userId: payload.userId });
   }
   // Persist demo-account profiles locally since backend skips demo writes.
   if (isDemoAccount(payload.email)) {
@@ -77,9 +104,69 @@ export const saveProfile = async (payload) => {
       if (payload.profileImage !== undefined) merged.profileImage = payload.profileImage;
       if (payload.physicalActivityLevel !== undefined) merged.physicalActivityLevel = payload.physicalActivityLevel;
       if (payload.communityId !== undefined) merged.communityId = payload.communityId;
+      if (payload.bodyFat !== undefined) merged.bodyFat = payload.bodyFat;
       localStorage.setItem(demoStorageKey(payload.email), JSON.stringify(merged));
     } catch { /* ignore */ }
   }
+  return data;
+};
+
+export const requestCommunityId = async ({ userId, email, communityId }) => {
+  const apiBase = getApiBaseUrl();
+  const res = await apiFetch(`${apiBase}/api/user/community-id/request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, email, communityId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || 'Could not send the Community ID approval request.');
+  }
+  clearProfileCaches({ email, userId });
+  return data;
+};
+
+export const verifyCommunityIdOtp = async ({ userId, email, otp }) => {
+  const apiBase = getApiBaseUrl();
+  const res = await apiFetch(`${apiBase}/api/user/community-id/verify-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, email, otp }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || 'That approval code did not match.');
+  }
+  clearProfileCaches({ email, userId });
+  return data;
+};
+
+export const requestHeightChangeOtp = async ({ userId, email, height }) => {
+  const apiBase = getApiBaseUrl();
+  const res = await apiFetch(`${apiBase}/api/user/height/request-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, email, height }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || 'Could not send the height verification code.');
+  }
+  return data;
+};
+
+export const verifyHeightChangeOtp = async ({ userId, email, height, otp }) => {
+  const apiBase = getApiBaseUrl();
+  const res = await apiFetch(`${apiBase}/api/user/height/verify-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, email, height, otp }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || 'That verification code did not match.');
+  }
+  clearProfileCaches({ email, userId });
   return data;
 };
 

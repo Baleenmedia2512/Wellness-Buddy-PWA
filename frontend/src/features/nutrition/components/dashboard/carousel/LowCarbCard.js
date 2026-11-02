@@ -104,14 +104,19 @@ const LowCarbCard = ({ carbs, sugar, fiber, glycemicIndex, periodContext, onOpen
           </div>
 
           {/* Sugar */}
-          <div className="text-center">
+          <div
+            className={`text-center ${onOpenModal ? 'cursor-pointer active:scale-95 transition-transform' : ''}`}
+            onClick={() => onOpenModal && onOpenModal('sugar')}
+            role={onOpenModal ? 'button' : undefined}
+            tabIndex={onOpenModal ? 0 : undefined}
+            onKeyPress={onOpenModal ? (e) => { if (e.key === 'Enter' || e.key === ' ') onOpenModal('sugar'); } : undefined}
+          >
             <CircularProgress 
               percentage={sugarPct} 
               color="from-pink-400 to-rose-400" 
               size={70} 
               strokeWidth={6} 
               targetLabel={`${sugar.target}g`} 
-              onClick={() => onOpenModal && onOpenModal('sugar')}
             />
             <div className="mt-1.5">
               <div className="flex items-center justify-center gap-1 mb-1">
@@ -124,14 +129,19 @@ const LowCarbCard = ({ carbs, sugar, fiber, glycemicIndex, periodContext, onOpen
           </div>
 
           {/* Fiber (goal, not limit) */}
-          <div className="text-center">
+          <div
+            className={`text-center ${onOpenModal ? 'cursor-pointer active:scale-95 transition-transform' : ''}`}
+            onClick={() => onOpenModal && onOpenModal('fiber')}
+            role={onOpenModal ? 'button' : undefined}
+            tabIndex={onOpenModal ? 0 : undefined}
+            onKeyPress={onOpenModal ? (e) => { if (e.key === 'Enter' || e.key === ' ') onOpenModal('fiber'); } : undefined}
+          >
             <CircularProgress 
               percentage={fiberPct} 
               color="from-green-400 to-emerald-500" 
               size={70} 
               strokeWidth={6} 
               targetLabel={`${fiber.target}g`} 
-              onClick={() => onOpenModal && onOpenModal('fiber')}
             />
             <div className="mt-1.5">
               <div className="flex items-center justify-center gap-1 mb-1">

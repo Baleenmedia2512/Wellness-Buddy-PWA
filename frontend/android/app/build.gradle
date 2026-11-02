@@ -38,8 +38,8 @@ android {
         applicationId "com.wellnessvalley.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 59
-        versionName "3.4.0"
+        versionCode 84
+        versionName "3.5.5"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         
         // Inject Gemini API key from environment variable or gradle.properties
@@ -158,6 +158,9 @@ dependencies {
     
     // Material Components (for Snackbar)
     implementation 'com.google.android.material:material:1.9.0'
+
+    // Cashfree Android PG — UPI Intent list on APK only. Web checkout stays JS.
+    implementation 'com.cashfree.pg:api:2.6.1'
 }
 
 apply from: 'capacitor.build.gradle'

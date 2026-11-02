@@ -6,10 +6,11 @@
  * Stores enrollment with IST timezone
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import nodemailer from 'nodemailer';
 import logger from '../../../shared/lib/logger.js';
+import { applyCors } from '../../../shared/lib/handler.js';
 
 // ── Email helper (same pattern as upline/request.js) ─────────────────────────
 async function sendEnrollmentNotification({ coachEmail, coachName, memberName, memberEmail, programs }) {
@@ -54,18 +55,7 @@ async function sendEnrollmentNotification({ coachEmail, coachName, memberName, m
 }
 
 export default async function handler(req, res) {
-  // Handle CORS
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    res.status(200).end();
-    return;
-  }
-
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (applyCors(req, res, 'POST, OPTIONS')) return;
 
   // Only allow POST requests
   if (req.method !== 'POST') {
@@ -96,10 +86,10 @@ export default async function handler(req, res) {
 
     logger.debug('🎓 [enroll] Enrollment request:', { email, userId, programCount: programs.length });
 
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
 
     // Look up user by userId (preferred — works even when email is empty) or email.
-    const { data: user, error: userError } = await supabase
+    const { data: user, error: userError } = await db
       .from('team_table')
       .select('"UserId", "UserName", "Email", "CoachId"')
       .eq(userId ? '"UserId"' : '"Email"', userId || email)
@@ -120,13 +110,13 @@ export default async function handler(req, res) {
     logger.debug('✅ [enroll] User found:', { userId: user.UserId, userName: user.UserName });
 
     // Check if user is already enrolled
-    const { data: existingEnrollment, error: checkError } = await supabase
+    const { data: existingEnrollment, error: checkError } = await db
       .from('wellness_university_enrollments_table')
       .select('"Id"')
       .eq('"UserId"', user.UserId)
       .maybeSingle();
 
-    if (checkError && checkError.code !== 'PGRST116') {
+    if (checkError && checkError.code !== '1172') {
       console.error('❌ [enroll] Check enrollment error:', checkError);
       throw new Error(checkError.message);
     }
@@ -144,7 +134,7 @@ export default async function handler(req, res) {
     programs.forEach((p) => { programsMap[p] = enrollmentDate; });
     const programsJson = JSON.stringify(programsMap);
 
-    const { data: newEnrollment, error: insertError } = await supabase
+    const { data: newEnrollment, error: insertError } = await db
       .from('wellness_university_enrollments_table')
       .insert({
         UserId: user.UserId,
@@ -163,25 +153,8 @@ export default async function handler(req, res) {
 
     logger.debug('✅ [enroll] Enrollment created successfully:', { enrollmentId: newEnrollment.Id });
 
-    // Notify coach via email (non-fatal: enrollment succeeds even if email delivery fails)
-    if (user.CoachId) {
-      const { data: coachRow } = await supabase
-        .from('team_table')
-        .select('"UserName", "Email", "CoachName"')
-        .eq('UserId', user.CoachId)
-        .maybeSingle();
-      if (coachRow?.Email) {
-        await sendEnrollmentNotification({
-          coachEmail: coachRow.Email,
-          coachName: coachRow.CoachName || coachRow.UserName,
-          memberName: user.UserName,
-          memberEmail: user.Email,
-          programs: Object.keys(programsMap),
-        });
-      }
-    }
-
-    return res.status(200).json({
+    // Respond immediately — coach email must not block the client.
+    res.status(200).json({
       success: true,
       message: 'Enrollment successful',
       enrollment: {
@@ -190,6 +163,28 @@ export default async function handler(req, res) {
         enrollmentDate: enrollmentDate,
       },
     });
+
+    if (user.CoachId) {
+      void (async () => {
+        try {
+          const { data: coachRow } = await db
+            .from('team_table')
+            .select('"UserName", "Email", "CoachName"')
+            .eq('UserId', user.CoachId)
+            .maybeSingle();
+          if (!coachRow?.Email) return;
+          await sendEnrollmentNotification({
+            coachEmail: coachRow.Email,
+            coachName: coachRow.CoachName || coachRow.UserName,
+            memberName: user.UserName,
+            memberEmail: user.Email,
+            programs: Object.keys(programsMap),
+          });
+        } catch (err) {
+          logger.warn('[enroll] Background coach notify failed:', err?.message || err);
+        }
+      })();
+    }
   } catch (error) {
     console.error('❌ [enroll] Server error:', error);
     return res.status(500).json({

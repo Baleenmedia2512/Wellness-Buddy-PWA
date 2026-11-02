@@ -6,7 +6,6 @@
  * + inputmode. Writes attributes to the live DOM via setAttribute.
  */
 import React, { forwardRef, useLayoutEffect, useRef } from 'react';
-import { Capacitor } from '@capacitor/core';
 import {
   applyNativeKeyboardAttrs,
   mergeNativeInputRef,
@@ -67,16 +66,14 @@ const NativeInput = forwardRef(function NativeInput(
   );
 });
 
-/** OTP first cell: one-time-code on iOS only (Android uses WebOTP + type=tel). */
-export function otpAutoCompleteForCell(index) {
-  if (index !== 0) return 'off';
-  return Capacitor.getPlatform() === 'ios' ? 'one-time-code' : 'off';
+/** OTP first cell: one-time-code so iOS QuickType + Android SMS suggestion can appear. */
+export function otpAutoCompleteForCell(index, _length = 6, { emailOtp: _emailOtp = false } = {}) {
+  return 'one-time-code';
 }
 
-/** First OTP cell on iOS must accept the full code — maxLength=1 truncates SMS autofill. */
+/** First OTP cell must accept the full code — maxLength=1 truncates paste/autofill on all platforms. */
 export function otpMaxLengthForCell(index, length = 6) {
-  if (index !== 0) return 1;
-  return Capacitor.getPlatform() === 'ios' ? length : 1;
+  return length;
 }
 
 export default NativeInput;

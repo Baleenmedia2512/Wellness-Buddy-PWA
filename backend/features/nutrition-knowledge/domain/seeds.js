@@ -2,7 +2,7 @@
  * backend/features/nutrition-knowledge/domain/seeds.js
  * In-code approved seeds used when the DB table is empty / migration pending.
  */
-import { normalizeFoodName } from './nutrition.rules.js';
+import { foodNameMatchesQuery, normalizeFoodName, sortByFoodNameMatch } from './nutrition.rules.js';
 
 const SEEDS = [
   {
@@ -102,6 +102,46 @@ const SEEDS = [
       vitamin_c: 0, potassium: 0,
     },
   },
+  {
+    id: 'seed-omelette',
+    canonical_name: 'Omelette',
+    normalized_name: 'omelette',
+    aliases: ['omelet', 'omlette', 'omelete', 'egg omelette'],
+    reference_weight_g: 120,
+    is_liquid: false,
+    portion_label: '1 omelette',
+    source: 'seed',
+    status: 'approved',
+    sightings: 0,
+    nutrition: {
+      calories: 175, protein: 12, carbs: 1.5, fat: 13, fiber: 0,
+      sugar: 1, sodium: 210, cholesterol: 370, glycemic_index: 0,
+      vitamin_a: 180, vitamin_c: 0, vitamin_d: 1.5, vitamin_e: 1.2, vitamin_k: 0.5,
+      vitamin_b1: 0.04, vitamin_b2: 0.4, vitamin_b3: 0.1, vitamin_b6: 0.15,
+      vitamin_b9: 45, vitamin_b12: 0.9, calcium: 55, iron: 1.8, magnesium: 12,
+      potassium: 140, zinc: 1.2, phosphorus: 200,
+    },
+  },
+  {
+    id: 'seed-onion',
+    canonical_name: 'Onion',
+    normalized_name: 'onion',
+    aliases: ['onion raw', 'onions'],
+    reference_weight_g: 110,
+    is_liquid: false,
+    portion_label: '1 medium onion',
+    source: 'seed',
+    status: 'approved',
+    sightings: 0,
+    nutrition: {
+      calories: 44, protein: 1.2, carbs: 10.3, fat: 0.1, fiber: 1.9,
+      sugar: 4.7, sodium: 4, cholesterol: 0, glycemic_index: 15,
+      vitamin_a: 0, vitamin_c: 8.1, vitamin_d: 0, vitamin_e: 0.02, vitamin_k: 0.4,
+      vitamin_b1: 0.05, vitamin_b2: 0.03, vitamin_b3: 0.1, vitamin_b6: 0.13,
+      vitamin_b9: 21, vitamin_b12: 0, calcium: 25, iron: 0.2, magnesium: 11,
+      potassium: 161, zinc: 0.2, phosphorus: 32,
+    },
+  },
 ];
 
 /**
@@ -110,11 +150,11 @@ const SEEDS = [
  */
 export function searchSeedProfiles(term) {
   const q = normalizeFoodName(term);
-  if (!q || q.length < 2) return [];
-  return SEEDS.filter((row) => {
-    if (row.normalized_name.includes(q) || q.includes(row.normalized_name)) return true;
-    return (row.aliases || []).some((a) => normalizeFoodName(a).includes(q));
-  });
+  if (!q) return [];
+  const hits = SEEDS.filter((row) =>
+    foodNameMatchesQuery(row.canonical_name, q, row.aliases || []),
+  );
+  return sortByFoodNameMatch(hits, q);
 }
 
 /**

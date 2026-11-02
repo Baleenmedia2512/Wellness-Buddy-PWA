@@ -1,8 +1,8 @@
-﻿/**
+/**
  * useTestimonial.js â€” State and lifecycle for the member testimonial form.
  * Handles image picking (file input â†’ base64), form state, submit, and edit mode.
  */
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { submitTestimonial, editTestimonial, getMyTestimonial } from '../services/testimonialApi.js';
 import {
   formatDurationText,
@@ -10,6 +10,11 @@ import {
   validateDurationFields,
   validateWeightKg,
 } from '../services/testimonialFormUtils.js';
+import { compressImage } from '../utils/compressTestimonialImage.js';
+import { jpegDataUrlToObjectUrl, revokeBlobUrl } from '../utils/testimonialMediaUrl.js';
+import usePortraitCoverCrop from '../../user/hooks/usePortraitCoverCrop';
+
+export { compressImage };
 
 const INITIAL_FORM = {
   beforeWeightKg: '',
@@ -18,66 +23,6 @@ const INITIAL_FORM = {
   durationUnit:   'months',
   durationValue:  '',
 };
-
-// Target binary size after compression: 900 KB (leaves headroom for base64 overhead)
-const TARGET_BYTES = 900 * 1024;
-// Max canvas dimension â€” keeps resolution reasonable while shrinking file size
-const MAX_DIM = 1200;
-
-/**
- * Compress a File using HTML5 Canvas.
- * Scales the image down if wider/taller than MAX_DIM, then encodes as JPEG
- * at progressively lower quality until the result fits within TARGET_BYTES.
- * @param {File} file
- * @returns {Promise<{ base64: string, preview: string }>}
- */
-function compressImage(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const objectUrl = URL.createObjectURL(file);
-
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-
-      let { width, height } = img;
-      if (height <= width) {
-        reject(new Error('Please upload a portrait photo (vertical orientation). Landscape photos are not allowed.'));
-        return;
-      }
-      // Scale down large images proportionally
-      if (width > MAX_DIM || height > MAX_DIM) {
-        const ratio = Math.min(MAX_DIM / width, MAX_DIM / height);
-        width  = Math.round(width  * ratio);
-        height = Math.round(height * ratio);
-      }
-
-      const canvas = document.createElement('canvas');
-      canvas.width  = width;
-      canvas.height = height;
-      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-
-      // base64 string length Ã— 0.75 â‰ˆ binary bytes (base64 overhead is ~33%)
-      const maxBase64Len = Math.ceil(TARGET_BYTES / 0.75);
-      let quality = 0.85;
-      let dataUrl;
-
-      do {
-        dataUrl = canvas.toDataURL('image/jpeg', quality);
-        quality -= 0.1;
-      } while (dataUrl.length > maxBase64Len && quality > 0.15);
-
-      const base64 = dataUrl.split(',')[1];
-      resolve({ base64, preview: dataUrl });
-    };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error('Failed to read image. Please try a different photo.'));
-    };
-
-    img.src = objectUrl;
-  });
-}
 
 /**
  * @param {{ userId: number, healthIssues?: string[] }} opts
@@ -129,39 +74,70 @@ export function useTestimonial({ userId, healthIssues = [] }) {
     setError(null);
   }, []);
 
-  /** Shared handler for any image input change event */
-  const makeImageHandler = useCallback((setter) => async (e) => {
+  const pendingImageSetterRef = useRef(null);
+  const coverCrop = usePortraitCoverCrop({
+    onApply: (dataUrl) => {
+      const setter = pendingImageSetterRef.current;
+      if (!setter) return;
+      const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+      const preview = jpegDataUrlToObjectUrl(dataUrl) || dataUrl;
+      setter((prev) => {
+        revokeBlobUrl(prev?.preview);
+        return { base64, preview, compressing: false };
+      });
+    },
+    onError: (msg) => setError(msg),
+  });
+
+  const makeImageHandler = useCallback((setter, key) => (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // Reset input so the same file can be re-selected after retake
     e.target.value = '';
-    try {
-      const result = await compressImage(file);
-      setter(result);
-      setError(null);
-    } catch (err) {
-      setError(err.message);
-    }
-  }, []);
+    pendingImageSetterRef.current = setter;
+    setError(null);
+    void coverCrop.pickFile(file, key);
+  }, [coverCrop]);
 
-  const handleBeforeImageChange = useCallback(makeImageHandler(setBeforeImage), [makeImageHandler]);
-  const handleAfterImageChange  = useCallback(makeImageHandler(setAfterImage),  [makeImageHandler]);
+  const handleBeforeImageChange = useCallback(
+    makeImageHandler(setBeforeImage, 'before'),
+    [makeImageHandler],
+  );
+  const handleAfterImageChange = useCallback(
+    makeImageHandler(setAfterImage, 'after'),
+    [makeImageHandler],
+  );
+
+  const recropBefore = useCallback((existingUrl) => {
+    pendingImageSetterRef.current = setBeforeImage;
+    void coverCrop.recrop(beforeImage?.preview || existingUrl, 'before');
+  }, [coverCrop, beforeImage?.preview]);
+
+  const recropAfter = useCallback((existingUrl) => {
+    pendingImageSetterRef.current = setAfterImage;
+    void coverCrop.recrop(afterImage?.preview || existingUrl, 'after');
+  }, [coverCrop, afterImage?.preview]);
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
     setError(null);
     setSuccess(null);
 
-    const isCompleting = isCompletingMode;
-    const isEditing    = isEditMode;
-    const isBeforeOnlySubmit = !isCompleting && !afterImage;
-    // Health issues required only when an after photo is being submitted (coach OTP flow).
-    const willSendOtp  = isCompleting || !!afterImage;
-
-    if (!isBeforeOnlySubmit && willSendOtp && (!Array.isArray(healthIssues) || healthIssues.length === 0)) {
-      setError('Add at least one recovered health issue in the Health Issues section before submitting for verification.');
+    if (beforeImage?.compressing || afterImage?.compressing) {
+      setError('Photo is still preparing — try again in a moment.');
       return false;
     }
+    if (beforeImage && !beforeImage.base64) {
+      setError('Before photo failed to prepare. Please pick it again.');
+      return false;
+    }
+    if (afterImage && !afterImage.base64) {
+      setError('After photo failed to prepare. Please pick it again.');
+      return false;
+    }
+
+    const isCompleting = isCompletingMode;
+    const isEditing    = isEditMode;
+    // Health issues are optional — user may submit without selecting any.
 
     // After photo slot: new upload or editing an existing after photo
     if (isCompleting) {
@@ -210,11 +186,12 @@ export function useTestimonial({ userId, healthIssues = [] }) {
         payload.recoveredHealthIssues = healthIssues;
       }
 
+      let result;
       if (isCompleting) {
         // Add / update after photo + weight; backend upgrades/resets status to pending when image changes
         if (afterImage) payload.afterImageBase64 = afterImage.base64;
         payload.afterWeightKg = parseFloat(form.afterWeightKg);
-        await editTestimonial(payload);
+        result = await editTestimonial(payload);
       } else {
         // New or full edit
         if (beforeImage) payload.beforeImageBase64 = beforeImage.base64;
@@ -226,21 +203,44 @@ export function useTestimonial({ userId, healthIssues = [] }) {
           payload.afterWeightKg    = parseFloat(form.afterWeightKg);
         }
         const fn = isEditing ? editTestimonial : submitTestimonial;
-        await fn(payload);
+        result = await fn(payload);
       }
 
-      const updated = await getMyTestimonial(userId);
-      setExisting(updated);
-      setIsEditMode(false);
-      setIsCompletingMode(false);
-
-      if (updated?.status === 'pending') {
-        setSuccess('Testimonial complete! Your sponsor received a verification email with the OTP.');
-      } else if (updated?.status === 'incomplete') {
+      // Show OTP from the submit response — do not wait on signed-URL refetch.
+      const nextStatus = result?.status;
+      if (nextStatus === 'pending') {
+        setExisting((prev) => ({
+          ...(prev || {}),
+          id: result.testimonialId ?? prev?.id,
+          status: 'pending',
+          hasPendingOtp: true,
+          otpPending: true,
+        }));
+        setSuccess('Testimonial complete! Your sponsor will receive a verification email with the OTP.');
+      } else if (nextStatus === 'incomplete') {
+        setExisting((prev) => ({
+          ...(prev || {}),
+          id: result.testimonialId ?? prev?.id,
+          status: 'incomplete',
+        }));
         setSuccess('Before photo saved! Add your after photo when you\'re ready.');
       } else {
         setSuccess('Testimonial updated.');
       }
+
+      setBeforeImage(null);
+      setAfterImage(null);
+      setIsEditMode(false);
+      setIsCompletingMode(false);
+
+      void getMyTestimonial(userId, { cacheBust: true })
+        .then((updated) => {
+          if (updated) setExisting(updated);
+        })
+        .catch(() => {
+          // Non-fatal — OTP already shown from submit response when pending.
+        });
+
       return true;
     } catch (err) {
       const raw = err?.message || '';
@@ -279,6 +279,9 @@ export function useTestimonial({ userId, healthIssues = [] }) {
     afterImage,
     handleBeforeImageChange,
     handleAfterImageChange,
+    recropBefore,
+    recropAfter,
+    portraitCoverOverlay: coverCrop.overlay,
     existing,
     reload,
     isEditMode,

@@ -1,19 +1,23 @@
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone.js';
+import { apiFetch } from '../../../shared/services/apiFetch.js';
+import { handlePossibleAppUpdateRequired } from '../../../shared/services/appVersionEnforce.client.js';
 
 const base = () => getApiBaseUrl();
 
 export async function sendOtp({ recipient, contactType }) {
-  const res = await fetch(`${base()}/api/auth/send-otp`, {
+  const res = await apiFetch(`${base()}/api/auth/send-otp`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ recipient, contactType }),
   });
-  return res.json();
+  const data = await res.json().catch(() => ({}));
+  handlePossibleAppUpdateRequired(res, data);
+  return data;
 }
 
 export async function verifyOtp({ recipient, otp, contactType, purpose }) {
-  const res = await fetch(`${base()}/api/auth/verify-otp`, {
+  const res = await apiFetch(`${base()}/api/auth/verify-otp`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -24,5 +28,7 @@ export async function verifyOtp({ recipient, otp, contactType, purpose }) {
       timezoneIana: getDeviceTimezoneIana() ?? '',
     }),
   });
-  return res.json();
+  const data = await res.json().catch(() => ({}));
+  handlePossibleAppUpdateRequired(res, data);
+  return data;
 }
