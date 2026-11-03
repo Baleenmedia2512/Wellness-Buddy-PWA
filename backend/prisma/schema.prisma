@@ -924,3 +924,37 @@ model events_table {
 
   @@index([CreatedByUserId, IsDeleted], map: "idx_events_owner_deleted")
 }
+
+/// Event interest / registration form submissions (PD registration).
+model event_registrations_table {
+  Id                       Int      @id @default(autoincrement())
+  EventId                  Int
+  RegistrantUserId         Int
+  Translation              String   @db.VarChar(40)
+  PdAttendCity             String   @db.VarChar(300)
+  FoodType                 String   @db.VarChar(40)
+  UplinePresidentUserId    Int
+  UplinePresidentName      String   @db.VarChar(200)
+  UplineMillUserId         Int
+  UplineMillName           String   @db.VarChar(200)
+  ClubNo                   String   @db.VarChar(80)
+  ZoomEmail                String   @db.VarChar(120)
+  RegistrantName           String   @db.VarChar(200)
+  IdNo                     String   @db.VarChar(80)
+  LevelName                String   @db.VarChar(80)
+  PhoneNumber              String   @db.VarChar(20)
+  ParticipantCount         Int      @default(1)
+  TicketNo                 String   @db.VarChar(80)
+  YourCity                 String   @db.VarChar(120)
+  TeamInchargeUserId       Int
+  TeamInchargeName         String   @db.VarChar(200)
+  DaicyTeamInchargeUserId  Int
+  DaicyTeamInchargeName    String   @db.VarChar(200)
+  DaicyTeamInchargeUpline  String?  @db.VarChar(400)
+  CreatedAt                DateTime @default(now())
+  UpdatedAt                DateTime @default(now()) @updatedAt
+
+  @@index([EventId], map: "idx_event_reg_event")
+  @@index([RegistrantUserId], map: "idx_event_reg_user")
+  @@index([EventId, RegistrantUserId], map: "idx_event_reg_event_user")
+}

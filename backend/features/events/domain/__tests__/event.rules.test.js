@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizeEventDraft,
+  normalizeEventRegistrationDraft,
   normalizeEventStatus,
   parseEventId,
   parseEventUserId,
@@ -95,5 +96,43 @@ describe('sanitizeEventPeopleQuery', () => {
   it('trims and strips filter-breaking characters', () => {
     assert.equal(sanitizeEventPeopleQuery('  Balaji,Sekar  '), 'Balaji Sekar');
     assert.equal(sanitizeEventPeopleQuery(''), '');
+  });
+});
+
+describe('normalizeEventRegistrationDraft', () => {
+  it('accepts a full registration payload', () => {
+    const result = normalizeEventRegistrationDraft({
+      eventId: 8,
+      translation: 'tamil',
+      attendCity: 'Community Hall',
+      foodType: 'VEG',
+      uplinePresidentTeam: { userId: 21, name: 'President Ravi' },
+      uplineMillTeam: { userId: 22, name: 'Mill Meena' },
+      clubNo: 'CLUB-17',
+      zoomEmail: 'creator@example.com',
+      name: 'Logged In User',
+      idNo: '17',
+      level: 'ASSOCIATE',
+      phoneNumber: '9000000017',
+      participantCount: 1,
+      ticketNo: 'T-55',
+      yourCity: 'CHENNAI',
+      teamIncharge: { userId: 23, name: 'Incharge Arun' },
+      daicyTeamIncharge: {
+        userId: 24,
+        name: 'Daicy Devi',
+        uplineLabel: 'Incharge Arun / President Ravi',
+      },
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.value.translation, 'TAMIL');
+    assert.equal(result.value.eventId, 8);
+    assert.equal(result.value.daicyTeamIncharge.uplineLabel, 'Incharge Arun / President Ravi');
+  });
+
+  it('rejects missing required registration fields', () => {
+    const result = normalizeEventRegistrationDraft({ eventId: 8 });
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.length > 0);
   });
 });

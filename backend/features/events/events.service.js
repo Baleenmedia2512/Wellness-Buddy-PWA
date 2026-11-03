@@ -1,10 +1,21 @@
 import * as repo from './data/events.repo.js';
 import { searchActivePeople } from './data/people.repo.js';
+import { insertEventRegistration } from './data/registrations.repo.js';
 
 const STORAGE_MESSAGE = 'Events storage is not ready. Run backend/migrations/create_events_table.sql, then npm run prisma:generate in backend, and restart the API.';
+const REGISTRATION_STORAGE_MESSAGE = 'Event registration storage is not ready. Run backend/migrations/create_event_registrations_table.sql, then npm run prisma:generate in backend, and restart the API.';
 
 function storageFailure(err) {
   const message = String(err?.message || '');
+  const missingRegistration = err?.code === 'P2021'
+    || message.includes('event_registrations_table')
+    || message.includes('event_registrations');
+  if (missingRegistration) {
+    return {
+      httpStatus: 503,
+      body: { success: false, message: REGISTRATION_STORAGE_MESSAGE },
+    };
+  }
   const missingTable = err?.code === 'P2021'
     || message.includes('events_table')
     || message.includes('does not exist')
@@ -63,4 +74,15 @@ export function deleteEvent(input) {
 export async function searchEventPeople(input) {
   const people = await searchActivePeople(input.q);
   return { httpStatus: 200, body: { success: true, people } };
+}
+
+export function createEventRegistration(input) {
+  return run(async () => {
+    const event = await repo.findActiveEventById(input.eventId);
+    if (!event) {
+      return { httpStatus: 404, body: { success: false, message: 'Event not found.' } };
+    }
+    const registration = await insertEventRegistration(input);
+    return { httpStatus: 201, body: { success: true, registration } };
+  });
 }

@@ -1,6 +1,7 @@
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import {
   normalizeEventDraft,
+  normalizeEventRegistrationDraft,
   normalizeEventStatus,
   parseEventId,
   parseEventUserId,
@@ -70,4 +71,11 @@ export function validateSearchEventPeople(query) {
     userId: requireOwner(query),
     q: sanitizeEventPeopleQuery(query?.q),
   };
+}
+
+export function validateCreateEventRegistration(body) {
+  const userId = requireOwner(body);
+  const draft = normalizeEventRegistrationDraft(body);
+  if (!draft.ok) throw new ValidationError(400, draft.errors.join(' '));
+  return { userId, ...draft.value };
 }

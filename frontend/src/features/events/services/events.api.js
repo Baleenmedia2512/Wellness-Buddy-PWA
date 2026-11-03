@@ -64,3 +64,11 @@ export async function searchEventPeople({ userId, q }) {
   }
   return Array.isArray(data.people) ? data.people : [];
 }
+
+export function createEventRegistration(payload) {
+  return apiFetch(`${endpoint()}/registrations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then(readJson);
+}

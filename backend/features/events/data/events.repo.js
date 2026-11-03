@@ -85,6 +85,14 @@ export async function findOwnedEvent(id, userId) {
   return toEvent(row);
 }
 
+export async function findActiveEventById(id) {
+  const prisma = getPrisma();
+  const row = await prisma.events_table.findFirst({
+    where: { Id: id, IsDeleted: 0 },
+  });
+  return toEvent(row);
+}
+
 export async function updateOwnedEvent(id, userId, patch) {
   const prisma = getPrisma();
   const result = await prisma.events_table.updateMany({
