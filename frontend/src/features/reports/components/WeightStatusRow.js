@@ -3,7 +3,7 @@
  * Pure presentational component; receives a fully-computed row object.
  */
 import React from 'react';
-import { User } from 'lucide-react';
+import { User, UserRound } from 'lucide-react';
 import WeightStatusBadge from './WeightStatusBadge';
 
 /**
@@ -21,7 +21,11 @@ function getBarProps(currentWeight, idealMin, idealMax) {
   return { pct, idealStartPct, idealEndPct };
 }
 
-export default function WeightStatusRow({ row, teamPerformance = null }) {
+export default function WeightStatusRow({
+  row,
+  teamPerformance = null,
+  onViewProfile,
+}) {
   const { userName, email, communityId, currentWeight, idealMin, idealMax, status, firstReachedAt } = row;
   const bar = getBarProps(currentWeight, idealMin, idealMax);
   const mail = String(email || '').trim();
@@ -64,7 +68,20 @@ export default function WeightStatusRow({ row, teamPerformance = null }) {
             <User className="h-4 w-4 text-green-600" />
           </div>
           <div className="min-w-0">
-            <span className="font-semibold text-gray-800 text-sm truncate block">{userName}</span>
+            <div className="flex items-center gap-1 min-w-0">
+              <span className="font-semibold text-gray-800 text-sm truncate block">{userName}</span>
+              {row.userId != null && (
+                <button
+                  type="button"
+                  onClick={() => onViewProfile?.(row)}
+                  className="shrink-0 rounded-full p-1 text-green-700 hover:bg-green-50"
+                  aria-label={`View ${userName}'s profile`}
+                  title="View profile"
+                >
+                  <UserRound className="h-4 w-4" />
+                </button>
+              )}
+            </div>
             {subtitle ? (
               <span className="text-[11px] text-gray-500 truncate block">{subtitle}</span>
             ) : null}

@@ -11,6 +11,7 @@ export default function ActivityReportMemberNameCell({
   record,
   canHide,
   onOpenHideMenu,
+  onOpenProfile,
 }) {
   const pressHandlers = useActivityReportHideLongPress({
     enabled: canHide,
@@ -29,7 +30,18 @@ export default function ActivityReportMemberNameCell({
       title={canHide ? 'Press and hold name to hide' : undefined}
       {...pressHandlers}
     >
-      {display(record.memberName)}
+      {record.userId != null ? (
+        <button
+          type="button"
+          onClick={() => onOpenProfile?.(record.userId)}
+          className="text-left hover:underline focus:outline-none focus-visible:underline"
+          aria-label={`View ${record.memberName}'s profile`}
+        >
+          {display(record.memberName)}
+        </button>
+      ) : (
+        display(record.memberName)
+      )}
     </td>
   );
 }

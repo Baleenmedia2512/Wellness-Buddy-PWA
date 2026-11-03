@@ -13,6 +13,7 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
+  UserRound,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWellnessScoreReport } from '../hooks/useWellnessScoreReport';
@@ -32,6 +33,7 @@ import {
 } from '../utils/wellnessScoreReportExcel.js';
 import { fetchWellnessScoreReport } from '../services/wellnessScoreReportApi.js';
 import { getDbUserId } from '../../../shared/services/sessionStorage';
+import TeamMemberProfileModal from '../../../shared/components/TeamMemberProfileModal';
 import {
   DATE_PRESETS,
   formatReportDateLabel,
@@ -371,6 +373,7 @@ export default function WellnessScoreReport({
   const [exporting, setExporting] = useState(false);
   const [toast, setToast] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [profileUserId, setProfileUserId] = useState(null);
 
   const showToast = useCallback((message) => {
     setToast(message);
@@ -622,7 +625,20 @@ export default function WellnessScoreReport({
                       <td
                         className={`sticky left-0 z-[5] px-1 sm:px-2 py-1.5 border-b border-r border-gray-200 align-middle overflow-hidden shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)] ${TABLE_HEADERS[0].colClass} ${zebra}`}
                       >
-                        <MemberNameCell name={row.name} />
+                        <div className="flex items-center gap-1 min-w-0">
+                          <MemberNameCell name={row.name} />
+                          {row.userId != null && (
+                            <button
+                              type="button"
+                              onClick={() => setProfileUserId(row.userId)}
+                              className="shrink-0 rounded-full p-1 text-teal-700 hover:bg-teal-50"
+                              aria-label={`View ${row.name || 'member'}'s profile`}
+                              title="View profile"
+                            >
+                              <UserRound className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className={`px-1 sm:px-2 py-1.5 text-[11px] sm:text-sm text-gray-800 border-b border-r border-gray-200 align-middle overflow-hidden ${TABLE_HEADERS[1].colClass}`}>
                         <span className="block truncate tabular-nums">
@@ -708,6 +724,11 @@ export default function WellnessScoreReport({
           {exporting ? 'Preparing Excel…' : toast}
         </div>
       )}
+      <TeamMemberProfileModal
+        isOpen={profileUserId != null}
+        onClose={() => setProfileUserId(null)}
+        memberUserId={profileUserId}
+      />
     </div>
   );
 }
