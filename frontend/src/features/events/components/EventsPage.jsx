@@ -8,7 +8,7 @@ import {
   Users,
 } from 'lucide-react';
 import { getUserId } from '../../../shared/services/getUserId.js';
-import { listEvents } from '../services/events.api.js';
+import { EVENTS_UPDATED_EVENT, listEvents } from '../services/events.api.js';
 
 const CARD_STYLES = [
   {
@@ -85,8 +85,10 @@ function EventsPage({ user }) {
     };
 
     loadEvents();
+    window.addEventListener(EVENTS_UPDATED_EVENT, loadEvents);
     return () => {
       active = false;
+      window.removeEventListener(EVENTS_UPDATED_EVENT, loadEvents);
     };
   }, [user]);
 

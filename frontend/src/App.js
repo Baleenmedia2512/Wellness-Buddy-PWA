@@ -65,7 +65,8 @@ import { WeightShareCard } from "./shell/components/WeightShareCard";
 import { WeightResultCard } from "./shell/components/WeightResultCard";
 import { Capacitor } from "@capacitor/core";
 import wellnessValleyIcon from "./assets/wellness-valley-icon.png";
-import { Bug, Share2, Pencil, Check, X as XIcon, Sparkles, CalendarDays, ArrowRight } from "lucide-react";
+
+import { Bug, Share2, Pencil, Check, X as XIcon, Sparkles, CalendarDays, ArrowRight, Megaphone } from "lucide-react";
 import ImageUpload from "./shared/components/ImageUpload";
 import {
   NutritionCard,
@@ -8464,6 +8465,7 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
+          onShowCreateEvent={() => navigateTo('create-event')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -9414,22 +9416,67 @@ function WellnessValleyApp() {
 
             {/* Bottom leaderboard tiles — static (no marquee scroll) */}
             <div className="space-y-2 xs:space-y-3 pt-1">
-              {isFlagEnabled('ff.events') && (
-                <button
-                  type="button"
-                  onClick={() => navigateTo('events')}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-emerald-100 bg-white p-4 text-left shadow-sm transition hover:border-emerald-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100">
-                    <CalendarDays className="h-5 w-5 text-emerald-800" aria-hidden="true" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-bold text-gray-900">Wellness events</span>
-                    <span className="block text-xs text-gray-600">Explore activities and register</span>
-                  </span>
-                  <ArrowRight className="h-5 w-5 shrink-0 text-emerald-700" aria-hidden="true" />
-                </button>
-              )}
+             
+{isFlagEnabled('ff.events') && (
+  <button
+    type="button"
+    onClick={() => navigateTo('events')}
+    className="wellness-events-card group relative flex w-full items-center gap-3 overflow-hidden rounded-3xl border border-purple-200/80 p-4 text-left shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 sm:gap-5 sm:p-5"
+  >
+    {/* Soft animated background waves */}
+    <span
+      aria-hidden="true"
+      className="wellness-events-wave wellness-events-wave-one"
+    />
+    <span
+      aria-hidden="true"
+      className="wellness-events-wave wellness-events-wave-two"
+    />
+
+    {/* Floating sparkles */}
+    <span aria-hidden="true" className="wellness-events-sparkle sparkle-one">
+      ✦
+    </span>
+    <span aria-hidden="true" className="wellness-events-sparkle sparkle-two">
+      ✨
+    </span>
+
+    {/* Calendar illustration */}
+    <span
+      aria-hidden="true"
+      className="wellness-events-calendar relative z-10 flex h-16 w-16 shrink-0 items-center justify-center sm:h-20 sm:w-20"
+    >
+      <CalendarDays className="h-12 w-12 text-purple-700 drop-shadow-md sm:h-16 sm:w-16" />
+      <span className="wellness-events-star">★</span>
+    </span>
+
+    {/* Event text */}
+    <span className="relative z-10 min-w-0 flex-1">
+      <span className="block text-base font-extrabold tracking-tight text-purple-950 sm:text-xl">
+        Wellness Events
+      </span>
+      <span className="mt-1 block text-xs font-medium text-purple-800 sm:text-sm">
+        Discover events and register
+      </span>
+    </span>
+
+    {/* Megaphone illustration */}
+    <span
+      aria-hidden="true"
+      className="wellness-events-megaphone relative z-10 hidden shrink-0 sm:block"
+    >
+      <Megaphone className="h-10 w-10 text-purple-700 drop-shadow-sm" />
+    </span>
+
+    {/* Action button */}
+    <span className="relative z-10 inline-flex shrink-0 items-center gap-1 rounded-full border border-purple-300 bg-white/90 px-3 py-2 text-xs font-bold text-purple-900 shadow-sm transition-all duration-300 group-hover:border-purple-500 group-hover:bg-purple-700 group-hover:text-white sm:px-4 sm:text-sm">
+      Show events
+      <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+    </span>
+  </button>
+)}
+
+              
               {isFlagEnabled('ff.wellness-score-sheet') && (
                 <WellnessScoreLeaderboard
                   ref={wellnessLeaderboardRef}
@@ -10183,7 +10230,8 @@ function WellnessValleyApp() {
           >
             <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
               {/* Header */}
-              <div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white p-4 md:p-6 flex items-center justify-between">
+
+<div className="bg-gradient-to-r from-blue-700 to-sky-500 text-white p-4 md:p-6 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Bug className="w-6 h-6 md:w-8 md:h-8" />
                   <div>

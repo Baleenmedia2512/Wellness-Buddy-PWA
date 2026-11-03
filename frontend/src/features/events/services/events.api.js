@@ -1,8 +1,16 @@
 import { apiFetch } from '../../../shared/services/apiFetch.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 
+export const EVENTS_UPDATED_EVENT = 'wellness-events-updated';
+
 function endpoint() {
   return `${getApiBaseUrl()}/api/events`;
+}
+
+export function notifyEventsUpdated() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(EVENTS_UPDATED_EVENT));
+  }
 }
 
 async function readJson(res) {
