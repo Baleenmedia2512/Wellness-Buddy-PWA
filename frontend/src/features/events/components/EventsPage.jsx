@@ -9,8 +9,16 @@ import {
 } from 'lucide-react';
 import { getUserId } from '../../../shared/services/getUserId.js';
 import { fetchProfile } from '../../user/services/profileService.js';
-import { createEventRegistration, EVENTS_UPDATED_EVENT, listEvents } from '../services/events.api.js';
+import { fetchWallet } from '../../wallet/services/walletApi.js';
+import {
+  createEventRegistration,
+  EVENTS_UPDATED_EVENT,
+  listOpenEvents,
+  notifyEventsUpdated,
+} from '../services/events.api.js';
 import MemberSearchPicker from './MemberSearchPicker.jsx';
+import MyBookingsPanel from './MyBookingsPanel.jsx';
+import RegistrationQrCard from './RegistrationQrCard.jsx';
 import RegistrationSelect from './RegistrationSelect.jsx';
 
 const CARD_STYLES = [
@@ -42,6 +50,27 @@ const STATUS_LABELS = {
   postponed: 'Postponed',
   cancelled: 'Cancelled',
 };
+
+/** Hanging SOLD / OUT sign — matches the red-white board look. */
+function SoldOutSign({ className = '' }) {
+  return (
+    <div
+      className={`pointer-events-none flex w-[4.5rem] flex-col items-center ${className}`}
+      aria-hidden="true"
+    >
+      <span className="mb-0.5 h-1.5 w-1.5 rounded-full bg-red-800 shadow-sm" />
+      <span className="h-2 w-px bg-red-800/80" />
+      <div className="relative w-full overflow-hidden rounded-md border-2 border-red-700 shadow-md">
+        <div className="bg-white px-1.5 py-1 text-center">
+          <p className="text-[11px] font-black leading-none tracking-wide text-red-600">SOLD</p>
+        </div>
+        <div className="bg-red-600 px-1.5 py-1 text-center">
+          <p className="text-[12px] font-black leading-none tracking-wide text-white">OUT</p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const TRANSLATION_OPTIONS = [
   'TAMIL',
@@ -201,7 +230,9 @@ function EventsPage({ user }) {
   const [loadError, setLoadError] = useState('');
   const [viewerUserId, setViewerUserId] = useState(null);
   const [profileDefaults, setProfileDefaults] = useState(() => buildRegistrationDefaults(null, user, null));
+  const [mainTab, setMainTab] = useState('events');
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [registrationStep, setRegistrationStep] = useState('form');
   const [name, setName] = useState('');
   const [clubNo, setClubNo] = useState('');
   const [zoomEmail, setZoomEmail] = useState('');
@@ -219,6 +250,9 @@ function EventsPage({ user }) {
   const [teamIncharge, setTeamIncharge] = useState(null);
   const [daicyTeamIncharge, setDaicyTeamIncharge] = useState(null);
   const [submittedName, setSubmittedName] = useState('');
+  const [savedRegistration, setSavedRegistration] = useState(null);
+  const [walletBalance, setWalletBalance] = useState(null);
+  const [walletLoading, setWalletLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [savingRegistration, setSavingRegistration] = useState(false);
   const [formErrors, setFormErrors] = useState({});
@@ -226,8 +260,11 @@ function EventsPage({ user }) {
   useEffect(() => {
     let active = true;
 
-    const loadEvents = async () => {
-      setLoading(true);
+    const loadEvents = async ({ soft = false } = {}) => {
+      // Soft refresh keeps the current list visible (no full-page "Loading events…").
+      if (!soft) {
+        setLoading(true);
+      }
       setLoadError('');
 
       try {
@@ -236,29 +273,36 @@ function EventsPage({ user }) {
           throw new Error('Could not identify your account to load events.');
         }
 
-        const [result, profileResult] = await Promise.all([
-          listEvents(userId),
-          fetchProfile({ userId }).catch(() => null),
-        ]);
-        if (active) {
-          setViewerUserId(userId);
-          setEvents(Array.isArray(result.events) ? result.events : []);
-          setProfileDefaults(buildRegistrationDefaults(profileResult?.data, user, userId));
-        }
+        // Show events as soon as open-list returns — do not wait on profile.
+        const result = await listOpenEvents(userId);
+        if (!active) return;
+        setViewerUserId(userId);
+        setEvents(Array.isArray(result.events) ? result.events : []);
+        setLoading(false);
+
+        // Profile defaults load in the background for the registration form only.
+        fetchProfile({ userId })
+          .then((profileResult) => {
+            if (!active) return;
+            setProfileDefaults(buildRegistrationDefaults(profileResult?.data, user, userId));
+          })
+          .catch(() => {
+            /* keep existing defaults */
+          });
       } catch (error) {
         if (active) {
           setLoadError(error?.message || 'Could not load events. Please try again.');
+          setLoading(false);
         }
-      } finally {
-        if (active) setLoading(false);
       }
     };
 
-    loadEvents();
-    window.addEventListener(EVENTS_UPDATED_EVENT, loadEvents);
+    loadEvents({ soft: false });
+    const onEventsUpdated = () => loadEvents({ soft: true });
+    window.addEventListener(EVENTS_UPDATED_EVENT, onEventsUpdated);
     return () => {
       active = false;
-      window.removeEventListener(EVENTS_UPDATED_EVENT, loadEvents);
+      window.removeEventListener(EVENTS_UPDATED_EVENT, onEventsUpdated);
     };
   }, [user]);
 
@@ -293,6 +337,9 @@ function EventsPage({ user }) {
     setTeamIncharge(null);
     setDaicyTeamIncharge(null);
     setSubmittedName('');
+    setSavedRegistration(null);
+    setRegistrationStep('form');
+    setWalletBalance(null);
     setSubmitError('');
     setSavingRegistration(false);
     setFormErrors({});
@@ -302,7 +349,15 @@ function EventsPage({ user }) {
     setFormErrors((prev) => ({ ...prev, [field]: undefined }));
   };
 
+  const chargeAmount = (() => {
+    const price = Number(selectedEvent?.ticketPrice);
+    const count = Number(participantCount) || 1;
+    if (!Number.isFinite(price) || price < 0) return 0;
+    return Math.round(price * count * 100) / 100;
+  })();
+
   const openRegistration = (event) => {
+    if (event?.soldOut) return;
     setSelectedEvent(event);
     resetRegistrationForm({ keepPersonalDefaults: true });
   };
@@ -312,10 +367,7 @@ function EventsPage({ user }) {
     resetRegistrationForm();
   };
 
-  const submitRegistration = async (formEvent) => {
-    formEvent.preventDefault();
-    if (savingRegistration) return;
-
+  const buildValidatedPayload = () => {
     const trimmedName = name.trim();
     const trimmedClubNo = clubNo.trim();
     const trimmedZoomEmail = zoomEmail.trim();
@@ -353,36 +405,72 @@ function EventsPage({ user }) {
 
     if (Object.keys(nextErrors).length > 0) {
       setFormErrors(nextErrors);
-      return;
+      return null;
     }
 
     setFormErrors({});
+    return {
+      userId: viewerUserId,
+      eventId: selectedEvent.id,
+      translation,
+      attendCity,
+      foodType,
+      uplinePresidentTeam,
+      uplineMillTeam,
+      clubNo: trimmedClubNo,
+      zoomEmail: trimmedZoomEmail,
+      name: trimmedName,
+      idNo: trimmedIdNo,
+      level: trimmedLevel,
+      phoneNumber: trimmedPhone,
+      participantCount: Number(participantCount),
+      ticketNo: trimmedTicketNo,
+      yourCity,
+      teamIncharge,
+      daicyTeamIncharge,
+      confirmPayment: true,
+    };
+  };
+
+  const goToPaymentStep = async (formEvent) => {
+    formEvent.preventDefault();
+    if (savingRegistration) return;
+    const payload = buildValidatedPayload();
+    if (!payload) return;
+
+    setSubmitError('');
+    setRegistrationStep('pay');
+    setWalletLoading(true);
+    try {
+      const wallet = await fetchWallet(viewerUserId);
+      setWalletBalance(Number(wallet?.balance));
+    } catch (error) {
+      setWalletBalance(null);
+      setSubmitError(error?.message || 'Could not load wallet balance.');
+    } finally {
+      setWalletLoading(false);
+    }
+  };
+
+  const confirmPaymentAndSubmit = async () => {
+    if (savingRegistration) return;
+    const payload = buildValidatedPayload();
+    if (!payload) {
+      setRegistrationStep('form');
+      return;
+    }
+
     setSubmitError('');
     setSavingRegistration(true);
     try {
-      await createEventRegistration({
-        userId: viewerUserId,
-        eventId: selectedEvent.id,
-        translation,
-        attendCity,
-        foodType,
-        uplinePresidentTeam,
-        uplineMillTeam,
-        clubNo: trimmedClubNo,
-        zoomEmail: trimmedZoomEmail,
-        name: trimmedName,
-        idNo: trimmedIdNo,
-        level: trimmedLevel,
-        phoneNumber: trimmedPhone,
-        participantCount: Number(participantCount),
-        ticketNo: trimmedTicketNo,
-        yourCity,
-        teamIncharge,
-        daicyTeamIncharge,
-      });
-      setSubmittedName(trimmedName);
+      const data = await createEventRegistration(payload);
+      setSubmittedName(payload.name);
+      setSavedRegistration(data.registration || null);
+      if (data.balanceAfter != null) setWalletBalance(Number(data.balanceAfter));
+      setRegistrationStep('success');
+      notifyEventsUpdated();
     } catch (error) {
-      setSubmitError(error?.message || 'Could not save registration. Please try again.');
+      setSubmitError(error?.message || 'Could not complete payment. Please try again.');
     } finally {
       setSavingRegistration(false);
     }
@@ -414,72 +502,80 @@ function EventsPage({ user }) {
                 Register interest in {selectedEvent.eventName}
               </h1>
               <p className="mt-1 text-sm leading-6 text-white/95">
-                Complete translation, attend city, food type, upline detail, and personal detail. Your registration is saved when you submit.
+                Complete the details, tap Next, then pay from your wallet. Your QR entry pass appears after payment.
               </p>
               <p className="mt-2 text-xs font-medium text-rose-100">* Indicates required question</p>
 
-              {submittedName ? (
-                <div role="status" className="mt-5 rounded-xl border border-white/80 bg-white/90 p-4 text-sm text-gray-800">
+              {registrationStep === 'success' && submittedName ? (
+                <div role="status" className="mt-5 space-y-3 rounded-xl border border-white/80 bg-white/90 p-4 text-sm text-gray-800">
                   <p className="flex items-center gap-2 font-semibold text-emerald-800">
                     <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
-                    Thank you, {submittedName}!
+                    Successfully Submitted
                   </p>
-                  <p className="mt-1">Your registration has been saved.</p>
-                  {translation ? (
-                    <p className="mt-1 text-sm text-gray-700">Translation: {translation}</p>
-                  ) : null}
-                  {attendCity ? (
-                    <p className="mt-1 text-sm text-gray-700">PD Attend City: {attendCity}</p>
-                  ) : null}
-                  {foodType ? (
-                    <p className="mt-1 text-sm text-gray-700">Food Type: {foodType}</p>
-                  ) : null}
-                  {uplinePresidentTeam?.name ? (
-                    <p className="mt-1 text-sm text-gray-700">
-                      Upline President Team: {uplinePresidentTeam.name}
+                  <p>Thank you, {submittedName}. Your entry pass is ready.</p>
+                  <RegistrationQrCard
+                    qrPayload={savedRegistration?.qrPayload}
+                    entryCode={savedRegistration?.entryCode}
+                    eventName={selectedEvent.eventName}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      closeRegistration();
+                      setMainTab('bookings');
+                    }}
+                    className="w-full rounded-lg border border-emerald-700 px-4 py-2.5 text-sm font-semibold text-emerald-900"
+                  >
+                    View in My Booking
+                  </button>
+                </div>
+              ) : registrationStep === 'pay' ? (
+                <div className="mt-5 space-y-3 rounded-xl border border-white/80 bg-white p-4 text-sm text-gray-800">
+                  <h2 className="text-base font-bold text-gray-900">Confirm wallet payment</h2>
+                  <p>Ticket amount: <span className="font-semibold">{formatTicketPrice(chargeAmount)}</span></p>
+                  <p>
+                    Wallet balance:{' '}
+                    <span className="font-semibold">
+                      {walletLoading
+                        ? 'Loading…'
+                        : walletBalance == null
+                          ? 'Unavailable'
+                          : formatTicketPrice(walletBalance)}
+                    </span>
+                  </p>
+                  {!walletLoading && walletBalance != null && walletBalance + 1e-9 < chargeAmount ? (
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900" role="alert">
+                      Insufficient balance. Add cash in Wallet, then try again.
                     </p>
                   ) : null}
-                  {uplineMillTeam?.name ? (
-                    <p className="mt-1 text-sm text-gray-700">
-                      Upline Mill Team: {uplineMillTeam.name}
+                  {submitError ? (
+                    <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-800" role="alert">
+                      {submitError}
                     </p>
                   ) : null}
-                  {clubNo.trim() ? (
-                    <p className="mt-1 text-sm text-gray-700">Club No: {clubNo.trim()}</p>
-                  ) : null}
-                  {zoomEmail.trim() ? (
-                    <p className="mt-1 text-sm text-gray-700">Zoom Email: {zoomEmail.trim()}</p>
-                  ) : null}
-                  {idNo.trim() ? (
-                    <p className="mt-1 text-sm text-gray-700">ID No: {idNo.trim()}</p>
-                  ) : null}
-                  {level.trim() ? (
-                    <p className="mt-1 text-sm text-gray-700">Level: {level.trim()}</p>
-                  ) : null}
-                  {phoneNumber.trim() ? (
-                    <p className="mt-1 text-sm text-gray-700">Phone: {phoneNumber.trim()}</p>
-                  ) : null}
-                  {participantCount ? (
-                    <p className="mt-1 text-sm text-gray-700">No of Participant: {participantCount}</p>
-                  ) : null}
-                  {ticketNo.trim() ? (
-                    <p className="mt-1 text-sm text-gray-700">PD Ticket No: {ticketNo.trim()}</p>
-                  ) : null}
-                  {yourCity ? (
-                    <p className="mt-1 text-sm text-gray-700">Your City: {yourCity}</p>
-                  ) : null}
-                  {teamIncharge?.name ? (
-                    <p className="mt-1 text-sm text-gray-700">Team Incharge: {teamIncharge.name}</p>
-                  ) : null}
-                  {daicyTeamIncharge?.name ? (
-                    <p className="mt-1 text-sm text-gray-700">
-                      Daicy Team Incharge: {daicyTeamIncharge.name}
-                      {daicyTeamIncharge.uplineLabel ? ` + ${daicyTeamIncharge.uplineLabel}` : ''}
-                    </p>
-                  ) : null}
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSubmitError('');
+                        setRegistrationStep('form');
+                      }}
+                      className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-800"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      disabled={savingRegistration || walletLoading}
+                      onClick={confirmPaymentAndSubmit}
+                      className="w-full rounded-lg bg-emerald-800 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                    >
+                      {savingRegistration ? 'Paying…' : 'Pay & submit'}
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <form onSubmit={submitRegistration} className="mt-5 min-w-0 space-y-3" noValidate>
+                <form onSubmit={goToPaymentStep} className="mt-5 min-w-0 space-y-3" noValidate>
                   <div
                     className={`rounded-xl border bg-white p-4 ${
                       formErrors.translation ? 'border-rose-400' : 'border-white/80'
@@ -870,7 +966,7 @@ function EventsPage({ user }) {
                     disabled={savingRegistration}
                     className="w-full rounded-lg bg-emerald-800 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {savingRegistration ? 'Saving…' : 'Submit registration'}
+                    Next
                   </button>
                 </form>
               )}
@@ -885,12 +981,31 @@ function EventsPage({ user }) {
                 </span>
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900">Wellness Events</h1>
-                  <p className="text-sm text-gray-600">Events added from the Create Event page.</p>
+                  <p className="text-sm text-gray-600">Register, pay from wallet, and keep your QR in My Booking.</p>
                 </div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl border border-gray-200 bg-white p-1 text-xs font-semibold">
+                {[
+                  { id: 'events', label: 'Events' },
+                  { id: 'bookings', label: 'My Booking' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setMainTab(tab.id)}
+                    className={`rounded-lg px-2 py-2 ${
+                      mainTab === tab.id ? 'bg-emerald-800 text-white' : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
             </header>
 
-            {loading ? (
+            {mainTab === 'bookings' ? (
+              <MyBookingsPanel user={user} />
+            ) : loading ? (
               <p role="status" className="py-6 text-center text-sm text-gray-600">Loading events…</p>
             ) : loadError ? (
               <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
@@ -905,18 +1020,24 @@ function EventsPage({ user }) {
                 {events.map((event, index) => {
                   const style = CARD_STYLES[index % CARD_STYLES.length];
                   const status = String(event.status || 'scheduled').toLowerCase();
+                  const soldOut = Boolean(event.soldOut);
+                  const seatsLeft = event.seatsLeft;
                   const designatedNames = (event.designatedPersons || [])
                     .map((person) => person?.name)
                     .filter(Boolean);
+                  const registerDisabled = status === 'cancelled' || soldOut;
 
                   return (
                     <article
                       key={event.id}
                       className={`relative isolate overflow-hidden rounded-xl border p-3 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md sm:p-4 ${style.card}`}
                     >
+                      {soldOut ? (
+                        <SoldOutSign className="absolute right-2 top-1 z-20 rotate-[-8deg]" />
+                      ) : null}
                       <div aria-hidden="true" className="pointer-events-none absolute -right-5 -top-6 -z-10 h-24 w-24 rounded-full bg-white/10 blur-sm" />
                       <div aria-hidden="true" className="pointer-events-none absolute -bottom-10 right-12 -z-10 h-20 w-20 rounded-full bg-cyan-200/20 blur-sm" />
-                      <div className="flex items-start gap-2.5">
+                      <div className={`flex items-start gap-2.5 ${soldOut ? 'pr-16' : ''}`}>
                         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/30 bg-white/15 text-white shadow-inner">
                           <CalendarDays className="h-4 w-4" aria-hidden="true" />
                         </span>
@@ -937,7 +1058,8 @@ function EventsPage({ user }) {
                             {event.place}
                           </p>
                           <p className="mt-1 text-[10px] leading-4 text-white/85">
-                            {event.eventDate} · Host: {event.hostName} · {formatTicketPrice(event.ticketPrice)} · {event.seatCount} seats
+                            {event.eventDate} · Host: {event.hostName} · {formatTicketPrice(event.ticketPrice)} ·{' '}
+                            {event.seatCount} seats
                           </p>
                           {designatedNames.length > 0 && (
                             <p className="mt-1 flex items-start gap-1 text-[10px] leading-4 text-white/85">
@@ -947,16 +1069,27 @@ function EventsPage({ user }) {
                           )}
                         </div>
                       </div>
-                      <div className="mt-2 flex justify-end border-t border-white/20 pt-2">
-                        <button
-                          type="button"
-                          onClick={() => openRegistration(event)}
-                          disabled={status === 'cancelled'}
-                          className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-[11px] font-bold shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${style.button}`}
-                        >
-                          Register
-                          <ArrowRight className="h-3 w-3" aria-hidden="true" />
-                        </button>
+                      <div className="mt-2 flex items-center justify-between gap-2 border-t border-white/20 pt-2">
+                        {!soldOut && seatsLeft != null ? (
+                          <span className="inline-flex items-center rounded-lg border-2 border-white bg-emerald-50 px-2.5 py-1.5 text-[11px] font-extrabold tracking-wide text-emerald-900 shadow-sm">
+                            {seatsLeft} seat{seatsLeft === 1 ? '' : 's'} left
+                          </span>
+                        ) : (
+                          <span />
+                        )}
+                        {soldOut ? (
+                          <span className="sr-only">Sold out — registration closed</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => openRegistration(event)}
+                            disabled={registerDisabled}
+                            className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-[11px] font-bold shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${style.button}`}
+                          >
+                            Register
+                            <ArrowRight className="h-3 w-3" aria-hidden="true" />
+                          </button>
+                        )}
                       </div>
                     </article>
                   );

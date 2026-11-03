@@ -3,8 +3,10 @@ import {
   normalizeEventDraft,
   normalizeEventRegistrationDraft,
   normalizeEventStatus,
+  parseEntryCode,
   parseEventId,
   parseEventUserId,
+  parseRegistrationQrPayload,
   sanitizeEventPeopleQuery,
 } from './domain/event.rules.js';
 
@@ -77,5 +79,43 @@ export function validateCreateEventRegistration(body) {
   const userId = requireOwner(body);
   const draft = normalizeEventRegistrationDraft(body);
   if (!draft.ok) throw new ValidationError(400, draft.errors.join(' '));
-  return { userId, ...draft.value };
+  const confirmPayment = body?.confirmPayment === true
+    || body?.confirmPayment === 1
+    || String(body?.confirmPayment || '').toLowerCase() === 'true';
+  return { userId, confirmPayment, ...draft.value };
+}
+
+export function validateListOpenEvents(query) {
+  return { userId: requireOwner(query) };
+}
+
+export function validateListMyRegistrations(query) {
+  return { userId: requireOwner(query) };
+}
+
+export function validateGetMyRegistration(query) {
+  const userId = requireOwner(query);
+  const id = parseEventId(query?.id);
+  if (!id) throw new ValidationError(400, 'Registration id is required.');
+  return { userId, id };
+}
+
+export function validateEventCheckIn(body) {
+  const userId = requireOwner(body);
+  // Selected check-in event is authoritative. QR may supply the code, but its event must match.
+  const selectedEventId = parseEventId(body?.eventId);
+  const fromQr = body?.qrPayload != null ? parseRegistrationQrPayload(body.qrPayload) : null;
+  if (fromQr && selectedEventId && fromQr.eventId !== selectedEventId) {
+    throw new ValidationError(400, 'This QR belongs to a different event.');
+  }
+  const eventId = selectedEventId || fromQr?.eventId;
+  const entryCode = fromQr?.entryCode || parseEntryCode(body?.entryCode);
+  if (!eventId) throw new ValidationError(400, 'Event id is required.');
+  if (!entryCode) throw new ValidationError(400, 'Entry code is required.');
+  return {
+    userId,
+    eventId,
+    entryCode,
+    markCheckedIn: body?.markCheckedIn !== false,
+  };
 }

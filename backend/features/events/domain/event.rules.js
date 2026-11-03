@@ -262,3 +262,58 @@ export function normalizeEventRegistrationDraft(raw) {
     },
   };
 }
+
+/** Charge = ticket price × participants (rounded to 2 decimals). */
+export function computeRegistrationCharge(ticketPrice, participantCount) {
+  const price = Number(ticketPrice);
+  const count = Number(participantCount);
+  if (!Number.isFinite(price) || price < 0) return null;
+  if (!Number.isInteger(count) || count < 1) return null;
+  return Math.round(price * count * 100) / 100;
+}
+
+/** Four-digit entry code 1000–9999. */
+export function generateEntryCode(existingCodes = new Set()) {
+  const used = existingCodes instanceof Set ? existingCodes : new Set(existingCodes || []);
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const code = String(1000 + Math.floor(Math.random() * 9000));
+    if (!used.has(code)) return code;
+  }
+  for (let n = 1000; n <= 9999; n += 1) {
+    const code = String(n);
+    if (!used.has(code)) return code;
+  }
+  return null;
+}
+
+export function parseEntryCode(raw) {
+  const text = String(raw ?? '').trim();
+  if (!/^\d{4}$/.test(text)) return null;
+  return text;
+}
+
+/** QR payload: eventId:entryCode — keeps 4-digit codes unique per event only. */
+export function buildRegistrationQrPayload(eventId, entryCode) {
+  const id = parseEventId(eventId);
+  const code = parseEntryCode(entryCode);
+  if (!id || !code) return null;
+  return `${id}:${code}`;
+}
+
+export function parseRegistrationQrPayload(raw) {
+  const text = String(raw ?? '').trim();
+  const match = /^(\d+):(\d{4})$/.exec(text);
+  if (!match) return null;
+  const eventId = parseEventId(match[1]);
+  const entryCode = parseEntryCode(match[2]);
+  if (!eventId || !entryCode) return null;
+  return { eventId, entryCode };
+}
+
+export function canScanEventRegistrations(event, scannerUserId) {
+  const uid = parseEventUserId(scannerUserId);
+  if (!event || !uid) return false;
+  if (Number(event.createdByUserId) === uid) return true;
+  const designated = Array.isArray(event.designatedPersons) ? event.designatedPersons : [];
+  return designated.some((person) => Number(person?.userId) === uid);
+}

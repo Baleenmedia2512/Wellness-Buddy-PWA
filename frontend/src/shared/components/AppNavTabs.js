@@ -12,6 +12,7 @@ import {
   FileBarChart,
   Megaphone,
   CalendarPlus,
+  ScanLine,
 } from 'lucide-react';
 import NavTabButton from './NavTabButton';
 import { isFlagEnabled } from '../../config/featureFlags';
@@ -28,6 +29,7 @@ export default function AppNavTabs({
   onShowTestimonials,
   onShowBroadcast,
   onShowCreateEvent,
+  onShowEventCheckIn,
   onShowReports,
   reportsEnabled = false,
   /** null = fail-open (all tabs); object = role page map from DB */
@@ -176,6 +178,21 @@ export default function AppNavTabs({
           labelClass="text-emerald-800"
           label="Create Event"
           ariaLabel="Create Event"
+        />
+      )}
+      {createEventEnabled && allow('create-event') && (
+        <NavTabButton
+          onClick={onShowEventCheckIn ?? onShowCreateEvent ?? (() => {})}
+          active={activePage === 'event-check-in'}
+          activeBg="bg-emerald-100"
+          hoverBg="hover:bg-emerald-50"
+          icon={ScanLine}
+          iconActiveClass="text-emerald-800"
+          iconClass="text-emerald-700"
+          labelActiveClass="text-emerald-900"
+          labelClass="text-emerald-800"
+          label="Check-in"
+          ariaLabel="Event Check-in"
         />
       )}
     </div>

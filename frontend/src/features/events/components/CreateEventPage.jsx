@@ -8,6 +8,7 @@ import {
   updateEvent,
 } from '../services/events.api.js';
 import DesignatedPersonPicker from './DesignatedPersonPicker.jsx';
+import EventCheckInPanel from './EventCheckInPanel.jsx';
 import HostPersonPicker from './HostPersonPicker.jsx';
 
 const EMPTY_FORM = {
@@ -40,9 +41,10 @@ function formatPrice(amount) {
   return `₹${value.toFixed(2)}`;
 }
 
-export default function CreateEventPage({ user }) {
+export default function CreateEventPage({ user, initialTab = 'manage' }) {
   const [userId, setUserId] = useState(null);
   const [ready, setReady] = useState(false);
+  const [pageTab, setPageTab] = useState(initialTab === 'checkin' ? 'checkin' : 'manage');
   const [events, setEvents] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
@@ -50,6 +52,10 @@ export default function CreateEventPage({ user }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
+
+  useEffect(() => {
+    setPageTab(initialTab === 'checkin' ? 'checkin' : 'manage');
+  }, [initialTab]);
 
   useEffect(() => {
     let live = true;
@@ -161,6 +167,17 @@ export default function CreateEventPage({ user }) {
       setSaving(false);
     }
   };
+
+  if (pageTab === 'checkin') {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-4 pb-10">
+        <h1 className="text-xl font-extrabold text-green-800">Check-in</h1>
+        <div className="mt-4">
+          <EventCheckInPanel user={user} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-lg mx-auto px-4 py-4 pb-10">

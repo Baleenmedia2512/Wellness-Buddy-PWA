@@ -926,35 +926,45 @@ model events_table {
 }
 
 /// Event interest / registration form submissions (PD registration).
+/// Payment/QR fields are additive. Legacy rows keep PaymentStatus=saved with no EntryCode.
+/// Remove EntryCode/payment dual-path only after no supported client needs legacy save-only POST
+/// (confirmPayment absent) and MIN_REQUIRED no longer needs that behaviour.
 model event_registrations_table {
-  Id                       Int      @id @default(autoincrement())
+  Id                       Int       @id @default(autoincrement())
   EventId                  Int
   RegistrantUserId         Int
-  Translation              String   @db.VarChar(40)
-  PdAttendCity             String   @db.VarChar(300)
-  FoodType                 String   @db.VarChar(40)
+  Translation              String    @db.VarChar(40)
+  PdAttendCity             String    @db.VarChar(300)
+  FoodType                 String    @db.VarChar(40)
   UplinePresidentUserId    Int
-  UplinePresidentName      String   @db.VarChar(200)
+  UplinePresidentName      String    @db.VarChar(200)
   UplineMillUserId         Int
-  UplineMillName           String   @db.VarChar(200)
-  ClubNo                   String   @db.VarChar(80)
-  ZoomEmail                String   @db.VarChar(120)
-  RegistrantName           String   @db.VarChar(200)
-  IdNo                     String   @db.VarChar(80)
-  LevelName                String   @db.VarChar(80)
-  PhoneNumber              String   @db.VarChar(20)
-  ParticipantCount         Int      @default(1)
-  TicketNo                 String   @db.VarChar(80)
-  YourCity                 String   @db.VarChar(120)
+  UplineMillName           String    @db.VarChar(200)
+  ClubNo                   String    @db.VarChar(80)
+  ZoomEmail                String    @db.VarChar(120)
+  RegistrantName           String    @db.VarChar(200)
+  IdNo                     String    @db.VarChar(80)
+  LevelName                String    @db.VarChar(80)
+  PhoneNumber              String    @db.VarChar(20)
+  ParticipantCount         Int       @default(1)
+  TicketNo                 String    @db.VarChar(80)
+  EntryCode                String?   @db.VarChar(4)
+  PaymentStatus            String    @default("saved") @db.VarChar(20)
+  AmountCharged            Decimal   @default(0.00) @db.Decimal(12, 2)
+  WalletLedgerId           BigInt?
+  CheckedInAt              DateTime?
+  CheckedInByUserId        Int?
+  YourCity                 String    @db.VarChar(120)
   TeamInchargeUserId       Int
-  TeamInchargeName         String   @db.VarChar(200)
+  TeamInchargeName         String    @db.VarChar(200)
   DaicyTeamInchargeUserId  Int
-  DaicyTeamInchargeName    String   @db.VarChar(200)
-  DaicyTeamInchargeUpline  String?  @db.VarChar(400)
-  CreatedAt                DateTime @default(now())
-  UpdatedAt                DateTime @default(now()) @updatedAt
+  DaicyTeamInchargeName    String    @db.VarChar(200)
+  DaicyTeamInchargeUpline  String?   @db.VarChar(400)
+  CreatedAt                DateTime  @default(now())
+  UpdatedAt                DateTime  @default(now()) @updatedAt
 
   @@index([EventId], map: "idx_event_reg_event")
   @@index([RegistrantUserId], map: "idx_event_reg_user")
   @@index([EventId, RegistrantUserId], map: "idx_event_reg_event_user")
+  @@index([EventId, EntryCode], map: "idx_event_reg_event_entry")
 }

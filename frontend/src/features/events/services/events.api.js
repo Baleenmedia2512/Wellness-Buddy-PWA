@@ -18,6 +18,9 @@ async function readJson(res) {
   if (!res.ok || data?.success === false) {
     const error = new Error(data?.message || 'Could not save the event.');
     error.status = res.status;
+    error.code = data?.code || '';
+    error.amountRequired = data?.amountRequired;
+    error.body = data;
     throw error;
   }
   return data;
@@ -25,6 +28,12 @@ async function readJson(res) {
 
 export function listEvents(userId) {
   const url = `${endpoint()}?userId=${encodeURIComponent(userId)}`;
+  return apiFetch(url, { cache: 'no-store' }).then(readJson);
+}
+
+/** Registrable events for Wellness Events (not owner-only). */
+export function listOpenEvents(userId) {
+  const url = `${endpoint()}/open?userId=${encodeURIComponent(userId)}`;
   return apiFetch(url, { cache: 'no-store' }).then(readJson);
 }
 
@@ -67,6 +76,24 @@ export async function searchEventPeople({ userId, q }) {
 
 export function createEventRegistration(payload) {
   return apiFetch(`${endpoint()}/registrations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then(readJson);
+}
+
+export function listMyEventRegistrations(userId) {
+  const url = `${endpoint()}/registrations?userId=${encodeURIComponent(userId)}`;
+  return apiFetch(url, { cache: 'no-store' }).then(readJson);
+}
+
+export function getMyEventRegistration(userId, id) {
+  const url = `${endpoint()}/registrations?userId=${encodeURIComponent(userId)}&id=${encodeURIComponent(id)}`;
+  return apiFetch(url, { cache: 'no-store' }).then(readJson);
+}
+
+export function checkInEventRegistration(payload) {
+  return apiFetch(`${endpoint()}/check-in`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

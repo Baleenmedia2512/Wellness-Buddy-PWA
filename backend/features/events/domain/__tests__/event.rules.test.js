@@ -4,11 +4,15 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildRegistrationQrPayload,
+  computeRegistrationCharge,
+  generateEntryCode,
   normalizeEventDraft,
   normalizeEventRegistrationDraft,
   normalizeEventStatus,
   parseEventId,
   parseEventUserId,
+  parseRegistrationQrPayload,
   sanitizeEventPeopleQuery,
 } from '../event.rules.js';
 
@@ -134,5 +138,24 @@ describe('normalizeEventRegistrationDraft', () => {
     const result = normalizeEventRegistrationDraft({ eventId: 8 });
     assert.equal(result.ok, false);
     assert.ok(result.errors.length > 0);
+  });
+});
+
+describe('registration payment helpers', () => {
+  it('computes charge as ticket price times participants', () => {
+    assert.equal(computeRegistrationCharge(199.5, 2), 399);
+    assert.equal(computeRegistrationCharge(0, 1), 0);
+  });
+
+  it('builds and parses QR payload with event id and 4-digit code', () => {
+    assert.equal(buildRegistrationQrPayload(12, '4821'), '12:4821');
+    assert.deepEqual(parseRegistrationQrPayload('12:4821'), { eventId: 12, entryCode: '4821' });
+  });
+
+  it('generates a unique 4-digit entry code', () => {
+    const code = generateEntryCode(new Set(['1000', '1001']));
+    assert.match(code, /^\d{4}$/);
+    assert.notEqual(code, '1000');
+    assert.notEqual(code, '1001');
   });
 });

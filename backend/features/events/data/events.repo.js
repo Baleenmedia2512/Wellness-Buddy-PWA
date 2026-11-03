@@ -29,6 +29,7 @@ function toEvent(row) {
   if (!row) return null;
   return {
     id: row.Id,
+    createdByUserId: Number(row.CreatedByUserId) || undefined,
     eventName: row.EventName,
     hostName: row.HostName,
     place: row.Place,
@@ -91,6 +92,34 @@ export async function findActiveEventById(id) {
     where: { Id: id, IsDeleted: 0 },
   });
   return toEvent(row);
+}
+
+/** Registrable events for Wellness Events list (not owner-scoped). */
+export async function listOpenEvents() {
+  const prisma = getPrisma();
+  const rows = await prisma.events_table.findMany({
+    where: {
+      IsDeleted: 0,
+      Status: { in: ['scheduled', 'postponed'] },
+    },
+    // Only fields the list/register UI needs — keeps open-list fast.
+    select: {
+      Id: true,
+      CreatedByUserId: true,
+      EventName: true,
+      HostName: true,
+      Place: true,
+      EventDate: true,
+      TicketPrice: true,
+      SeatCount: true,
+      DesignatedPersons: true,
+      Status: true,
+      CreatedAt: true,
+      UpdatedAt: true,
+    },
+    orderBy: [{ EventDate: 'asc' }, { UpdatedAt: 'desc' }],
+  });
+  return rows.map(toEvent);
 }
 
 export async function updateOwnedEvent(id, userId, patch) {

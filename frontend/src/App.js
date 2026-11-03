@@ -1074,6 +1074,7 @@ function WellnessValleyApp() {
   const [showTestimonials, setShowTestimonials] = useState(false);
   const [showBroadcast, setShowBroadcast] = useState(false);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
+  const [createEventTab, setCreateEventTab] = useState('manage');
   const [showEvents, setShowEvents] = useState(false);
   // Reports page — common module (Ideal Weight, Wellness Score, Nutrition, Trend).
   const [showReports, setShowReports] = useState(false);
@@ -1334,9 +1335,10 @@ function WellnessValleyApp() {
         setShowCreateEvent(false);
         startTransition(() => setShowBroadcast(true));
         Session.setCurrentPage('main');
-      } else if (page === 'create-event') {
+      } else if (page === 'create-event' || page === 'event-check-in') {
         if (!isFlagEnabled('ff.create-event')) return;
         bumpTabVisitKeyRef.current('create-event');
+        setCreateEventTab(page === 'event-check-in' ? 'checkin' : 'manage');
         setShowDashboard(false);
         setShowWellnessCounselling(false);
         setShowUniversityEnrollment(false);
@@ -1349,6 +1351,7 @@ function WellnessValleyApp() {
         setShowAdminConfigSetup(false);
         setShowWellnessScore(false);
         setShowProfilePage(false);
+        setShowEvents(false);
         startTransition(() => setShowCreateEvent(true));
         Session.setCurrentPage('main');
       } else if (page === 'reports' || page === 'wellness-score-report') {
@@ -2980,7 +2983,9 @@ function WellnessValleyApp() {
         }
         break;
       case 'create-event':
+      case 'event-check-in':
         if (isFlagEnabled('ff.create-event')) {
+          setCreateEventTab(targetPage === 'event-check-in' ? 'checkin' : 'manage');
           setShowCreateEvent(true);
         }
         break;
@@ -8012,6 +8017,7 @@ function WellnessValleyApp() {
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
+          onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
         />
         <div className="ios-scroll-body">
@@ -8153,6 +8159,7 @@ function WellnessValleyApp() {
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
+          onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -8198,6 +8205,7 @@ function WellnessValleyApp() {
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
+          onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -8239,6 +8247,7 @@ function WellnessValleyApp() {
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
+          onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -8279,6 +8288,7 @@ function WellnessValleyApp() {
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
+          onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -8318,6 +8328,7 @@ function WellnessValleyApp() {
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
+          onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -8356,6 +8367,7 @@ function WellnessValleyApp() {
             onShowTestimonials={() => navigateTo('testimonials')}
             onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
+          onShowEventCheckIn={() => navigateTo('event-check-in')}
             onShowReports={() => navigateTo('reports')}
             onOpenProfile={() => navigateTo('profile')}
             profileKey={headerProfileKey}
@@ -8418,6 +8430,7 @@ function WellnessValleyApp() {
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
+          onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -8466,6 +8479,7 @@ function WellnessValleyApp() {
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
+          onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -8492,6 +8506,7 @@ function WellnessValleyApp() {
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
+          onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -8510,7 +8525,7 @@ function WellnessValleyApp() {
           user={user}
           userRole={userRole}
           allowedPages={navAccessPages}
-          activePage="create-event"
+          activePage={createEventTab === 'checkin' ? 'event-check-in' : 'create-event'}
           onShowHome={() => navigateTo('home')}
           onShowBackgroundHistory={() => navigateTo('dashboard')}
           onShowWellnessEnrollment={() => navigateTo('enrollment')}
@@ -8520,13 +8535,14 @@ function WellnessValleyApp() {
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
+          onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
           <Suspense fallback={<LoadingSpinner message="Loading Create Event..." />}>
-            <CreateEventPage user={user} />
+            <CreateEventPage user={user} initialTab={createEventTab} />
           </Suspense>
         </div>
       </div>
@@ -8696,6 +8712,7 @@ function WellnessValleyApp() {
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
+          onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -9017,6 +9034,7 @@ function WellnessValleyApp() {
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
+          onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onShowWellnessScoreSetup={() => navigateTo('wellness-score-setup')}
           wellnessScoreSetupEnabled={['admin', 'developer'].includes(userRole) && isFlagEnabled('ff.wellness-score-sheet')}
@@ -9029,7 +9047,7 @@ function WellnessValleyApp() {
             showTestimonials ? 'testimonials' :
             showEvents ? 'events' :
             showBroadcast ? 'broadcast' :
-            showCreateEvent ? 'create-event' :
+            showCreateEvent ? (createEventTab === 'checkin' ? 'event-check-in' : 'create-event') :
             showReports ? 'reports' :
             showAdminConfigSetup ? 'admin-config-setup' :
             'home'
