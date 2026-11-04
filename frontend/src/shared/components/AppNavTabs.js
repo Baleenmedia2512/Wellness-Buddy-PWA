@@ -12,6 +12,7 @@ import {
   FileBarChart,
   Megaphone,
   CalendarPlus,
+  CalendarDays,
   ScanLine,
 } from 'lucide-react';
 import NavTabButton from './NavTabButton';
@@ -21,6 +22,7 @@ import { canAccessNavPage } from '../../features/nav-page-access/domain/navAcces
 export default function AppNavTabs({
   activePage,
   onShowHome,
+  onShowEvents,
   onShowBackgroundHistory,
   onShowActivityReport,
   onShowWellnessEnrollment,
@@ -38,6 +40,8 @@ export default function AppNavTabs({
   const allow = (pageKey) => canAccessNavPage(allowedPages, pageKey);
   const broadcastEnabled = isFlagEnabled('ff.broadcast');
   const createEventEnabled = isFlagEnabled('ff.create-event');
+  // Same gate as the former Home card — do not add a new nav-access key (would hide for existing matrices).
+  const upcomingEventsEnabled = isFlagEnabled('ff.events');
 
   return (
     <div
@@ -50,6 +54,15 @@ export default function AppNavTabs({
           active={activePage === 'home'}
           icon={Home}
           label="Home"
+        />
+      )}
+      {upcomingEventsEnabled && (
+        <NavTabButton
+          onClick={onShowEvents ?? (() => {})}
+          active={activePage === 'events'}
+          icon={CalendarDays}
+          label="Events"
+          ariaLabel="Events"
         />
       )}
       {allow('dashboard') && (

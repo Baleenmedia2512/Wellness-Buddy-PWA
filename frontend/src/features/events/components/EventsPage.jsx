@@ -11,6 +11,7 @@ import { getUserId } from '../../../shared/services/getUserId.js';
 import { fetchProfile } from '../../user/services/profileService.js';
 import { getCachedProfile } from '../../user/services/user.api.js';
 import { fetchWallet } from '../../wallet/services/walletApi.js';
+import { WalletButton } from '../../wallet/index.js';
 import {
   createEventRegistration,
   EVENTS_UPDATED_EVENT,
@@ -1025,13 +1026,16 @@ function EventsPage({ user }) {
         ) : (
           <>
             <header className="mb-4">
-              <div className="flex items-center gap-3">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100">
-                  <CalendarDays className="h-6 w-6 text-emerald-800" aria-hidden="true" />
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100">
+                  <CalendarDays className="h-5 w-5 text-emerald-800" aria-hidden="true" />
                 </span>
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Wellness Events</h1>
-                  <p className="text-sm text-gray-600">Register, pay from wallet, and keep your QR in My Booking.</p>
+                <h1 className="min-w-0 flex-1 text-xl font-bold leading-tight text-gray-900 sm:text-2xl">
+                  Upcoming Events
+                </h1>
+                {/* Same wallet as Profile — compact, right side only. */}
+                <div className="shrink-0">
+                  <WalletButton userId={viewerUserId} variant="events" />
                 </div>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl border border-gray-200 bg-white p-1 text-xs font-semibold">

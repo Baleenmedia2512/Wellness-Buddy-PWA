@@ -11,7 +11,6 @@ import {
   uniqueWalletIdentity,
   WALLET_FLAG,
   WALLET_OTP_BCRYPT_COST,
-  WALLET_OTP_MINUTES,
 } from '../domain/wallet.rules.js';
 import * as walletRepo from '../data/wallet.repo.js';
 import { findActivePersonByUserId } from '../data/people.repo.js';
@@ -77,7 +76,6 @@ export async function requestWalletCash(body) {
     approverId: approver.UserId,
     amount,
     otpHash,
-    expiresMinutes: WALLET_OTP_MINUTES,
   });
   if (!inserted?.Id) {
     throw new ValidationError(500, 'Could not start the cash request');
@@ -87,7 +85,7 @@ export async function requestWalletCash(body) {
     otp,
     requesterName: requester.UserName,
     amountLabel: formatWalletAmount(amount),
-    expiresMinutes: WALLET_OTP_MINUTES,
+    requesterPhone: requester.PhoneNumber,
   });
 
   scheduleWalletOtpMail(() => sendWalletOtpMail({

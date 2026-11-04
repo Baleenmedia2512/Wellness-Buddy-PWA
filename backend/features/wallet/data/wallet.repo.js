@@ -9,7 +9,7 @@ import {
   REQUEST_STATUS_CANCELLED,
   REQUEST_STATUS_EXPIRED,
   REQUEST_STATUS_PENDING,
-  WALLET_OTP_MINUTES,
+  WALLET_OTP_NO_EXPIRY_AT,
 } from '../domain/wallet.rules.js';
 
 const CREATE_WALLETS_SQL = `CREATE TABLE IF NOT EXISTS wallets_table (
@@ -129,7 +129,7 @@ export async function findPendingByRequesterId(requesterId) {
   const rows = await getPrisma().$queryRawUnsafe(
     `SELECT Id, RequesterId, ApproverId, Amount, OtpHash, OtpExpiresAt, OtpSentAt,
             OtpAttempts, Status, RequestedAt, ProcessedAt,
-            (OtpExpiresAt <= UTC_TIMESTAMP()) AS IsExpired
+            0 AS IsExpired
      FROM wallet_cash_requests_table
      WHERE RequesterId = ? AND Status = ?
      ORDER BY Id DESC
@@ -169,23 +169,21 @@ export async function insertCashRequest({
   approverId,
   amount,
   otpHash,
-  expiresMinutes = WALLET_OTP_MINUTES,
 }) {
   await ensureTables();
   const prisma = getPrisma();
   const uid = Number(requesterId);
-  const minutes = Number.parseInt(String(expiresMinutes), 10);
-  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
-    throw new Error('Invalid wallet OTP expiry');
-  }
+  // OtpExpiresAt is NOT NULL on the table; store a far sentinel. Time expiry is off —
+  // pending ends only via Cancel, verify, or max attempts.
   await prisma.$executeRawUnsafe(
     `INSERT INTO wallet_cash_requests_table
       (RequesterId, ApproverId, Amount, OtpHash, OtpExpiresAt, OtpSentAt, OtpAttempts, Status, RequestedAt)
-     VALUES (?, ?, ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL ${minutes} MINUTE), NULL, 0, ?, UTC_TIMESTAMP())`,
+     VALUES (?, ?, ?, ?, ?, NULL, 0, ?, UTC_TIMESTAMP())`,
     uid,
     Number(approverId),
     Number(amount),
     String(otpHash),
+    WALLET_OTP_NO_EXPIRY_AT,
     REQUEST_STATUS_PENDING,
   );
   return findPendingByRequesterId(uid);
