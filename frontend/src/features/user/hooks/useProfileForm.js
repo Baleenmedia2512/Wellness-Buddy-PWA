@@ -157,9 +157,11 @@ export default function useProfileForm(initial = {}) {
       body.communityId = normalizeCommunityId(communityId);
     }
 
-    if (workingPhysicalCentreId && String(workingPhysicalCentreId).trim() !== '') {
-      body.workingPhysicalCentreId = String(workingPhysicalCentreId).trim();
-    }
+    // Always send so Save can persist a selection and clear with None.
+    // Old backends that ignore unknown fields stay safe; new backends only update when key is present.
+    body.workingPhysicalCentreId = workingPhysicalCentreId && String(workingPhysicalCentreId).trim() !== ''
+      ? String(workingPhysicalCentreId).trim()
+      : null;
 
     if (fatPercentValid) {
       body.bodyFat = parseFloat(bodyMetrics.fatPercent);

@@ -224,6 +224,29 @@ export function validateUpdateProfile(body) {
     bcmProfileReviewed = raw === true || raw === 'true' || raw === 1 || raw === '1';
   }
 
+  // Working Physical Centre preference — optional; old clients omit it (leave unchanged).
+  let workingPhysicalCentreId;
+  if (
+    'workingPhysicalCentreId' in body
+    || 'WorkingPhysicalCentreId' in body
+    || 'working_physical_centre_id' in body
+  ) {
+    const raw = body.workingPhysicalCentreId !== undefined
+      ? body.workingPhysicalCentreId
+      : (body.WorkingPhysicalCentreId !== undefined
+        ? body.WorkingPhysicalCentreId
+        : body.working_physical_centre_id);
+    if (raw == null || raw === '') {
+      workingPhysicalCentreId = null;
+    } else {
+      const id = Number(raw);
+      if (!Number.isFinite(id) || id <= 0 || !Number.isInteger(id)) {
+        throw new ValidationError(400, 'Invalid workingPhysicalCentreId.');
+      }
+      workingPhysicalCentreId = id;
+    }
+  }
+
   return {
     email,
     userId: resolvedUserId,
@@ -249,6 +272,7 @@ export function validateUpdateProfile(body) {
     recoveredHealthIssues,
     transformationPhotos,
     bcmProfileReviewed,
+    workingPhysicalCentreId,
   };
 }
 

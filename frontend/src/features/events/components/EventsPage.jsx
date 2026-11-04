@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { getUserId } from '../../../shared/services/getUserId.js';
 import { fetchProfile } from '../../user/services/profileService.js';
+import { getCachedProfile } from '../../user/services/user.api.js';
 import { fetchWallet } from '../../wallet/services/walletApi.js';
 import {
   createEventRegistration,
@@ -122,6 +123,9 @@ const YOUR_CITY_OPTIONS = [
   'BANGALORE',
 ];
 
+/** Default PD Attend City — always allowed alongside the event place. */
+const ATTEND_CITY_ONLINE = 'online';
+
 const registrationFieldBase =
   'mt-2 box-border w-full max-w-full min-w-0 min-h-11 rounded-lg border bg-white px-3 py-2.5 text-base leading-normal text-gray-900 outline-none focus:ring-2';
 
@@ -134,6 +138,26 @@ const registrationInputClass = (hasError) =>
 
 function toSelectOptions(values) {
   return values.map((value) => ({ value, label: value }));
+}
+
+function isAttendOnline(value) {
+  return String(value || '').trim().toLowerCase() === ATTEND_CITY_ONLINE;
+}
+
+function buildAttendCityOptions(place) {
+  const options = [ATTEND_CITY_ONLINE];
+  const trimmedPlace = String(place || '').trim();
+  if (trimmedPlace && !isAttendOnline(trimmedPlace)) {
+    options.push(trimmedPlace);
+  }
+  return options;
+}
+
+function toAttendCitySelectOptions(values) {
+  return values.map((value) => ({
+    value,
+    label: isAttendOnline(value) ? 'Online' : value,
+  }));
 }
 
 function formatTicketPrice(value) {
@@ -179,6 +203,9 @@ function buildRegistrationDefaults(profileData, user, userId) {
   const dietPreference = pickProfileText(
     data.dietType,
     data.DietType,
+    data.dietPreference,
+    data.DietPreference,
+    data?.counselling?.dietType,
     user?.dietType,
     user?.DietType,
   );
@@ -213,12 +240,20 @@ function buildRegistrationDefaults(profileData, user, userId) {
       user?.userId,
     ),
     clubNo: pickProfileText(
+      // Prefer Community / Team ID when present (existing behaviour).
       data.communityId,
       data.CommunityId,
       data.teamId,
       data.TeamId,
       user?.communityId,
       user?.CommunityId,
+      // Else use Profile Working Physical Centre (name, then id).
+      data?.workingPhysicalCentre?.name,
+      data?.workingPhysicalCentre?.Name,
+      data?.workingPhysicalCentre?.id != null
+        ? String(data.workingPhysicalCentre.id)
+        : '',
+      data?.WorkingPhysicalCentre?.name,
     ),
     foodType: mapDietPreferenceToFoodType(dietPreference),
   };
@@ -280,6 +315,12 @@ function EventsPage({ user }) {
         setEvents(Array.isArray(result.events) ? result.events : []);
         setLoading(false);
 
+        // Instant defaults from shared profile cache (Home/Header often already loaded it).
+        const cached = getCachedProfile({ userId, email: user?.email });
+        if (cached?.data) {
+          setProfileDefaults(buildRegistrationDefaults(cached.data, user, userId));
+        }
+
         // Profile defaults load in the background for the registration form only.
         fetchProfile({ userId })
           .then((profileResult) => {
@@ -315,6 +356,17 @@ function EventsPage({ user }) {
     setFoodType(defaults?.foodType || '');
   };
 
+  // Profile often arrives after Register is already open — fill empty personal fields only.
+  useEffect(() => {
+    if (!selectedEvent || registrationStep !== 'form') return;
+    if (profileDefaults?.foodType) {
+      setFoodType((prev) => prev || profileDefaults.foodType);
+    }
+    if (profileDefaults?.clubNo) {
+      setClubNo((prev) => prev || profileDefaults.clubNo);
+    }
+  }, [profileDefaults, selectedEvent, registrationStep]);
+
   const resetRegistrationForm = (options = {}) => {
     const { keepPersonalDefaults = false } = options;
     if (keepPersonalDefaults) {
@@ -331,7 +383,7 @@ function EventsPage({ user }) {
     setTicketNo('');
     setYourCity('');
     setTranslation('');
-    setAttendCity('');
+    setAttendCity(ATTEND_CITY_ONLINE);
     setUplinePresidentTeam(null);
     setUplineMillTeam(null);
     setTeamIncharge(null);
@@ -396,8 +448,8 @@ function EventsPage({ user }) {
     if (!participantCount) nextErrors.participantCount = 'This is a required question';
     if (!trimmedTicketNo) nextErrors.ticketNo = 'This is a required question';
     if (!yourCity) nextErrors.yourCity = 'This is a required question';
-    if (attendCity && place && attendCity !== place) {
-      nextErrors.attendCity = 'Choose the event city';
+    if (attendCity && place && attendCity !== place && !isAttendOnline(attendCity)) {
+      nextErrors.attendCity = 'Choose the event city or Online';
     }
     if (!viewerUserId || !selectedEvent?.id) {
       nextErrors.name = 'Could not identify your account or event.';
@@ -476,9 +528,7 @@ function EventsPage({ user }) {
     }
   };
 
-  const attendCityOptions = selectedEvent?.place
-    ? [String(selectedEvent.place).trim()].filter(Boolean)
-    : [];
+  const attendCityOptions = buildAttendCityOptions(selectedEvent?.place);
 
   return (
     <main className="min-h-full overflow-x-hidden bg-gray-50 px-3 py-5 sm:px-5">
@@ -616,7 +666,7 @@ function EventsPage({ user }) {
                       name="attendCity"
                       required
                       value={attendCity}
-                      options={toSelectOptions(attendCityOptions)}
+                      options={toAttendCitySelectOptions(attendCityOptions)}
                       hasError={Boolean(formErrors.attendCity)}
                       onChange={(next) => {
                         setAttendCity(next);

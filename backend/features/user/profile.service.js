@@ -261,7 +261,8 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
 
   let workingPhysicalCentre = { id: null, name: null, options: [] };
   try {
-    workingPhysicalCentre = await getWorkingPhysicalCentre(user.UserId);
+    const preferredCentreId = await repo.getWorkingPhysicalCentrePreference(user.UserId);
+    workingPhysicalCentre = await getWorkingPhysicalCentre(user.UserId, preferredCentreId);
   } catch (err) {
     logger.warn('[profile] working physical centre lookup failed', {
       userId: user.UserId,
@@ -476,7 +477,8 @@ export async function updateProfile(input) {
   const {
     email, userId: inputUserId, name, height, bmr, dietType, profileImage, phoneNumber, gender,
     weightGoalMode, physicalActivityLevel, communityId, timezoneIana, bodyFat,
-    currentWeight, transformationPhotos, bcmProfileReviewed = undefined, appVersion = null,
+    currentWeight, transformationPhotos, bcmProfileReviewed = undefined,
+    workingPhysicalCentreId = undefined, appVersion = null,
   } = input;
   const deferCommunityId = shouldDeferCommunityIdToOtpFlow({
     flagEnabled: isEnabled(COMMUNITY_ID_OTP_FLAG),
@@ -589,6 +591,24 @@ export async function updateProfile(input) {
   } else if (avatarDataUri) {
     await persistAvatarKey(userId, avatarDataUri, { clearProfileImage: skipProfileImageBase64 });
     try { cache.delete(cacheKeys.userAvatar(userId)); } catch { /* non-fatal */ }
+  }
+
+  // Optional Working Physical Centre preference — old clients omit → leave unchanged.
+  if (workingPhysicalCentreId !== undefined) {
+    if (workingPhysicalCentreId != null) {
+      const { findCenterById } = await import('../nutrition-centers/centers.repository.js');
+      const { data: centreRow, error: centreErr } = await findCenterById(workingPhysicalCentreId);
+      if (centreErr || !centreRow) {
+        throw new Error('Invalid Working Physical Centre. Please choose a valid club.');
+      }
+    }
+    const savedPref = await repo.setWorkingPhysicalCentrePreference(userId, workingPhysicalCentreId);
+    if (!savedPref) {
+      logger.warn('[profile/update] WorkingPhysicalCentreId column missing; preference not saved', {
+        userId,
+        workingPhysicalCentreId,
+      });
+    }
   }
 
   if (hasTransformPhotoIncoming) {

@@ -32,6 +32,10 @@ jest.mock('../../../user/services/profileService.js', () => ({
   fetchProfile: jest.fn(),
 }));
 
+jest.mock('../../../user/services/user.api.js', () => ({
+  getCachedProfile: jest.fn(() => null),
+}));
+
 jest.mock('../../../wallet/services/walletApi.js', () => ({
   fetchWallet: jest.fn(),
 }));
@@ -161,8 +165,10 @@ describe('EventsPage', () => {
     const yourCitySelect = container.querySelector('select[name="yourCity"]');
     expect(nameInput).not.toBeNull();
     expect(foodTypeSelect.value).toBe('VEG');
+    expect(attendCitySelect.value).toBe('online');
 
     act(() => Simulate.change(translationSelect, { target: { value: 'TAMIL' } }));
+    // Event place remains selectable; Online is the default.
     act(() => Simulate.change(attendCitySelect, { target: { value: 'Community Hall' } }));
     await pickMemberBySearch('event-registration-upline-president', 'President');
     await pickMemberBySearch('event-registration-upline-mill', 'Mill');

@@ -181,6 +181,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           if (data?.teamId) return String(data.teamId).trim();
           return '';
         })(),
+        workingPhysicalCentreId: data?.workingPhysicalCentre?.id != null
+          ? String(data.workingPhysicalCentre.id)
+          : '',
         bodyMetrics: data?.bodyMetrics || null,
         recoveredHealthIssues: Array.isArray(data?.recoveredHealthIssues)
           ? data.recoveredHealthIssues
