@@ -93,26 +93,37 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
   const [isVisible, setIsVisible] = useState(() => (readCache(userId)?.length ?? 0) > 0);
   const [hasEntered, setHasEntered] = useState(() => (readCache(userId)?.length ?? 0) > 0);
   const [expandedAvatar, setExpandedAvatar] = useState(null);
+  const [showTenDay, setShowTenDay] = useState(false);
+  const [tenDayData, setTenDayData] = useState([]);
+  const [tenDayStatus, setTenDayStatus] = useState('idle');
   const isTile = variant === 'tile';
+  const showTenDayRef = useRef(false);
   const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
     enabled: !isTile && isVisible && leaderboardData.length > 0,
   });
 
-  const fetchInFlightRef = useRef(false);
+  const fetchInFlightRef = useRef({ 1: false, 10: false });
 
-  const fetchLeaderboard = useCallback(async () => {
+  const fetchLeaderboard = useCallback(async (days = 1) => {
+    const windowDays = days === 10 ? 10 : 1;
     const emailTrim = String(email || '').trim();
     if ((userId == null || userId === '') && !emailTrim) {
-      setLeaderboardData([]);
-      setIsVisible(false);
+      if (windowDays === 10) {
+        setTenDayData([]);
+        setTenDayStatus('empty');
+      } else {
+        setLeaderboardData([]);
+        setIsVisible(false);
+      }
       return;
     }
-    if (fetchInFlightRef.current) return;
-    fetchInFlightRef.current = true;
+    if (fetchInFlightRef.current[windowDays]) return;
+    fetchInFlightRef.current[windowDays] = true;
     try {
       const params = new URLSearchParams({
         topN: String(topN),
       });
+      if (windowDays === 10) params.set('days', '10');
       if (userId != null && userId !== '') params.set('userId', String(userId));
       if (emailTrim) params.set('email', emailTrim);
       const response = await fetch(
@@ -127,6 +138,18 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
 
       const result = await response.json();
 
+      if (windowDays === 10) {
+        if (result.success && result.data?.length > 0) {
+          setTenDayData(toAscendingRankOrder(result.data));
+          setTenDayStatus('ready');
+        } else {
+          debugLog('[WELLNESS-LB] No 10-day data:', result.message || 'Empty');
+          setTenDayData([]);
+          setTenDayStatus(result.success ? 'empty' : 'error');
+        }
+        return;
+      }
+
       if (result.success && result.data?.length > 0) {
         const ordered = toAscendingRankOrder(result.data);
         setLeaderboardData(ordered);
@@ -139,18 +162,40 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
       }
     } catch (error) {
       console.error('[WELLNESS-LB] Error fetching data:', error);
-      setLeaderboardData([]);
-      setIsVisible(false);
+      if (windowDays === 10) {
+        setTenDayData([]);
+        setTenDayStatus('error');
+      } else {
+        setLeaderboardData([]);
+        setIsVisible(false);
+      }
     } finally {
-      fetchInFlightRef.current = false;
+      fetchInFlightRef.current[windowDays] = false;
     }
   }, [apiBaseUrl, topN, userId, email]);
 
+  const refreshBoards = useCallback(() => {
+    fetchLeaderboard(1);
+    if (showTenDayRef.current) fetchLeaderboard(10);
+  }, [fetchLeaderboard]);
+
+  const toggleTenDay = useCallback(() => {
+    if (showTenDayRef.current) {
+      showTenDayRef.current = false;
+      setShowTenDay(false);
+      return;
+    }
+    showTenDayRef.current = true;
+    setShowTenDay(true);
+    setTenDayStatus((status) => (status === 'ready' ? status : 'loading'));
+    fetchLeaderboard(10);
+  }, [fetchLeaderboard]);
+
   useImperativeHandle(ref, () => ({
-    refresh: fetchLeaderboard,
+    refresh: refreshBoards,
   }));
 
-  useRaceLeaderboardRealtime(fetchLeaderboard);
+  useRaceLeaderboardRealtime(refreshBoards);
 
   useEffect(() => {
     const cached = readCache(userId);
@@ -158,24 +203,24 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
       setLeaderboardData(cached);
       setIsVisible(true);
     }
-    fetchLeaderboard();
+    fetchLeaderboard(1);
     const retryEmpty = setTimeout(() => {
       if (userId == null || userId === '') return;
-      if (!readCache(userId)?.length) fetchLeaderboard();
+      if (!readCache(userId)?.length) fetchLeaderboard(1);
     }, 1600);
-    const stopInterval = setVisibilityAwareInterval(fetchLeaderboard, POLL_MS);
+    const stopInterval = setVisibilityAwareInterval(refreshBoards, POLL_MS);
     return () => {
       clearTimeout(retryEmpty);
       stopInterval();
     };
-  }, [fetchLeaderboard, userId]);
+  }, [fetchLeaderboard, refreshBoards, userId]);
 
   useEffect(() => {
     return subscribeDailyWellnessScoreSeed(() => {
       // Any local score seed — refresh Top 10 immediately (race scoreboard).
-      fetchLeaderboard();
+      refreshBoards();
     });
-  }, [fetchLeaderboard]);
+  }, [refreshBoards]);
 
   // Smooth enter once data is ready
   useEffect(() => {
@@ -311,24 +356,47 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
   };
 
   if (isTile) {
+    const tileRows = showTenDay ? tenDayData : leaderboardData;
+    const tileSubtitle = showTenDay ? 'Last 10 days' : "Today's ranking";
     return (
       <section
         className={`mx-1 rounded-2xl border border-violet-100 bg-white p-3 shadow-sm transition-opacity duration-500 ease-out ${
           hasEntered ? 'opacity-100' : 'opacity-0'
         }`}
-        aria-label={`Top ${topN} Wellness Score`}
+        aria-label={showTenDay ? `Top ${topN} Wellness Score, last 10 days` : `Top ${topN} Wellness Score`}
       >
         <header className="mb-1 flex items-center gap-2 border-b border-violet-50 pb-2">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100" aria-hidden>
             <Trophy className="h-4 w-4 text-violet-700" />
           </span>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h3 className="text-sm font-bold text-violet-900">Top {topN} Wellness Score</h3>
-            <p className="text-[11px] text-violet-700/80">Today&apos;s ranking</p>
+            <p className="text-[11px] text-violet-700/80">{tileSubtitle}</p>
           </div>
+          <button
+            type="button"
+            className="ml-auto shrink-0 rounded-lg bg-violet-50 px-2.5 py-1.5 text-center text-[11px] font-semibold leading-tight text-violet-700"
+            onClick={toggleTenDay}
+            aria-pressed={showTenDay}
+          >
+            {showTenDay ? 'Show today' : (
+              <>
+                <span className="block"> Last 10 days</span>
+              </>
+            )}
+          </button>
         </header>
         <ul className="divide-y divide-violet-50">
-          {leaderboardData.map(renderTileRow)}
+          {showTenDay && tenDayStatus === 'loading' && tileRows.length === 0 && (
+            <li className="py-3 text-center text-xs text-violet-700">Loading last 10 days…</li>
+          )}
+          {showTenDay && tenDayStatus === 'empty' && (
+            <li className="py-3 text-center text-xs text-gray-500">No scores in the last 10 days.</li>
+          )}
+          {showTenDay && tenDayStatus === 'error' && (
+            <li className="py-3 text-center text-xs text-gray-500">Could not load last 10 days.</li>
+          )}
+          {tileRows.map(renderTileRow)}
         </ul>
         {avatarViewer}
       </section>
