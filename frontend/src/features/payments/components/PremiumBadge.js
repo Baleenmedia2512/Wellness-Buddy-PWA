@@ -27,6 +27,24 @@ export function PremiumHeaderTag() {
   );
 }
 
+/**
+ * Blue-to-purple ring around a paid member's profile photo.
+ * Pass enabled={false} to render the photo with no ring.
+ */
+export function PremiumAvatarRing({ enabled = true, children }) {
+  if (!enabled) return children;
+  return (
+    <span
+      className="inline-flex flex-shrink-0 rounded-full bg-[conic-gradient(from_210deg,#2563eb,#38bdf8,#c084fc,#7c3aed,#2563eb)] p-[3px] shadow-[0_0_10px_rgba(99,102,241,0.55)]"
+      data-testid="premium-avatar-ring"
+    >
+      <span className="inline-flex rounded-full bg-white p-[2px]">
+        {children}
+      </span>
+    </span>
+  );
+}
+
 /** Small crown on the avatar corner. Only for very narrow phones with no room for the tag. */
 export function PremiumCrownMark() {
   return (

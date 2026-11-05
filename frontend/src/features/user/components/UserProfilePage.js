@@ -54,7 +54,7 @@ import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
 import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked, validateHeightCm } from '../domain/heightChange';
 import { looksLikeEmail } from '../domain/onboardingEmail';
 import GoPremiumButton from '../../payments/components/GoPremiumButton';
-import PremiumBadge from '../../payments/components/PremiumBadge';
+import PremiumBadge, { PremiumAvatarRing } from '../../payments/components/PremiumBadge';
 import usePremiumStatus from '../../payments/hooks/usePremiumStatus';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
@@ -680,48 +680,50 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
 
         {/* Avatar — tap photo to view; Edit badge to change */}
         <div className="flex items-center gap-4">
-          <div className="relative w-20 h-20 flex-shrink-0 rounded-full overflow-hidden shadow-lg border-[3px] border-white">
-            <TouchFeedbackButton
-              type="button"
-              onClick={() => {
-                if (isUploadingPhoto || isSaving) return;
-                if (profileImagePreview) setShowPhotoViewer(true);
-                else setShowChangePhotoModal(true);
-              }}
-              disabled={isUploadingPhoto || isSaving}
-              className="w-full h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-70"
-              ariaLabel={profileImagePreview ? 'View profile photo' : 'Add profile photo'}
-              title={profileImagePreview ? 'View profile photo' : 'Add profile photo'}
-            >
-              {profileImagePreview ? (
-                <img
-                  src={profileImagePreview}
-                  alt={displayName}
-                  className="w-full h-full object-cover pointer-events-none"
-                  loading="lazy"
-                  decoding="async"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className={`w-full h-full flex items-center justify-center text-white font-bold text-3xl ${colorOf(form.name, accountEmail)}`}>
-                  {initialOf(form.name || user?.displayName || user?.name, accountEmail)}
-                </div>
-              )}
-            </TouchFeedbackButton>
-            <TouchFeedbackButton
-              type="button"
-              onClick={() => {
-                if (!isUploadingPhoto && !isSaving) setShowChangePhotoModal(true);
-              }}
-              disabled={isUploadingPhoto || isSaving}
-              className="absolute inset-x-0 bottom-0 rounded-b-full bg-black/45 text-white text-[10px] font-semibold py-0.5 flex items-center justify-center gap-1"
-              ariaLabel="Change profile photo"
-              title="Change profile photo"
-            >
-              <Camera className="w-3 h-3" />
-              {isUploadingPhoto ? '…' : 'Edit'}
-            </TouchFeedbackButton>
-          </div>
+          <PremiumAvatarRing enabled={isPremiumMember}>
+            <div className={`relative w-20 h-20 flex-shrink-0 rounded-full overflow-hidden shadow-lg ${isPremiumMember ? '' : 'border-[3px] border-white'}`}>
+              <TouchFeedbackButton
+                type="button"
+                onClick={() => {
+                  if (isUploadingPhoto || isSaving) return;
+                  if (profileImagePreview) setShowPhotoViewer(true);
+                  else setShowChangePhotoModal(true);
+                }}
+                disabled={isUploadingPhoto || isSaving}
+                className="w-full h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-70"
+                ariaLabel={profileImagePreview ? 'View profile photo' : 'Add profile photo'}
+                title={profileImagePreview ? 'View profile photo' : 'Add profile photo'}
+              >
+                {profileImagePreview ? (
+                  <img
+                    src={profileImagePreview}
+                    alt={displayName}
+                    className="w-full h-full object-cover pointer-events-none"
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className={`w-full h-full flex items-center justify-center text-white font-bold text-3xl ${colorOf(form.name, accountEmail)}`}>
+                    {initialOf(form.name || user?.displayName || user?.name, accountEmail)}
+                  </div>
+                )}
+              </TouchFeedbackButton>
+              <TouchFeedbackButton
+                type="button"
+                onClick={() => {
+                  if (!isUploadingPhoto && !isSaving) setShowChangePhotoModal(true);
+                }}
+                disabled={isUploadingPhoto || isSaving}
+                className="absolute inset-x-0 bottom-0 rounded-b-full bg-black/45 text-white text-[10px] font-semibold py-0.5 flex items-center justify-center gap-1"
+                ariaLabel="Change profile photo"
+                title="Change profile photo"
+              >
+                <Camera className="w-3 h-3" />
+                {isUploadingPhoto ? '…' : 'Edit'}
+              </TouchFeedbackButton>
+            </div>
+          </PremiumAvatarRing>
           <div className="flex-1 min-w-0">
             <p className="text-xl font-bold text-white truncate">{displayName}</p>
             <p className="text-sm text-green-100 truncate">{accountEmail || user?.email}</p>

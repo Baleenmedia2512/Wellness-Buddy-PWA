@@ -8,7 +8,7 @@ import { getProfile } from "../../features/user/services/user.api";
 import { isFlagEnabled } from "../../config/featureFlags";
 import { canAccessReportsModule } from "../../features/reports/domain/reportsAccess.rules.js";
 import { hasValidProfileName } from "../../features/user/domain/profileCompleteness";
-import { PremiumCrownMark, PremiumHeaderTag } from "../../features/payments/components/PremiumBadge";
+import { PremiumAvatarRing, PremiumCrownMark, PremiumHeaderTag } from "../../features/payments/components/PremiumBadge";
 import usePremiumStatus from "../../features/payments/hooks/usePremiumStatus";
 import * as Session from "../services/sessionStorage";
 
@@ -135,7 +135,7 @@ const Header = ({
     <img
       src={headerAvatarSrc}
       alt="User Avatar"
-      className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm pointer-events-none"
+      className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full shadow-sm pointer-events-none ${isPremiumMember ? '' : 'border border-gray-300'}`}
       loading="lazy"
       decoding="async"
       draggable="false"
@@ -225,23 +225,23 @@ const Header = ({
         {/* Profile avatar — tap to navigate to full profile page */}
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           {isPremiumMember ? <PremiumHeaderTag /> : null}
-          <TouchFeedbackButton
-            type="button"
-            onClick={(e) => {
-              if (e && typeof e.preventDefault === 'function') e.preventDefault();
-              if (typeof onOpenProfile === 'function') onOpenProfile();
-            }}
-            className="focus:outline-none rounded-full"
-            title="My Profile"
-            ariaLabel="My Profile"
-          >
-            {isPremiumMember ? (
-              <span className="relative inline-flex">
+          <span className="relative inline-flex">
+            <PremiumAvatarRing enabled={isPremiumMember}>
+              <TouchFeedbackButton
+                type="button"
+                onClick={(e) => {
+                  if (e && typeof e.preventDefault === 'function') e.preventDefault();
+                  if (typeof onOpenProfile === 'function') onOpenProfile();
+                }}
+                className="focus:outline-none rounded-full"
+                title="My Profile"
+                ariaLabel="My Profile"
+              >
                 {avatarNode}
-                <PremiumCrownMark />
-              </span>
-            ) : avatarNode}
-          </TouchFeedbackButton>
+              </TouchFeedbackButton>
+            </PremiumAvatarRing>
+            {isPremiumMember ? <PremiumCrownMark /> : null}
+          </span>
         </div>
       </div>
 
