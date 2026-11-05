@@ -388,3 +388,12 @@ registerFlag({
   description:    'Profile Go Premium opens Cashfree checkout. Kill switch hides the row and the create-order API.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.report-trial',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-05',
+  removeBy:       '2027-05-05',
+  description:    'Reports stay open. Unpaid detail is hidden until a 14-day trial or Premium. Kill switch. Version routing: app 3.5.5+ is gated; older or missing versions keep the full report.',
+  defaultEnabled: true,
+});

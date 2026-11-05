@@ -17,6 +17,8 @@ import React, { useCallback, useEffect, useRef, useState, startTransition } from
 import { RefreshCw } from 'lucide-react';
 import { isFlagEnabled } from '../../../config/featureFlags';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import useReportAccess from '../hooks/useReportAccess';
+import ReportAccessBanner from './ReportAccessBanner';
 import DownlineWeightReport from './DownlineWeightReport';
 import WellnessScoreReport from './WellnessScoreReport';
 import ReportsMemberSearch from './ReportsMemberSearch';
@@ -55,6 +57,11 @@ export default function ReportsDashboard({
   initialTab = REPORT_DASHBOARD_TABS.IDEAL_WEIGHT,
 }) {
   const wellnessScoreEnabled = isFlagEnabled('ff.wellness-score-sheet');
+  const trialEnabled = isFlagEnabled('ff.report-trial');
+  const reportUserId = user?.id || user?.UserId || user?.userId || null;
+  const reportAccess = useReportAccess(trialEnabled ? reportUserId : null);
+  const detailsLocked = trialEnabled && !reportAccess.canSeeDetails;
+  const couldSeeDetailsRef = useRef(false);
   const [activeTab, setActiveTab] = useState(() =>
     resolveReportsDashboardTab(initialTab, wellnessScoreEnabled),
   );
@@ -101,6 +108,14 @@ export default function ReportsDashboard({
     (api) => bindTabRefresh(REPORT_DASHBOARD_TABS.TREND, api),
     [bindTabRefresh],
   );
+
+  useEffect(() => {
+    const canSee = reportAccess.canSeeDetails;
+    if (trialEnabled && canSee && !couldSeeDetailsRef.current) {
+      Object.values(refreshFnsRef.current).forEach((refresh) => refresh?.());
+    }
+    couldSeeDetailsRef.current = canSee;
+  }, [reportAccess.canSeeDetails, trialEnabled]);
 
   useEffect(() => {
     const next = resolveReportsDashboardTab(initialTab, wellnessScoreEnabled);
@@ -218,6 +233,22 @@ export default function ReportsDashboard({
             </button>
           </div>
 
+          {trialEnabled && reportAccess.loaded ? (
+            <ReportAccessBanner
+              access={reportAccess.access}
+              daysLeft={reportAccess.daysLeft}
+              error={reportAccess.error}
+              starting={reportAccess.starting}
+              onStartTrial={reportAccess.startTrial}
+              onRetry={reportAccess.refresh}
+              userId={reportUserId}
+              onPremiumCheck={async () => {
+                const next = await reportAccess.refresh();
+                return next?.access === 'premium';
+              }}
+            />
+          ) : null}
+
           {nutritionMounted && (
             <div className={`mt-3 ${nutritionActive ? '' : 'hidden'}`}>
               <ReportsMemberSearch
@@ -254,6 +285,7 @@ export default function ReportsDashboard({
           user={user}
           tabVisitKey={tabVisitKey}
           hidePageTitle
+          hideDetails={detailsLocked}
           onRefreshRegister={bindIdealRefresh}
         />
       </div>
@@ -270,6 +302,7 @@ export default function ReportsDashboard({
             user={user}
             tabVisitKey={tabVisitKey}
             hidePageTitle
+            hideDetails={detailsLocked}
             embeddedStickyClass={embeddedStickyClass}
             onRefreshRegister={bindWellnessRefresh}
           />
@@ -284,12 +317,14 @@ export default function ReportsDashboard({
           hidden={!nutritionActive}
           className={nutritionActive ? undefined : 'hidden'}
         >
-          <ReportsNutritionTab
-            key={`nutrition-${nutritionMemberKey}`}
-            user={user}
-            selectedMember={nutritionMember}
-            onRefreshRegister={bindNutritionRefresh}
-          />
+          {detailsLocked ? null : (
+            <ReportsNutritionTab
+              key={`nutrition-${nutritionMemberKey}`}
+              user={user}
+              selectedMember={nutritionMember}
+              onRefreshRegister={bindNutritionRefresh}
+            />
+          )}
         </div>
       )}
 
@@ -301,12 +336,14 @@ export default function ReportsDashboard({
           hidden={!trendActive}
           className={trendActive ? undefined : 'hidden'}
         >
-          <ReportsTrendTab
-            user={user}
-            selectedMember={trendMember}
-            onRefreshRegister={bindTrendRefresh}
-            onDisplayTitleChange={setTrendDisplayTitle}
-          />
+          {detailsLocked ? null : (
+            <ReportsTrendTab
+              user={user}
+              selectedMember={trendMember}
+              onRefreshRegister={bindTrendRefresh}
+              onDisplayTitleChange={setTrendDisplayTitle}
+            />
+          )}
         </div>
       )}
     </div>

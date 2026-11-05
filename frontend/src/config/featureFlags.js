@@ -200,6 +200,14 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Profile Go Premium opens Cashfree checkout.',
   },
+
+  // Reports detail trial. Kill switch shows the full report again.
+  'ff.report-trial': {
+    envKey:         'REACT_APP_FF_REPORT_TRIAL',
+    storageKey:     'ff.report-trial',
+    defaultEnabled: true,
+    description:    'Unpaid report details stay hidden until a 14-day trial or Premium.',
+  },
 });
 
 function readStorage(key) {
