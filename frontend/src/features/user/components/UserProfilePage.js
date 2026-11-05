@@ -54,7 +54,7 @@ import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
 import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked, validateHeightCm } from '../domain/heightChange';
 import { looksLikeEmail } from '../domain/onboardingEmail';
 import GoPremiumButton from '../../payments/components/GoPremiumButton';
-import PremiumBadge, { PremiumAvatarRing } from '../../payments/components/PremiumBadge';
+import { PremiumAvatarRing } from '../../payments/components/PremiumBadge';
 import usePremiumStatus from '../../payments/hooks/usePremiumStatus';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
@@ -681,7 +681,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         {/* Avatar — tap photo to view; Edit badge to change */}
         <div className="flex items-center gap-4">
           <PremiumAvatarRing enabled={isPremiumMember}>
-            <div className={`relative w-20 h-20 flex-shrink-0 rounded-full overflow-hidden shadow-lg ${isPremiumMember ? '' : 'border-[3px] border-white'}`}>
+            <div className={`relative aspect-square h-20 w-20 flex-shrink-0 overflow-hidden rounded-full shadow-lg ${isPremiumMember ? '' : 'border-[3px] border-white'}`}>
               <TouchFeedbackButton
                 type="button"
                 onClick={() => {
@@ -731,7 +731,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-900">
                 {role}
               </span>
-              {isPremiumMember ? <PremiumBadge /> : null}
               {displayWeightGoalMode && (
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border
                   ${displayWeightGoalMode === 'loss' ? 'bg-red-100 border-red-300 text-red-700' : displayWeightGoalMode === 'gain' ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-green-100 border-green-300 text-green-700'}`}>

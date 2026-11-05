@@ -29,12 +29,11 @@ function renderHeader(props = {}) {
 }
 
 describe('Header premium crown', () => {
-  it('shows the crown on the avatar for a Premium member', () => {
+  it('shows the ring on the avatar for a Premium member and no Premium tag', () => {
     usePremiumStatus.mockReturnValue({ premium: true, refresh: jest.fn() });
     const view = renderHeader();
-    const tag = view.container.querySelector('[data-testid="premium-header-tag"]');
-    expect(tag).not.toBeNull();
-    expect(tag.textContent).toMatch(/Premium/);
+    expect(view.container.querySelector('[data-testid="premium-header-tag"]')).toBeNull();
+    expect(view.container.textContent).not.toMatch(/Premium/);
     expect(view.container.querySelector('[data-testid="premium-avatar-ring"]')).not.toBeNull();
     expect(view.container.querySelector('[data-testid="premium-crown"]')).not.toBeNull();
     view.unmount();
@@ -44,7 +43,6 @@ describe('Header premium crown', () => {
     usePremiumStatus.mockReturnValue({ premium: false, refresh: jest.fn() });
     const view = renderHeader();
     expect(view.container.querySelector('[data-testid="premium-crown"]')).toBeNull();
-    expect(view.container.querySelector('[data-testid="premium-header-tag"]')).toBeNull();
     expect(view.container.querySelector('[data-testid="premium-avatar-ring"]')).toBeNull();
     expect(view.container.querySelector('button[aria-label="My Profile"]')).not.toBeNull();
     view.unmount();

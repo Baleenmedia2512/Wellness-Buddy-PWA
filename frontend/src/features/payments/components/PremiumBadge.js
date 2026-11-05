@@ -14,19 +14,6 @@ export default function PremiumBadge() {
   );
 }
 
-/** Crown + "Premium" in the free space beside the Home header avatar. Hidden on very narrow phones. */
-export function PremiumHeaderTag() {
-  return (
-    <span
-      className="hidden min-[340px]:inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-amber-100 border border-amber-300 px-2 py-1 text-xs font-bold leading-none text-amber-900"
-      data-testid="premium-header-tag"
-    >
-      <Crown className="w-3 h-3" aria-hidden />
-      Premium
-    </span>
-  );
-}
-
 /**
  * Blue-to-purple ring around a paid member's profile photo.
  * Pass enabled={false} to render the photo with no ring.
@@ -35,10 +22,10 @@ export function PremiumAvatarRing({ enabled = true, children }) {
   if (!enabled) return children;
   return (
     <span
-      className="inline-flex flex-shrink-0 rounded-full bg-[conic-gradient(from_210deg,#2563eb,#38bdf8,#c084fc,#7c3aed,#2563eb)] p-[3px] shadow-[0_0_10px_rgba(99,102,241,0.55)]"
+      className="inline-flex aspect-square shrink-0 items-center justify-center rounded-full bg-[conic-gradient(from_210deg,#2563eb,#38bdf8,#c084fc,#7c3aed,#2563eb)] p-[3px] leading-none"
       data-testid="premium-avatar-ring"
     >
-      <span className="inline-flex rounded-full bg-white p-[2px]">
+      <span className="flex aspect-square h-full w-full items-center justify-center overflow-hidden rounded-full bg-white p-[2px] leading-none">
         {children}
       </span>
     </span>
