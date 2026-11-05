@@ -21,15 +21,20 @@ export default function ReportAccessBanner({
   onRetry,
   userId,
   onPremiumCheck,
+  centered = false,
 }) {
+  const row = centered
+    ? 'flex flex-col items-center justify-center gap-4 text-center'
+    : 'mt-3 flex items-center justify-between gap-3';
+
   if (error) {
     return (
-      <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+      <div className={`${row} ${centered ? '' : 'rounded-xl border border-amber-200 bg-amber-50 px-3 py-2'}`}>
         <p className="text-sm text-amber-950" role="alert">{error}</p>
         <TouchFeedbackButton
           onClick={onRetry}
           ariaLabel="Try again"
-          className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-amber-950"
+          className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-amber-950 border border-amber-200"
         >
           Try again
         </TouchFeedbackButton>
@@ -41,7 +46,7 @@ export default function ReportAccessBanner({
 
   if (access === 'trial') {
     return (
-      <p className="mt-3 text-sm font-semibold text-teal-800">
+      <p className={`${centered ? 'text-center' : 'mt-3'} text-sm font-semibold text-teal-800`}>
         {daysLeftLabel(daysLeft)}
       </p>
     );
@@ -49,7 +54,7 @@ export default function ReportAccessBanner({
 
   if (access === 'ended') {
     return (
-      <div className="mt-3 flex items-center justify-between gap-3">
+      <div className={row}>
         <p className="text-sm font-semibold text-gray-800">Free trial ended</p>
         <GoPremiumButton
           userId={userId}
@@ -61,13 +66,13 @@ export default function ReportAccessBanner({
   }
 
   return (
-    <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2">
+    <div className={`${row} ${centered ? '' : 'rounded-xl border border-teal-200 bg-teal-50 px-3 py-2'}`}>
       <p className="text-sm font-semibold text-teal-950">Free trial for 14 days</p>
       <TouchFeedbackButton
         onClick={onStartTrial}
         disabled={starting}
         ariaLabel="Start free trial"
-        className="shrink-0 rounded-full bg-teal-700 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60"
+        className="shrink-0 rounded-full bg-teal-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
       >
         {starting ? 'Starting' : 'Start free trial'}
       </TouchFeedbackButton>

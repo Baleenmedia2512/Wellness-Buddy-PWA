@@ -160,8 +160,10 @@ export default function ReportsDashboard({
 
   return (
     <div className="min-h-full bg-gray-50 flex flex-col">
+      {detailsLocked ? null : (
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200">
         <div className="max-w-6xl mx-auto w-full px-3 sm:px-4 pt-3 pb-3">
+          {detailsLocked ? null : (
           <div className="flex items-center gap-2">
             <h1 className="flex-1 min-w-0 text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
               {pageTitle}
@@ -175,7 +177,9 @@ export default function ReportsDashboard({
               <RefreshCw className={`h-4 w-4 text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} />
             </TouchFeedbackButton>
           </div>
+          )}
 
+          {detailsLocked ? null : (
           <div
             className="mt-3 bg-white rounded-xl border border-gray-200 shadow-sm p-1 flex gap-1 w-full"
             role="tablist"
@@ -232,8 +236,9 @@ export default function ReportsDashboard({
               <span className="truncate">Trend</span>
             </button>
           </div>
+          )}
 
-          {trialEnabled && reportAccess.loaded ? (
+          {trialEnabled && reportAccess.loaded && !detailsLocked ? (
             <ReportAccessBanner
               access={reportAccess.access}
               daysLeft={reportAccess.daysLeft}
@@ -249,7 +254,7 @@ export default function ReportsDashboard({
             />
           ) : null}
 
-          {nutritionMounted && (
+          {!detailsLocked && nutritionMounted && (
             <div className={`mt-3 ${nutritionActive ? '' : 'hidden'}`}>
               <ReportsMemberSearch
                 user={user}
@@ -260,7 +265,7 @@ export default function ReportsDashboard({
               />
             </div>
           )}
-          {trendMounted && (
+          {!detailsLocked && trendMounted && (
             <div className={`mt-3 ${trendActive ? '' : 'hidden'}`}>
               <ReportsMemberSearch
                 user={user}
@@ -273,7 +278,28 @@ export default function ReportsDashboard({
           )}
         </div>
       </div>
+      )}
 
+      {detailsLocked && trialEnabled && reportAccess.loaded ? (
+        <div className="flex flex-1 items-center justify-center px-6 min-h-[70vh]">
+          <ReportAccessBanner
+            centered
+            access={reportAccess.access}
+            daysLeft={reportAccess.daysLeft}
+            error={reportAccess.error}
+            starting={reportAccess.starting}
+            onStartTrial={reportAccess.startTrial}
+            onRetry={reportAccess.refresh}
+            userId={reportUserId}
+            onPremiumCheck={async () => {
+              const next = await reportAccess.refresh();
+              return next?.access === 'premium';
+            }}
+          />
+        </div>
+      ) : null}
+
+      {!detailsLocked && (
       <div
         id="reports-panel-ideal-weight"
         role="tabpanel"
@@ -289,8 +315,9 @@ export default function ReportsDashboard({
           onRefreshRegister={bindIdealRefresh}
         />
       </div>
+      )}
 
-      {wellnessScoreEnabled && wellnessScoreMounted && (
+      {!detailsLocked && wellnessScoreEnabled && wellnessScoreMounted && (
         <div
           id="reports-panel-wellness-score"
           role="tabpanel"
@@ -309,7 +336,7 @@ export default function ReportsDashboard({
         </div>
       )}
 
-      {nutritionMounted && (
+      {!detailsLocked && nutritionMounted && (
         <div
           id="reports-panel-nutrition"
           role="tabpanel"
@@ -328,7 +355,7 @@ export default function ReportsDashboard({
         </div>
       )}
 
-      {trendMounted && (
+      {!detailsLocked && trendMounted && (
         <div
           id="reports-panel-trend"
           role="tabpanel"
