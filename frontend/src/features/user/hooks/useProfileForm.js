@@ -60,6 +60,9 @@ export default function useProfileForm(initial = {}) {
   const [email, setEmail] = useState(initial.email || '');
   const [communityId, setCommunityId] = useState(initial.communityId || '');
   const [workingPhysicalCentreId, setWorkingPhysicalCentreId] = useState(initial.workingPhysicalCentreId || '');
+  const [eventTranslation, setEventTranslation] = useState(initial.eventTranslation || '');
+  const [eventYourCity, setEventYourCity] = useState(initial.eventYourCity || '');
+  const [eventLevel, setEventLevel] = useState(initial.eventLevel || '');
   const [bodyMetrics, setBodyMetrics] = useState(() => metricsFromProfile(initial));
   const [recoveredHealthIssues, setRecoveredHealthIssues] = useState(() => (
     Array.isArray(initial.recoveredHealthIssues) ? initial.recoveredHealthIssues : []
@@ -86,6 +89,9 @@ export default function useProfileForm(initial = {}) {
     setEmail(p.email ?? '');
     setCommunityId(p.communityId != null ? String(p.communityId) : '');
     setWorkingPhysicalCentreId(p.workingPhysicalCentreId != null ? String(p.workingPhysicalCentreId) : '');
+    setEventTranslation(p.eventTranslation ? String(p.eventTranslation) : '');
+    setEventYourCity(p.eventYourCity ? String(p.eventYourCity) : '');
+    setEventLevel(p.eventLevel ? String(p.eventLevel) : '');
     setBodyMetrics(metricsFromProfile(p));
     setRecoveredHealthIssues(
       Array.isArray(p.recoveredHealthIssues) ? p.recoveredHealthIssues : [],
@@ -163,6 +169,17 @@ export default function useProfileForm(initial = {}) {
       ? String(workingPhysicalCentreId).trim()
       : null;
 
+    // Always send so Save persists / clears. Old backends ignore unknown keys.
+    body.eventTranslation = eventTranslation && String(eventTranslation).trim() !== ''
+      ? String(eventTranslation).trim()
+      : null;
+    body.eventYourCity = eventYourCity && String(eventYourCity).trim() !== ''
+      ? String(eventYourCity).trim()
+      : null;
+    body.eventLevel = eventLevel && String(eventLevel).trim() !== ''
+      ? String(eventLevel).trim()
+      : null;
+
     if (fatPercentValid) {
       body.bodyFat = parseFloat(bodyMetrics.fatPercent);
     }
@@ -178,6 +195,9 @@ export default function useProfileForm(initial = {}) {
     email, setEmail,
     communityId, setCommunityId,
     workingPhysicalCentreId, setWorkingPhysicalCentreId,
+    eventTranslation, setEventTranslation,
+    eventYourCity, setEventYourCity,
+    eventLevel, setEventLevel,
     bodyMetrics,
     setBodyMetricField,
     recoveredHealthIssues,

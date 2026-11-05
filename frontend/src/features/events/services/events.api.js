@@ -99,3 +99,12 @@ export function checkInEventRegistration(payload) {
     body: JSON.stringify(payload),
   }).then(readJson);
 }
+
+/** Entry pass Report — emails guest + coach; does not verify check-in. */
+export function reportEventCheckInMisuse(payload) {
+  return apiFetch(`${endpoint()}/check-in-report`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then(readJson);
+}

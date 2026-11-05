@@ -42,27 +42,33 @@ export default function RegistrationQrCard({ qrPayload, entryCode, eventName, co
 
   if (compact) {
     return (
-      <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3 text-center">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
-          Entry QR
+      <div className="rounded-xl border border-emerald-200 bg-white px-4 py-5 text-center shadow-[0_8px_24px_-18px_rgba(6,95,70,0.35)]">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-800">
+          Scan to enter
         </p>
-        {entryCode ? (
-          <p className="mt-1 text-3xl font-bold tracking-[0.25em] text-emerald-950">{entryCode}</p>
-        ) : null}
         {dataUrl ? (
-          <img
-            src={dataUrl}
-            alt={`Entry QR ${entryCode || ''}`.trim()}
-            className="mx-auto mt-3 h-44 w-44 rounded-lg border border-white bg-white shadow-sm"
-          />
+          <div className="mx-auto mt-3.5 inline-flex rounded-lg border border-emerald-100 bg-white p-3 shadow-[0_10px_30px_-18px_rgba(15,31,24,0.28)]">
+            <img
+              src={dataUrl}
+              alt={`Entry QR ${entryCode || ''}`.trim()}
+              className="h-48 w-48 rounded-md bg-white"
+            />
+          </div>
         ) : (
-          <p className="mt-3 text-sm text-gray-600" role="status">
+          <p className="mt-4 text-sm text-gray-600" role="status">
             {error || 'Preparing QR…'}
           </p>
         )}
-        {qrPayload ? (
-          <p className="mt-2 break-all text-[11px] text-gray-500">{qrPayload}</p>
+        {entryCode ? (
+          <p className="mt-3.5 text-base font-semibold tracking-wide text-emerald-950">
+            {/^\d{4}$/.test(String(entryCode))
+              ? String(entryCode).split('').join(' ')
+              : String(entryCode)}
+          </p>
         ) : null}
+        <p className="mt-3 text-xs font-medium text-emerald-800">
+          Show this QR at the entrance
+        </p>
       </div>
     );
   }

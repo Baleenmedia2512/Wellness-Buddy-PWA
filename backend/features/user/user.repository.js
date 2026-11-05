@@ -671,6 +671,73 @@ export async function setWorkingPhysicalCentrePreference(userId, centreId) {
 }
 
 /**
+ * Soft-load event registration prefs (Translation / Your City / Level).
+ * @returns {Promise<{ eventTranslation: string|null, eventYourCity: string|null, eventLevel: string|null }>}
+ */
+export async function getEventProfilePreferences(userId) {
+  const empty = { eventTranslation: null, eventYourCity: null, eventLevel: null };
+  try {
+    const prisma = getPrisma();
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT EventTranslation, EventYourCity, EventLevel
+       FROM team_table WHERE UserId = ? LIMIT 1`,
+      Number(userId),
+    );
+    const row = rows?.[0];
+    if (!row) return empty;
+    return {
+      eventTranslation: row.EventTranslation ? String(row.EventTranslation).trim() : null,
+      eventYourCity: row.EventYourCity ? String(row.EventYourCity).trim() : null,
+      eventLevel: row.EventLevel ? String(row.EventLevel).trim() : null,
+    };
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/EventTranslation|EventYourCity|EventLevel|Unknown column|1054|column/i.test(msg)) {
+      return empty;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Save event registration prefs. Soft no-op if columns missing.
+ * Only updates keys that are explicitly provided (undefined = leave unchanged).
+ * @returns {Promise<boolean>}
+ */
+export async function setEventProfilePreferences(userId, prefs = {}) {
+  const sets = [];
+  const values = [];
+  if (prefs.eventTranslation !== undefined) {
+    sets.push('EventTranslation = ?');
+    values.push(prefs.eventTranslation);
+  }
+  if (prefs.eventYourCity !== undefined) {
+    sets.push('EventYourCity = ?');
+    values.push(prefs.eventYourCity);
+  }
+  if (prefs.eventLevel !== undefined) {
+    sets.push('EventLevel = ?');
+    values.push(prefs.eventLevel);
+  }
+  if (sets.length === 0) return true;
+  try {
+    const prisma = getPrisma();
+    await prisma.$executeRawUnsafe(
+      `UPDATE team_table SET ${sets.join(', ')} WHERE UserId = ?`,
+      ...values,
+      Number(userId),
+    );
+    return true;
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/EventTranslation|EventYourCity|EventLevel|Unknown column|1054|column|Update payload is empty/i.test(msg)) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/**
  * After email-adopt: move BCM cards + copy empty profile metrics from the
  * phone stub onto the recovered email account so Complete Profile prefills.
  *

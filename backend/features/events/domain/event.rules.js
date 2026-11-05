@@ -90,7 +90,10 @@ export function normalizeEventDraft(raw) {
   const input = raw && typeof raw === 'object' ? raw : {};
   const eventName = cleanText(input.eventName);
   const hostName = cleanText(input.hostName ?? input.host);
-  const place = cleanText(input.place);
+  // Place remains the city/location used by registration attend-city options.
+  const place = cleanText(input.place) || cleanText(input.city);
+  // Venue is additive — old clients can omit it; create UI collects it.
+  const venue = cleanText(input.venue);
   const eventDate = parseEventDate(input.eventDate ?? input.date);
   const ticketPrice = parseTicketPrice(input.ticketPrice);
   const seatCount = parseSeatCount(input.seatCount);
@@ -103,8 +106,12 @@ export function normalizeEventDraft(raw) {
   if (!hostName) errors.push('Host is required.');
   else if (hostName.length > NAME_MAX) errors.push(`Host must be ${NAME_MAX} characters or fewer.`);
 
-  if (!place) errors.push('Place is required.');
-  else if (place.length > PLACE_MAX) errors.push(`Place must be ${PLACE_MAX} characters or fewer.`);
+  if (!place) errors.push('City is required.');
+  else if (place.length > PLACE_MAX) errors.push(`City must be ${PLACE_MAX} characters or fewer.`);
+
+  if (venue && venue.length > PLACE_MAX) {
+    errors.push(`Venue must be ${PLACE_MAX} characters or fewer.`);
+  }
 
   if (!eventDate) errors.push('Date is required.');
   if (ticketPrice == null) errors.push('Ticket price must be a number with up to 2 decimal places.');
@@ -118,6 +125,7 @@ export function normalizeEventDraft(raw) {
       eventName,
       hostName,
       place,
+      venue: venue || null,
       eventDate,
       ticketPrice,
       seatCount,
@@ -218,7 +226,7 @@ export function normalizeEventRegistrationDraft(raw) {
 
   if (!eventId) errors.push('Event is required.');
   if (!TRANSLATION_OPTIONS.includes(translation)) errors.push('Translation is required.');
-  if (!attendCity || attendCity.length > PLACE_MAX) errors.push('PD Attend City is required.');
+  if (!attendCity || attendCity.length > PLACE_MAX) errors.push('Attending City is required.');
   if (!FOOD_TYPE_OPTIONS.includes(foodType)) errors.push('Food Type is required.');
   if (uplinePresident.error) errors.push(uplinePresident.error);
   if (uplineMill.error) errors.push(uplineMill.error);
@@ -228,12 +236,15 @@ export function normalizeEventRegistrationDraft(raw) {
   }
   if (!name || name.length > NAME_MAX) errors.push('Name is required.');
   if (!idNo || idNo.length > 80) errors.push('ID No is required.');
-  if (!LEVEL_OPTIONS.includes(level)) errors.push('Level is required.');
+  if (!LEVEL_OPTIONS.includes(level)) errors.push('Community Position is required.');
   if (!phoneNumber || phoneNumber.length > 20) errors.push('Phone Number is required.');
   if (!Number.isInteger(participantCount) || participantCount < 1 || participantCount > 10) {
     errors.push('No of Participant must be from 1 to 10.');
   }
-  if (!ticketNo || ticketNo.length > 80) errors.push('PD Ticket No is required.');
+  if (!ticketNo || ticketNo.length > 80) errors.push('Your Ticket Number is required.');
+  if (ticketNo && ticketNo.includes(':')) {
+    errors.push('Your Ticket Number cannot contain ":".');
+  }
   if (!yourCity || yourCity.length > 120) errors.push('Your City is required.');
   if (teamIncharge.error) errors.push(teamIncharge.error);
   if (daicyTeamIncharge.error) errors.push(daicyTeamIncharge.error);
@@ -272,7 +283,10 @@ export function computeRegistrationCharge(ticketPrice, participantCount) {
   return Math.round(price * count * 100) / 100;
 }
 
-/** Four-digit entry code 1000–9999. */
+/**
+ * Legacy helper — new paid registrations use the guest's Ticket Number as EntryCode.
+ * Kept so older tests / tooling that still call it do not break.
+ */
 export function generateEntryCode(existingCodes = new Set()) {
   const used = existingCodes instanceof Set ? existingCodes : new Set(existingCodes || []);
   for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -286,13 +300,18 @@ export function generateEntryCode(existingCodes = new Set()) {
   return null;
 }
 
+/**
+ * Entry / check-in identity. Accepts the guest ticket number (new) and legacy 4-digit codes.
+ * Colon is reserved as the QR payload separator.
+ */
 export function parseEntryCode(raw) {
   const text = String(raw ?? '').trim();
-  if (!/^\d{4}$/.test(text)) return null;
+  if (!text || text.length > 80) return null;
+  if (text.includes(':')) return null;
   return text;
 }
 
-/** QR payload: eventId:entryCode — keeps 4-digit codes unique per event only. */
+/** QR payload: eventId:entryCode — unique per event (ticket number or legacy 4-digit). */
 export function buildRegistrationQrPayload(eventId, entryCode) {
   const id = parseEventId(eventId);
   const code = parseEntryCode(entryCode);
@@ -302,7 +321,7 @@ export function buildRegistrationQrPayload(eventId, entryCode) {
 
 export function parseRegistrationQrPayload(raw) {
   const text = String(raw ?? '').trim();
-  const match = /^(\d+):(\d{4})$/.exec(text);
+  const match = /^(\d+):(.+)$/.exec(text);
   if (!match) return null;
   const eventId = parseEventId(match[1]);
   const entryCode = parseEntryCode(match[2]);

@@ -112,10 +112,29 @@ export function validateEventCheckIn(body) {
   const entryCode = fromQr?.entryCode || parseEntryCode(body?.entryCode);
   if (!eventId) throw new ValidationError(400, 'Event id is required.');
   if (!entryCode) throw new ValidationError(400, 'Entry code is required.');
+  // Additive: missing/unknown type → entry (legacy clients unchanged).
+  const checkInType = String(body?.checkInType || 'entry').trim().toLowerCase() === 'food'
+    ? 'food'
+    : 'entry';
   return {
     userId,
     eventId,
     entryCode,
+    checkInType,
     markCheckedIn: body?.markCheckedIn !== false,
+  };
+}
+
+/** Entry-pass Report only — same event/code rules as check-in; never verifies. */
+export function validateEventCheckInReport(body) {
+  const base = validateEventCheckIn({
+    ...body,
+    checkInType: 'entry',
+    markCheckedIn: false,
+  });
+  return {
+    userId: base.userId,
+    eventId: base.eventId,
+    entryCode: base.entryCode,
   };
 }

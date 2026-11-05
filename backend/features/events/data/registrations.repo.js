@@ -40,6 +40,8 @@ function toRegistration(row) {
     walletLedgerId: row.WalletLedgerId != null ? Number(row.WalletLedgerId) : null,
     checkedInAt: row.CheckedInAt || null,
     checkedInByUserId: row.CheckedInByUserId != null ? Number(row.CheckedInByUserId) : null,
+    foodCheckedInAt: row.FoodCheckedInAt || null,
+    foodCheckedInByUserId: row.FoodCheckedInByUserId != null ? Number(row.FoodCheckedInByUserId) : null,
     yourCity: row.YourCity,
     teamIncharge: {
       userId: row.TeamInchargeUserId,
@@ -86,8 +88,24 @@ export async function ensureRegistrationPaymentColumns() {
       if (!(await columnExists(prisma, 'EntryCode'))) {
         await prisma.$executeRawUnsafe(
           `ALTER TABLE event_registrations_table
-           ADD COLUMN EntryCode VARCHAR(4) NULL AFTER TicketNo`,
+           ADD COLUMN EntryCode VARCHAR(80) NULL AFTER TicketNo`,
         );
+      } else {
+        // Widen legacy VARCHAR(4) so guest ticket numbers can be stored as EntryCode.
+        const lengthRows = await prisma.$queryRawUnsafe(
+          `SELECT CHARACTER_MAXIMUM_LENGTH AS len
+           FROM information_schema.COLUMNS
+           WHERE TABLE_SCHEMA = DATABASE()
+             AND TABLE_NAME = 'event_registrations_table'
+             AND COLUMN_NAME = 'EntryCode'`,
+        );
+        const len = Number(Array.isArray(lengthRows) ? lengthRows[0]?.len : 0);
+        if (len > 0 && len < 80) {
+          await prisma.$executeRawUnsafe(
+            `ALTER TABLE event_registrations_table
+             MODIFY COLUMN EntryCode VARCHAR(80) NULL`,
+          );
+        }
       }
       if (!(await columnExists(prisma, 'PaymentStatus'))) {
         await prisma.$executeRawUnsafe(
@@ -117,6 +135,19 @@ export async function ensureRegistrationPaymentColumns() {
         await prisma.$executeRawUnsafe(
           `ALTER TABLE event_registrations_table
            ADD COLUMN CheckedInByUserId INT NULL AFTER CheckedInAt`,
+        );
+      }
+      // Food check-in is additive — same QR as entry; separate verify stamp.
+      if (!(await columnExists(prisma, 'FoodCheckedInAt'))) {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE event_registrations_table
+           ADD COLUMN FoodCheckedInAt DATETIME NULL AFTER CheckedInByUserId`,
+        );
+      }
+      if (!(await columnExists(prisma, 'FoodCheckedInByUserId'))) {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE event_registrations_table
+           ADD COLUMN FoodCheckedInByUserId INT NULL AFTER FoodCheckedInAt`,
         );
       }
       if (!(await indexExists(prisma, 'uq_event_reg_event_entry'))) {
@@ -278,6 +309,41 @@ export async function findRegistrationByIdForUser(id, userId) {
   return toRegistration(row);
 }
 
+async function loadFoodCheckInFields(id) {
+  const registrationId = Number(id);
+  if (!Number.isInteger(registrationId) || registrationId <= 0) {
+    return { foodCheckedInAt: null, foodCheckedInByUserId: null };
+  }
+  try {
+    const prisma = getPrisma();
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT FoodCheckedInAt, FoodCheckedInByUserId
+       FROM event_registrations_table
+       WHERE Id = ?
+       LIMIT 1`,
+      registrationId,
+    );
+    const row = Array.isArray(rows) ? rows[0] : null;
+    return {
+      foodCheckedInAt: row?.FoodCheckedInAt || null,
+      foodCheckedInByUserId: row?.FoodCheckedInByUserId != null
+        ? Number(row.FoodCheckedInByUserId)
+        : null,
+    };
+  } catch (error) {
+    logger.warn('event registration food check-in load skipped', {
+      message: error?.message || String(error),
+    });
+    return { foodCheckedInAt: null, foodCheckedInByUserId: null };
+  }
+}
+
+async function withFoodCheckIn(registration) {
+  if (!registration) return null;
+  const food = await loadFoodCheckInFields(registration.id);
+  return { ...registration, ...food };
+}
+
 export async function findRegistrationByEventAndEntryCode(eventId, entryCode) {
   await ensureRegistrationPaymentColumns();
   const prisma = getPrisma();
@@ -287,7 +353,79 @@ export async function findRegistrationByEventAndEntryCode(eventId, entryCode) {
       EntryCode: String(entryCode),
     },
   });
-  return toRegistration(row);
+  return withFoodCheckIn(toRegistration(row));
+}
+
+/** Profile Community ID for a registrant (not UserId). Additive lookup for check-in pass. */
+export async function findCommunityIdForUser(userId) {
+  const brief = await findTeamUserBrief(userId);
+  return brief?.communityId || null;
+}
+
+/** Height (cm) for guest Ideal Weight on check-in pass. */
+export async function findTeamUserHeightCm(userId) {
+  const uid = Number(userId);
+  if (!Number.isInteger(uid) || uid <= 0) return null;
+  const prisma = getPrisma();
+  const row = await prisma.team_table.findFirst({
+    where: { UserId: uid },
+    select: { Height: true },
+  });
+  const height = parseFloat(row?.Height);
+  if (!Number.isFinite(height) || height < 50 || height > 250) return null;
+  return height;
+}
+
+/** Guest profile email + coach contact for entry misuse Report emails. */
+export async function findGuestCoachContacts(userId) {
+  const uid = Number(userId);
+  if (!Number.isInteger(uid) || uid <= 0) {
+    return { guestEmail: null, guestName: null, coachEmail: null, coachName: null };
+  }
+  const prisma = getPrisma();
+  const guest = await prisma.team_table.findFirst({
+    where: { UserId: uid },
+    select: { UserId: true, UserName: true, Email: true, CoachId: true },
+  });
+  if (!guest) {
+    return { guestEmail: null, guestName: null, coachEmail: null, coachName: null };
+  }
+  const guestEmail = String(guest.Email || '').trim() || null;
+  const guestName = String(guest.UserName || '').trim() || null;
+  const coachId = Number(guest.CoachId);
+  if (!Number.isInteger(coachId) || coachId <= 0) {
+    return { guestEmail, guestName, coachEmail: null, coachName: null };
+  }
+  const coach = await prisma.team_table.findFirst({
+    where: { UserId: coachId },
+    select: { UserName: true, Email: true },
+  });
+  return {
+    guestEmail,
+    guestName,
+    coachEmail: String(coach?.Email || '').trim() || null,
+    coachName: String(coach?.UserName || '').trim() || null,
+  };
+}
+
+/** Name + Community ID for check-in pass / verified-by (not UserId as the display id). */
+export async function findTeamUserBrief(userId) {
+  const uid = Number(userId);
+  if (!Number.isInteger(uid) || uid <= 0) return null;
+  const prisma = getPrisma();
+  const row = await prisma.team_table.findFirst({
+    where: { UserId: uid },
+    select: { UserId: true, UserName: true, CommunityId: true, CoachTeamId: true },
+  });
+  if (!row) return null;
+  const communityId = String(row.CommunityId || '').trim()
+    || String(row.CoachTeamId || '').trim()
+    || null;
+  return {
+    userId: Number(row.UserId),
+    name: String(row.UserName || '').trim() || null,
+    communityId,
+  };
 }
 
 export async function markRegistrationCheckedIn(id, checkedInByUserId) {
@@ -303,5 +441,25 @@ export async function markRegistrationCheckedIn(id, checkedInByUserId) {
   const row = await prisma.event_registrations_table.findFirst({
     where: { Id: Number(id) },
   });
-  return toRegistration(row);
+  return withFoodCheckIn(toRegistration(row));
+}
+
+/** Food counter verify — same registration / QR as entry; separate stamp. */
+export async function markRegistrationFoodCheckedIn(id, checkedInByUserId) {
+  await ensureRegistrationPaymentColumns();
+  const prisma = getPrisma();
+  const registrationId = Number(id);
+  const byUserId = Number(checkedInByUserId);
+  await prisma.$executeRawUnsafe(
+    `UPDATE event_registrations_table
+     SET FoodCheckedInAt = ?, FoodCheckedInByUserId = ?
+     WHERE Id = ?`,
+    new Date(),
+    byUserId,
+    registrationId,
+  );
+  const row = await prisma.event_registrations_table.findFirst({
+    where: { Id: registrationId },
+  });
+  return withFoodCheckIn(toRegistration(row));
 }

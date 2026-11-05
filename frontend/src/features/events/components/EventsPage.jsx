@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { getUserId } from '../../../shared/services/getUserId.js';
 import { fetchProfile } from '../../user/services/profileService.js';
+import { pickEventProfilePrefs } from '../../user/domain/eventProfilePrefs.js';
 import { getCachedProfile } from '../../user/services/user.api.js';
 import { fetchWallet } from '../../wallet/services/walletApi.js';
 import { WalletButton } from '../../wallet/index.js';
@@ -74,55 +75,13 @@ function SoldOutSign({ className = '' }) {
   );
 }
 
-const TRANSLATION_OPTIONS = [
-  'TAMIL',
-  'ENGLISH',
-  'MALAYALAM',
-  'HINDI',
-  'TELUGU',
-  'KANNADA',
-];
-
 const FOOD_TYPE_OPTIONS = [
   'VEG',
   'NON VEG',
   'VEG & NON VEG',
 ];
 
-const LEVEL_OPTIONS = [
-  'PC',
-  'ASSOCIATE',
-  'SV',
-  'WT',
-  'AWT',
-  'GET TEAM',
-  '2500 GET TEAM',
-  'MILL TEAM',
-  'PT',
-];
-
-const YOUR_CITY_OPTIONS = [
-  'OTHER COUNTRY',
-  'OTHER CITY',
-  'CHENNAI',
-  'COIMBATORE',
-  'ERODE',
-  'HOSUR',
-  'KERALA',
-  'KUMBAKONAM',
-  'MADURAI',
-  'NELLAI',
-  'PERAMBALUR',
-  'PATTUKOTTAI',
-  'PONDY',
-  'RAJAPALAYAM',
-  'SALEM',
-  'TRICHY',
-  'VELLORE',
-  'VILLUPURAM',
-  'MUMBAI',
-  'BANGALORE',
-];
+/** Profile-autofilled fields stay in state + API payload; not shown on the form UI. */
 
 /** Default PD Attend City — always allowed alongside the event place. */
 const ATTEND_CITY_ONLINE = 'online';
@@ -136,10 +95,6 @@ const registrationInputClass = (hasError) =>
       ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-100'
       : 'border-gray-300 focus:border-emerald-600 focus:ring-emerald-100'
   }`;
-
-function toSelectOptions(values) {
-  return values.map((value) => ({ value, label: value }));
-}
 
 function isAttendOnline(value) {
   return String(value || '').trim().toLowerCase() === ATTEND_CITY_ONLINE;
@@ -232,31 +187,28 @@ function buildRegistrationDefaults(profileData, user, userId) {
       user?.PhoneNumber,
       user?.phone,
     ),
+    // Community ID field on the form — from Profile Community ID.
     idNo: pickProfileText(
-      data.userId,
-      data.UserId,
-      userId,
-      user?.id,
-      user?.UserId,
-      user?.userId,
-    ),
-    clubNo: pickProfileText(
-      // Prefer Community / Team ID when present (existing behaviour).
       data.communityId,
       data.CommunityId,
-      data.teamId,
-      data.TeamId,
       user?.communityId,
       user?.CommunityId,
-      // Else use Profile Working Physical Centre (name, then id).
+    ),
+    // Club No — from Profile Working Physical Centre (name, then id).
+    clubNo: pickProfileText(
       data?.workingPhysicalCentre?.name,
       data?.workingPhysicalCentre?.Name,
+      data?.WorkingPhysicalCentre?.name,
+      data?.WorkingPhysicalCentre?.Name,
       data?.workingPhysicalCentre?.id != null
         ? String(data.workingPhysicalCentre.id)
         : '',
-      data?.WorkingPhysicalCentre?.name,
+      data?.WorkingPhysicalCentre?.id != null
+        ? String(data.WorkingPhysicalCentre.id)
+        : '',
     ),
     foodType: mapDietPreferenceToFoodType(dietPreference),
+    ...pickEventProfilePrefs(data),
   };
 }
 
@@ -355,16 +307,28 @@ function EventsPage({ user }) {
     setIdNo(defaults?.idNo || '');
     setPhoneNumber(defaults?.phoneNumber || '');
     setFoodType(defaults?.foodType || '');
+    setTranslation(defaults?.eventTranslation || '');
+    setYourCity(defaults?.eventYourCity || '');
+    setLevel(defaults?.eventLevel || '');
   };
 
-  // Profile often arrives after Register is already open — fill empty personal fields only.
+  // Profile often arrives after Register is already open — fill empty autofill fields only.
   useEffect(() => {
     if (!selectedEvent || registrationStep !== 'form') return;
-    if (profileDefaults?.foodType) {
-      setFoodType((prev) => prev || profileDefaults.foodType);
+    if (profileDefaults?.name) setName((prev) => prev || profileDefaults.name);
+    if (profileDefaults?.zoomEmail) setZoomEmail((prev) => prev || profileDefaults.zoomEmail);
+    if (profileDefaults?.phoneNumber) setPhoneNumber((prev) => prev || profileDefaults.phoneNumber);
+    if (profileDefaults?.foodType) setFoodType((prev) => prev || profileDefaults.foodType);
+    if (profileDefaults?.clubNo) setClubNo((prev) => prev || profileDefaults.clubNo);
+    if (profileDefaults?.idNo) setIdNo((prev) => prev || profileDefaults.idNo);
+    if (profileDefaults?.eventTranslation) {
+      setTranslation((prev) => prev || profileDefaults.eventTranslation);
     }
-    if (profileDefaults?.clubNo) {
-      setClubNo((prev) => prev || profileDefaults.clubNo);
+    if (profileDefaults?.eventYourCity) {
+      setYourCity((prev) => prev || profileDefaults.eventYourCity);
+    }
+    if (profileDefaults?.eventLevel) {
+      setLevel((prev) => prev || profileDefaults.eventLevel);
     }
   }, [profileDefaults, selectedEvent, registrationStep]);
 
@@ -379,11 +343,11 @@ function EventsPage({ user }) {
       setIdNo('');
       setPhoneNumber('');
       setFoodType('');
+      setLevel('');
+      setYourCity('');
+      setTranslation('');
     }
-    setLevel('');
     setTicketNo('');
-    setYourCity('');
-    setTranslation('');
     setAttendCity(ATTEND_CITY_ONLINE);
     setUplinePresidentTeam(null);
     setUplineMillTeam(null);
@@ -431,24 +395,25 @@ function EventsPage({ user }) {
     const place = String(selectedEvent?.place || '').trim();
     const nextErrors = {};
 
-    if (!translation) nextErrors.translation = 'This is a required question';
+    // Autofill fields are hidden in UI — missing values mean Profile needs updating.
+    if (!translation) nextErrors.translation = 'Set Translation in Profile';
     if (!attendCity) nextErrors.attendCity = 'This is a required question';
-    if (!foodType) nextErrors.foodType = 'This is a required question';
+    if (!foodType) nextErrors.foodType = 'Set Food Type (Diet Preference) in Profile';
     if (!uplinePresidentTeam?.name) nextErrors.uplinePresidentTeam = 'This is a required question';
     if (!uplineMillTeam?.name) nextErrors.uplineMillTeam = 'This is a required question';
     if (!teamIncharge?.name) nextErrors.teamIncharge = 'This is a required question';
     if (teamIncharge?.name && !daicyTeamIncharge?.name) {
       nextErrors.daicyTeamIncharge = 'This is a required question';
     }
-    if (!trimmedClubNo) nextErrors.clubNo = 'This is a required question';
-    if (!trimmedZoomEmail) nextErrors.zoomEmail = 'This is a required question';
-    if (!trimmedName) nextErrors.name = 'This is a required question';
-    if (!trimmedIdNo) nextErrors.idNo = 'This is a required question';
-    if (!trimmedLevel) nextErrors.level = 'This is a required question';
-    if (!trimmedPhone) nextErrors.phoneNumber = 'This is a required question';
+    if (!trimmedClubNo) nextErrors.clubNo = 'Set Working Physical Centre in Profile';
+    if (!trimmedZoomEmail) nextErrors.zoomEmail = 'Set Email in Profile';
+    if (!trimmedName) nextErrors.name = 'Set Name in Profile';
+    if (!trimmedIdNo) nextErrors.idNo = 'Set Community ID in Profile';
+    if (!trimmedLevel) nextErrors.level = 'Set Community Position in Profile';
+    if (!trimmedPhone) nextErrors.phoneNumber = 'Set Phone Number in Profile';
     if (!participantCount) nextErrors.participantCount = 'This is a required question';
     if (!trimmedTicketNo) nextErrors.ticketNo = 'This is a required question';
-    if (!yourCity) nextErrors.yourCity = 'This is a required question';
+    if (!yourCity) nextErrors.yourCity = 'Set Your City in Profile';
     if (attendCity && place && attendCity !== place && !isAttendOnline(attendCity)) {
       nextErrors.attendCity = 'Choose the event city or Online';
     }
@@ -550,11 +515,8 @@ function EventsPage({ user }) {
                 {STATUS_LABELS[selectedEvent.status] || selectedEvent.status}
               </span>
               <h1 id="event-registration-title" className="mt-3 text-xl font-bold text-white">
-                Register interest in {selectedEvent.eventName}
+                Event registration: {selectedEvent.eventName}
               </h1>
-              <p className="mt-1 text-sm leading-6 text-white/95">
-                Complete the details, tap Next, then pay from your wallet. Your QR entry pass appears after payment.
-              </p>
               <p className="mt-2 text-xs font-medium text-rose-100">* Indicates required question</p>
 
               {registrationStep === 'success' && submittedName ? (
@@ -577,7 +539,7 @@ function EventsPage({ user }) {
                     }}
                     className="w-full rounded-lg border border-emerald-700 px-4 py-2.5 text-sm font-semibold text-emerald-900"
                   >
-                    View in My Booking
+                    View in My Bookings
                   </button>
                 </div>
               ) : registrationStep === 'pay' ? (
@@ -627,32 +589,31 @@ function EventsPage({ user }) {
                 </div>
               ) : (
                 <form onSubmit={goToPaymentStep} className="mt-5 min-w-0 space-y-3" noValidate>
-                  <div
-                    className={`rounded-xl border bg-white p-4 ${
-                      formErrors.translation ? 'border-rose-400' : 'border-white/80'
-                    }`}
-                  >
-                    <label htmlFor="event-registration-translation-trigger" className="block text-sm font-semibold text-gray-900">
-                      Translation <span className="text-rose-600">*</span>
-                    </label>
-                    <RegistrationSelect
-                      id="event-registration-translation"
-                      name="translation"
-                      required
-                      value={translation}
-                      options={toSelectOptions(TRANSLATION_OPTIONS)}
-                      hasError={Boolean(formErrors.translation)}
-                      onChange={(next) => {
-                        setTranslation(next);
-                        setFormErrors((prev) => ({ ...prev, translation: undefined }));
-                      }}
-                    />
-                    {formErrors.translation ? (
-                      <p className="mt-2 text-sm text-rose-600" role="alert">
-                        {formErrors.translation}
-                      </p>
-                    ) : null}
-                  </div>
+                  {(
+                    formErrors.translation
+                    || formErrors.foodType
+                    || formErrors.clubNo
+                    || formErrors.zoomEmail
+                    || formErrors.name
+                    || formErrors.idNo
+                    || formErrors.level
+                    || formErrors.phoneNumber
+                    || formErrors.yourCity
+                  ) ? (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+                      {[
+                        formErrors.translation,
+                        formErrors.foodType,
+                        formErrors.clubNo,
+                        formErrors.zoomEmail,
+                        formErrors.name,
+                        formErrors.idNo,
+                        formErrors.level,
+                        formErrors.phoneNumber,
+                        formErrors.yourCity,
+                      ].filter(Boolean).join(' · ')}
+                    </div>
+                  ) : null}
 
                   <div
                     className={`rounded-xl border bg-white p-4 ${
@@ -660,7 +621,7 @@ function EventsPage({ user }) {
                     }`}
                   >
                     <label htmlFor="event-registration-attend-city-trigger" className="block text-sm font-semibold text-gray-900">
-                      PD Attend City <span className="text-rose-600">*</span>
+                      Attending City <span className="text-rose-600">*</span>
                     </label>
                     <RegistrationSelect
                       id="event-registration-attend-city"
@@ -677,33 +638,6 @@ function EventsPage({ user }) {
                     {formErrors.attendCity ? (
                       <p className="mt-2 text-sm text-rose-600" role="alert">
                         {formErrors.attendCity}
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <div
-                    className={`rounded-xl border bg-white p-4 ${
-                      formErrors.foodType ? 'border-rose-400' : 'border-white/80'
-                    }`}
-                  >
-                    <label htmlFor="event-registration-food-type-trigger" className="block text-sm font-semibold text-gray-900">
-                      Food Type <span className="text-rose-600">*</span>
-                    </label>
-                    <RegistrationSelect
-                      id="event-registration-food-type"
-                      name="foodType"
-                      required
-                      value={foodType}
-                      options={toSelectOptions(FOOD_TYPE_OPTIONS)}
-                      hasError={Boolean(formErrors.foodType)}
-                      onChange={(next) => {
-                        setFoodType(next);
-                        setFormErrors((prev) => ({ ...prev, foodType: undefined }));
-                      }}
-                    />
-                    {formErrors.foodType ? (
-                      <p className="mt-2 text-sm text-rose-600" role="alert">
-                        {formErrors.foodType}
                       </p>
                     ) : null}
                   </div>
@@ -743,213 +677,26 @@ function EventsPage({ user }) {
                   </div>
 
                   <div className="rounded-xl border border-white/80 bg-white p-4">
-                    <p className="text-sm font-extrabold uppercase tracking-wide text-gray-900">
-                      Personal Detail
-                    </p>
-                    <div className="mt-3 space-y-4">
-                      <div>
-                        <label htmlFor="event-registration-club-no" className="block text-sm font-semibold text-gray-900">
-                          Club No <span className="text-rose-600">*</span>
-                        </label>
-                        <input
-                          id="event-registration-club-no"
-                          name="clubNo"
-                          type="text"
-                          maxLength={80}
-                          required
-                          value={clubNo}
-                          onChange={(event) => {
-                            setClubNo(event.target.value);
-                            clearFieldError('clubNo');
-                          }}
-                          className={registrationInputClass(Boolean(formErrors.clubNo))}
-                          placeholder="Enter club no"
-                        />
-                        {formErrors.clubNo ? (
-                          <p className="mt-2 text-sm text-rose-600" role="alert">{formErrors.clubNo}</p>
-                        ) : null}
-                      </div>
-
-                      <div>
-                        <label htmlFor="event-registration-zoom-email" className="block text-sm font-semibold text-gray-900">
-                          Your Zoom Email ID <span className="text-rose-600">*</span>
-                        </label>
-                        <input
-                          id="event-registration-zoom-email"
-                          name="zoomEmail"
-                          type="email"
-                          autoComplete="email"
-                          maxLength={120}
-                          required
-                          value={zoomEmail}
-                          onChange={(event) => {
-                            setZoomEmail(event.target.value);
-                            clearFieldError('zoomEmail');
-                          }}
-                          className={registrationInputClass(Boolean(formErrors.zoomEmail))}
-                          placeholder="Enter zoom email"
-                        />
-                        {formErrors.zoomEmail ? (
-                          <p className="mt-2 text-sm text-rose-600" role="alert">{formErrors.zoomEmail}</p>
-                        ) : null}
-                      </div>
-
-                      <div>
-                        <label htmlFor="event-registration-name" className="block text-sm font-semibold text-gray-900">
-                          Name <span className="text-rose-600">*</span>
-                        </label>
-                        <input
-                          id="event-registration-name"
-                          name="name"
-                          type="text"
-                          autoComplete="name"
-                          maxLength={80}
-                          required
-                          value={name}
-                          onChange={(event) => {
-                            setName(event.target.value);
-                            clearFieldError('name');
-                          }}
-                          className={registrationInputClass(Boolean(formErrors.name))}
-                          placeholder="Enter your name"
-                        />
-                        {formErrors.name ? (
-                          <p className="mt-2 text-sm text-rose-600" role="alert">{formErrors.name}</p>
-                        ) : null}
-                      </div>
-
-                      <div>
-                        <label htmlFor="event-registration-id-no" className="block text-sm font-semibold text-gray-900">
-                          ID No <span className="text-rose-600">*</span>
-                        </label>
-                        <input
-                          id="event-registration-id-no"
-                          name="idNo"
-                          type="text"
-                          maxLength={80}
-                          required
-                          value={idNo}
-                          onChange={(event) => {
-                            setIdNo(event.target.value);
-                            clearFieldError('idNo');
-                          }}
-                          className={registrationInputClass(Boolean(formErrors.idNo))}
-                          placeholder="Enter ID no"
-                        />
-                        {formErrors.idNo ? (
-                          <p className="mt-2 text-sm text-rose-600" role="alert">{formErrors.idNo}</p>
-                        ) : null}
-                      </div>
-
-                      <div>
-                        <label htmlFor="event-registration-level-trigger" className="block text-sm font-semibold text-gray-900">
-                          Level <span className="text-rose-600">*</span>
-                        </label>
-                        <RegistrationSelect
-                          id="event-registration-level"
-                          name="level"
-                          required
-                          value={level}
-                          options={toSelectOptions(LEVEL_OPTIONS)}
-                          hasError={Boolean(formErrors.level)}
-                          onChange={(next) => {
-                            setLevel(next);
-                            clearFieldError('level');
-                          }}
-                        />
-                        {formErrors.level ? (
-                          <p className="mt-2 text-sm text-rose-600" role="alert">{formErrors.level}</p>
-                        ) : null}
-                      </div>
-
-                      <div>
-                        <label htmlFor="event-registration-phone" className="block text-sm font-semibold text-gray-900">
-                          Phone Number <span className="text-rose-600">*</span>
-                        </label>
-                        <input
-                          id="event-registration-phone"
-                          name="phoneNumber"
-                          type="tel"
-                          autoComplete="tel"
-                          maxLength={20}
-                          required
-                          value={phoneNumber}
-                          onChange={(event) => {
-                            setPhoneNumber(event.target.value);
-                            clearFieldError('phoneNumber');
-                          }}
-                          className={registrationInputClass(Boolean(formErrors.phoneNumber))}
-                          placeholder="Enter phone number"
-                        />
-                        {formErrors.phoneNumber ? (
-                          <p className="mt-2 text-sm text-rose-600" role="alert">{formErrors.phoneNumber}</p>
-                        ) : null}
-                      </div>
-
-                      <div>
-                        <label htmlFor="event-registration-participant-count" className="block text-sm font-semibold text-gray-900">
-                          No of Participant <span className="text-rose-600">*</span>
-                        </label>
-                        <input
-                          id="event-registration-participant-count"
-                          name="participantCount"
-                          type="text"
-                          readOnly
-                          required
-                          value={participantCount}
-                          className={`${registrationInputClass(false)} bg-gray-50 text-gray-800`}
-                        />
-                      </div>
-
-                      <div>
-                        <label htmlFor="event-registration-ticket-no" className="block text-sm font-semibold text-gray-900">
-                          PD Your Ticket No <span className="text-rose-600">*</span>
-                        </label>
-                        <input
-                          id="event-registration-ticket-no"
-                          name="ticketNo"
-                          type="text"
-                          maxLength={80}
-                          required
-                          value={ticketNo}
-                          onChange={(event) => {
-                            setTicketNo(event.target.value);
-                            clearFieldError('ticketNo');
-                          }}
-                          className={registrationInputClass(Boolean(formErrors.ticketNo))}
-                          placeholder="Enter ticket no"
-                        />
-                        {formErrors.ticketNo ? (
-                          <p className="mt-2 text-sm text-rose-600" role="alert">{formErrors.ticketNo}</p>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-white/80 bg-white p-4">
-                    <p className="text-sm font-extrabold uppercase tracking-wide text-gray-900">
-                      City
-                    </p>
-                    <div className="mt-3">
-                      <label htmlFor="event-registration-your-city-trigger" className="block text-sm font-semibold text-gray-900">
-                        Your City <span className="text-rose-600">*</span>
-                      </label>
-                      <RegistrationSelect
-                        id="event-registration-your-city"
-                        name="yourCity"
-                        required
-                        value={yourCity}
-                        options={toSelectOptions(YOUR_CITY_OPTIONS)}
-                        hasError={Boolean(formErrors.yourCity)}
-                        onChange={(next) => {
-                          setYourCity(next);
-                          clearFieldError('yourCity');
-                        }}
-                      />
-                      {formErrors.yourCity ? (
-                        <p className="mt-2 text-sm text-rose-600" role="alert">{formErrors.yourCity}</p>
-                      ) : null}
-                    </div>
+                    <label htmlFor="event-registration-ticket-no" className="block text-sm font-semibold text-gray-900">
+                      Your Ticket Number <span className="text-rose-600">*</span>
+                    </label>
+                    <input
+                      id="event-registration-ticket-no"
+                      name="ticketNo"
+                      type="text"
+                      maxLength={80}
+                      required
+                      value={ticketNo}
+                      onChange={(event) => {
+                        setTicketNo(event.target.value);
+                        clearFieldError('ticketNo');
+                      }}
+                      className={registrationInputClass(Boolean(formErrors.ticketNo))}
+                      placeholder="Enter ticket number"
+                    />
+                    {formErrors.ticketNo ? (
+                      <p className="mt-2 text-sm text-rose-600" role="alert">{formErrors.ticketNo}</p>
+                    ) : null}
                   </div>
 
                   <div className="rounded-xl border border-white/80 bg-white p-4">
@@ -1041,7 +788,7 @@ function EventsPage({ user }) {
               <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl border border-gray-200 bg-white p-1 text-xs font-semibold">
                 {[
                   { id: 'events', label: 'Events' },
-                  { id: 'bookings', label: 'My Booking' },
+                  { id: 'bookings', label: 'My Bookings' },
                 ].map((tab) => (
                   <button
                     key={tab.id}

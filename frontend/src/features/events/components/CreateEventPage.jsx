@@ -15,6 +15,7 @@ const EMPTY_FORM = {
   eventName: '',
   hostName: '',
   place: '',
+  venue: '',
   eventDate: '',
   ticketPrice: '',
   seatCount: '',
@@ -128,7 +129,8 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
     setForm({
       eventName: item.eventName || '',
       hostName: item.hostName || '',
-      place: item.place || '',
+      place: item.place || item.city || '',
+      venue: item.venue || '',
       eventDate: item.eventDate || '',
       ticketPrice: item.ticketPrice ?? '',
       seatCount: String(item.seatCount ?? ''),
@@ -206,8 +208,12 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
               onChange={(hostName) => setForm((prev) => ({ ...prev, hostName }))}
             />
             <label className="block text-sm font-medium text-gray-700">
-              Place
+              City
               <input value={form.place} onChange={onChange('place')} maxLength={300} required className={inputClass} />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              Venue
+              <input value={form.venue} onChange={onChange('venue')} maxLength={300} required className={inputClass} />
             </label>
             <label className="block text-sm font-medium text-gray-700">
               Date
@@ -257,7 +263,9 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
                     <div>
                       <p className="font-bold text-gray-900">{item.eventName}</p>
                       <p className="text-sm text-gray-600">Host: {item.hostName}</p>
-                      <p className="text-sm text-gray-600">{item.place}</p>
+                      <p className="text-sm text-gray-600">
+                        {[item.place || item.city, item.venue].filter(Boolean).join(' · ') || '—'}
+                      </p>
                       <p className="text-sm text-gray-600">{item.eventDate}</p>
                       <p className="text-sm text-gray-600">{formatPrice(item.ticketPrice)} · {item.seatCount} seats</p>
                       <p className="text-sm text-gray-600">

@@ -47,6 +47,9 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           workingPhysicalCentreId: data?.workingPhysicalCentre?.id != null
             ? String(data.workingPhysicalCentre.id)
             : '',
+          eventTranslation: data.eventTranslation || '',
+          eventYourCity: data.eventYourCity || '',
+          eventLevel: data.eventLevel || '',
           bodyMetrics: data.bodyMetrics || null,
         });
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);

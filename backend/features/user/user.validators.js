@@ -247,6 +247,26 @@ export function validateUpdateProfile(body) {
     }
   }
 
+  // Event registration prefs — optional; old clients omit (leave unchanged).
+  let eventTranslation;
+  let eventYourCity;
+  let eventLevel;
+  if ('eventTranslation' in body || 'EventTranslation' in body) {
+    eventTranslation = body.eventTranslation !== undefined
+      ? body.eventTranslation
+      : body.EventTranslation;
+  }
+  if ('eventYourCity' in body || 'EventYourCity' in body) {
+    eventYourCity = body.eventYourCity !== undefined
+      ? body.eventYourCity
+      : body.EventYourCity;
+  }
+  if ('eventLevel' in body || 'EventLevel' in body) {
+    eventLevel = body.eventLevel !== undefined
+      ? body.eventLevel
+      : body.EventLevel;
+  }
+
   return {
     email,
     userId: resolvedUserId,
@@ -273,6 +293,9 @@ export function validateUpdateProfile(body) {
     transformationPhotos,
     bcmProfileReviewed,
     workingPhysicalCentreId,
+    eventTranslation,
+    eventYourCity,
+    eventLevel,
   };
 }
 

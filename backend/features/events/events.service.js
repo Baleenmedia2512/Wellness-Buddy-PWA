@@ -1,22 +1,33 @@
 import * as repo from './data/events.repo.js';
 import { searchActivePeople } from './data/people.repo.js';
+import logger from '../../shared/lib/logger.js';
+import { sendTransactionalMail } from '../../shared/lib/smtp-mail.js';
 import {
   countSeatsTaken,
   countSeatsTakenByEventIds,
+  findCommunityIdForUser,
+  findGuestCoachContacts,
   findRegistrationByEventAndEntryCode,
   findRegistrationByEventAndUser,
   findRegistrationByIdForUser,
+  findTeamUserBrief,
+  findTeamUserHeightCm,
   insertEventRegistration,
   insertPaidEventRegistration,
   listEntryCodesForEvent,
   listRegistrationsByUser,
   markRegistrationCheckedIn,
+  markRegistrationFoodCheckedIn,
 } from './data/registrations.repo.js';
+import { buildCheckInIdealWeightProgress } from './domain/check-in-ideal-weight.rules.js';
+import { buildCheckInMisuseReportEmail } from './domain/check-in-misuse-report-email.rules.js';
+import { buildCheckInVerifiedEmail } from './domain/check-in-verified-email.rules.js';
+import { getLatestWeight } from '../user/user.repository.js';
 import {
   buildRegistrationQrPayload,
   canScanEventRegistrations,
   computeRegistrationCharge,
-  generateEntryCode,
+  parseEntryCode,
 } from './domain/event.rules.js';
 import { debitForEventTicket } from '../wallet/data/wallet.repo.js';
 
@@ -34,10 +45,10 @@ function storageFailure(err) {
       body: { success: false, message: REGISTRATION_STORAGE_MESSAGE },
     };
   }
+  // Table missing only — do not treat additive column errors (e.g. Venue) as full storage down.
   const missingTable = err?.code === 'P2021'
-    || message.includes('events_table')
-    || message.includes('does not exist')
-    || message.includes('datamodel');
+    || (message.includes('events_table') && /does not exist|doesn't exist/i.test(message))
+    || (/events_table/i.test(message) && /datamodel/i.test(message));
   if (!missingTable) return null;
   return {
     httpStatus: 503,
@@ -179,12 +190,25 @@ export function createEventRegistration(input) {
       return { httpStatus: 400, body: { success: false, message: 'Invalid ticket price.' } };
     }
 
-    const usedCodes = await listEntryCodesForEvent(input.eventId);
-    const entryCode = generateEntryCode(usedCodes);
+    // Guest-typed ticket number is the entry / QR identity (no random 4-digit).
+    const entryCode = parseEntryCode(input.ticketNo);
     if (!entryCode) {
       return {
-        httpStatus: 503,
-        body: { success: false, message: 'Could not allocate an entry code. Please try again.' },
+        httpStatus: 400,
+        body: { success: false, message: 'Your Ticket Number is required.' },
+      };
+    }
+    const usedCodes = await listEntryCodesForEvent(input.eventId);
+    const ticketTaken = [...usedCodes].some(
+      (code) => String(code).toLowerCase() === entryCode.toLowerCase(),
+    );
+    if (ticketTaken) {
+      return {
+        httpStatus: 409,
+        body: {
+          success: false,
+          message: 'This ticket number is already used for this event. Please enter a different number.',
+        },
       };
     }
 
@@ -223,7 +247,10 @@ export function createEventRegistration(input) {
       if (error?.code === 'P2002' || message.includes('Duplicate')) {
         return {
           httpStatus: 409,
-          body: { success: false, message: 'You are already registered for this event.' },
+          body: {
+            success: false,
+            message: 'This ticket number is already used for this event. Please enter a different number.',
+          },
         };
       }
       throw error;
@@ -288,16 +315,215 @@ export function checkInEventRegistration(input) {
       return { httpStatus: 404, body: { success: false, message: 'No registration found for this code.' } };
     }
 
-    if (input.markCheckedIn && !registration.checkedInAt) {
-      registration = await markRegistrationCheckedIn(registration.id, input.userId);
+    const checkInType = input.checkInType === 'food' ? 'food' : 'entry';
+    const alreadyVerified = checkInType === 'food'
+      ? Boolean(registration.foodCheckedInAt)
+      : Boolean(registration.checkedInAt);
+    const firstVerify = Boolean(input.markCheckedIn && !alreadyVerified);
+    if (firstVerify && checkInType === 'food' && !registration.checkedInAt) {
+      return {
+        httpStatus: 409,
+        body: {
+          success: false,
+          message: 'Complete Entry check-in first. Food can be verified only after Entry is verified.',
+        },
+      };
+    }
+    if (firstVerify) {
+      registration = checkInType === 'food'
+        ? await markRegistrationFoodCheckedIn(registration.id, input.userId)
+        : await markRegistrationCheckedIn(registration.id, input.userId);
+    }
+
+    // Prefer live profile Community ID over registration IdNo (may be legacy user id).
+    const profileCommunityId = await findCommunityIdForUser(registration.registrantUserId);
+    const idNoLooksLikeUserId = String(registration.idNo || '').trim()
+      === String(registration.registrantUserId || '').trim();
+    const communityId = profileCommunityId
+      || (!idNoLooksLikeUserId ? String(registration.idNo || '').trim() : '')
+      || null;
+
+    async function toVerifier(userId) {
+      if (!userId) return null;
+      const brief = await findTeamUserBrief(userId);
+      if (brief) {
+        return {
+          userId: brief.userId,
+          name: brief.name,
+          communityId: brief.communityId,
+        };
+      }
+      return { userId: Number(userId), name: null, communityId: null };
+    }
+
+    const entryVerifierUserId = registration.checkedInByUserId
+      || (checkInType === 'entry' && firstVerify ? input.userId : null);
+    const foodVerifierUserId = registration.foodCheckedInByUserId
+      || (checkInType === 'food' && firstVerify ? input.userId : null);
+
+    const entryCheckedInBy = await toVerifier(entryVerifierUserId);
+    const foodCheckedInBy = await toVerifier(foodVerifierUserId);
+    // Keep checkedInBy as the active mode verifier (entry clients unchanged).
+    const checkedInBy = checkInType === 'food' ? foodCheckedInBy : entryCheckedInBy;
+
+    if (firstVerify) {
+      const to = String(registration.zoomEmail || '').trim();
+      if (to.includes('@')) {
+        try {
+          const mail = buildCheckInVerifiedEmail({
+            guestName: registration.name,
+            eventName: event.eventName,
+            ticketNumber: registration.entryCode || registration.ticketNo,
+            verifierName: checkedInBy?.name || 'Wellness Valley team',
+            verifierCommunityId: checkedInBy?.communityId || '',
+            checkInType,
+          });
+          await sendTransactionalMail({
+            to,
+            subject: mail.subject,
+            text: mail.text,
+            html: mail.html,
+          });
+        } catch (err) {
+          // Check-in already saved — never block verification on mail failure.
+          logger.warn('[events] verified email failed', {
+            registrationId: registration.id,
+            checkInType,
+            message: err?.message || String(err),
+          });
+        }
+      }
+    }
+
+    // Additive guest Ideal Weight for pass UI — never blocks check-in.
+    let idealWeightProgress = null;
+    try {
+      const heightCm = await findTeamUserHeightCm(registration.registrantUserId);
+      const latest = await getLatestWeight(registration.registrantUserId);
+      const currentWeightKg = latest?.Weight != null ? Number(latest.Weight) : null;
+      idealWeightProgress = buildCheckInIdealWeightProgress({ heightCm, currentWeightKg });
+    } catch (err) {
+      logger.warn('[events] ideal weight progress failed', {
+        registrationId: registration.id,
+        message: err?.message || String(err),
+      });
     }
 
     return {
       httpStatus: 200,
       body: {
         success: true,
-        registration: withEventSummary(registration, event),
+        checkInType,
+        registration: {
+          ...withEventSummary(registration, event),
+          communityId,
+          checkedInBy,
+          entryCheckedInBy,
+          foodCheckedInBy,
+          idealWeightProgress,
+        },
+        idealWeightProgress,
         photoUserId: registration.registrantUserId,
+      },
+    };
+  });
+}
+
+/**
+ * Entry check-in Report — emails guest + coach that someone may be misusing the account.
+ * Does not verify, stamp, or change registration state.
+ */
+export function reportCheckInMisuse(input) {
+  return run(async () => {
+    const event = await repo.findActiveEventById(input.eventId);
+    if (!event) {
+      return { httpStatus: 404, body: { success: false, message: 'Event not found.' } };
+    }
+    if (!canScanEventRegistrations(event, input.userId)) {
+      return {
+        httpStatus: 403,
+        body: { success: false, message: 'Only the event creator or designated persons can report misuse.' },
+      };
+    }
+
+    const registration = await findRegistrationByEventAndEntryCode(input.eventId, input.entryCode);
+    if (!registration) {
+      return { httpStatus: 404, body: { success: false, message: 'No registration found for this code.' } };
+    }
+
+    const contacts = await findGuestCoachContacts(registration.registrantUserId);
+    const reporter = await findTeamUserBrief(input.userId);
+    const reportedByName = reporter?.name || 'event staff';
+    const guestName = registration.name || contacts.guestName || 'Guest';
+    const ticketNumber = registration.entryCode || registration.ticketNo || '';
+    const guestTo = String(registration.zoomEmail || contacts.guestEmail || '').trim();
+    const coachTo = String(contacts.coachEmail || '').trim();
+
+    const recipients = [];
+    if (guestTo.includes('@')) {
+      recipients.push({ email: guestTo, role: 'guest' });
+    }
+    if (coachTo.includes('@') && coachTo.toLowerCase() !== guestTo.toLowerCase()) {
+      recipients.push({ email: coachTo, role: 'coach' });
+    }
+
+    if (recipients.length === 0) {
+      return {
+        httpStatus: 422,
+        body: {
+          success: false,
+          message: 'No guest or coach email is available to send this report.',
+        },
+      };
+    }
+
+    let emailedGuest = false;
+    let emailedCoach = false;
+    for (const recipient of recipients) {
+      try {
+        const mail = buildCheckInMisuseReportEmail({
+          guestName,
+          eventName: event.eventName,
+          ticketNumber,
+          reportedByName,
+          recipientRole: recipient.role,
+        });
+        await sendTransactionalMail({
+          to: recipient.email,
+          subject: mail.subject,
+          text: mail.text,
+          html: mail.html,
+        });
+        if (recipient.role === 'guest') emailedGuest = true;
+        if (recipient.role === 'coach') emailedCoach = true;
+      } catch (err) {
+        logger.warn('[events] check-in misuse report email failed', {
+          registrationId: registration.id,
+          role: recipient.role,
+          message: err?.message || String(err),
+        });
+      }
+    }
+
+    if (!emailedGuest && !emailedCoach) {
+      return {
+        httpStatus: 502,
+        body: { success: false, message: 'Could not send the report email. Try again.' },
+      };
+    }
+
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        reported: true,
+        emailedGuest,
+        emailedCoach,
+        message: emailedGuest && emailedCoach
+          ? 'Report sent to guest and coach.'
+          : emailedGuest
+            ? 'Report sent to guest.'
+            : 'Report sent to coach.',
       },
     };
   });

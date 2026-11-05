@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowRight, CalendarDays, MapPin, Ticket, User } from 'lucide-react';
+import wellnessValleyIcon from '../../../assets/wellness-valley-icon.png';
 import { getUserId } from '../../../shared/services/getUserId.js';
 import { listMyEventRegistrations } from '../services/events.api.js';
 import RegistrationQrCard from './RegistrationQrCard.jsx';
@@ -32,8 +33,6 @@ function BookingPassCard({ booking, onBack }) {
   const hostName = booking.event?.hostName || '';
   const place = booking.event?.place || '—';
   const eventDate = booking.event?.eventDate || '—';
-  const status = String(booking.paymentStatus || 'saved').toLowerCase();
-
   return (
     <div className="space-y-3">
       <button
@@ -41,62 +40,72 @@ function BookingPassCard({ booking, onBack }) {
         onClick={onBack}
         className="text-sm font-semibold text-emerald-800 hover:underline"
       >
-        ← Back to My Booking
+        ← Back to My Bookings
       </button>
 
-      <article className="overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm">
-        <div className="bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700 px-4 py-4 text-white">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-white/85">
-            Event booking pass
-          </p>
-          <h3 className="mt-1 text-xl font-bold leading-tight">{eventName}</h3>
-          {hostName ? (
-            <p className="mt-1 text-sm text-white/90">Host: {hostName}</p>
-          ) : null}
-          <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
-            <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1">
-              <CalendarDays className="h-3 w-3" aria-hidden="true" />
-              {eventDate}
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1">
-              <MapPin className="h-3 w-3" aria-hidden="true" />
-              {place}
-            </span>
+      <article className="overflow-hidden rounded-[1.25rem] bg-gradient-to-br from-emerald-800 via-emerald-700 to-teal-800 shadow-[0_24px_60px_-20px_rgba(4,40,30,0.55)] ring-1 ring-[#c9a227]/55">
+        <div className="h-1 bg-gradient-to-r from-[#8a7020] via-[#e8d48b] to-[#8a7020]" />
+
+        <div className="px-5 py-5 text-white">
+          <div className="flex items-stretch gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-[#e8d48b]">
+                <Ticket className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                Event ticket pass
+              </p>
+              <h3 className="mt-3 text-[1.7rem] font-semibold leading-[1.2] tracking-tight text-white">
+                {eventName}
+              </h3>
+              {hostName ? (
+                <p className="mt-2 text-[13px] font-medium text-emerald-50/85">
+                  Hosted by {hostName}
+                </p>
+              ) : null}
+            </div>
+            <img
+              src={wellnessValleyIcon}
+              alt="Wellness Valley"
+              className="h-16 w-16 shrink-0 self-center rounded-2xl bg-white object-contain p-1 shadow-sm app-logo"
+            />
           </div>
         </div>
 
-        <div className="space-y-4 p-4">
-          <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-3 text-sm text-gray-800">
-            <p className="flex items-center gap-2 font-semibold text-gray-900">
-              <User className="h-4 w-4 text-emerald-800" aria-hidden="true" />
-              Guest details
+        <div className="bg-gradient-to-b from-emerald-50 to-white px-5 pb-6 pt-5">
+          <div className="border-b border-emerald-200/80 pb-4">
+            <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-800">
+              <User className="h-3.5 w-3.5" aria-hidden="true" />
+              Guest
             </p>
-            <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 text-xs sm:text-sm">
-              <div>
-                <dt className="text-gray-500">Name</dt>
-                <dd className="font-medium text-gray-900">{booking.name || '—'}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">Paid</dt>
-                <dd className="font-medium text-gray-900">{formatMoney(booking.amountCharged)}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">Status</dt>
-                <dd className="font-medium capitalize text-gray-900">{status}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">Entry code</dt>
-                <dd className="font-bold tracking-widest text-emerald-900">{booking.entryCode || '—'}</dd>
-              </div>
-            </dl>
+            <p className="mt-2 text-[1.4rem] font-semibold leading-snug tracking-tight text-emerald-950">
+              {booking.name || '—'}
+            </p>
           </div>
 
-          <RegistrationQrCard
-            qrPayload={booking.qrPayload}
-            entryCode={booking.entryCode}
-            eventName={eventName}
-            compact
-          />
+          <div className="mt-4 grid grid-cols-2 gap-4">
+            <div>
+              <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+                Date
+              </p>
+              <p className="mt-1.5 text-sm font-semibold tabular-nums text-emerald-950">{eventDate}</p>
+            </div>
+            <div>
+              <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+                Place
+              </p>
+              <p className="mt-1.5 text-sm font-semibold break-words text-emerald-950">{place}</p>
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <RegistrationQrCard
+              qrPayload={booking.qrPayload}
+              entryCode={booking.entryCode}
+              eventName={eventName}
+              compact
+            />
+          </div>
         </div>
       </article>
     </div>
@@ -142,10 +151,10 @@ export default function MyBookingsPanel({ user }) {
   }
 
   return (
-    <section aria-label="My Booking" className="space-y-3">
+    <section aria-label="My Bookings" className="space-y-3">
       <div className="flex items-center gap-2">
         <Ticket className="h-5 w-5 text-emerald-800" aria-hidden="true" />
-        <h2 className="text-lg font-bold text-gray-900">My Booking</h2>
+        <h2 className="text-lg font-bold text-gray-900">My Bookings</h2>
       </div>
       {loading ? (
         <p className="text-sm text-gray-600" role="status">Loading bookings…</p>

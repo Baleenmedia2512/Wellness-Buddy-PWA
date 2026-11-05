@@ -68,6 +68,7 @@ import {
   shouldDeferHeightChangeToOtp,
 } from './domain/heightChange.rules.js';
 import { getWorkingPhysicalCentre } from '../nutrition-centers/workingPhysicalCentre.service.js';
+import { normalizeEventProfilePrefs } from './domain/eventProfilePrefs.rules.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
@@ -270,6 +271,20 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
     });
   }
 
+  let eventProfilePrefs = {
+    eventTranslation: null,
+    eventYourCity: null,
+    eventLevel: null,
+  };
+  try {
+    eventProfilePrefs = await repo.getEventProfilePreferences(user.UserId);
+  } catch (err) {
+    logger.warn('[profile] event profile prefs lookup failed', {
+      userId: user.UserId,
+      message: err?.message,
+    });
+  }
+
   // Onboarding identity uses team_table.UserName only. A BCM card name must
   // not skip the name gate for users who still have a placeholder login name.
   const persistedUserName = user.UserName;
@@ -344,6 +359,9 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
         physicalActivityLevel,
         communityId: user.CommunityId ?? null,
         workingPhysicalCentre,
+        eventTranslation: eventProfilePrefs.eventTranslation,
+        eventYourCity: eventProfilePrefs.eventYourCity,
+        eventLevel: eventProfilePrefs.eventLevel,
         communityIdRequest: communityIdRequest || null,
         communityIdPair: communityIdPair || null,
         timezone: profileTimezone,
@@ -478,7 +496,11 @@ export async function updateProfile(input) {
     email, userId: inputUserId, name, height, bmr, dietType, profileImage, phoneNumber, gender,
     weightGoalMode, physicalActivityLevel, communityId, timezoneIana, bodyFat,
     currentWeight, transformationPhotos, bcmProfileReviewed = undefined,
-    workingPhysicalCentreId = undefined, appVersion = null,
+    workingPhysicalCentreId = undefined,
+    eventTranslation = undefined,
+    eventYourCity = undefined,
+    eventLevel = undefined,
+    appVersion = null,
   } = input;
   const deferCommunityId = shouldDeferCommunityIdToOtpFlow({
     flagEnabled: isEnabled(COMMUNITY_ID_OTP_FLAG),
@@ -607,6 +629,45 @@ export async function updateProfile(input) {
       logger.warn('[profile/update] WorkingPhysicalCentreId column missing; preference not saved', {
         userId,
         workingPhysicalCentreId,
+      });
+    }
+  }
+
+  // Optional event registration prefs — old clients omit → leave unchanged.
+  if (
+    eventTranslation !== undefined
+    || eventYourCity !== undefined
+    || eventLevel !== undefined
+  ) {
+    const normalized = normalizeEventProfilePrefs({
+      eventTranslation,
+      eventYourCity,
+      eventLevel,
+    });
+    const toSave = {};
+    if (eventTranslation !== undefined) {
+      if (eventTranslation != null && String(eventTranslation).trim() !== '' && normalized.eventTranslation == null) {
+        throw new Error('Invalid Translation. Choose a listed language.');
+      }
+      toSave.eventTranslation = normalized.eventTranslation;
+    }
+    if (eventYourCity !== undefined) {
+      if (eventYourCity != null && String(eventYourCity).trim() !== '' && normalized.eventYourCity == null) {
+        throw new Error('Invalid Your City. Choose a listed city.');
+      }
+      toSave.eventYourCity = normalized.eventYourCity;
+    }
+    if (eventLevel !== undefined) {
+      if (eventLevel != null && String(eventLevel).trim() !== '' && normalized.eventLevel == null) {
+        throw new Error('Invalid Community Position. Choose a listed option.');
+      }
+      toSave.eventLevel = normalized.eventLevel;
+    }
+    const savedEventPrefs = await repo.setEventProfilePreferences(userId, toSave);
+    if (!savedEventPrefs) {
+      logger.warn('[profile/update] event profile pref columns missing; not saved', {
+        userId,
+        keys: Object.keys(toSave),
       });
     }
   }
