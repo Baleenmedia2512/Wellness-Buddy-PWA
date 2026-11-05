@@ -8,7 +8,8 @@
 //   2. Profile fields (name, height, phone, community ID / team code, email, diet, BMR, PAL)
 //   3. Transformation photos (Left / Centre / Right — same as onboarding; do not update avatar)
 //   4. Settings  (auto camera toggle)
-//   5. Account actions (sign out, delete account)
+//   5. Account actions (recover, sign out, delete account)
+// Go Premium sits on the green title row, not in Account.
 //
 // Lead pre-fill: on first load, if the profile has no name or phone and the
 // user has a phone number from auth, the app checks for a counselling lead
@@ -661,7 +662,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     <div className="min-h-full bg-gray-50 pb-8">
       {/* Page Header */}
       <div className="bg-gradient-to-r from-green-600 to-green-700 px-4 pt-4 pb-6">
-        <div className="flex items-center gap-3 mb-4">
+        <div className="mb-4 flex items-center gap-3">
           <TouchFeedbackButton
             onClick={onBack}
             className="p-2 rounded-full hover:bg-green-700 transition-colors text-white"
@@ -669,7 +670,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           >
             <ArrowLeft className="w-5 h-5" />
           </TouchFeedbackButton>
-          <h1 className="text-lg font-bold text-white">My Profile</h1>
+          <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-white">My Profile</h1>
+          <GoPremiumButton
+            userId={premiumUserId}
+            isPremium={isPremiumMember}
+            onPremiumCheck={refreshPremium}
+          />
         </div>
 
         {/* Avatar — tap photo to view; Edit badge to change */}
@@ -963,11 +969,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
             <h2 className="text-sm font-semibold text-gray-700">Account</h2>
           </div>
           <div className="divide-y divide-gray-100">
-            <GoPremiumButton
-              userId={premiumUserId}
-              isPremium={isPremiumMember}
-              onPremiumCheck={refreshPremium}
-            />
             <TouchFeedbackButton
               onClick={() => {
                 setEmailKycMode('recover');

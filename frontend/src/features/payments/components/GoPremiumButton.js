@@ -12,9 +12,9 @@ const CONFIRM_RETRY_DELAY_MS = 2000;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Profile row that opens the Premium plan page, then Cashfree on Pay Now.
+ * Header chip that opens the Premium plan page, then Cashfree on Pay Now.
  * `onPremiumCheck` asks the server whether the payment went through.
- * Members who already paid do not see this row again.
+ * Members who already paid do not see this chip again.
  */
 export default function GoPremiumButton({ userId, isPremium = false, onPremiumCheck }) {
   const [showPlan, setShowPlan] = useState(false);
@@ -68,23 +68,19 @@ export default function GoPremiumButton({ userId, isPremium = false, onPremiumCh
   };
 
   return (
-    <div>
+    <div className="flex shrink-0 flex-col items-end">
       <TouchFeedbackButton
         onClick={onOpenPlan}
         disabled={busy}
         ariaLabel="Go Premium"
-        className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-amber-50 transition-colors disabled:opacity-60"
+        title="Pay with UPI, card, or net banking"
+        className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-amber-900 shadow-sm disabled:opacity-60"
       >
-        <div className="p-2 rounded-full bg-amber-50">
-          <Crown className="w-4 h-4 text-amber-600" aria-hidden />
-        </div>
-        <div className="flex-1 text-left">
-          <p className="text-sm font-medium text-gray-900">Go Premium</p>
-          <p className="text-xs text-gray-400">Pay with UPI, card, or net banking</p>
-        </div>
+        <Crown className="w-3.5 h-3.5 text-amber-600" aria-hidden />
+        <span className="whitespace-nowrap text-xs font-bold">Go Premium</span>
       </TouchFeedbackButton>
       {!showPlan && message ? (
-        <p className="px-4 pb-3 text-xs text-red-600" role="alert">{message}</p>
+        <p className="mt-1 max-w-[11rem] text-right text-[11px] leading-tight text-amber-50" role="alert">{message}</p>
       ) : null}
       {showPlan ? (
         <PremiumPlanPage
