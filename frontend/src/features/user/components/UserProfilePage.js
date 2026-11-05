@@ -661,16 +661,22 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   return (
     <div className="min-h-full bg-gray-50 pb-8">
       {/* Page Header */}
-      <div className="bg-gradient-to-r from-green-600 to-green-700 px-4 pt-4 pb-6">
+      <div className={`px-4 pt-4 pb-6 ${
+        isPremiumMember
+          ? 'bg-[#E3F2FD]'
+          : 'bg-gradient-to-r from-green-600 to-green-700'
+      }`}>
         <div className="mb-4 flex items-center gap-3">
           <TouchFeedbackButton
             onClick={onBack}
-            className="p-2 rounded-full hover:bg-green-700 transition-colors text-white"
+            className={`p-2 rounded-full transition-colors ${
+              isPremiumMember ? 'text-sky-950 hover:bg-sky-200/80' : 'text-white hover:bg-green-700'
+            }`}
             ariaLabel="Back"
           >
             <ArrowLeft className="w-5 h-5" />
           </TouchFeedbackButton>
-          <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-white">My Profile</h1>
+          <h1 className={`min-w-0 flex-1 truncate text-lg font-bold ${isPremiumMember ? 'text-sky-950' : 'text-white'}`}>My Profile</h1>
           <GoPremiumButton
             userId={premiumUserId}
             isPremium={isPremiumMember}
@@ -725,8 +731,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
             </div>
           </PremiumAvatarRing>
           <div className="flex-1 min-w-0">
-            <p className="text-xl font-bold text-white truncate">{displayName}</p>
-            <p className="text-sm text-green-100 truncate">{accountEmail || user?.email}</p>
+            <p className={`text-xl font-bold truncate ${isPremiumMember ? 'text-sky-950' : 'text-white'}`}>{displayName}</p>
+            <p className={`text-sm truncate ${isPremiumMember ? 'text-sky-700' : 'text-green-100'}`}>{accountEmail || user?.email}</p>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-900">
                 {role}

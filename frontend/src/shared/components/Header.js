@@ -43,10 +43,8 @@ const Header = ({
   const [savedProfileImage, setSavedProfileImage] = useState(null);
   const prevProfileKeyRef = useRef(profileKey);
 
-  // Premium crown on the avatar. Tab-only headers skip the check.
-  const premiumUserId = navOnly
-    ? null
-    : (user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null);
+  // Premium members get a light blue header. Tab-only bars use the same check.
+  const premiumUserId = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
   const { premium: isPremiumMember } = usePremiumStatus(premiumUserId);
 
   // Reports: common module for every signed-in user when the flag is on.
@@ -164,7 +162,11 @@ const Header = ({
     return (
       <nav
         aria-label="App navigation"
-        className="bg-white border-b-4 border-green-500 shadow-sm safe-top safe-left safe-right"
+        className={`border-b-4 shadow-sm safe-top safe-left safe-right ${
+          isPremiumMember
+            ? 'bg-[#E3F2FD] border-[#90CAF9]'
+            : 'bg-white border-green-500'
+        }`}
       >
         <AppNavTabs
           activePage={activePage}
@@ -185,7 +187,11 @@ const Header = ({
   }
 
   return (
-    <header className="bg-white shadow-lg border-b-4 border-green-500 safe-top safe-left safe-right">
+    <header className={`shadow-lg border-b-4 safe-top safe-left safe-right ${
+      isPremiumMember
+        ? 'bg-[#E3F2FD] border-[#90CAF9]'
+        : 'bg-white border-green-500'
+    }`}>
       <div className="max-w-lg mx-auto px-3 xs:px-4 py-2 flex justify-between items-center">
         {/* Brand / Logo */}
         <div className="flex-1 min-w-0">
@@ -207,17 +213,19 @@ const Header = ({
               }}
             />
             <div className="flex-1 min-w-0 -ml-1">
-              <h1 className="text-lg xs:text-xl sm:text-2xl font-extrabold text-green-700 truncate flex items-baseline gap-1">
+              <h1 className={`text-lg xs:text-xl sm:text-2xl font-extrabold truncate flex items-baseline gap-1 ${
+                isPremiumMember ? 'text-sky-800' : 'text-green-700'
+              }`}>
                 Wellness Valley
                 <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-3xl border border-gray-200 text-[10px] font-medium text-gray-500 bg-transparent relative top-[1px] w-12 h-4">
                   <span className="text-gray-500">V{APP_VERSION.VERSION.split(".")[0]}</span>
                   <span className="text-gray-400">.</span>
-                  <span className="text-green-600">{APP_VERSION.VERSION.split(".")[1]}</span>
+                  <span className={isPremiumMember ? 'text-sky-600' : 'text-green-600'}>{APP_VERSION.VERSION.split(".")[1]}</span>
                   <span className="text-gray-400">.</span>
-                  <span className="text-green-600">{APP_VERSION.VERSION.split('.')[2]}</span>
+                  <span className={isPremiumMember ? 'text-sky-600' : 'text-green-600'}>{APP_VERSION.VERSION.split('.')[2]}</span>
                 </span>
               </h1>
-              <p className="text-xs sm:text-sm text-green-600 truncate">Tracking Wellness with Ease</p>
+              <p className={`text-xs sm:text-sm truncate ${isPremiumMember ? 'text-sky-600' : 'text-green-600'}`}>Tracking Wellness with Ease</p>
             </div>
           </div>
         </div>
@@ -245,7 +253,9 @@ const Header = ({
       </div>
 
       {/* ── Row 2: App top navigation bar — always 6 tabs, always uniform ── */}
-      <nav aria-label="App navigation" className="border-t border-green-100 bg-white safe-left safe-right">
+      <nav aria-label="App navigation" className={`border-t safe-left safe-right ${
+        isPremiumMember ? 'border-[#BBDEFB] bg-[#E3F2FD]' : 'border-green-100 bg-white'
+      }`}>
         <AppNavTabs
           activePage={activePage}
           onShowHome={onShowHome}

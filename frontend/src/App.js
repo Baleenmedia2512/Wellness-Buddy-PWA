@@ -8589,7 +8589,7 @@ function WellnessValleyApp() {
       <div
         className="ios-full-page"
         style={{
-          background: 'linear-gradient(180deg, #ecfdf5 0%, #f0fdf4 100%)',
+          background: 'var(--wv-page-wash)',
         }}
       >
         {/* -- Permission denied modal (canRequest: true) ---------------------
@@ -8941,7 +8941,7 @@ function WellnessValleyApp() {
             {/* -- Hero banner: greeting + Camera / Gallery CTAs (sticky while home scrolls) -- */}
             <div className="sticky top-0 z-20 -mx-2 xs:-mx-3 px-2 xs:px-3 pt-0.5 pb-1 bg-gray-50">
             <div className="mx-1 mt-0 rounded-2xl overflow-hidden shadow-lg"
-                style={{ background: 'linear-gradient(135deg, #064e3b 0%, #065f46 45%, #047857 100%)' }}>
+                style={{ background: 'var(--wv-hero)' }}>
                 <div className="px-2 pt-1 pb-2">
                   {/* Date pill */}
                   <div className="flex items-center justify-between">
