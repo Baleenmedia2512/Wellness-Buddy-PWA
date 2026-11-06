@@ -12,6 +12,7 @@ import {
   normalizeMatrix,
   matrixWithDefaultsForNewPages,
   DEFAULT_NAV_ACCESS_MATRIX,
+  NAV_PAGE_KEYS,
   allowedPageKeys,
   allPagesAllowed,
 } from '../domain/navAccess.rules.js';
@@ -61,7 +62,7 @@ describe('DEFAULT_NAV_ACCESS_MATRIX', () => {
   it('seeds sponsor/admin/developer with all pages on', () => {
     for (const role of ['coach', 'admin', 'developer']) {
       const keys = allowedPageKeys(DEFAULT_NAV_ACCESS_MATRIX[role]);
-      assert.equal(keys.length, 10);
+      assert.equal(keys.length, NAV_PAGE_KEYS.length);
     }
   });
 

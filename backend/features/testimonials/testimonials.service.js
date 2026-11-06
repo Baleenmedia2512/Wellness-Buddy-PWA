@@ -748,6 +748,15 @@ export async function verifyOtp(rawBody) {
   const verifiedAt = nowUtc();
   await repo.updateTestimonial(testimonialId, { status: 'verified', verifiedAt, otpHash: null });
 
+  try {
+    const { bustPortfolioTeamMediaCache } = await import(
+      '../coach-portfolio/api/public-team-media.service.js'
+    );
+    bustPortfolioTeamMediaCache(row.coach_id);
+  } catch {
+    /* non-fatal — public site cache refresh */
+  }
+
   return {
     httpStatus: 200,
     body: { success: true, message: 'Testimonial verified successfully.' },
@@ -1486,6 +1495,15 @@ export async function verifyVideoOtp(rawBody) {
     videoVerifiedAt,
     videoOtpHash:    null,
   });
+
+  try {
+    const { bustPortfolioTeamMediaCache } = await import(
+      '../coach-portfolio/api/public-team-media.service.js'
+    );
+    bustPortfolioTeamMediaCache(row.coach_id);
+  } catch {
+    /* non-fatal — public site cache refresh */
+  }
 
   return {
     httpStatus: 200,

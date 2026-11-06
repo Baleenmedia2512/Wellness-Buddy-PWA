@@ -406,3 +406,12 @@ registerFlag({
   description:    'Unique per-user wallet. Cash-in after OTP emailed to a selected Wellness Valley person. Kill switch hides the Profile row and wallet APIs.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.coach-portfolio',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-03',
+  removeBy:       '2027-05-03',
+  description:    'Coach Website portfolio: paid gate (admin mark paid for testing; Cashfree later) + form entry. Kill switch hides Profile rows and portfolio APIs.',
+  defaultEnabled: true,
+});

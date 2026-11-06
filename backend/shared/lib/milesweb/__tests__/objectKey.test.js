@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { isAllowedUploadKey, mediaKeyFromServedUrl, mileswebRedirectUrl } from '../objectKey.js';
 
 describe('MilesWeb upload keys', () => {
-  it('accepts the seven cPanel folders', () => {
+  it('accepts the cPanel upload folders including coach-portfolio', () => {
     assert.equal(isAllowedUploadKey('avatars/42/ab12.jpg'), true);
     assert.equal(isAllowedUploadKey('food/7/99/ab.jpg'), true);
     assert.equal(isAllowedUploadKey('good-habits/1/2/main/ab.jpg'), true);
     assert.equal(isAllowedUploadKey('transformation/3/front/ab.jpg'), true);
+    assert.equal(isAllowedUploadKey('coach-portfolio/42/intro-ab12.mp4'), true);
   });
 
   it('rejects paths that leave the upload folders', () => {

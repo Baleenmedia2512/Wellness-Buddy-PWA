@@ -226,6 +226,16 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Profile Wallet: unique balance and OTP-approved cash-in.',
   },
+
+  // Coach Website portfolio — paid gate + form entry (Cashfree later).
+  // Default ON. Set REACT_APP_FF_COACH_PORTFOLIO=false or
+  // localStorage 'ff.coach-portfolio'='false' to hide.
+  'ff.coach-portfolio': {
+    envKey:         'REACT_APP_FF_COACH_PORTFOLIO',
+    storageKey:     'ff.coach-portfolio',
+    defaultEnabled: true,
+    description:    'Coach Website: paid unlock and portfolio form entry.',
+  },
 });
 
 function readStorage(key) {
