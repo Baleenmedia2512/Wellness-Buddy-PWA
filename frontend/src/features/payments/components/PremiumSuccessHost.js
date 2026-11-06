@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import PremiumSuccessPopup from './PremiumSuccessPopup';
 import {
   clearPremiumSuccessPending,
@@ -20,14 +20,12 @@ export default function PremiumSuccessHost({ userId }) {
     });
   }, [userId]);
 
+  const close = useCallback(() => {
+    clearPremiumSuccessPending();
+    setOpen(false);
+  }, []);
+
   if (!open) return null;
 
-  return (
-    <PremiumSuccessPopup
-      onOkay={() => {
-        clearPremiumSuccessPending();
-        setOpen(false);
-      }}
-    />
-  );
+  return <PremiumSuccessPopup onClose={close} />;
 }

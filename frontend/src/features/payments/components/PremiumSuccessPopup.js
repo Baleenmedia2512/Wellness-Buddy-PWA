@@ -1,13 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Check } from 'lucide-react';
-import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+
+export const PREMIUM_SUCCESS_VISIBLE_MS = 5000;
 
 const BLASTER_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#fbbf24', '#22c55e'];
 
 /**
  * Two party poppers, from the lower corners, for the success popup only.
- * The popup itself stays until Okay.
+ * The message stays for 5 seconds, then closes on its own.
  */
 function PartyBlaster() {
   const canvasRef = useRef(null);
@@ -34,16 +35,16 @@ function PartyBlaster() {
     let { width, height } = paint();
 
     const origins = [
-      { x: width * 0.12, y: height * 0.78, direction: 1 },
-      { x: width * 0.88, y: height * 0.78, direction: -1 },
+      { x: width * 0.08, y: height * 0.62, direction: 1 },
+      { x: width * 0.92, y: height * 0.62, direction: -1 },
     ];
     const pieces = [];
     origins.forEach((origin) => {
-      for (let i = 0; i < 55; i += 1) {
+      for (let i = 0; i < 80; i += 1) {
         const upward = -Math.PI / 2;
-        const spread = (Math.random() * 0.95) * (Math.PI / 3) * origin.direction;
+        const spread = (Math.random() * 1.15) * (Math.PI / 2.4) * origin.direction;
         const angle = upward + spread;
-        const speed = 9 + Math.random() * 8;
+        const speed = 11 + Math.random() * 9;
         pieces.push({
           x: origin.x,
           y: origin.y,
@@ -52,8 +53,8 @@ function PartyBlaster() {
           spin: (Math.random() - 0.5) * 16,
           rotation: Math.random() * 360,
           color: BLASTER_COLORS[i % BLASTER_COLORS.length],
-          w: 5 + Math.random() * 7,
-          h: 8 + Math.random() * 10,
+          w: 8 + Math.random() * 8,
+          h: 12 + Math.random() * 12,
           opacity: 1,
           circle: Math.random() > 0.65,
         });
@@ -65,7 +66,7 @@ function PartyBlaster() {
     const tick = (now) => {
       ({ width, height } = paint());
       ctx.clearRect(0, 0, width, height);
-      const fading = now - started > 1100;
+      const fading = now - started > 1600;
       pieces.forEach((piece) => {
         piece.x += piece.vx;
         piece.y += piece.vy;
@@ -87,7 +88,7 @@ function PartyBlaster() {
         }
         ctx.restore();
       });
-      if (now - started < 2600 && pieces.some((piece) => piece.opacity > 0)) {
+      if (now - started < 3400 && pieces.some((piece) => piece.opacity > 0)) {
         frame = requestAnimationFrame(tick);
       }
     };
@@ -107,16 +108,13 @@ function PartyBlaster() {
 
 /**
  * One-time popup after Cashfree payment is confirmed.
- * Closes only when the member taps Okay.
+ * Shows only the Premium message, then closes after 5 seconds.
  */
-export default function PremiumSuccessPopup({ onOkay }) {
+export default function PremiumSuccessPopup({ onClose }) {
   useEffect(() => {
-    const onKey = (event) => {
-      if (event.key === 'Escape') onOkay?.();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onOkay]);
+    const timer = setTimeout(() => onClose?.(), PREMIUM_SUCCESS_VISIBLE_MS);
+    return () => clearTimeout(timer);
+  }, [onClose]);
 
   const popup = (
     <div
@@ -127,22 +125,12 @@ export default function PremiumSuccessPopup({ onOkay }) {
     >
       <PartyBlaster />
       <div className="relative z-10 w-full max-w-sm rounded-2xl bg-white px-6 py-8 text-center shadow-xl">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-500">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#22c55e]">
           <Check className="h-8 w-8 text-white" strokeWidth={3} aria-hidden />
         </div>
         <h2 id="premium-success-title" className="mt-5 text-xl font-bold text-gray-900">
-          Payment Successful
-        </h2>
-        <p className="mt-2 text-sm text-gray-500">
           You are now a Premium Member
-        </p>
-        <TouchFeedbackButton
-          onClick={onOkay}
-          ariaLabel="Okay"
-          className="mt-6 w-full rounded-xl bg-green-600 py-3 text-sm font-semibold text-white"
-        >
-          Okay
-        </TouchFeedbackButton>
+        </h2>
       </div>
     </div>
   );

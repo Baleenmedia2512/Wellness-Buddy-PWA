@@ -4,7 +4,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
-import PremiumSuccessPopup from './PremiumSuccessPopup';
+import PremiumSuccessPopup, { PREMIUM_SUCCESS_VISIBLE_MS } from './PremiumSuccessPopup';
 import PremiumSuccessHost from './PremiumSuccessHost';
 import {
   clearPremiumSuccessPending,
@@ -33,19 +33,24 @@ function render(element) {
 }
 
 describe('PremiumSuccessPopup', () => {
-  it('tells the member they are Premium and closes on Okay', () => {
-    const onOkay = jest.fn();
-    const view = render(<PremiumSuccessPopup onOkay={onOkay} />);
-    expect(document.body.textContent).toMatch(/Payment Successful/);
+  it('shows only the Premium message, then closes after 5 seconds', () => {
+    jest.useFakeTimers();
+    const onClose = jest.fn();
+    const view = render(<PremiumSuccessPopup onClose={onClose} />);
+    expect(document.body.textContent).not.toMatch(/Payment Successful/);
     expect(document.body.textContent).toMatch(/You are now a Premium Member/);
+    expect(document.body.querySelector('button')).toBeNull();
     expect(document.body.querySelector('[data-testid="premium-party-blaster"]')).not.toBeNull();
-    const okay = document.body.querySelector('button[aria-label="Okay"]');
-    expect(okay).not.toBeNull();
     act(() => {
-      okay.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      jest.advanceTimersByTime(PREMIUM_SUCCESS_VISIBLE_MS - 1);
     });
-    expect(onOkay).toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    act(() => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
     view.unmount();
+    jest.useRealTimers();
   });
 });
 
@@ -58,34 +63,36 @@ describe('PremiumSuccessHost', () => {
   it('shows the popup after this member\'s payment is confirmed', () => {
     markPremiumSuccessPending(42);
     const view = render(<PremiumSuccessHost userId={42} />);
-    expect(document.body.textContent).toMatch(/Payment Successful/);
+    expect(document.body.textContent).toMatch(/You are now a Premium Member/);
+    expect(document.body.textContent).not.toMatch(/Payment Successful/);
     view.unmount();
   });
 
   it('stays hidden until a payment is confirmed', () => {
     const view = render(<PremiumSuccessHost userId={42} />);
-    expect(document.body.textContent).not.toMatch(/Payment Successful/);
+    expect(document.body.textContent).not.toMatch(/Premium Member/);
     view.unmount();
   });
 
   it('does not show another member\'s payment', () => {
     markPremiumSuccessPending(7);
     const view = render(<PremiumSuccessHost userId={42} />);
-    expect(document.body.textContent).not.toMatch(/Payment Successful/);
+    expect(document.body.textContent).not.toMatch(/Premium Member/);
     view.unmount();
   });
 
-  it('closes on Okay and does not come back on the next visit', () => {
+  it('closes after 5 seconds and does not come back on the next visit', () => {
+    jest.useFakeTimers();
     markPremiumSuccessPending(42);
     const view = render(<PremiumSuccessHost userId={42} />);
-    const okay = document.body.querySelector('button[aria-label="Okay"]');
     act(() => {
-      okay.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      jest.advanceTimersByTime(PREMIUM_SUCCESS_VISIBLE_MS);
     });
-    expect(document.body.textContent).not.toMatch(/Payment Successful/);
+    expect(document.body.textContent).not.toMatch(/Premium Member/);
     view.rerender(<PremiumSuccessHost userId={42} />);
-    expect(document.body.textContent).not.toMatch(/Payment Successful/);
+    expect(document.body.textContent).not.toMatch(/Premium Member/);
     view.unmount();
+    jest.useRealTimers();
   });
 
   it('opens when payment is confirmed while the member is already in the app', () => {
