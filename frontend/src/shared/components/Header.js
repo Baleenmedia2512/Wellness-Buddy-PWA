@@ -162,11 +162,7 @@ const Header = ({
     return (
       <nav
         aria-label="App navigation"
-        className={`border-b-4 shadow-sm safe-top safe-left safe-right ${
-          isPremiumMember
-            ? 'bg-[#E3F2FD] border-[#90CAF9]'
-            : 'bg-white border-green-500'
-        }`}
+        className="bg-white border-b-4 border-green-500 shadow-sm safe-top safe-left safe-right"
       >
         <AppNavTabs
           activePage={activePage}
@@ -187,11 +183,7 @@ const Header = ({
   }
 
   return (
-    <header className={`shadow-lg border-b-4 safe-top safe-left safe-right ${
-      isPremiumMember
-        ? 'bg-[#E3F2FD] border-[#90CAF9]'
-        : 'bg-white border-green-500'
-    }`}>
+    <header className="bg-white shadow-lg border-b-4 border-green-500 safe-top safe-left safe-right">
       <div className="max-w-lg mx-auto px-3 xs:px-4 py-2 flex justify-between items-center">
         {/* Brand / Logo */}
         <div className="flex-1 min-w-0">
@@ -213,9 +205,7 @@ const Header = ({
               }}
             />
             <div className="flex-1 min-w-0 -ml-1">
-              <h1 className={`text-lg xs:text-xl sm:text-2xl font-extrabold truncate flex items-baseline gap-1 ${
-                isPremiumMember ? 'text-sky-800' : 'text-green-700'
-              }`}>
+              <h1 className={`text-lg xs:text-xl sm:text-2xl font-extrabold truncate flex items-baseline gap-1 ${isPremiumMember ? 'text-sky-800' : 'text-green-700'}`}>
                 Wellness Valley
                 <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-3xl border border-gray-200 text-[10px] font-medium text-gray-500 bg-transparent relative top-[1px] w-12 h-4">
                   <span className="text-gray-500">V{APP_VERSION.VERSION.split(".")[0]}</span>
@@ -253,9 +243,7 @@ const Header = ({
       </div>
 
       {/* ── Row 2: App top navigation bar — always 6 tabs, always uniform ── */}
-      <nav aria-label="App navigation" className={`border-t safe-left safe-right ${
-        isPremiumMember ? 'border-[#BBDEFB] bg-[#E3F2FD]' : 'border-green-100 bg-white'
-      }`}>
+      <nav aria-label="App navigation" className="border-t border-green-100 bg-white safe-left safe-right">
         <AppNavTabs
           activePage={activePage}
           onShowHome={onShowHome}

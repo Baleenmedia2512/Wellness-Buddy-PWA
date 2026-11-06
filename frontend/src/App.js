@@ -8939,7 +8939,7 @@ function WellnessValleyApp() {
             )}
 
             {/* -- Hero banner: greeting + Camera / Gallery CTAs (sticky while home scrolls) -- */}
-            <div className="sticky top-0 z-20 -mx-2 xs:-mx-3 px-2 xs:px-3 pt-0.5 pb-1 bg-gray-50">
+            <div className="sticky top-0 z-20 -mx-2 xs:-mx-3 px-2 xs:px-3 pt-0.5 pb-1 bg-[var(--wv-page)]">
             <div className="mx-1 mt-0 rounded-2xl overflow-hidden shadow-lg"
                 style={{ background: 'var(--wv-hero)' }}>
                 <div className="px-2 pt-1 pb-2">

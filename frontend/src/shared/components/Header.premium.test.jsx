@@ -48,11 +48,12 @@ describe('Header premium crown', () => {
     view.unmount();
   });
 
-  it('uses a light blue gradient for a Premium member', () => {
+  it('keeps the original white header for a Premium member', () => {
     usePremiumStatus.mockReturnValue({ premium: true, refresh: jest.fn() });
     const view = renderHeader();
-    expect(view.container.querySelector('header').className).toMatch(/bg-\[#E3F2FD\]/);
-    expect(view.container.querySelector('header').className).not.toMatch(/border-green-500/);
+    expect(view.container.querySelector('header').className).toMatch(/bg-white/);
+    expect(view.container.querySelector('header').className).toMatch(/border-green-500/);
+    expect(view.container.querySelector('header').className).not.toMatch(/from-sky-100/);
     view.unmount();
   });
 
@@ -60,15 +61,16 @@ describe('Header premium crown', () => {
     usePremiumStatus.mockReturnValue({ premium: false, refresh: jest.fn() });
     const view = renderHeader();
     expect(view.container.querySelector('header').className).toMatch(/border-green-500/);
-    expect(view.container.querySelector('header').className).not.toMatch(/bg-\[#E3F2FD\]/);
+    expect(view.container.querySelector('header').className).not.toMatch(/from-sky-100/);
     view.unmount();
   });
 
-  it('uses the same light blue bar on the tab-only header', () => {
+  it('keeps the original white bar on the tab-only header', () => {
     usePremiumStatus.mockReturnValue({ premium: true, refresh: jest.fn() });
     const view = renderHeader({ navOnly: true });
     expect(usePremiumStatus).toHaveBeenLastCalledWith(42);
-    expect(view.container.querySelector('nav').className).toMatch(/bg-\[#E3F2FD\]/);
+    expect(view.container.querySelector('nav').className).toMatch(/bg-white/);
+    expect(view.container.querySelector('nav').className).toMatch(/border-green-500/);
     view.unmount();
   });
 });
