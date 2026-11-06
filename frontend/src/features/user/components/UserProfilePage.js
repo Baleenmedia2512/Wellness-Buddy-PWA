@@ -54,7 +54,7 @@ import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
 import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked, validateHeightCm } from '../domain/heightChange';
 import { looksLikeEmail } from '../domain/onboardingEmail';
 import GoPremiumButton from '../../payments/components/GoPremiumButton';
-import { PremiumAvatarRing } from '../../payments/components/PremiumBadge';
+import { PremiumAvatarRing, PremiumCrownMark } from '../../payments/components/PremiumBadge';
 import usePremiumStatus from '../../payments/hooks/usePremiumStatus';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
@@ -686,7 +686,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
 
         {/* Avatar — tap photo to view; Edit badge to change */}
         <div className="flex items-center gap-4">
-          <PremiumAvatarRing enabled={isPremiumMember}>
+          <span className="relative inline-flex shrink-0">
+            <PremiumAvatarRing enabled={isPremiumMember}>
             <div className={`relative aspect-square h-20 w-20 flex-shrink-0 overflow-hidden rounded-full shadow-lg ${isPremiumMember ? '' : 'border-[3px] border-white'}`}>
               <TouchFeedbackButton
                 type="button"
@@ -729,7 +730,9 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                 {isUploadingPhoto ? '…' : 'Edit'}
               </TouchFeedbackButton>
             </div>
-          </PremiumAvatarRing>
+            </PremiumAvatarRing>
+            {isPremiumMember ? <PremiumCrownMark size="lg" /> : null}
+          </span>
           <div className="flex-1 min-w-0">
             <p className={`text-xl font-bold truncate ${isPremiumMember ? 'text-sky-950' : 'text-white'}`}>{displayName}</p>
             <p className={`text-sm truncate ${isPremiumMember ? 'text-sky-700' : 'text-green-100'}`}>{accountEmail || user?.email}</p>
@@ -755,12 +758,20 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                 </span>
               )}
               {coachName && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-white/20 text-white border border-white/40">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${
+                  isPremiumMember
+                    ? 'bg-white text-sky-950 border-sky-300'
+                    : 'bg-white/20 text-white border-white/40'
+                }`}>
                   Sponsor: {coachName}
                 </span>
               )}
               {idealCoachName && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-white/20 text-white border border-white/40">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${
+                  isPremiumMember
+                    ? 'bg-white text-sky-950 border-sky-300'
+                    : 'bg-white/20 text-white border-white/40'
+                }`}>
                   Coach: {idealCoachName}
                 </span>
               )}

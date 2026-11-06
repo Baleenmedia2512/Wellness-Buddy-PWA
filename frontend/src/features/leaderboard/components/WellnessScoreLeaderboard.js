@@ -267,6 +267,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
         email={user.email}
         userName={shownName}
         profileImage={user.profileImage}
+        isPremium={user.isPremium === true}
       />
     </button>
   );

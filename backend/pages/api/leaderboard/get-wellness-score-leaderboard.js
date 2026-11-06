@@ -22,6 +22,8 @@ import {
 } from '../../../utils/wellnessScoreLeaderboard.js';
 import { computeDailyScoreForDate } from '../../../features/wellness-score/api/daily-score.handler.js';
 import { resolveLeaderboardViewerId } from '../../../utils/leaderboardViewer.js';
+import { cashfreeCheckoutMode } from '../../../features/payments/domain/premium.rules.js';
+import { attachPremiumFlags } from '../../../features/payments/data/premium.repository.js';
 
 const LEADERBOARD_CACHE_TTL_MS = 15 * 1000;
 
@@ -95,7 +97,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const cacheKey = `lb:hierarchy:wellness:v3:${viewerUserId}:${topN}:${scoreDate}:d${windowDays}`;
+    const cacheKey = `lb:hierarchy:wellness:v4:${viewerUserId}:${topN}:${scoreDate}:d${windowDays}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       res.setHeader('X-Cache', 'HIT');
@@ -221,9 +223,13 @@ export default async function handler(req, res) {
       };
     });
 
+    const withPremium = await attachPremiumFlags(withSponsors, {
+      mode: cashfreeCheckoutMode(process.env.CASHFREE_ENV || 'sandbox'),
+    });
+
     const payload = {
       success: true,
-      data: withSponsors,
+      data: withPremium,
       topN,
       scoreDate,
       scoreDateStart,

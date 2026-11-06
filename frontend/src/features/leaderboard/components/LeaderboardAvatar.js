@@ -4,6 +4,7 @@ import {
   getAvatarDisplayVersion,
   subscribeAvatarDisplayVersion,
 } from '../../user/services/avatarDisplayVersion';
+import { PremiumAvatarRing, PremiumCrownMark } from '../../payments/components/PremiumBadge';
 
 const COLORS = [
   'bg-blue-500',
@@ -30,6 +31,7 @@ export default function LeaderboardAvatar({
   email,
   userName,
   profileImage: _profileImage,
+  isPremium = false,
 }) {
   const [failed, setFailed] = useState(false);
   const [avatarVersion, setAvatarVersion] = useState(getAvatarDisplayVersion);
@@ -44,33 +46,33 @@ export default function LeaderboardAvatar({
   const remoteSrc = buildUserAvatarUrl(apiBaseUrl, userId, avatarVersion);
   const src = !failed ? remoteSrc : null;
 
-  if (src) {
-    return (
-      <img
-        key={src}
-        src={src}
-        alt={userName || 'User'}
-        className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover shadow-md border-2 border-white"
-        loading="lazy"
-        decoding="async"
-        referrerPolicy="no-referrer"
-        onError={() => setFailed(true)}
-      />
-    );
-  }
-
-  const initial = userName
-    ? userName.charAt(0).toUpperCase()
-    : email
-      ? email.charAt(0).toUpperCase()
-      : '?';
-  const colorIndex = (userName || email || '').length % COLORS.length;
+  const face = src ? (
+    <img
+      key={src}
+      src={src}
+      alt={userName || 'User'}
+      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover shadow-md ${isPremium ? '' : 'border-2 border-white'}`}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+    />
+  ) : (
+    <div
+      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full ${COLORS[(userName || email || '').length % COLORS.length]} flex items-center justify-center text-white font-bold text-sm sm:text-base shadow-md`}
+    >
+      {userName
+        ? userName.charAt(0).toUpperCase()
+        : email
+          ? email.charAt(0).toUpperCase()
+          : '?'}
+    </div>
+  );
 
   return (
-    <div
-      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full ${COLORS[colorIndex]} flex items-center justify-center text-white font-bold text-sm sm:text-base shadow-md`}
-    >
-      {initial}
-    </div>
+    <span className="relative inline-flex shrink-0">
+      <PremiumAvatarRing enabled={isPremium}>{face}</PremiumAvatarRing>
+      {isPremium ? <PremiumCrownMark /> : null}
+    </span>
   );
 }

@@ -32,15 +32,17 @@ export function PremiumAvatarRing({ enabled = true, children }) {
   );
 }
 
-/** Small crown on the avatar corner. Only for very narrow phones with no room for the tag. */
-export function PremiumCrownMark() {
+/** Gold crown on the bottom-right of a Premium member's profile photo. */
+export function PremiumCrownMark({ size = 'sm' }) {
+  const box = size === 'lg' ? 'h-7 w-7' : 'h-5 w-5';
+  const icon = size === 'lg' ? 'h-4 w-4' : 'h-3 w-3';
   return (
     <span
-      className="min-[340px]:hidden absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 border border-white shadow-sm pointer-events-none"
+      className={`absolute -bottom-0.5 -right-0.5 flex ${box} items-center justify-center rounded-full bg-amber-400 border-2 border-white shadow-sm pointer-events-none`}
       data-testid="premium-crown"
       aria-hidden
     >
-      <Crown className="w-2.5 h-2.5 text-amber-900" aria-hidden />
+      <Crown className={`${icon} text-amber-950`} aria-hidden />
     </span>
   );
 }

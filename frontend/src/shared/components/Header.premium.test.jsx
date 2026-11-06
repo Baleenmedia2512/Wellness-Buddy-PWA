@@ -35,7 +35,9 @@ describe('Header premium crown', () => {
     expect(view.container.querySelector('[data-testid="premium-header-tag"]')).toBeNull();
     expect(view.container.textContent).not.toMatch(/Premium/);
     expect(view.container.querySelector('[data-testid="premium-avatar-ring"]')).not.toBeNull();
-    expect(view.container.querySelector('[data-testid="premium-crown"]')).not.toBeNull();
+    const crown = view.container.querySelector('[data-testid="premium-crown"]');
+    expect(crown).not.toBeNull();
+    expect(crown.className).not.toMatch(/hidden/);
     view.unmount();
   });
 

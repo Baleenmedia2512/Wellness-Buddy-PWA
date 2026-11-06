@@ -197,6 +197,7 @@ import { ManualWatchEntryModal } from "./features/activity";
 import { DuplicateFoodModal } from "./features/nutrition";
 import { UserProfileModal } from "./features/user";
 import { UserProfilePage, ProfilePageErrorBoundary } from "./features/user";
+import PremiumSuccessHost from "./features/payments/components/PremiumSuccessHost";
 import { CompleteProfilePage } from "./features/user";
 import { OnboardingIdentityPage } from "./features/user";
 import { OnboardingTransformationPhotosPage } from "./features/user";
@@ -10275,6 +10276,9 @@ function WellnessValleyApp() {
       </div>
     </LocationGuard>
       </div>
+      <PremiumSuccessHost
+        userId={user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null}
+      />
       {homeOverlay}
     </>
   );
