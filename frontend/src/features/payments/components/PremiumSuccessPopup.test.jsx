@@ -38,6 +38,7 @@ describe('PremiumSuccessPopup', () => {
     const view = render(<PremiumSuccessPopup onOkay={onOkay} />);
     expect(document.body.textContent).toMatch(/Payment Successful/);
     expect(document.body.textContent).toMatch(/You are now a Premium Member/);
+    expect(document.body.querySelector('[data-testid="premium-party-blaster"]')).not.toBeNull();
     const okay = document.body.querySelector('button[aria-label="Okay"]');
     expect(okay).not.toBeNull();
     act(() => {
