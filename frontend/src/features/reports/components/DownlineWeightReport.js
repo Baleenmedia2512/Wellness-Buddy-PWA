@@ -236,6 +236,7 @@ export default function DownlineWeightReport({
           <WeightStatusRow
             key={row.userId}
             row={row}
+            hideDetails={hideDetails}
             onViewProfile={setProfileMember}
             teamPerformance={resolveRowTeamPerformance({
               row,

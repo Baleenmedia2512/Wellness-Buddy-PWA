@@ -25,6 +25,7 @@ export default function WeightStatusRow({
   row,
   teamPerformance = null,
   onViewProfile,
+  hideDetails = false,
 }) {
   const { userName, email, communityId, currentWeight, idealMin, idealMax, status, firstReachedAt } = row;
   const bar = getBarProps(currentWeight, idealMin, idealMax);
