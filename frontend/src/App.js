@@ -64,6 +64,7 @@ import { WaitingForCoachModal } from "./shell/components/WaitingForCoachModal";
 import { WeightShareCard } from "./shell/components/WeightShareCard";
 import { WeightResultCard } from "./shell/components/WeightResultCard";
 import { Capacitor } from "@capacitor/core";
+import wellnessValleyIcon from "./assets/wellness-valley-icon.png";
 import { Bug, Share2, Pencil, Check, X as XIcon, Sparkles } from "lucide-react";
 import ImageUpload from "./shared/components/ImageUpload";
 import {
@@ -195,7 +196,8 @@ import { fetchCityVillage } from "./shared/lib/reverseGeocode";
 import { ManualWatchEntryModal } from "./features/activity";
 import { DuplicateFoodModal } from "./features/nutrition";
 import { UserProfileModal } from "./features/user";
-import { UserProfilePage } from "./features/user";
+import { UserProfilePage, ProfilePageErrorBoundary } from "./features/user";
+import PremiumSuccessHost from "./features/payments/components/PremiumSuccessHost";
 import { CompleteProfilePage } from "./features/user";
 import { OnboardingIdentityPage } from "./features/user";
 import { OnboardingTransformationPhotosPage } from "./features/user";
@@ -327,6 +329,18 @@ const ManualEntryPage = lazy(() =>
 const prefetchManualEntryPage = () => {
   void import("./shell/components/ManualEntryPage");
 };
+function createCaptureShareToken() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 function WellnessValleyApp() {
   const apiBaseUrl = getApiBaseUrl();
   const versionPolicy = useAppVersionPolicy();
@@ -372,8 +386,12 @@ function WellnessValleyApp() {
   );
   // Skip the loading screen for returning OTP users (session pre-loaded from cache).
   const [authLoading, setAuthLoading] = useState(() => {
-    if (Session.isUserSignedOut()) return true;
-    if (Session.isOtpVerified() && Session.getOtpUser()) return false;
+    if (Session.isOtpVerified() && Session.getOtpUser() && !Session.isUserSignedOut()) {
+      return false;
+    }
+    // Signed-out Android/iOS must open Login. The white logo bridge used a
+    // missing /logo.png, so the splash logo was followed by a blank page.
+    if (Capacitor.isNativePlatform()) return false;
     return true;
   });
   const [isOtpVerified, setIsOtpVerified] = useState(Session.isOtpVerified());
@@ -447,9 +465,12 @@ function WellnessValleyApp() {
   // Starts visible on native so the home screen is never shown during the
   // ~100-300 ms between splash dismiss and native camera overlay appearing.
   // Dismissed right before openCamera() is called, or by safety effects below.
-  const [showLaunchOverlay, setShowLaunchOverlay] = useState(() =>
-    Capacitor.isNativePlatform() && !Session.getPendingClassifyCapture()?.captureId,
-  );
+  const [showLaunchOverlay, setShowLaunchOverlay] = useState(() => {
+    if (!Capacitor.isNativePlatform()) return false;
+    if (Session.getPendingClassifyCapture()?.captureId) return false;
+    if (Session.isUserSignedOut()) return false;
+    return Session.isOtpVerified() && !!Session.getOtpUser();
+  });
   const [manualModeActive, setManualModeActive] = useState(false); // always AI by default; auto-set by openBestManualModal on AI failure
   const [manualModeToast, setManualModeToast] = useState(""); // "enabled" | "disabled" | ""
   const [showManualWeightModal, setShowManualWeightModal] = useState(false);
@@ -1961,6 +1982,14 @@ function WellnessValleyApp() {
     isUserActive,
     showManualEntry,
   ]);
+
+  // Android 8 can fail to open the camera. Without this, the white launch
+  // cover stays up and the phone never reaches Login or Home.
+  useEffect(() => {
+    if (!showLaunchOverlay) return undefined;
+    const timer = setTimeout(() => setShowLaunchOverlay(false), 2500);
+    return () => clearTimeout(timer);
+  }, [showLaunchOverlay]);
 
   // Deep-link handler: open the app via Android App Link
   // (https://<host>/share/<id>) or the custom scheme
@@ -6302,7 +6331,7 @@ function WellnessValleyApp() {
 
     // Pre-generate share token/code synchronously so POST /captures can persist
     // the row immediately. Share sheet opens only after Classify photo completes.
-    const instantToken = crypto.randomUUID();
+    const instantToken = createCaptureShareToken();
     const generateInstantShareCode = (length = 8) => {
       const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
       let out = "";
@@ -7666,7 +7695,7 @@ function WellnessValleyApp() {
         }}
       >
         <img
-          src="/logo.png"
+          src={wellnessValleyIcon}
           alt="Wellness Valley"
           style={{ width: 120, height: 120, objectFit: "contain" }}
         />
@@ -7912,6 +7941,7 @@ function WellnessValleyApp() {
           onShowReports={() => navigateTo('reports')}
         />
         <div className="ios-scroll-body">
+          <ProfilePageErrorBoundary onBack={() => navigateTo('home')}>
           <UserProfilePage
             user={user}
             userRole={userRole}
@@ -8027,6 +8057,7 @@ function WellnessValleyApp() {
               setBodyParamsRefreshKey((k) => k + 1);
             }}
           />
+          </ProfilePageErrorBoundary>
         </div>
       </div>
     );
@@ -8559,7 +8590,7 @@ function WellnessValleyApp() {
       <div
         className="ios-full-page"
         style={{
-          background: 'linear-gradient(180deg, #ecfdf5 0%, #f0fdf4 100%)',
+          background: 'var(--wv-page-wash)',
         }}
       >
         {/* -- Permission denied modal (canRequest: true) ---------------------
@@ -8630,7 +8661,7 @@ function WellnessValleyApp() {
             }}
           >
             <img
-              src="/logo.png"
+              src={wellnessValleyIcon}
               alt=""
               style={{ width: 120, height: 120, objectFit: "contain" }}
             />
@@ -8909,9 +8940,9 @@ function WellnessValleyApp() {
             )}
 
             {/* -- Hero banner: greeting + Camera / Gallery CTAs (sticky while home scrolls) -- */}
-            <div className="sticky top-0 z-20 -mx-2 xs:-mx-3 px-2 xs:px-3 pt-0.5 pb-1 bg-gray-50">
+            <div className="sticky top-0 z-20 -mx-2 xs:-mx-3 px-2 xs:px-3 pt-0.5 pb-1 bg-[var(--wv-page)]">
             <div className="mx-1 mt-0 rounded-2xl overflow-hidden shadow-lg"
-                style={{ background: 'linear-gradient(135deg, #064e3b 0%, #065f46 45%, #047857 100%)' }}>
+                style={{ background: 'var(--wv-hero)' }}>
                 <div className="px-2 pt-1 pb-2">
                   {/* Date pill */}
                   <div className="flex items-center justify-between">
@@ -10245,6 +10276,9 @@ function WellnessValleyApp() {
       </div>
     </LocationGuard>
       </div>
+      <PremiumSuccessHost
+        userId={user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null}
+      />
       {homeOverlay}
     </>
   );

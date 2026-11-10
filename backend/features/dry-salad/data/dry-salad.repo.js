@@ -1,7 +1,7 @@
 /**
  * backend/features/dry-salad/data/dry-salad.repo.js
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import logger from '../../../shared/lib/logger.js';
 import {
   foodNameMatchesQuery,
@@ -42,8 +42,8 @@ function mapRow(row) {
  */
 export async function listApproved({ status = 'approved', limit = 50 } = {}) {
   const seeds = status === 'approved' ? listBrandCatalogSeeds() : [];
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .select('*')
     .eq('status', status)
@@ -63,7 +63,7 @@ export async function listApproved({ status = 'approved', limit = 50 } = {}) {
  * @returns {Promise<object[]|null>}
  */
 export async function searchItems(term, { status = 'approved', limit = 20 } = {}) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const q = String(term || '').trim();
   if (q.length < 1) return listApproved({ status, limit });
 
@@ -72,7 +72,7 @@ export async function searchItems(term, { status = 'approved', limit = 20 } = {}
 
   const seeds = status === 'approved' ? searchBrandCatalogSeeds(safe) : [];
   const fetchLimit = Math.max(limit * 4, 80);
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .select('*')
     .eq('status', status)
@@ -90,7 +90,7 @@ export async function searchItems(term, { status = 'approved', limit = 20 } = {}
   if (rows.length === 0 && safe.length >= 3) {
     const prefix = safe.slice(0, 2).replace(/[%_,]/g, ' ').trim();
     if (prefix.length >= 1) {
-      const broad = await supabase
+      const broad = await db
         .from(TABLE)
         .select('*')
         .eq('status', status)
@@ -119,9 +119,9 @@ export async function searchItems(term, { status = 'approved', limit = 20 } = {}
  * @returns {Promise<object[]>}
  */
 export async function listRecentUserMeals(userId, limit = 150) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const cap = Number.isFinite(limit) ? Math.min(300, Math.max(1, Math.floor(limit))) : 150;
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('food_nutrition_data_table')
     .select('"ID","AnalysisData","CreatedAt"')
     .eq('"UserID"', String(userId))

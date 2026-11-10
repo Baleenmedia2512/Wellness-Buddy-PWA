@@ -27,7 +27,7 @@
  *   `isEnabled(name)` reads `process.env.FF_<UPPER_SNAKE>` first; if the
  *   env var is `'true'` or `'false'` (case-insensitive) that wins;
  *   otherwise the registered `defaultEnabled` is returned. Reads are
- *   pure — no caching, no Supabase calls — so tests can flip the env
+ *   pure — no caching, no MySQL calls — so tests can flip the env
  *   var between cases without bookkeeping.
  *
  *   `isEnabledForAppVersion(name, clientVersion)` applies the global flag
@@ -377,5 +377,23 @@ registerFlag({
   createdAt:      '2026-09-29',
   removeBy:       '2027-03-29',
   description:    'BroadCast paid screen: how-to video and payment entry. Upload and Burst stay locked until recharge. Kill switch hides the tab.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.go-premium',
+  owner:          '@principal-eng',
+  createdAt:      '2026-10-28',
+  removeBy:       '2027-04-28',
+  description:    'Profile Go Premium opens Cashfree checkout. Kill switch hides the row and the create-order API.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.report-trial',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-05',
+  removeBy:       '2027-05-05',
+  description:    'Reports stay open. Unpaid detail is hidden until a 14-day trial or Premium. Kill switch. Version routing: app 3.5.5+ is gated; older or missing versions keep the full report.',
   defaultEnabled: true,
 });

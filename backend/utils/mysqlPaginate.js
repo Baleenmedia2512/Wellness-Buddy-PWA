@@ -1,5 +1,5 @@
 /**
- * Page past PostgREST / Supabase default max-rows (typically 1000).
+ * Page past PostgREST / MySQL default max-rows (typically 1000).
  *
  * Callers must pass a factory that returns a fresh query each page so
  * `.range()` is not stacked on a previous builder. Prefer a stable
@@ -9,7 +9,7 @@
  * @param {{ pageSize?: number }} [opts]
  * @returns {Promise<any[]>}
  */
-export async function fetchAllSupabaseRows(buildQuery, opts = {}) {
+export async function fetchAllMysqlRows(buildQuery, opts = {}) {
   const pageSize = Math.max(1, Number(opts.pageSize) || 1000);
   const rows = [];
   let from = 0;
@@ -17,7 +17,7 @@ export async function fetchAllSupabaseRows(buildQuery, opts = {}) {
   while (true) {
     const { data, error } = await buildQuery().range(from, from + pageSize - 1);
     if (error) {
-      const err = error instanceof Error ? error : new Error(error.message || 'Supabase query failed');
+      const err = error instanceof Error ? error : new Error(error.message || 'MySQL query failed');
       if (!(error instanceof Error) && error.code) err.code = error.code;
       err.cause = error;
       throw err;

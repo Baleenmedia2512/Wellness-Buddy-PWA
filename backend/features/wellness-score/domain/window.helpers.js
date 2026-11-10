@@ -2,16 +2,18 @@
  * Time-window helpers for wellness score (aligned with discipline 59s end buffer).
  *
  * Meal / activity on-time checks NEVER parse HH:mm:ss from raw CreatedAt strings.
- * Food timestamps go through {@link resolveFoodTimestamp}; other activities use
- * normalizeStoredTimestampToUtcIso (IST storage) + timeOfDayInTimezone (owner
- * display TZ) — both derive local time from the same UTC instant as day bucketing.
+ * Food timestamps go through {@link resolveFoodTimestamp}. Education and weight
+ * use the same legacy IST wall-clock reading as the Diary
+ * ({@link normalizeFoodCreatedAt}): a driver-added `Z` on 07:33 stays 7:33 AM.
  */
 import {
   IANA_IST,
-  normalizeStoredTimestampToUtcIso,
   timeOfDayInTimezone,
 } from '../../../shared/lib/datetime/index.js';
-import { resolveFoodTimestamp } from '../../../shared/lib/datetime/foodTimestamp.js';
+import {
+  normalizeFoodCreatedAt,
+  resolveFoodTimestamp,
+} from '../../../shared/lib/datetime/foodTimestamp.js';
 
 export const WINDOW_BUFFER_SECONDS = 59;
 
@@ -45,8 +47,9 @@ export function resolveCreatedAtTimeOfDay(
     if (kind === 'food') {
       return resolveFoodTimestamp(createdAt, timezoneIana).timeOfDay;
     }
-    // Legacy weight/education CreatedAt is IST wall-clock; display in owner TZ.
-    const utcIso = normalizeStoredTimestampToUtcIso(createdAt, IANA_IST);
+    // Education and weight rows are IST wall-clock, same as the Diary.
+    // Trusting a driver-added Z turned 07:33 into 1:03 PM and scored it late.
+    const utcIso = normalizeFoodCreatedAt(createdAt);
     return timeOfDayInTimezone(utcIso, timezoneIana);
   } catch {
     return null;

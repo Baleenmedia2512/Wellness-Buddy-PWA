@@ -1,5 +1,5 @@
 -- Migration: create_community_id_requests_table
--- Run this SQL in the Supabase SQL editor before deploying Community ID OTP approval.
+-- Run this SQL on MySQL before deploying Community ID OTP approval.
 -- Pending create / co-sponsor requests from Home → Profile. OTP hashes live here
 -- until the requester's sponsor approves (24h). Auth is enforced at the API layer;
 -- RLS is on so the anon key cannot read OTP hashes.

@@ -4,9 +4,25 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  allowDiaryViaReportingAccess,
   canAccessDiaryViaSharedLead,
   canAccessDiaryViaDownlineCoCoach,
+  isPlatformDiaryReader,
 } from '../diary.service.js';
+
+describe('isPlatformDiaryReader', () => {
+  it('allows admin and developer to read a diary outside their coach line', () => {
+    assert.equal(isPlatformDiaryReader('admin'), true);
+    assert.equal(isPlatformDiaryReader('developer'), true);
+    assert.equal(isPlatformDiaryReader('ADMIN'), true);
+  });
+
+  it('keeps coach, user, and missing roles on the coach-line rules', () => {
+    assert.equal(isPlatformDiaryReader('coach'), false);
+    assert.equal(isPlatformDiaryReader('user'), false);
+    assert.equal(isPlatformDiaryReader(null), false);
+  });
+});
 
 describe('canAccessDiaryViaSharedLead', () => {
   it('allows a viewer paired to an ancestor coach in the owner chain', async () => {
@@ -99,6 +115,22 @@ describe('canAccessDiaryViaDownlineCoCoach', () => {
       async () => null,
       getChain,
     );
+    assert.equal(allowed, false);
+  });
+});
+
+describe('allowDiaryViaReportingAccess', () => {
+  it('allows when the reporting check does not throw', async () => {
+    const allowed = await allowDiaryViaReportingAccess('339', '279', async () => {});
+    assert.equal(allowed, true);
+  });
+
+  it('denies a 403 from the reporting check', async () => {
+    const allowed = await allowDiaryViaReportingAccess('3396', '279', async () => {
+      const err = new Error('You do not have permission to view this member');
+      err.status = 403;
+      throw err;
+    });
     assert.equal(allowed, false);
   });
 });

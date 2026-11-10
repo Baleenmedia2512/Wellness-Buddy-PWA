@@ -13,6 +13,7 @@ import {
   SHARE_TEXT_SEPARATOR,
   buildQuickShareText,
   composeQuickShareCaption,
+  formatTransformationCaption,
 } from './shareCaption.js';
 
 // Export local bindings (not `export { … } from`) so CRA/webpack harmony
@@ -21,6 +22,7 @@ export {
   SHARE_TEXT_SEPARATOR,
   buildQuickShareText,
   composeQuickShareCaption,
+  formatTransformationCaption,
 };
 
 const PROFILE_USER_NAME_KEY = 'wv.profileUserName';

@@ -29,16 +29,18 @@
 			"*.firebaseapp.com",
 			"*.firebaseio.com",
 			"share.wellnessvalley.app",
-			"*.wellnessvalley.app"
+			"*.wellnessvalley.app",
+			"wellnessvalley.in"
 		],
-		"cleartext": false
+		"cleartext": true
 	},
 	"ios": {
 		"contentInset": "automatic",
 		"allowsLinkPreview": false,
 		"scrollEnabled": true,
 		"backgroundColor": "#ffffff",
-		"limitsNavigationsToAppBoundDomains": false
+		"limitsNavigationsToAppBoundDomains": false,
+		"initialFocus": true
 	},
 	"plugins": {
 		"GoogleAuth": {

@@ -11,7 +11,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getSupabaseClient } from '../utils/supabaseClient.js';
+import { getMysqlClient } from '../utils/mysqlClient.js';
 import logger from '../shared/lib/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -26,11 +26,11 @@ function parseArgs(argv) {
   return out;
 }
 
-async function fetchAllRows(supabase) {
+async function fetchAllRows(db) {
   const rows = [];
   let from = 0;
   while (true) {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from(TEAM)
       .select('"UserId", transformation_photos')
       .not('transformation_photos', 'is', null)
@@ -46,8 +46,8 @@ async function fetchAllRows(supabase) {
 }
 
 async function backup() {
-  const supabase = getSupabaseClient();
-  const rows = await fetchAllRows(supabase);
+  const db = getMysqlClient();
+  const rows = await fetchAllRows(db);
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const dir = path.join(__dirname, '..', 'backups');
   fs.mkdirSync(dir, { recursive: true });
@@ -74,13 +74,13 @@ async function restore(filePath) {
   }
   const payload = JSON.parse(fs.readFileSync(abs, 'utf8'));
   const rows = Array.isArray(payload.rows) ? payload.rows : [];
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   let ok = 0;
   let failed = 0;
   for (const row of rows) {
     const userId = row.UserId;
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from(TEAM)
         .update({ transformation_photos: row.transformation_photos ?? null })
         .eq('UserId', userId);

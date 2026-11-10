@@ -2,7 +2,7 @@ import { computeKatchMcArdleBmr, resolveBmrForSave } from '../../../utils/bmrCal
 
 /**
  * card.rules.js — Pure business logic for Body Parameters Card.
- * No I/O. No imports from axios, pg, supabase, or react.
+ * No I/O. No imports from axios, pg, db, or react.
  */
 
 export const SHARE_TTL_DAYS = 30;
@@ -208,6 +208,28 @@ export function shouldDetachCounsellorCoachAssignment({
 export function isCardShareValid(shareExpiresAt, now = new Date()) {
   if (!shareExpiresAt) return false;
   return new Date(shareExpiresAt) > now;
+}
+
+/**
+ * Prisma/MySQL create cannot use MariaDB uuid() / interval defaults.
+ * Callers pass a 36-char token (crypto.randomUUID). Clock is injectable.
+ *
+ * @param {{ now?: Date, token: string }} input
+ * @returns {{ publicShareToken: string, shareExpiresAt: Date }}
+ */
+export function buildNewCardShareDefaults({ now = new Date(), token } = {}) {
+  const trimmed = typeof token === 'string' ? token.trim() : '';
+  if (trimmed.length !== 36) {
+    throw new Error('buildNewCardShareDefaults: 36-character token required');
+  }
+  const base = now instanceof Date ? now : new Date(now);
+  if (Number.isNaN(base.getTime())) {
+    throw new Error('buildNewCardShareDefaults: valid now required');
+  }
+  return {
+    publicShareToken: trimmed,
+    shareExpiresAt: new Date(base.getTime() + SHARE_TTL_DAYS * 24 * 60 * 60 * 1000),
+  };
 }
 
 /**

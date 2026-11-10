@@ -42,9 +42,11 @@ const config = {
       '*.firebaseapp.com',
       '*.firebaseio.com',
       'share.wellnessvalley.app',
-      '*.wellnessvalley.app'
+      '*.wellnessvalley.app',
+      'wellnessvalley.in',
+      'test.wellnessvalley.in',
     ],
-    cleartext: false
+    cleartext: true
   },
   
   // ✅ iOS configuration
@@ -60,6 +62,9 @@ const config = {
   },
   
   plugins: {
+    CapacitorHttp: {
+      enabled: true,
+    },
     GoogleAuth: {
       scopes: ['profile', 'email'],
       serverClientId: '499376291787-gkivhgcdsc3tep13m6a3khlgtgksfuq8.apps.googleusercontent.com',

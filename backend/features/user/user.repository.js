@@ -2,7 +2,7 @@
  * User feature — repository layer. Owns team_table + cross-cutting deletes
  * needed for account removal.
  */
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { nowUtc, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { buildCardPatchFromProfile } from '../body-parameters-card/domain/sync.rules.js';
 import { findLatestCardForProfileSync } from '../body-parameters-card/data/card.repo.js';
@@ -17,8 +17,8 @@ function legacyIstWallNow() {
 }
 
 export async function findByEmail(email, columns = '"UserId", "UserName", "Email"') {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select(columns)
     .ilike('Email', email)
@@ -28,8 +28,8 @@ export async function findByEmail(email, columns = '"UserId", "UserName", "Email
 }
 
 export async function findByExactEmail(email, columns) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select(columns)
     .eq('"Email"', email)
@@ -57,8 +57,8 @@ export async function findByEmailExcludingUserId(
   const uid = Number(excludeUserId);
   if (!Number.isFinite(uid) || uid < 1) return null;
 
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select(columns)
     .ilike('Email', normalized)
@@ -75,8 +75,8 @@ export async function findByEmailExcludingUserId(
 export async function findByUserId(userId, columns = '"UserId", "Role"') {
   const uid = Number.parseInt(String(userId), 10);
   if (!Number.isFinite(uid) || uid <= 0) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select(columns)
     .eq('"UserId"', uid)
@@ -86,8 +86,8 @@ export async function findByUserId(userId, columns = '"UserId", "Role"') {
 }
 
 export async function findByUsername(username) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select('"UserId"')
     .eq('"UserName"', username)
@@ -273,11 +273,11 @@ export async function getAvatarSource(userId) {
 
 /**
  * Custom data-URI avatars that have not been copied to R2 yet.
- * @param {{ from: number, to: number }} range inclusive Supabase .range()
+ * @param {{ from: number, to: number }} range inclusive MySQL .range()
  */
 export async function listPendingAvatarBackfill({ from = 0, to = 49 } = {}) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select('"UserId", "ProfileImage", "ProfileImageKey"')
     .is('ProfileImageKey', null)
@@ -295,11 +295,11 @@ export async function listPendingAvatarBackfill({ from = 0, to = 49 } = {}) {
 
 /**
  * Custom data-URI avatars already copied to R2 (recompress pass).
- * @param {{ from: number, to: number }} range inclusive Supabase .range()
+ * @param {{ from: number, to: number }} range inclusive MySQL .range()
  */
 export async function listAvatarsForRecompress({ from = 0, to = 49 } = {}) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select('"UserId", "ProfileImage", "ProfileImageKey"')
     .not('ProfileImageKey', 'is', null)
@@ -317,11 +317,11 @@ export async function listAvatarsForRecompress({ from = 0, to = 49 } = {}) {
 
 /**
  * Rows with transformation_photos JSONB (filter in script for pending R2 keys).
- * @param {{ from: number, to: number }} range inclusive Supabase .range()
+ * @param {{ from: number, to: number }} range inclusive MySQL .range()
  */
 export async function listTransformationPhotosForBackfill({ from = 0, to = 49 } = {}) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select('"UserId", transformation_photos')
     .not('transformation_photos', 'is', null)
@@ -338,11 +338,11 @@ export async function listTransformationPhotosForBackfill({ from = 0, to = 49 } 
 
 /**
  * All persisted R2 keys (any ProfileImage type). Used to avoid deleting live avatars.
- * @param {{ from: number, to: number }} range inclusive Supabase .range()
+ * @param {{ from: number, to: number }} range inclusive MySQL .range()
  */
 export async function listProfileImageKeysPage({ from = 0, to = 199 } = {}) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select('"UserId", "ProfileImageKey"')
     .not('ProfileImageKey', 'is', null)
@@ -379,14 +379,14 @@ export async function getLatestWeightMetricsByUserIds(userIds) {
   )];
   if (ids.length === 0) return out;
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const selectCols = 'UserId, Weight, BodyFat, Bmi, Bmr, CreatedAt';
   const chunkSize = 100;
 
   for (let i = 0; i < ids.length; i += chunkSize) {
     const chunk = ids.slice(i, i + chunkSize);
     const run = (withDeletedFilter) => {
-      let q = supabase
+      let q = db
         .from('weight_records_table')
         .select(selectCols)
         .in('UserId', chunk)
@@ -426,10 +426,10 @@ export async function getLatestWeight(userId) {
   const uid = Number.parseInt(String(userId), 10);
   if (!Number.isFinite(uid) || uid < 1) return null;
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const selectCols = 'ID, Weight, BodyFat, Bmi, Bmr, CreatedAt';
 
-  let query = supabase
+  let query = db
     .from('weight_records_table')
     .select(selectCols)
     .eq('UserId', uid)
@@ -440,7 +440,7 @@ export async function getLatestWeight(userId) {
   let { data, error } = await query;
   if (error && isMissingIsDeletedColumn(error)) {
     console.warn('[user.repo] getLatestWeight: IsDeleted missing — retrying without soft-delete filter');
-    ({ data, error } = await supabase
+    ({ data, error } = await db
       .from('weight_records_table')
       .select(selectCols)
       .eq('UserId', uid)
@@ -464,10 +464,10 @@ export async function getInitialWeight(userId) {
   const uid = Number.parseInt(String(userId), 10);
   if (!Number.isFinite(uid) || uid < 1) return null;
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const selectCols = 'ID, Weight, CreatedAt';
 
-  let { data, error } = await supabase
+  let { data, error } = await db
     .from('weight_records_table')
     .select(selectCols)
     .eq('UserId', uid)
@@ -477,7 +477,7 @@ export async function getInitialWeight(userId) {
 
   if (error && isMissingIsDeletedColumn(error)) {
     console.warn('[user.repo] getInitialWeight: IsDeleted missing — retrying without soft-delete filter');
-    ({ data, error } = await supabase
+    ({ data, error } = await db
       .from('weight_records_table')
       .select(selectCols)
       .eq('UserId', uid)
@@ -500,9 +500,9 @@ export async function getLatestWeightBodyFat(userId) {
   const uid = Number.parseInt(String(userId), 10);
   if (!Number.isFinite(uid) || uid < 1) return null;
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const run = (withDeletedFilter) => {
-    let q = supabase
+    let q = db
       .from('weight_records_table')
       .select('BodyFat')
       .eq('UserId', uid)
@@ -539,9 +539,9 @@ export async function updateLatestWeightBodyFat(userId, bodyFat, bmr = null) {
   const updates = { BodyFat: bodyFat, UpdatedAt: legacyIstWallNow() };
   if (bmr != null) updates.Bmr = bmr;
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const runUpdate = (withDeletedFilter) => {
-    let q = supabase
+    let q = db
       .from('weight_records_table')
       .update(updates)
       .eq('ID', latest.ID)
@@ -561,8 +561,8 @@ export async function updateLatestWeightBodyFat(userId, bodyFat, bmr = null) {
 }
 
 export async function updateUserByEmail(email, updateData) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .update(updateData)
     .eq('Email', email)
@@ -572,8 +572,8 @@ export async function updateUserByEmail(email, updateData) {
 }
 
 export async function updateUserById(userId, updateData) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from(TEAM)
     .update(updateData)
     .eq('UserId', userId);
@@ -636,7 +636,7 @@ export async function migrateBcmLeadToAdoptedUser(fromUserId, toUserId) {
   }
   if (fromId === toId) return { cardsMoved: 0, metricsCopied: [] };
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const metricCols =
     '"UserId", "Height", "Bmr", "Gender", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", "DietType", "PhysicalActivityLevel", recovered_health_issues, transformation_photos';
 
@@ -644,8 +644,8 @@ export async function migrateBcmLeadToAdoptedUser(fromUserId, toUserId) {
   let toRow = null;
   try {
     const [{ data: fromData }, { data: toData }] = await Promise.all([
-      supabase.from(TEAM).select(metricCols).eq('UserId', fromId).maybeSingle(),
-      supabase.from(TEAM).select(metricCols).eq('UserId', toId).maybeSingle(),
+      db.from(TEAM).select(metricCols).eq('UserId', fromId).maybeSingle(),
+      db.from(TEAM).select(metricCols).eq('UserId', toId).maybeSingle(),
     ]);
     fromRow = fromData;
     toRow = toData;
@@ -654,8 +654,8 @@ export async function migrateBcmLeadToAdoptedUser(fromUserId, toUserId) {
     if (!/column|recovered_health|transformation_photos/i.test(msg)) throw err;
     const basic = '"UserId", "Height", "Bmr", "Gender", "Age", "DietType", "PhysicalActivityLevel"';
     const [{ data: fromData }, { data: toData }] = await Promise.all([
-      supabase.from(TEAM).select(basic).eq('UserId', fromId).maybeSingle(),
-      supabase.from(TEAM).select(basic).eq('UserId', toId).maybeSingle(),
+      db.from(TEAM).select(basic).eq('UserId', fromId).maybeSingle(),
+      db.from(TEAM).select(basic).eq('UserId', toId).maybeSingle(),
     ]);
     fromRow = fromData;
     toRow = toData;
@@ -668,7 +668,7 @@ export async function migrateBcmLeadToAdoptedUser(fromUserId, toUserId) {
   }
 
   let cardsMoved = 0;
-  const { data: moved, error: cardErr } = await supabase
+  const { data: moved, error: cardErr } = await db
     .from('body_parameters_cards')
     .update({ user_id: toId })
     .eq('user_id', fromId)
@@ -681,14 +681,14 @@ export async function migrateBcmLeadToAdoptedUser(fromUserId, toUserId) {
   }
 
   // If adopted account has no weight row, copy the stub's latest weight.
-  const { data: toWeights } = await supabase
+  const { data: toWeights } = await db
     .from('weight_records_table')
     .select('"ID"')
     .eq('UserId', toId)
     .or('"IsDeleted".is.null,"IsDeleted".eq.0,"IsDeleted".eq.false')
     .limit(1);
   if (!toWeights?.length) {
-    const { data: fromWeights } = await supabase
+    const { data: fromWeights } = await db
       .from('weight_records_table')
       .select('"Weight", "Bmi", "BodyFat", "Bmr", "CreatedAt", "UpdatedAt"')
       .eq('UserId', fromId)
@@ -697,7 +697,7 @@ export async function migrateBcmLeadToAdoptedUser(fromUserId, toUserId) {
       .limit(1);
     const w = fromWeights?.[0];
     if (w?.Weight != null) {
-      await supabase.from('weight_records_table').insert({
+      await db.from('weight_records_table').insert({
         UserId: toId,
         Weight: w.Weight,
         Bmi: w.Bmi ?? null,
@@ -714,8 +714,8 @@ export async function migrateBcmLeadToAdoptedUser(fromUserId, toUserId) {
 
 
 export async function verifyProfile(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select('UserId, Height, DietType, PhoneNumber, "Gender", "CommunityId", timezone_iana')
     .eq('UserId', userId)
@@ -725,8 +725,8 @@ export async function verifyProfile(userId) {
 }
 
 export async function insertUser(payload) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .insert(payload)
     .select()
@@ -735,8 +735,8 @@ export async function insertUser(payload) {
 }
 
 export async function setUserStatus(userId, status) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from(TEAM)
     .update({ Status: status })
     .eq('"UserId"', userId);
@@ -752,8 +752,8 @@ export async function getStatusFieldsByUserId(userId) {
 }
 
 export async function getPendingApproval(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(APPROVALS)
     .select('"Id", "UplineCoachId", "Status", "OtpExpiresAt", "RequestedAt"')
     .eq('"RequesterId"', userId)
@@ -768,8 +768,8 @@ export async function getPendingApproval(userId) {
 }
 
 export async function deleteApproval(id) {
-  const supabase = getSupabaseClient();
-  await supabase.from(APPROVALS).delete().eq('"Id"', id);
+  const db = getMysqlClient();
+  await db.from(APPROVALS).delete().eq('"Id"', id);
 }
 
 /**
@@ -777,8 +777,8 @@ export async function deleteApproval(id) {
  * Returns null when the user is not found or on error (non-fatal).
  */
 export async function findPublicProfileById(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select('"UserName", "ProfileImage"')
     .eq('"UserId"', userId)
@@ -788,8 +788,8 @@ export async function findPublicProfileById(userId) {
 }
 
 export async function getSnoozeRow(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TEAM)
     .select('profile_pic_snooze')
     .eq('UserId', userId)
@@ -799,8 +799,8 @@ export async function getSnoozeRow(userId) {
 }
 
 export async function setSnooze(userId, newSnooze) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from(TEAM)
     .update({ profile_pic_snooze: newSnooze })
     .eq('UserId', userId);
@@ -812,21 +812,21 @@ export async function setSnooze(userId, newSnooze) {
  * caller can log them.
  */
 export async function purgeUserData(userId, normalizedEmail) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const tasks = [
-    supabase.from('food_nutrition_data_table').delete().eq('"UserID"', userId.toString()),
-    supabase.from('weight_records_table').delete().eq('UserId', userId),
-    supabase.from('education_logs_table').delete().eq('UserId', userId),
-    supabase.from('daily_step_activity').delete().eq('UserId', userId),
-    supabase.from('wellness_university_enrollments_table').delete().eq('UserId', userId),
-    supabase.from('wellness_counselling_assessments').delete().eq('UserId', userId),
+    db.from('food_nutrition_data_table').delete().eq('"UserID"', userId.toString()),
+    db.from('weight_records_table').delete().eq('UserId', userId),
+    db.from('education_logs_table').delete().eq('UserId', userId),
+    db.from('daily_step_activity').delete().eq('UserId', userId),
+    db.from('wellness_university_enrollments_table').delete().eq('UserId', userId),
+    db.from('wellness_counselling_assessments').delete().eq('UserId', userId),
     // Null-out ownership before team_table row is removed — prevents the FK
     // constraint violation on nutrition_centers_table.owner_user_id.
-    supabase.from('nutrition_centers_table').update({ owner_user_id: null }).eq('owner_user_id', userId),
+    db.from('nutrition_centers_table').update({ owner_user_id: null }).eq('owner_user_id', userId),
   ];
   if (normalizedEmail) {
     tasks.push(
-      supabase.from('otp_tokens_table').delete().ilike('recipient', normalizedEmail),
+      db.from('otp_tokens_table').delete().ilike('recipient', normalizedEmail),
     );
   }
   const results = await Promise.allSettled(tasks);
@@ -834,8 +834,8 @@ export async function purgeUserData(userId, normalizedEmail) {
 }
 
 export async function deleteTeamRow(userId) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from(TEAM)
     .delete()
     .eq('UserId', userId);
@@ -867,8 +867,8 @@ export async function syncProfileToLatestBodyParamsCard(userId, fields = {}) {
     return { synced: false, fields: [] };
   }
 
-  const supabase = getSupabaseClient();
-  const { error: updateErr } = await supabase
+  const db = getMysqlClient();
+  const { error: updateErr } = await db
     .from('body_parameters_cards')
     .update(patch)
     .eq('id', card.id)
@@ -882,25 +882,25 @@ export async function syncProfileToLatestBodyParamsCard(userId, fields = {}) {
 
 /** Fetch raw food correction / nutrition data needed by user context. */
 export async function getUserContextData(userId) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   return Promise.all([
-    supabase
+    db
       .from('food_corrections_table')
       .select('"AiDetected", "UserCorrected", "TimesCorrected"')
       .eq('"UserId"', userId)
       .order('"TimesCorrected"', { ascending: false })
       .order('"LastCorrected"', { ascending: false })
       .limit(10),
-    supabase
+    db
       .from('food_corrections_table')
       .select('"AiDetected", "UserCorrected", "UserId", "TimesCorrected", "LastCorrected"')
       .order('"LastCorrected"', { ascending: false }),
-    supabase
+    db
       .from(TEAM)
       .select('"DietType"')
       .eq('"UserId"', userId)
       .maybeSingle(),
-    supabase
+    db
       .from('food_nutrition_data_table')
       .select('"AnalysisData", "CreatedAt"')
       .eq('"UserId"', userId)

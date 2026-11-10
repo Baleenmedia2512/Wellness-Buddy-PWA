@@ -1,5 +1,5 @@
 -- Migration: create_ai_credits_tables
--- Run in Supabase SQL editor before deploying AI credit-based food analysis.
+-- Run on MySQL before deploying AI credit-based food analysis.
 -- Admin-configurable daily AI credits + per-user daily usage (user timezone day key).
 
 -- ─── 1. Global config (append-latest row wins) ────────────────────────────────

@@ -21,6 +21,7 @@ import {
 import { buildAvatarObjectKey, isKeyInFolder, orphanedAvatarKeys, R2_FOLDERS } from '../../shared/lib/r2/objectKeys.js';
 import logger from '../../shared/lib/logger.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
+import { isMileswebStorageEnabled } from '../../shared/lib/milesweb/config.js';
 import * as repo from './user.repository.js';
 
 export function r2AvatarsEnabled() {
@@ -38,7 +39,8 @@ export function avatarUrlForKey(key) {
  * @returns {Promise<string|null>} object key
  */
 export async function uploadAvatarDataUri(userId, profileImage) {
-  if (!r2AvatarsEnabled()) return null;
+  if (!isEnabled('ff.r2-avatars')) return null;
+  if (!isR2Configured() && !isMileswebStorageEnabled()) return null;
   if (!shouldStoreProfileImageInR2(profileImage)) return null;
   const parsed = parseDataUri(profileImage);
   if (!parsed) return null;
@@ -60,9 +62,14 @@ export async function uploadAvatarDataUri(userId, profileImage) {
 
 /**
  * Upload (if needed) and persist ProfileImageKey. Never throws to the caller.
+ * clearProfileImage defaults true (R2 3.5.1+). Old supported apps keep
+ * ProfileImage base64 when the caller passes false.
+ * @param {string|number} userId
+ * @param {string} profileImage
+ * @param {{ clearProfileImage?: boolean }} [opts]
  * @returns {Promise<string|null>}
  */
-export async function persistAvatarKey(userId, profileImage) {
+export async function persistAvatarKey(userId, profileImage, { clearProfileImage = true } = {}) {
   try {
     if (!shouldStoreProfileImageInR2(profileImage)) return null;
 
@@ -75,7 +82,9 @@ export async function persistAvatarKey(userId, profileImage) {
 
     const key = await uploadAvatarDataUri(userId, profileImage);
     if (!key) return null;
-    await repo.updateUserById(userId, { ProfileImageKey: key, ProfileImage: null });
+    const patch = { ProfileImageKey: key };
+    if (clearProfileImage) patch.ProfileImage = null;
+    await repo.updateUserById(userId, patch);
     try {
       cache.delete(cacheKeys.userAvatar(userId));
     } catch { /* non-fatal */ }

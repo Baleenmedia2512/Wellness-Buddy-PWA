@@ -102,5 +102,62 @@ describe('share card email consistency (Previous | New)', () => {
     assert.match(html, /63 kg &#8594; 62 kg/);
     assert.match(html, /63 kg &#8594; 60 kg/);
   });
+
+  it('shows Previous | New when previous After was a Before clone', () => {
+    const html = buildUnifiedSubmitEmailHtml({
+      memberName: 'kkkkkk',
+      otp: '4516',
+      changedSlots: ['before', 'after', 'weight'],
+      goalType: 'loss',
+      beforeWeight: 80,
+      afterWeight: 75,
+      durationText: '1 days',
+      beforeUrl: 'https://example.com/before-new.jpg',
+      afterUrl: 'https://example.com/after-new.jpg',
+      previousBeforeUrl: 'https://example.com/before-old.jpg',
+      previousAfterUrl: 'https://example.com/before-old.jpg',
+      previousBeforeWeight: 80,
+      previousAfterWeight: 80,
+      previousCardImageUrl: 'https://example.com/prev-card.jpg',
+      currentCardImageUrl: 'https://example.com/new-card.jpg',
+      previousPreviewHref: 'https://example.com/prev-card.jpg',
+      currentPreviewHref: 'https://example.com/new-card.jpg',
+      healthVideoUrl: null,
+      businessVideoUrl: null,
+      recoveredHealthIssues: [],
+      isComplete: true,
+    });
+    assert.match(html, /Previous Transformation Card/);
+    assert.match(html, /New Transformation Card/);
+    assert.match(html, /prev-card\.jpg/);
+    assert.match(html, /new-card\.jpg/);
+  });
+
+  it('stays on a single current card when there is no previous card (first submit)', () => {
+    const html = buildUnifiedSubmitEmailHtml({
+      memberName: 'kkkkkk',
+      otp: '4516',
+      changedSlots: ['before', 'after'],
+      goalType: 'loss',
+      beforeWeight: 80,
+      afterWeight: 75,
+      durationText: '1 days',
+      beforeUrl: 'https://example.com/before-new.jpg',
+      afterUrl: 'https://example.com/after-new.jpg',
+      previousBeforeUrl: null,
+      previousAfterUrl: null,
+      previousCardImageUrl: null,
+      currentCardImageUrl: 'https://example.com/new-card.jpg',
+      previousPreviewHref: null,
+      currentPreviewHref: 'https://example.com/new-card.jpg',
+      healthVideoUrl: null,
+      businessVideoUrl: null,
+      recoveredHealthIssues: [],
+      isComplete: true,
+    });
+    assert.doesNotMatch(html, /Previous Transformation Card/);
+    assert.doesNotMatch(html, /New Transformation Card/);
+    assert.match(html, /new-card\.jpg/);
+  });
 });
 

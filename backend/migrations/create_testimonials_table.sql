@@ -1,7 +1,7 @@
 -- Migration: create_testimonials_table
--- Run this SQL in the Supabase SQL editor before deploying the testimonials feature.
+-- Run this SQL on MySQL before deploying the testimonials feature.
 --
--- STORAGE BUCKET (create manually in Supabase dashboard first):
+-- STORAGE BUCKET (create in object storage first):
 --   Name: testimonials  |  Public: OFF  |  Max file size: 1 MB
 --   Then run the storage policies section below.
 
@@ -56,8 +56,8 @@ CREATE POLICY "testimonials_bucket_all"
   WITH CHECK (bucket_id = 'testimonials');
 
 
--- ─── 3. Supabase Storage bucket RLS policies ──────────────────────────────────
--- Run these AFTER creating the `testimonials` bucket in the Supabase dashboard.
+-- ─── 3. Storage bucket access policies ────────────────────────────────────────
+-- Run these AFTER creating the `testimonials` bucket in object storage.
 -- Replace <bucket_id> with the actual bucket ID shown in the dashboard.
 --
 -- Policy: service role can read/write all objects (API uses service key).

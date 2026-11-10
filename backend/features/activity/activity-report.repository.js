@@ -2,7 +2,8 @@
  * Activity Report Repository
  * Fetches activity records and member details for downline users
  */
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
+import { fetchAllMysqlRows } from '../../utils/mysqlPaginate.js';
 import { isExemptedBeverageOnly, isNonMealNutritionOnly, isExemptedFood, extractFoodItemsFromAnalysis, getFoodItemName } from '../../utils/foodTypeDetection.js';
 import { applyDateRangeFilterWidened } from '../../shared/lib/datetime/applyDayFilter.js';
 import {
@@ -60,24 +61,27 @@ async function fetchRowsInChunks(ids, runChunkQuery, { sequential = false } = {}
   return chunkResults.flat();
 }
 /**
- * Fetch ALL active members (used by admin role)
+ * Fetch ALL active members (used by admin role).
+ * Pages past MySQL's default ~1000-row cap.
+ * @param {object} [mysqlClient] — optional inject for tests
  */
-export async function fetchAllActiveMembers() {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from('team_table')
-    .select('UserId, UserName, PhoneNumber, Email, CoachId, Role')
-    .eq('Status', 'Active');
-  if (error) throw error;
-  return data || [];
+export async function fetchAllActiveMembers(mysqlClient = null) {
+  const db = mysqlClient || getMysqlClient();
+  return fetchAllMysqlRows(() =>
+    db
+      .from('team_table')
+      .select('UserId, UserName, PhoneNumber, Email, CoachId, Role')
+      .eq('Status', 'Active')
+      .order('UserId', { ascending: true }),
+  );
 }
 
 /**
  * Active members whose CoachId is the given user (indexed lookup — no full-table scan).
  */
 export async function fetchDirectMemberIds(coachId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('UserId')
     .eq('CoachId', coachId)
@@ -92,8 +96,8 @@ export async function fetchDirectMemberIds(coachId) {
 export async function fetchMemberDetails(userIds) {
   if (!userIds || userIds.length === 0) return [];
 
-  const supabase = getSupabaseClient();
-  return fetchRowsInChunks(userIds, (chunk) => supabase
+  const db = getMysqlClient();
+  return fetchRowsInChunks(userIds, (chunk) => db
     .from('team_table')
     .select('UserId, UserName, PhoneNumber, Email, CoachId, Role, Status')
     .in('UserId', chunk)
@@ -106,8 +110,8 @@ export async function fetchMemberDetails(userIds) {
 export async function fetchCoachNames(coachIds) {
   if (!coachIds || coachIds.length === 0) return {};
 
-  const supabase = getSupabaseClient();
-  const data = await fetchRowsInChunks(coachIds, (chunk) => supabase
+  const db = getMysqlClient();
+  const data = await fetchRowsInChunks(coachIds, (chunk) => db
     .from('team_table')
     .select('UserId, UserName')
     .in('UserId', chunk));
@@ -133,8 +137,8 @@ export async function fetchTimeWindows() {
     return timeWindowsCache;
   }
 
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('activity_time_windows_table')
     .select('ActivityType, WindowStartTime, WindowEndTime')
     .is('EffectiveToDate', null);
@@ -170,9 +174,9 @@ export async function fetchTimeWindows() {
 export async function fetchWeightRecords(userIds, startDate, endDate, timezoneIana = IANA_IST) {
   if (!userIds || userIds.length === 0) return [];
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const data = await fetchRowsInChunks(userIds, (chunk) => {
-    let query = supabase
+    let query = db
       .from('weight_records_table')
       .select('UserId, Weight, CreatedAt, City, Village, AttendanceType, CenterName, NutritionCenterId')
       .in('UserId', chunk)
@@ -192,10 +196,10 @@ export async function fetchWeightRecords(userIds, startDate, endDate, timezoneIa
 export async function fetchEducationRecords(userIds, startDate, endDate, timezoneIana = IANA_IST) {
   if (!userIds || userIds.length === 0) return [];
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const userIdsAsString = userIds.map(String);
   const data = await fetchRowsInChunks(userIdsAsString, (chunk) => {
-    let query = supabase
+    let query = db
       .from('education_logs_table')
       .select('"UserId", "Topic", "CreatedAt", attendance_type, center_name, nutrition_center_id, "City", "Village"')
       .in('"UserId"', chunk)
@@ -219,10 +223,10 @@ export async function fetchEducationRecords(userIds, startDate, endDate, timezon
 export async function fetchWatchCalorieRecords(userIds, startDate, endDate, timezoneIana = IANA_IST) {
   if (!userIds || userIds.length === 0) return [];
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const userIdsAsString = userIds.map(String);
   const data = await fetchRowsInChunks(userIdsAsString, (chunk) => {
-    let query = supabase
+    let query = db
       .from('education_logs_table')
       .select('"UserId", "Topic", "CreatedAt", center_name, nutrition_center_id, "City", "Village"')
       .in('"UserId"', chunk)
@@ -250,13 +254,13 @@ export async function fetchFoodRecords(
 ) {
   if (!userIds || userIds.length === 0) return [];
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const userIdsAsString = userIds.map(String);
   const columns = includeAnalysisData
     ? 'UserID, CreatedAt, TotalCalories, ProcessedBy, AnalysisData, City, Village, AttendanceType, CenterName, NutritionCenterId'
     : 'UserID, CreatedAt, TotalCalories, ProcessedBy, City, Village, AttendanceType, CenterName, NutritionCenterId';
   const data = await fetchRowsInChunks(userIdsAsString, (chunk) => {
-    let query = supabase
+    let query = db
       .from('food_nutrition_data_table')
       .select(columns)
       .in('UserID', chunk)
@@ -328,9 +332,9 @@ export function isReportNonMealRecord(record) {
 export async function fetchStepRecords(userIds, startDate, endDate, timezoneIana = IANA_IST) {
   if (!userIds || userIds.length === 0) return [];
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const data = await fetchRowsInChunks(userIds, (chunk) => {
-    let query = supabase
+    let query = db
       .from('daily_step_activity')
       .select('UserId, CreatedAt, Steps, CaloriesBurned')
       .in('UserId', chunk)
@@ -348,8 +352,8 @@ export async function fetchStepRecords(userIds, startDate, endDate, timezoneIana
 export async function fetchNutritionCenters(centerIds) {
   if (!centerIds || centerIds.length === 0) return {};
   
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('nutrition_centers_table')
     .select('Id, CenterName')
     .in('Id', centerIds);

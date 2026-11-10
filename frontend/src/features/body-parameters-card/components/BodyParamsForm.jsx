@@ -26,11 +26,9 @@ import {
 import {
   evaluateChestCm,
   evaluateHipCm,
-  evaluateVisceralFat,
   evaluateWaistCm,
   getChestCmReference,
   getHipCmReference,
-  getVisceralFatReference,
   getWaistCmReference,
 } from '../domain/bodyMetricReferences.js';
 
@@ -180,7 +178,6 @@ const BodyParamsForm = ({
   const heightRef = useRef(null);
   const weightRef = useRef(null);
   const fatRef = useRef(null);
-  const vfatRef = useRef(null);
   const bmrRef = useRef(null);
   const bmiRef = useRef(null);
   const bodyAgeRef = useRef(null);
@@ -520,7 +517,7 @@ const BodyParamsForm = ({
               const handleKeyDown = (e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  focusNextField(vfatRef);
+                  focusNextField(bmrRef);
                 }
               };
 
@@ -553,24 +550,6 @@ const BodyParamsForm = ({
               );
             })()}
           </div>
-
-          {/* V-Fat - Full Width */}
-          {(() => {
-            const vFatEval = evaluateVisceralFat(vm.form.visceralFat);
-            const vFatRefLabel = getVisceralFatReference();
-            return (
-              <InputField
-                label={`V-Fat (Ideal: ${vFatRefLabel})`}
-                value={vm.form.visceralFat}
-                onChange={(v) => vm.setField('visceralFat', v)}
-                type="number"
-                placeholder="Visceral fat"
-                inputRef={vfatRef}
-                onEnter={() => focusNextField(bmrRef)}
-                error={rangeOutOfRangeError(vFatEval, vFatRefLabel)}
-              />
-            );
-          })()}
 
           {/* BMR - editable; auto-filled from weight + fat % when not manually edited */}
           <div className="flex flex-col gap-1">

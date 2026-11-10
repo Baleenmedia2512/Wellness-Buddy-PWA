@@ -10,7 +10,7 @@
  * and nav page-access elevation to the Sponsor matrix.
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { userHasSponsorTeam } from '../../../utils/coachTeamSeats.js';
 
 export default async function handler(req, res) {
@@ -45,8 +45,8 @@ export default async function handler(req, res) {
       return;
     }
 
-    const supabase = getSupabaseClient();
-    const hasTeamMembers = await userHasSponsorTeam(supabase, userId);
+    const db = getMysqlClient();
+    const hasTeamMembers = await userHasSponsorTeam(db, userId);
 
     res.status(200).json({
       success: true,

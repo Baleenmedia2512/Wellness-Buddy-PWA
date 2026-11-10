@@ -1,7 +1,7 @@
 -- Migration: add_bcm_profile_reviewed_at_to_team_table
 -- Persists BCM/BPC "Complete Profile reviewed" so APK reinstall does not re-show
 -- the review gate when localStorage bcmProfileReviewed_* was wiped.
--- Run in Supabase SQL editor before relying on bcmProfileReviewed in GET /api/user/profile.
+-- Run on MySQL before relying on bcmProfileReviewed in GET /api/user/profile.
 
 ALTER TABLE team_table
   ADD COLUMN IF NOT EXISTS "BcmProfileReviewedAt" timestamptz NULL;

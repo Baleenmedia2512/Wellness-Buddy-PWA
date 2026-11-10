@@ -1,9 +1,9 @@
 /**
- * sync.repo.js — DB access for Body Parameters Card ↔ Profile sync.
+ * sync.repo.js — MySQL access for Body Parameters Card ↔ Profile sync.
  * Writes only changed fields. Does not go through profile.service /
  * update handlers (avoids circular sync).
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getPrisma } from '../../../shared/lib/prisma.js';
 import { cache, cacheKeys } from '../../../utils/cache.js';
 import logger from '../../../shared/lib/logger.js';
 import {
@@ -18,8 +18,24 @@ import {
 } from '../domain/sync.rules.js';
 import { ensureCardLinkedToUser } from './card.repo.js';
 
-const TEAM = 'team_table';
-const WEIGHT = 'weight_records_table';
+function mysql() {
+  return getPrisma();
+}
+
+function plainNum(value) {
+  if (value == null) return null;
+  if (typeof value === 'object' && typeof value.toNumber === 'function') {
+    const asNumber = value.toNumber();
+    return Number.isFinite(asNumber) ? asNumber : null;
+  }
+  const asNumber = Number(value);
+  return Number.isFinite(asNumber) ? asNumber : null;
+}
+
+/** Store the IST wall-clock string as the same digits in a UTC DATETIME column. */
+function wallClockDate(wall) {
+  return new Date(`${String(wall).trim().replace(' ', 'T')}Z`);
+}
 
 /**
  * @param {number} userId
@@ -42,89 +58,40 @@ const WEIGHT = 'weight_records_table';
  */
 export async function getTeamProfileSnapshot(userId) {
   const uid = parseInt(userId, 10);
-  const supabase = getSupabaseClient();
-  const selectFull =
-    '"UserName", "Height", "Bmr", "Email", "Gender", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", "DietType", "PhysicalActivityLevel", recovered_health_issues, transformation_photos';
-  const selectMid =
-    '"UserName", "Height", "Bmr", "Email", "Gender", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", "DietType", "PhysicalActivityLevel", recovered_health_issues';
-  const selectBasic = '"UserName", "Height", "Bmr", "Email", "Gender", "DietType", "PhysicalActivityLevel"';
-
-  let data;
-  let error;
-  ({ data, error } = await supabase
-    .from(TEAM)
-    .select(selectFull)
-    .eq('UserId', uid)
-    .maybeSingle());
-
-  if (error && /transformation_photos/i.test(String(error.message || '')) && /column/i.test(String(error.message || ''))) {
-    ({ data, error } = await supabase
-      .from(TEAM)
-      .select(selectMid)
-      .eq('UserId', uid)
-      .maybeSingle());
-  }
-
-  if (error && /recovered_health_issues/i.test(String(error.message || '')) && /column/i.test(String(error.message || ''))) {
-    ({ data, error } = await supabase
-      .from(TEAM)
-      .select(
-        '"UserName", "Height", "Bmr", "Email", "Gender", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", "DietType", "PhysicalActivityLevel"',
-      )
-      .eq('UserId', uid)
-      .maybeSingle());
-  }
-
-  if (error && /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(String(error.message || '')) && /column/i.test(String(error.message || ''))) {
-    ({ data, error } = await supabase
-      .from(TEAM)
-      .select(selectBasic)
-      .eq('UserId', uid)
-      .maybeSingle());
-  }
-
-  if (error && /DietType|PhysicalActivityLevel/i.test(String(error.message || '')) && /column/i.test(String(error.message || ''))) {
-    const { data: fallback, error: err2 } = await supabase
-      .from(TEAM)
-      .select('"UserName", "Height", "Bmr", "Email", "Gender"')
-      .eq('UserId', uid)
-      .maybeSingle();
-    if (err2) throw err2;
-    if (!fallback) return null;
-    return {
-      userName: fallback.UserName ?? null,
-      height: fallback.Height != null ? parseFloat(fallback.Height) : null,
-      bmr: fallback.Bmr != null ? parseFloat(fallback.Bmr) : null,
-      email: fallback.Email ?? null,
-      gender: fallback.Gender ?? null,
-      age: null,
-      visceralFat: null,
-      bodyAge: null,
-      chestCm: null,
-      waistCm: null,
-      hipCm: null,
-      dietType: null,
-      physicalActivityLevel: null,
-      recoveredHealthIssues: [],
-      transformationPhotos: null,
-    };
-  }
-
-  if (error) throw error;
+  if (!Number.isFinite(uid) || uid < 1) return null;
+  const data = await mysql().team_table.findUnique({
+    where: { UserId: uid },
+    select: {
+      UserName: true,
+      Height: true,
+      Bmr: true,
+      Email: true,
+      Gender: true,
+      Age: true,
+      VisceralFat: true,
+      BodyAge: true,
+      ChestCm: true,
+      WaistCm: true,
+      HipCm: true,
+      DietType: true,
+      PhysicalActivityLevel: true,
+      recovered_health_issues: true,
+      transformation_photos: true,
+    },
+  });
   if (!data) return null;
-  const num = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
   return {
     userName: data.UserName ?? null,
-    height: data.Height != null ? parseFloat(data.Height) : null,
-    bmr: data.Bmr != null ? parseFloat(data.Bmr) : null,
+    height: plainNum(data.Height),
+    bmr: plainNum(data.Bmr),
     email: data.Email ?? null,
     gender: data.Gender ?? null,
-    age: num(data.Age),
-    visceralFat: num(data.VisceralFat),
-    bodyAge: num(data.BodyAge),
-    chestCm: num(data.ChestCm),
-    waistCm: num(data.WaistCm),
-    hipCm: num(data.HipCm),
+    age: plainNum(data.Age),
+    visceralFat: plainNum(data.VisceralFat),
+    bodyAge: plainNum(data.BodyAge),
+    chestCm: plainNum(data.ChestCm),
+    waistCm: plainNum(data.WaistCm),
+    hipCm: plainNum(data.HipCm),
     dietType: data.DietType != null ? String(data.DietType).trim() || null : null,
     physicalActivityLevel: data.PhysicalActivityLevel != null
       ? String(data.PhysicalActivityLevel).trim() || null
@@ -142,22 +109,21 @@ export async function getTeamProfileSnapshot(userId) {
  */
 export async function getLatestWeightSnapshot(userId) {
   const uid = parseInt(userId, 10);
-  const supabase = getSupabaseClient();
-  const { data: rows, error } = await supabase
-    .from(WEIGHT)
-    .select('"Weight", "BodyFat", "Bmi", "Bmr"')
-    .eq('UserId', uid)
-    .or('"IsDeleted".is.null,"IsDeleted".eq.0,"IsDeleted".eq.false')
-    .order('"CreatedAt"', { ascending: false })
-    .limit(1);
-  if (error) throw error;
-  const data = rows?.[0];
+  if (!Number.isFinite(uid) || uid < 1) return null;
+  const data = await mysql().weight_records_table.findFirst({
+    where: {
+      UserId: BigInt(uid),
+      OR: [{ IsDeleted: null }, { IsDeleted: false }],
+    },
+    orderBy: { CreatedAt: 'desc' },
+    select: { Weight: true, BodyFat: true, Bmi: true, Bmr: true },
+  });
   if (!data) return null;
   return {
-    weight: data.Weight != null ? parseFloat(data.Weight) : null,
-    bodyFat: data.BodyFat != null ? parseFloat(data.BodyFat) : null,
-    bmi: data.Bmi != null ? parseFloat(data.Bmi) : null,
-    bmr: data.Bmr != null ? parseFloat(data.Bmr) : null,
+    weight: plainNum(data.Weight),
+    bodyFat: plainNum(data.BodyFat),
+    bmi: plainNum(data.Bmi),
+    bmr: plainNum(data.Bmr),
   };
 }
 
@@ -172,14 +138,11 @@ export async function patchTeamProfile(userId, diff) {
   if (!Number.isFinite(uid) || uid < 1) {
     throw new Error(`[bpc-sync] invalid UserId for team_table patch: ${userId}`);
   }
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
-    .from(TEAM)
-    .update(diff)
-    .eq('UserId', uid)
-    .select('UserId');
-  if (error) throw error;
-  if (!data?.length) {
+  const updated = await mysql().team_table.updateMany({
+    where: { UserId: uid },
+    data: diff,
+  });
+  if (!updated.count) {
     throw new Error(`[bpc-sync] team_table patch affected 0 rows for UserId ${uid}`);
   }
 }
@@ -192,15 +155,22 @@ export async function insertWeightRecord(row) {
   // Match weight.service: store CreatedAt as legacy IST wall clock (no Z).
   // Diary parses timezone-less timestamps as IST. DB default `now()` is UTC —
   // omitting CreatedAt made BCM weights show ~5.5h early in Diary.
-  const legacyNow = utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST);
-  const payload = {
-    ...row,
-    CreatedAt: row.CreatedAt ?? legacyNow,
-    UpdatedAt: row.UpdatedAt ?? legacyNow,
-  };
-  const supabase = getSupabaseClient();
-  const { error } = await supabase.from(WEIGHT).insert(payload);
-  if (error) throw error;
+  const legacyNow = wallClockDate(utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST));
+  const bmr = row.Bmr == null ? null : Math.round(Number(row.Bmr));
+  await mysql().$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("SET time_zone = '+00:00'");
+    await tx.weight_records_table.create({
+      data: {
+        UserId: BigInt(row.UserId),
+        Weight: row.Weight,
+        Bmi: row.Bmi ?? null,
+        BodyFat: row.BodyFat ?? null,
+        Bmr: Number.isFinite(bmr) ? bmr : null,
+        CreatedAt: row.CreatedAt ? wallClockDate(row.CreatedAt) : legacyNow,
+        UpdatedAt: row.UpdatedAt ? wallClockDate(row.UpdatedAt) : legacyNow,
+      },
+    });
+  });
 }
 
 /**

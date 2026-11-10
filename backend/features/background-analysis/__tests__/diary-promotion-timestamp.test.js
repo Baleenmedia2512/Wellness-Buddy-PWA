@@ -8,7 +8,7 @@ import {
   resolvePromotionClientTimestamp,
   toDiaryEntry,
 } from '../diary.service.js';
-import { IANA_IST } from '../../../shared/lib/datetime/index.js';
+import { IANA_IST, timestampToCalendarYmd } from '../../../shared/lib/datetime/index.js';
 
 describe('resolvePromotionClientTimestamp', () => {
   it('normalizes captures_table timestamptz (UTC Z) for food row insert', () => {
@@ -114,6 +114,82 @@ describe('toDiaryEntry education matches unknown capture time', () => {
 
     assert.equal(unknownEntry.capturedAt, captureUtc);
     assert.equal(weightEntry.capturedAt, captureUtc);
+  });
+});
+
+describe('toDiaryEntry spurious driver Z stays on the IST calendar day', () => {
+  // rowCodec toISOString() marks IST wall digits as UTC. 19:00 must stay
+  // 26 Oct 7:00 PM IST, not 27 Oct 12:30 AM.
+  const spuriousZ = '2026-10-26T19:00:00.000Z';
+  const expectedUtc = '2026-10-26T13:30:00.000Z';
+
+  function assertIstWall(kind, row) {
+    const entry = toDiaryEntry(kind, { ...row, CreatedAt: spuriousZ }, { timezoneIana: IANA_IST });
+    assert.equal(entry.capturedAt, expectedUtc);
+    assert.equal(timestampToCalendarYmd(entry.capturedAt, IANA_IST), '2026-10-26');
+  }
+
+  it('education, weight, watch, and good habit match food', () => {
+    assertIstWall('food', { ID: 1, AnalysisData: '{"foods":[]}' });
+    assertIstWall('education', { Id: 2, Platform: 'zoom', Topic: 'Session', Confidence: 1 });
+    assertIstWall('weight', { ID: 3, Weight: 70 });
+    assertIstWall('watch', { Id: 4, Topic: 'Calories Burned: 800 kcal' });
+    assertIstWall('good-habit', { ID: 5, HabitType: 'walk', Notes: '' });
+  });
+
+  it('early-morning UTC digits show India time on food, weight, and education', () => {
+    const food = toDiaryEntry('food', {
+      ID: 22416,
+      CreatedAt: '2026-10-26T02:16:34.000Z',
+      AnalysisData: '{"foods":[]}',
+      TotalCalories: 0,
+      TotalProtein: 0,
+      TotalCarbs: 0,
+      TotalFat: 0,
+      TotalFiber: 0,
+    }, { timezoneIana: IANA_IST });
+    const weight = toDiaryEntry('weight', {
+      ID: 5684,
+      CreatedAt: '2026-10-26T00:12:00.000Z',
+      Weight: 59.6,
+    }, { timezoneIana: IANA_IST });
+    const education = toDiaryEntry('education', {
+      Id: 9,
+      Platform: 'zoom',
+      Topic: 'Daily Education',
+      Confidence: 1,
+      CreatedAt: '2026-10-26T02:17:00.000Z',
+    }, { timezoneIana: IANA_IST });
+
+    assert.equal(food.capturedAt, '2026-10-26T02:16:34.000Z');
+    assert.equal(weight.capturedAt, '2026-10-26T00:12:00.000Z');
+    assert.equal(education.capturedAt, '2026-10-26T02:17:00.000Z');
+    assert.equal(timestampToCalendarYmd(food.capturedAt, IANA_IST), '2026-10-26');
+    assert.equal(timestampToCalendarYmd(weight.capturedAt, IANA_IST), '2026-10-26');
+  });
+
+  it('morning driver Z stays 10:46 AM IST on the same day', () => {
+    const entry = toDiaryEntry('education', {
+      Id: 9,
+      Platform: 'zoom',
+      Topic: 'Daily Education',
+      Confidence: 1,
+      CreatedAt: '2026-10-26T10:46:00.000Z',
+    }, { timezoneIana: IANA_IST });
+    assert.equal(entry.capturedAt, '2026-10-26T05:16:00.000Z');
+    assert.equal(timestampToCalendarYmd(entry.capturedAt, IANA_IST), '2026-10-26');
+  });
+
+  it('unknown capture Z stays a real UTC instant', () => {
+    const captureUtc = '2026-10-26T19:00:00.000Z';
+    const entry = toDiaryEntry('unknown', {
+      ID: 8,
+      ImageType: 'unknown',
+      CreatedAt: captureUtc,
+      PublicShareToken: 'tok',
+    }, { timezoneIana: IANA_IST });
+    assert.equal(entry.capturedAt, captureUtc);
+    assert.equal(timestampToCalendarYmd(entry.capturedAt, IANA_IST), '2026-10-27');
   });
 });
 

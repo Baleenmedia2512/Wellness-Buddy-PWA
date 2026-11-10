@@ -5,6 +5,7 @@
 import { handleMemberPrefill } from '../../../features/body-parameters-card/api/member-prefill.handler.js';
 import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
+import { getClientAppVersion } from '../../../shared/lib/client-app-version.js';
 import logger from '../../../shared/lib/logger.js';
 
 export default async function handler(req, res) {
@@ -14,7 +15,9 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return methodNotAllowed(res);
 
   try {
-    const { httpStatus, body } = await handleMemberPrefill(req.query);
+    const { httpStatus, body } = await handleMemberPrefill(req.query, {
+      appVersion: getClientAppVersion(req),
+    });
     res.status(httpStatus).json(body);
   } catch (err) {
     if (err instanceof ValidationError) {

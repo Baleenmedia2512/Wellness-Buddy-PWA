@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import { debugLog } from '../../../shared/utils/logger.js';
+import LeaderboardAvatar from '../../leaderboard/components/LeaderboardAvatar';
 
 import { formatBusinessTime } from '../../../shared/utils/datetimeUtils';
 
@@ -250,12 +251,13 @@ const AttendeeListModal = ({
                           onClick={() => toggleUser(user.userId)}
                           className="w-full flex items-center gap-3 py-3 px-3 hover:bg-gray-50 transition-colors text-left"
                         >
-                          {/* Avatar circle */}
-                          <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center shrink-0">
-                            <span className="text-green-700 font-semibold text-sm">
-                              {(user.userName || '?').charAt(0).toUpperCase()}
-                            </span>
-                          </div>
+                          <span className="shrink-0">
+                            <LeaderboardAvatar
+                              apiBaseUrl={apiBaseUrl}
+                              userId={user.userId}
+                              userName={user.userName}
+                            />
+                          </span>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-medium text-gray-800 block truncate">{user.userName}</span>

@@ -24,7 +24,7 @@
  * discarded before the HTTP response.
  */
 
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { applyDayFilterWidened } from '../../shared/lib/datetime/applyDayFilter.js';
 import { IANA_IST, filterFoodRowsByCalendarDay } from '../../shared/lib/datetime/index.js';
 import { DIARY_LIST_SQL_CAP } from './domain/diary-pagination.js';
@@ -34,8 +34,8 @@ import { DIARY_LIST_SQL_CAP } from './domain/diary-pagination.js';
  * AnalysisData is read only to build listSummary in the service layer.
  */
 export async function fetchFoodForDay(ownerUserId, date, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('food_nutrition_data_table')
     .select(
       [
@@ -60,8 +60,8 @@ export async function fetchFoodForDay(ownerUserId, date, timezoneIana = IANA_IST
  * Weight rows for the day. WeightImageBase64 omitted — use /api/weight/image.
  */
 export async function fetchWeightForDay(ownerUserId, date, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('weight_records_table')
     .select('ID, UserId, Weight, Bmi, BodyFat, MuscleMass, Bmr, CreatedAt')
     .eq('UserId', String(ownerUserId))
@@ -79,8 +79,8 @@ export async function fetchWeightForDay(ownerUserId, date, timezoneIana = IANA_I
  * that the watch flow writes into the same table.
  */
 export async function fetchEducationForDay(ownerUserId, date, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('education_logs_table')
     .select('"Id", "Platform", "Topic", "CreatedAt", "Confidence"')
     .eq('UserId', String(ownerUserId))
@@ -98,8 +98,8 @@ export async function fetchEducationForDay(ownerUserId, date, timezoneIana = IAN
  * Watch (smartwatch screenshot) rows for the day.
  */
 export async function fetchWatchForDay(ownerUserId, date, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('education_logs_table')
     .select('"Id", "Topic", "CreatedAt"')
     .eq('"UserId"', String(ownerUserId))
@@ -118,8 +118,8 @@ export async function fetchWatchForDay(ownerUserId, date, timezoneIana = IANA_IS
  * /api/background-analysis/captures/image.
  */
 export async function fetchUnknownCapturesForDay(ownerUserId, date, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('captures_table')
     .select('"ID", "UserID", "ImageType", "ImagePath", "PublicShareToken", "CreatedAt"')
     .eq('"UserID"', String(ownerUserId))
@@ -137,8 +137,8 @@ export async function fetchUnknownCapturesForDay(ownerUserId, date, timezoneIana
  * In-flight captures for the day (`ImageType = 'pending'`).
  */
 export async function fetchPendingCapturesForDay(ownerUserId, date, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('captures_table')
     .select('"ID", "UserID", "ImageType", "ImagePath", "PublicShareToken", "CreatedAt"')
     .eq('"UserID"', String(ownerUserId))
@@ -157,11 +157,11 @@ export async function fetchPendingCapturesForDay(ownerUserId, date, timezoneIana
  * @returns {Promise<{ ImageBase64: string|null, ImagePath: string|null, UserID: string|null }|null>}
  */
 export async function fetchCaptureImageById(captureId) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const withKey = '"ID", "UserID", "ImageBase64", "ImagePath", "ImageKey", "IsDeleted"';
   const noKey = '"ID", "UserID", "ImageBase64", "ImagePath", "IsDeleted"';
   const run = async (columns) => {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('captures_table')
       .select(columns)
       .eq('"ID"', captureId)
@@ -187,8 +187,8 @@ export async function fetchCaptureImageById(captureId) {
  * GET /api/good-habits.
  */
 export async function fetchGoodHabitsForDay(ownerUserId, date, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('good_habits_table')
     .select('"ID", "UserId", "HabitType", "Notes", "CaptureID", "CreatedAt"')
     .eq('"UserId"', String(ownerUserId))

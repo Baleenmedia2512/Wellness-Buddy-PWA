@@ -16,6 +16,7 @@ import {
   collectVisibleHierarchyUsers,
   isSharedCoachTeamAccessible,
   normalizeCoachTeamId,
+  isPlatformMemberReader,
 } from '../reportingHierarchyService.js';
 
 const X = 1;
@@ -277,6 +278,20 @@ describe('isCoCoachPartnerDownlineMember — Sponsor/Co-Sponsor shared tree', ()
     context.partnerRootIds = [sponsor];
     assert.equal(isCoCoachPartnerDownlineMember(coCoach, 9999, context), false);
     assert.equal(isCoCoachPartnerDownlineMember(9999, usharaj, context), false);
+  });
+});
+
+describe('isPlatformMemberReader', () => {
+  it('lets admin and developer read a member outside their coach line', () => {
+    assert.equal(isPlatformMemberReader('admin'), true);
+    assert.equal(isPlatformMemberReader('developer'), true);
+    assert.equal(isPlatformMemberReader('ADMIN'), true);
+  });
+
+  it('keeps coach and member on the reporting-tree check', () => {
+    assert.equal(isPlatformMemberReader('coach'), false);
+    assert.equal(isPlatformMemberReader('user'), false);
+    assert.equal(isPlatformMemberReader(null), false);
   });
 });
 

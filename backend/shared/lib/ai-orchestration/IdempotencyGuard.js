@@ -10,7 +10,7 @@
  * Backing store:
  *   Default: in-process Map (correct for single-instance dev/staging; resets
  *            on cold start, which is acceptable — it just re-analyses once).
- *   Production upgrade: swap _store for a Redis client or Supabase RPC
+ *   Production upgrade: swap _store for a Redis client or MySQL RPC
  *                       without changing the public interface.
  *
  * Eviction:

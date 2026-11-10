@@ -21,7 +21,7 @@ function getBarProps(currentWeight, idealMin, idealMax) {
   return { pct, idealStartPct, idealEndPct };
 }
 
-export default function WeightStatusRow({ row, teamPerformance = null }) {
+export default function WeightStatusRow({ row, teamPerformance = null, hideDetails = false }) {
   const { userName, email, communityId, currentWeight, idealMin, idealMax, status, firstReachedAt } = row;
   const bar = getBarProps(currentWeight, idealMin, idealMax);
   const mail = String(email || '').trim();
@@ -70,9 +70,11 @@ export default function WeightStatusRow({ row, teamPerformance = null }) {
             ) : null}
           </div>
         </div>
-        <WeightStatusBadge status={status} />
+        {hideDetails ? null : <WeightStatusBadge status={status} />}
       </div>
 
+      {hideDetails ? null : (
+      <>
       {/* Weight details */}
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600">
         <div>
@@ -143,6 +145,8 @@ export default function WeightStatusRow({ row, teamPerformance = null }) {
             </span>
           )}
         </p>
+      )}
+      </>
       )}
     </div>
   );

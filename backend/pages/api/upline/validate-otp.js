@@ -7,8 +7,8 @@
  */
 
 import {
-  getSupabaseClient,
-} from "../../../utils/supabaseClient.js";
+  getMysqlClient,
+} from "../../../utils/mysqlClient.js";
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import bcrypt from "bcryptjs";
 import logger from '../../../shared/lib/logger.js';
@@ -70,8 +70,8 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Connect to Supabase
-    const supabase = getSupabaseClient();
+    // Connect to MySQL
+    const db = getMysqlClient();
 
     // ── Demo account: fixed OTP 0000 accepted, but do real DB ops ──────────
     // No OTP is emailed to the demo account, so we accept the fixed code and
@@ -84,7 +84,7 @@ export default async function handler(req, res) {
     // Get requester's UserId
     let requesterId = null;
     if (uid && Number.isFinite(uid)) {
-      const { data: byId, error: byIdErr } = await supabase
+      const { data: byId, error: byIdErr } = await db
         .from("team_table")
         .select("UserId")
         .eq("UserId", uid)
@@ -92,7 +92,7 @@ export default async function handler(req, res) {
       if (byIdErr) throw byIdErr;
       requesterId = byId?.UserId ?? null;
     } else {
-      const { data: userRows, error: userError } = await supabase
+      const { data: userRows, error: userError } = await db
         .from("team_table")
         .select("UserId")
         .eq("Email", email)
@@ -111,7 +111,7 @@ export default async function handler(req, res) {
     }
 
     // Get pending request
-    const { data: requestRows, error: requestError } = await supabase
+    const { data: requestRows, error: requestError } = await db
       .from("approval_requests_table")
       .select(
         "Id, RequesterId, UplineCoachId, OtpHash, OtpExpiresAt, OtpAttempts, Status",
@@ -139,7 +139,7 @@ export default async function handler(req, res) {
 
     if (now > expiresAt) {
       // Mark as expired
-      await supabase
+      await db
         .from("approval_requests_table")
         .update({ Status: "expired" })
         .eq("Id", request.Id);
@@ -155,7 +155,7 @@ export default async function handler(req, res) {
     // Check max attempts
     if (request.OtpAttempts >= MAX_OTP_ATTEMPTS) {
       // Delete request after max attempts
-      await supabase
+      await db
         .from("approval_requests_table")
         .delete()
         .eq("Id", request.Id);
@@ -184,7 +184,7 @@ export default async function handler(req, res) {
       // Increment attempts
       const newAttempts = request.OtpAttempts + 1;
 
-      await supabase
+      await db
         .from("approval_requests_table")
         .update({ OtpAttempts: newAttempts })
         .eq("Id", request.Id);
@@ -200,7 +200,7 @@ export default async function handler(req, res) {
     // OTP is valid! Complete setup
 
     // Get requester's TeamId (optional lead claim)
-    const { data: requesterData, error: requesterDataError } = await supabase
+    const { data: requesterData, error: requesterDataError } = await db
       .from("team_table")
       .select("TeamId")
       .eq("UserId", requesterId);
@@ -214,14 +214,14 @@ export default async function handler(req, res) {
 
     // STEP 1: Race-safe Sponsor / Co-Sponsor seat if user claimed a TeamId
     if (requesterTeamId) {
-      const seatResult = await assignLeadSeat(supabase, requesterTeamId, requesterId);
+      const seatResult = await assignLeadSeat(db, requesterTeamId, requesterId);
       if (!seatResult.ok) {
         logger.warn('[validate-otp] Lead seat unavailable; clearing TeamId and continuing as member', {
           requesterId,
           teamId: requesterTeamId,
           error: seatResult.error,
         });
-        const { error: clearTeamError } = await supabase
+        const { error: clearTeamError } = await db
           .from('team_table')
           .update({ TeamId: null })
           .eq('UserId', requesterId);
@@ -237,7 +237,7 @@ export default async function handler(req, res) {
     }
 
     // STEP 2: Guide details — inherit shared CoachTeamId when member skipped Team Code
-    const { data: coachData, error: coachDataError } = await supabase
+    const { data: coachData, error: coachDataError } = await db
       .from("team_table")
       .select("TeamId, CoachTeamId")
       .eq("UserId", request.UplineCoachId);
@@ -263,7 +263,7 @@ export default async function handler(req, res) {
       LastActiveAt: reactivatedAt,
     };
 
-    const { error: statusUpdateError } = await supabase
+    const { error: statusUpdateError } = await db
       .from("team_table")
       .update(updateData)
       .eq("UserId", requesterId);
@@ -275,7 +275,7 @@ export default async function handler(req, res) {
 
     // STEP 4: Mark request as approved
     const processedAt = nowUtc();
-    await supabase
+    await db
       .from("approval_requests_table")
       .update({ Status: "approved", ProcessedAt: processedAt })
       .eq("Id", request.Id);
@@ -294,14 +294,14 @@ export default async function handler(req, res) {
     }
 
     // Get requester and coach details for response
-    const { data: userDetails, error: userDetailsError } = await supabase
+    const { data: userDetails, error: userDetailsError } = await db
       .from("team_table")
       .select("UserName, TeamId")
       .eq("UserId", requesterId);
 
     if (userDetailsError) throw userDetailsError;
 
-    const { data: coachDetails, error: coachDetailsError } = await supabase
+    const { data: coachDetails, error: coachDetailsError } = await db
       .from("team_table")
       .select("UserName, Email")
       .eq("UserId", request.UplineCoachId);

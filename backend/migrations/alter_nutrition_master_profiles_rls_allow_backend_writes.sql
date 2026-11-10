@@ -1,10 +1,10 @@
 -- Fix: custom-food INSERT fails with
 --   "new row violates row-level security policy for table 'nutrition_master_profiles_table'"
 --
--- Backend uses Supabase REST (anon or service key). Auth is enforced in API handlers,
+-- Backend writes through the MySQL client. Auth is enforced in API handlers,
 -- same pattern as food_pair_stats / ai_credits / testimonials (RLS off for server writes).
 --
--- Run this on test/prod Supabase SQL editor. Table already exists — do NOT run create_*.
+-- Run this on test/prod MySQL. Table already exists — do NOT run create_*.
 
 -- Drop restrictive policies if present (from create_nutrition_master_profiles_table.sql).
 DROP POLICY IF EXISTS nutrition_master_profiles_select_approved

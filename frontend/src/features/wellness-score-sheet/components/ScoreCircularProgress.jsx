@@ -15,7 +15,7 @@ export default function ScoreCircularProgress({
   const clamped = Math.min(100, Math.max(0, percentage));
   const offset = circumference - (clamped / 100) * circumference;
 
-  const ringColor = clamped >= 75 ? '#059669' : clamped >= 50 ? '#d97706' : '#dc2626';
+  const ringColor = clamped >= 75 ? 'var(--wv-ring-end)' : clamped >= 50 ? '#d97706' : '#dc2626';
 
   return (
     <div

@@ -40,6 +40,34 @@ describe('logging parameters', () => {
     assert.equal(r.key, 'edu_post');
   });
 
+  it('education post — driver Z on 07:33 wall stays inside 7:15–8:45', () => {
+    const r = calculateEducationPost({
+      maxPoints: 100,
+      educationLogs: [{
+        CreatedAt: '2026-10-28T07:33:00.000Z',
+        Topic: 'Daily Education',
+        Platform: 'Zoom',
+      }],
+      window: { start: '07:15:00', end: '08:45:00' },
+    });
+    assert.equal(r.earnedPoints, 100);
+    assert.match(r.calculationReason, /allowed time/i);
+  });
+
+  it('education post — real afternoon wall time stays late', () => {
+    const r = calculateEducationPost({
+      maxPoints: 100,
+      educationLogs: [{
+        CreatedAt: '2026-10-28T13:03:00',
+        Topic: 'Daily Education',
+        Platform: 'Zoom',
+      }],
+      window: { start: '07:15:00', end: '08:45:00' },
+    });
+    assert.equal(r.earnedPoints, 0);
+    assert.match(r.calculationReason, /Late/i);
+  });
+
   it('education post — 0 when late', () => {
     const r = calculateEducationPost({
       maxPoints: 100,

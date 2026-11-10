@@ -33,6 +33,39 @@ export function isNotAttendedActivityReport(raw) {
   return normalizeActivityReportAttendance(raw) === ACTIVITY_REPORT_ATTENDANCE.NOT_POSTED;
 }
 
+/** Category keys on the Activity Report summary pills / dropdown. */
+export const ACTIVITY_REPORT_SUMMARY_KEYS = Object.freeze([
+  'weight',
+  'education',
+  'breakfast',
+  'lunch',
+  'dinner',
+  'water',
+  'calories',
+]);
+
+/**
+ * Members in scope who have no log for each category.
+ * Posted counts stay unique posters; not-posted is the rest of the same scope.
+ *
+ * @param {Record<string, number>|null|undefined} postedCounts
+ * @param {Array<number|string>} scopeUserIds
+ * @returns {Record<string, number>}
+ */
+export function buildNotPostedSummaryCounts(postedCounts, scopeUserIds) {
+  const scopeSize = new Set(
+    (scopeUserIds || [])
+      .map((id) => Number(id))
+      .filter(Number.isFinite),
+  ).size;
+  const counts = {};
+  for (const key of ACTIVITY_REPORT_SUMMARY_KEYS) {
+    const posted = Math.max(0, Number(postedCounts?.[key]) || 0);
+    counts[key] = Math.max(0, scopeSize - posted);
+  }
+  return counts;
+}
+
 /**
  * Scope members who have no activity log in the selected period.
  * One row per member (period-level), not per missing day.

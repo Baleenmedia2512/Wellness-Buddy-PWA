@@ -6,6 +6,14 @@
       "maxDuration": 60,
       "memory": 1024
     },
+    "pages/api/leaderboard/get-global-leaderboard.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
+    "pages/api/coach/team-hierarchy.js": {
+      "maxDuration": 60,
+      "memory": 1024
+    },
     "pages/api/**/*.js": {
       "maxDuration": 30,
       "memory": 1024

@@ -2,7 +2,7 @@
  * weight-progress.repo.js — Data layer for weight progress tips.
  * Fetches weight history, nutrition totals, water intake, and activity.
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { applyDayFilter } from '../../../shared/lib/datetime/applyDayFilter.js';
 import { IANA_IST } from '../../../shared/lib/datetime/index.js';
 import { isExemptedFood } from '../../../utils/foodTypeDetection.js';
@@ -12,18 +12,18 @@ import { isExemptedFood } from '../../../utils/foodTypeDetection.js';
  * Falls back gracefully if WeightGoalMode column doesn't exist yet.
  */
 export async function getUserWeightGoal(userId) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   console.log('🗄️ [repo:getUserWeightGoal] Querying team_table for userId:', userId);
   const uid = parseInt(userId, 10);
   try {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('team_table')
       .select('"WeightGoalMode", "Height", "Bmr", "CoachId", "PhysicalActivityLevel", "Gender"')
       .eq('UserId', uid)
       .maybeSingle();
 
     if (error) {
-      console.error('❌ [repo:getUserWeightGoal] Supabase error:', error.message);
+      console.error('❌ [repo:getUserWeightGoal] MySQL error:', error.message);
       throw error;
     }
     console.log('✅ [repo:getUserWeightGoal] Result:', data);
@@ -46,9 +46,9 @@ export async function getUserWeightGoal(userId) {
  */
 export async function getCoachPhone(coachId) {
   if (!coachId) return null;
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   console.log('🗄️ [repo:getCoachPhone] Querying team_table for coachId:', coachId);
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('team_table')
     .select('"PhoneNumber"')
     .eq('UserId', parseInt(coachId, 10))
@@ -67,10 +67,10 @@ export async function getCoachPhone(coachId) {
  * Get today's and yesterday's weight entries
  */
 export async function getRecentWeights(userId, limit = 2) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   console.log('🗄️ [repo:getRecentWeights] Querying weight_records_table for userId:', userId, 'limit:', limit);
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('weight_records_table')
     .select('ID, Weight, CreatedAt')
     .eq('UserId', parseInt(userId, 10))
@@ -79,7 +79,7 @@ export async function getRecentWeights(userId, limit = 2) {
     .limit(limit);
 
   if (error) {
-    console.error('❌ [repo:getRecentWeights] Supabase error:', error.message);
+    console.error('❌ [repo:getRecentWeights] MySQL error:', error.message);
     throw error;
   }
   console.log('✅ [repo:getRecentWeights] Rows returned:', data?.length, JSON.stringify(data));
@@ -90,10 +90,10 @@ export async function getRecentWeights(userId, limit = 2) {
  * Get nutrition totals for a calendar day in the user's timezone.
  */
 export async function getNutritionForDate(userId, dateYmd, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   console.log('🗄️ [repo:getNutritionForDate] userId:', userId, 'date:', dateYmd);
 
-  let query = supabase
+  let query = db
     .from('food_nutrition_data_table')
     .select('"TotalCalories", "TotalProtein", "TotalCarbs", "TotalFat"')
     .eq('"UserID"', String(userId))
@@ -102,7 +102,7 @@ export async function getNutritionForDate(userId, dateYmd, timezoneIana = IANA_I
   const { data, error } = await query;
 
   if (error) {
-    console.error('❌ [repo:getYesterdayNutrition] Supabase error:', error.message);
+    console.error('❌ [repo:getYesterdayNutrition] MySQL error:', error.message);
     throw error;
   }
   console.log('✅ [repo:getNutritionForDate] Rows found:', data?.length);
@@ -139,10 +139,10 @@ export async function getTodayNutrition(userId, dateYmd, timezoneIana) {
  * Get water intake (ml) for a calendar day by scanning beverage food logs.
  */
 export async function getWaterForDate(userId, dateYmd, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   console.log('🗄️ [repo:getWaterForDate] userId:', userId, 'date:', dateYmd);
 
-  let query = supabase
+  let query = db
     .from('food_nutrition_data_table')
     .select('"AnalysisData"')
     .eq('"UserID"', String(userId))
@@ -151,7 +151,7 @@ export async function getWaterForDate(userId, dateYmd, timezoneIana = IANA_IST) 
   const { data, error } = await query;
 
   if (error) {
-    console.error('❌ [repo:getYesterdayWater] Supabase error:', error.message);
+    console.error('❌ [repo:getYesterdayWater] MySQL error:', error.message);
     return 0;
   }
 
@@ -189,10 +189,10 @@ export async function getYesterdayWater(userId, dateYmd, timezoneIana) {
  * Get best step/activity record for a calendar day.
  */
 export async function getActivityForDate(userId, dateYmd, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   console.log('🗄️ [repo:getActivityForDate] userId:', userId, 'date:', dateYmd);
 
-  let query = supabase
+  let query = db
     .from('daily_step_activity')
     .select('"Steps", "CaloriesBurned", "ActivityType"')
     .eq('UserId', parseInt(userId, 10));
@@ -202,7 +202,7 @@ export async function getActivityForDate(userId, dateYmd, timezoneIana = IANA_IS
     .limit(1);
 
   if (error) {
-    console.error('❌ [repo:getYesterdayActivity] Supabase error:', error.message);
+    console.error('❌ [repo:getYesterdayActivity] MySQL error:', error.message);
     return null;
   }
 
@@ -236,7 +236,7 @@ export async function getYesterdayActivity(userId, dateYmd, timezoneIana) {
  * @throws {Error} if the update fails or row not found.
  */
 export async function saveProgressReview(review) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   console.log(
     '🗄️ [repo:saveProgressReview] Saving review on weight record',
     review.weightRecordId,
@@ -256,7 +256,7 @@ export async function saveProgressReview(review) {
     reviewedAt: new Date().toISOString(),
   };
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('weight_records_table')
     .update({
       ReverseProgressReview: reviewPayload,
@@ -269,7 +269,7 @@ export async function saveProgressReview(review) {
     .maybeSingle();
 
   if (error) {
-    console.error('❌ [repo:saveProgressReview] Supabase error:', error.message);
+    console.error('❌ [repo:saveProgressReview] MySQL error:', error.message);
     throw error;
   }
 

@@ -196,8 +196,21 @@ export function signedGetObjectUrl(key, opts = {}) {
   return `https://${config.endpointHost}${uri}?${qs}`;
 }
 
+function canSignR2Get(config) {
+  return Boolean(
+    config?.endpointHost
+    && config?.bucket
+    && config?.accessKeyId
+    && config?.secretAccessKey,
+  );
+}
+
 export function avatarRedirectUrl(key, config = readR2Config()) {
-  return publicObjectUrl(key, config) || signedGetObjectUrl(key, { config, expiresSeconds: 3600 });
+  if (!key) return null;
+  const pub = publicObjectUrl(key, config);
+  if (pub) return pub;
+  if (!canSignR2Get(config)) return null;
+  return signedGetObjectUrl(key, { config, expiresSeconds: 3600 });
 }
 
 export { buildAvatarObjectKey, R2_FOLDERS } from './objectKeys.js';
@@ -211,9 +224,20 @@ export async function putObject({
   contentType,
   cacheControl = 'public, max-age=31536000, immutable',
   fetchImpl = globalThis.fetch,
-  config = readR2Config(),
+  config,
 }) {
-  assertR2Config(config);
+  // Callers that pass an explicit R2 config (tests, and R2-only hosts) stay on R2.
+  // A normal upload with MilesWeb FTP configured writes the same key on disk.
+  if (config == null) {
+    const { isMileswebStorageEnabled } = await import('../milesweb/config.js');
+    if (isMileswebStorageEnabled()) {
+      const { putMileswebObject } = await import('../milesweb/ftpStorage.js');
+      await putMileswebObject({ key, body });
+      return { key, etag: null };
+    }
+  }
+  const r2Config = config || readR2Config();
+  assertR2Config(r2Config);
 
   const extraHeaders = {
     'content-type': contentType || 'image/jpeg',
@@ -225,15 +249,15 @@ export async function putObject({
     key,
     body,
     headers: extraHeaders,
-    config,
+    config: r2Config,
   });
 
-  const url = `https://${config.endpointHost}${signed.uri}`;
+  const url = `https://${r2Config.endpointHost}${signed.uri}`;
   const res = await fetchImpl(url, {
     method: 'PUT',
     headers: {
       ...extraHeaders,
-      host: config.endpointHost,
+      host: r2Config.endpointHost,
       'x-amz-content-sha256': signed.payloadHash,
       'x-amz-date': signed.amzDate,
       Authorization: signed.authorization,
@@ -254,23 +278,32 @@ export async function putObject({
 export async function deleteObject({
   key,
   fetchImpl = globalThis.fetch,
-  config = readR2Config(),
+  config,
 }) {
-  assertR2Config(config);
+  if (config == null) {
+    const { isMileswebStorageEnabled } = await import('../milesweb/config.js');
+    if (isMileswebStorageEnabled()) {
+      const { deleteMileswebObject } = await import('../milesweb/ftpStorage.js');
+      await deleteMileswebObject(key);
+      if (!isR2Configured()) return { key, deleted: true };
+    }
+  }
+  const r2Config = config || readR2Config();
+  assertR2Config(r2Config);
   if (!key) throw new Error('R2 DELETE requires a key');
 
   const signed = buildSignedHeaders({
     method: 'DELETE',
     key,
     body: '',
-    config,
+    config: r2Config,
   });
 
-  const url = `https://${config.endpointHost}${signed.uri}`;
+  const url = `https://${r2Config.endpointHost}${signed.uri}`;
   const res = await fetchImpl(url, {
     method: 'DELETE',
     headers: {
-      host: config.endpointHost,
+      host: r2Config.endpointHost,
       'x-amz-content-sha256': signed.payloadHash,
       'x-amz-date': signed.amzDate,
       Authorization: signed.authorization,

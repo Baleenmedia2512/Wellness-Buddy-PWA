@@ -113,7 +113,7 @@ Minimal changes to pass `YYYY-MM-DD` dates instead of pre-formatted `T00:00:00` 
 ### Non-repository code (business logic / API routes — unchanged per requirement)
 | File | Pattern | Why deferred |
 |---|---|---|
-| `utils/disciplineCalculationsSupabase.js` | `T00:00:00` / `T23:59:59` on CreatedAt | Protected business-logic module |
+| `utils/disciplineCalculationsQuery.js` | `T00:00:00` / `T23:59:59` on CreatedAt | Protected business-logic module |
 | `pages/api/leaderboard/get-discipline-leaderboard.js` | Inline date bounds in API route | Not a repository |
 | `features/weight-progress-tips/api/check-progress.handler.js` | IST day-start math | API handler, not repository |
 | `features/background-analysis/analysis.validators.js` | Date validation only | Validator, not repository |
@@ -147,5 +147,5 @@ Covers `applyDayFilter` and `applyDateRangeFilter`.
 
 - [ ] Confirm IST default preserves current query results against legacy `timestamp without time zone` columns
 - [ ] Plan Phase 2: pass per-user `timezone_iana` from profile into repository callers
-- [ ] Plan Phase 3: migrate `disciplineCalculationsSupabase.js` (requires `@principal-eng`)
+- [ ] Plan Phase 3: migrate `disciplineCalculationsQuery.js` (requires `@principal-eng`)
 - [ ] Plan column migration `timestamp without time zone` → `timestamptz` for full UTC correctness

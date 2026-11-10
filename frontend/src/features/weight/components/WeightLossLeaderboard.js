@@ -220,6 +220,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
           email={user.email}
           userName={user.userName}
           profileImage={user.profileImage}
+          isPremium={user.isPremium === true}
         />
       </div>
 
@@ -273,6 +274,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
           email={user.email}
           userName={user.userName}
           profileImage={user.profileImage}
+          isPremium={user.isPremium === true}
         />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-gray-800">{user.userName}</p>

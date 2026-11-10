@@ -44,7 +44,7 @@ ${layerHint}.
 
 ## Dependencies
 - Internal: TODO (shared helpers, other feature events)
-- External: TODO (Supabase tables, external APIs, env vars)
+- External: TODO (MySQL tables, external APIs, env vars)
 
 ## Threat model (claude.md §8.5)
 - Auth: TODO

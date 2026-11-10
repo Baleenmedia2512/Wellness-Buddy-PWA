@@ -38,7 +38,12 @@ export function mealHasFullAnalysis(meal) {
   }
 }
 
-/** Merge diary stub metadata into a fuller cached/fetched row. */
+/**
+ * Merge diary stub metadata into a fuller cached/fetched row.
+ * Keep the diary `CreatedAt` (already a real UTC instant). The detail row's
+ * `CreatedAt` is still MySQL wall-clock digits with a spurious `Z`, and
+ * trusting that `Z` shifts "Logged at" by +5:30.
+ */
 export function mergeMealRows(primary, stub) {
   if (!primary && !stub) return null;
   if (!stub) return primary;
@@ -46,7 +51,7 @@ export function mergeMealRows(primary, stub) {
   return {
     ...stub,
     ...primary,
-    CreatedAt: primary.CreatedAt ?? stub.CreatedAt,
+    CreatedAt: stub.CreatedAt ?? primary.CreatedAt,
     ProcessedBy: primary.ProcessedBy ?? stub.ProcessedBy,
     listSummary: stub.listSummary ?? primary.listSummary ?? null,
   };

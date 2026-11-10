@@ -4,6 +4,9 @@ import { cacheManager } from "./cacheManager";
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
 
+/** Cache version — bump when search/full response shape changes. */
+const TEAM_HIERARCHY_CACHE_VERSION = "v6-purpose-search";
+
 /**
  * Team Hierarchy Service
  * Handles all team hierarchy-related API calls
@@ -13,21 +16,32 @@ export const teamHierarchyService = {
    * Fetch hierarchical team structure
    * @param {number} coachId - ID of the coach requesting the hierarchy
    * @param {boolean} includeInactive - Whether to include inactive users
+   * @param {{ purpose?: 'search'|'full' }} [options]
+   *   purpose=search → lighter backend path for Diary / Reports search (no weight enrich)
    * @returns {Promise<Object>} - Hierarchical team data
    */
-  async getTeamHierarchy(coachId, includeInactive = false) {
-    const cacheKey = cacheManager.generateKey("teamHierarchy", "v6-downline-cocoach", coachId, includeInactive);
+  async getTeamHierarchy(coachId, includeInactive = false, options = {}) {
+    const purpose = options.purpose === "search" ? "search" : "full";
+    const cacheKey = cacheManager.generateKey(
+      "teamHierarchy",
+      TEAM_HIERARCHY_CACHE_VERSION,
+      coachId,
+      includeInactive,
+      purpose,
+    );
     return cacheManager.execute(
       cacheKey,
       async () => {
+        const params = {
+          coachId,
+          includeInactive: includeInactive ? "true" : "false",
+        };
+        if (purpose === "search") {
+          params.purpose = "search";
+        }
         const response = await axios.get(
           `${API_BASE_URL}/api/coach/team-hierarchy`,
-          {
-            params: {
-              coachId,
-              includeInactive: includeInactive ? "true" : "false",
-            },
-          },
+          { params },
         );
         return response.data;
       },
@@ -42,11 +56,14 @@ export const teamHierarchyService = {
    * Get flat list of all Active team members under a coach.
    * Inactive users are excluded by the backend (includeInactive=false).
    * @param {number} coachId - ID of the coach
+   * @param {{ purpose?: 'search'|'full' }} [options]
+   *   purpose=search for Diary / team search; omit (full) for BCM weight prefill
    * @returns {Promise<Array>} - Flat array of active team members
    */
-  async getFlatTeamList(coachId) {
+  async getFlatTeamList(coachId, options = {}) {
     try {
-      const hierarchyData = await this.getTeamHierarchy(coachId, false);
+      const purpose = options.purpose === "search" ? "search" : "full";
+      const hierarchyData = await this.getTeamHierarchy(coachId, false, { purpose });
 
       // ✅ Use backend's pre-built flat array — already deduplicated, Active-only, and complete
       // Avoids members being dropped by broken nested tree walk
@@ -148,7 +165,9 @@ export const teamHierarchyService = {
    */
   async searchInHierarchy(coachId, searchTerm) {
     try {
-      const hierarchyData = await this.getTeamHierarchy(coachId);
+      const hierarchyData = await this.getTeamHierarchy(coachId, false, {
+        purpose: "search",
+      });
       const results = [];
 
       const search = (node, path = []) => {
@@ -171,6 +190,20 @@ export const teamHierarchyService = {
 
       if (hierarchyData.hierarchy) {
         search(hierarchyData.hierarchy);
+      } else if (hierarchyData.allMembers?.length) {
+        const q = searchTerm.toLowerCase();
+        for (const member of hierarchyData.allMembers) {
+          const name = String(member.UserName || "").toLowerCase();
+          const email = String(member.Email || "").toLowerCase();
+          if (name.includes(q) || email.includes(q)) {
+            results.push({
+              userId: member.UserId,
+              userName: member.UserName,
+              email: member.Email || "",
+              path: member.UserName || "",
+            });
+          }
+        }
       }
 
       return results;

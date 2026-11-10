@@ -8,6 +8,7 @@ import { avatarRedirectUrl } from '../../shared/lib/r2/s3.js';
 import { uploadStoredImageToR2 } from '../../shared/lib/r2/putCompressedJpeg.js';
 import { buildCaptureObjectKey, R2_FOLDERS } from '../../shared/lib/r2/objectKeys.js';
 import logger from '../../shared/lib/logger.js';
+import { isMileswebStorageEnabled } from '../../shared/lib/milesweb/config.js';
 import * as repo from './data/captures.repository.js';
 
 export const CAPTURE_R2_BACKFILL_START_YMD = '2026-08-30';
@@ -38,7 +39,8 @@ export async function getStoredCaptureImageKey(captureId) {
 
 export async function persistCaptureImageKey(userId, captureId, imageBase64) {
   try {
-    if (!r2CapturesEnabled()) return null;
+    if (!isEnabled('ff.r2-captures')) return null;
+    if (!isR2Configured() && !isMileswebStorageEnabled()) return null;
     const key = await uploadStoredImageToR2({
       imageBase64,
       folder: R2_FOLDERS.captures,

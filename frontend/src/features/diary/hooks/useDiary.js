@@ -8,6 +8,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchDiary, DIARY_PAGE_SIZE } from '../api/diaryClient';
+import { diaryViewerIdAfterAccountLookup } from '../domain/diaryViewerId';
+import { lookupUserByEmail } from '../../../shared/services/getUserId';
 import { isAbortError } from '../../../shared/utils/fetchWithAbort';
 import { debugLog } from '../../../shared/utils/logger';
 import { resolveDiaryTimezone, toYmd } from '../utils/diaryTimezone';
@@ -16,6 +18,7 @@ import { resolveDiaryTimezone, toYmd } from '../utils/diaryTimezone';
  * @param {Object} params
  * @param {string|null} params.ownerUserId
  * @param {string|null} params.viewerUserId
+ * @param {string|null} [params.viewerEmail] session email; used to replace a stale numeric id
  * @param {Date|string|null} params.date  Date instance or YYYY-MM-DD string
  * @param {string|object|null} [params.timezoneSource] Owner user or IANA timezone for calendar dates
  * @param {number} [params.refreshKey]  bump to trigger a background re-fetch without unmounting
@@ -34,6 +37,7 @@ import { resolveDiaryTimezone, toYmd } from '../utils/diaryTimezone';
 export function useDiary({
   ownerUserId,
   viewerUserId,
+  viewerEmail = null,
   date,
   timezoneSource = null,
   refreshKey: externalRefreshKey = 0,
@@ -54,8 +58,11 @@ export function useDiary({
   const hasMoreRef = useRef(false);
   const loadingMoreRef = useRef(false);
   const inFlightRef = useRef(false);
+  /** Latest full reload. A slower response from before the save must not replace it. */
+  const fetchGenRef = useRef(0);
   /** @type {React.MutableRefObject<Map<number, object>>} */
   const pageCacheRef = useRef(new Map());
+  const accountViewerRef = useRef({ email: '', id: null });
   const cacheKeyRef = useRef('');
   const loadMoreSentinelRef = useRef(null);
   const abortRef = useRef(null);
@@ -101,6 +108,7 @@ export function useDiary({
     }
 
     const currentOffset = reset ? 0 : offsetRef.current;
+    const gen = reset ? (fetchGenRef.current += 1) : fetchGenRef.current;
 
     // Serve cached pages without a network round-trip (scroll back / remount).
     if (!reset && pageCacheRef.current.has(currentOffset)) {
@@ -135,16 +143,34 @@ export function useDiary({
     }
     inFlightRef.current = true;
 
+    let requestViewerId = viewerUserId;
+    const email = String(viewerEmail || '').trim();
+    if (email) {
+      if (accountViewerRef.current.email !== email) {
+        try {
+          const lookup = await lookupUserByEmail(email);
+          accountViewerRef.current = {
+            email,
+            id: diaryViewerIdAfterAccountLookup(viewerUserId, lookup),
+          };
+        } catch (lookupErr) {
+          debugLog('[diary] account id lookup failed', lookupErr?.message);
+          accountViewerRef.current = { email, id: String(viewerUserId) };
+        }
+      }
+      if (accountViewerRef.current.id) requestViewerId = accountViewerRef.current.id;
+    }
+
     try {
       const payload = await fetchDiary({
         ownerUserId,
-        viewerUserId,
+        viewerUserId: requestViewerId,
         date: ymd,
         limit: pageSize,
         offset: currentOffset,
         signal,
       });
-      if (signal?.aborted) return;
+      if (signal?.aborted || gen !== fetchGenRef.current) return;
 
       pageCacheRef.current.set(currentOffset, payload);
 
@@ -175,7 +201,7 @@ export function useDiary({
       setHasMore(!!pagination.hasMore);
       setError(null);
     } catch (err) {
-      if (isAbortError(err) || signal?.aborted) return;
+      if (isAbortError(err) || signal?.aborted || gen !== fetchGenRef.current) return;
       debugLog('[diary] useDiary error', err?.message);
       setError({
         status: err?.response?.status ?? null,
@@ -185,12 +211,13 @@ export function useDiary({
       });
       if (reset) setData(null);
     } finally {
+      if (gen !== fetchGenRef.current) return;
       inFlightRef.current = false;
       loadingMoreRef.current = false;
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [ownerUserId, viewerUserId, date, timezoneIana, pageSize, mergeEntries]);
+  }, [ownerUserId, viewerUserId, viewerEmail, date, timezoneIana, pageSize, mergeEntries]);
 
   const loadMore = useCallback(() => {
     if (!hasMoreRef.current || loadingMoreRef.current || inFlightRef.current) return;

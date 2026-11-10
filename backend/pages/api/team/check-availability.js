@@ -8,7 +8,7 @@
  * - taken-by-other: Another user owns this Team ID
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -64,11 +64,11 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Connect to Supabase
-    const supabase = getSupabaseClient();
+    // Connect to MySQL
+    const db = getMysqlClient();
 
     // Get current user's UserId and existing TeamId
-    let userQuery = supabase
+    let userQuery = db
       .from('team_table')
       .select('UserId, TeamId');
     if (uid && Number.isFinite(uid)) {
@@ -101,7 +101,7 @@ export default async function handler(req, res) {
     }
 
     // Check if Team ID exists in coach_teams_table (only active)
-    const { data: teamRows, error: teamError } = await supabase
+    const { data: teamRows, error: teamError } = await db
       .from('coach_teams_table')
       .select('TeamId, CoachId, CoCoachId')
       .eq('TeamId', teamId)
@@ -110,7 +110,7 @@ export default async function handler(req, res) {
     if (teamError) throw teamError;
 
     // Other users who already claimed this TeamId (pending OTP or active leads)
-    const { data: teamTableCheck, error: teamTableError } = await supabase
+    const { data: teamTableCheck, error: teamTableError } = await db
       .from('team_table')
       .select('UserId')
       .eq('TeamId', teamId)
@@ -135,7 +135,7 @@ export default async function handler(req, res) {
       }
 
       if (otherClaimants.length === 1) {
-        const { data: coachRows, error: coachError } = await supabase
+        const { data: coachRows, error: coachError } = await db
           .from('team_table')
           .select('UserName, Email')
           .eq('UserId', otherClaimants[0].UserId)
@@ -184,7 +184,7 @@ export default async function handler(req, res) {
     // Check if team has space (only CoachId, no CoCoachId)
     if (team.CoachId && !team.CoCoachId) {
       // Get coach details
-      const { data: coachRows, error: coachError } = await supabase
+      const { data: coachRows, error: coachError } = await db
         .from('team_table')
         .select('UserName, Email')
         .eq('UserId', team.CoachId);

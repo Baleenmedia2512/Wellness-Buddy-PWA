@@ -849,7 +849,8 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const diff = isLoss == null ? null : Math.abs(aw - bw).toFixed(1);
   const isVerified = testimonial?.status === 'verified';
   const verb = isLoss === false ? 'Gained' : 'Lost';
-  const issues = (testimonial?.recoveredHealthIssues ?? []).filter(Boolean).slice(0, MAX_VISIBLE_ISSUES);
+  const rawIssues = testimonial?.recoveredHealthIssues;
+  const issues = (Array.isArray(rawIssues) ? rawIssues : []).filter(Boolean).slice(0, MAX_VISIBLE_ISSUES);
   const durationRaw = String(testimonial?.durationText || '').trim();
   const durationText = durationRaw && durationRaw !== '—' && durationRaw !== '-' ? durationRaw : '';
   const displayName = String(userName || 'Customer').trim() || 'Customer';

@@ -1,5 +1,5 @@
 import * as repo from './misc.repository.js';
-import { getTimeWindows } from '../../utils/disciplineCalculationsSupabase.js';
+import { getTimeWindows } from '../../utils/disciplineCalculationsQuery.js';
 import { todayInTimezone } from '../../shared/lib/datetime/index.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { assertCalendarDateYmd } from '../../shared/lib/datetime/calendarDate.js';

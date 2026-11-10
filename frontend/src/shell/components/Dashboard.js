@@ -12,7 +12,9 @@ import React, { useState, useEffect, useRef, lazy, Suspense, useMemo, useCallbac
 import { flushSync } from 'react-dom';
 import { Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from '../../shared/components/TouchFeedbackButton';
-import { TeamMemberSearch, formatDiarySearchDetails } from '../../features/team';
+import { TeamMemberSearch, diarySearchDetailParts } from '../../features/team';
+import { isCallablePhone } from '../../shared/domain/phoneContact.js';
+import { openPhoneCall } from '../../shared/utils/phoneContactActions.js';
 import TeamMemberProfileModal from '../../shared/components/TeamMemberProfileModal';
 import { isFlagEnabled } from '../../config/featureFlags';
 import { useNutritionRefresh } from '../../shared/context/NutritionRefreshContext';
@@ -100,6 +102,64 @@ async function retagCaptureType({ apiBaseUrl, captureId, userId, imageType }) {
  * @param {string} initialTab - Optional tab to open initially ('nutrition' | 'weight' | 'education')
  * @param {string} initialMealId - Optional meal ID to auto-open in Nutrition tab (deep link)
  */
+function DiaryMemberSubtitle({ member, onOpenProfile }) {
+  const parts = diarySearchDetailParts(member, { includeName: false });
+  if (!parts.length) {
+    return (
+      <button
+        type="button"
+        onClick={onOpenProfile}
+        className="text-blue-600 active:text-green-600 hover:underline"
+      >
+        {`Viewing ${member.userName}'s data`}
+      </button>
+    );
+  }
+
+  return (
+    <span className="inline">
+      {parts.map((part, index) => (
+        <React.Fragment key={`${part.kind}-${part.value}`}>
+          {index > 0 ? ' | ' : null}
+          {part.kind === 'phone' && isCallablePhone(part.value) ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                openPhoneCall(part.value);
+              }}
+              className="text-blue-600 underline active:text-green-600"
+              aria-label={`Call ${part.value}`}
+            >
+              {part.value}
+            </button>
+          ) : part.kind === 'email' ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                window.location.href = `mailto:${part.value}`;
+              }}
+              className="text-blue-600 underline active:text-green-600 break-all"
+              aria-label={`Email ${part.value}`}
+            >
+              {part.value}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenProfile}
+              className="text-blue-600 active:text-green-600 hover:underline"
+            >
+              {part.value}
+            </button>
+          )}
+        </React.Fragment>
+      ))}
+    </span>
+  );
+}
+
 const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, teamSearchRefreshKey = 0, watchBurnedCalories = 0, onWatchBurnedCaloriesReset = null, initialSelectedMember = null, initialDate = null, initialMealId = null, onStartBackgroundCaptureAi = null, onToast = null, tabVisitKey = 0 }) => {
   // PR-C / ADR-0003 — Diary tab is mounted iff the FE feature flag is ON.
   // Resolution order is documented in `config/featureFlags.js`. Resolved
@@ -821,7 +881,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
 
   return (
     <>
-    <div className="min-h-screen" style={{ backgroundColor: '#e8f5e9' }}>
+    <div className="min-h-screen" style={{ backgroundColor: 'var(--wv-page)' }}>
       {/* Background decorations */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-20 -right-20 w-40 h-40 md:w-80 md:h-80 bg-gradient-to-br from-orange-200/20 to-pink-200/20 rounded-full blur-3xl"></div>
@@ -860,20 +920,13 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   </>
                 ) : ''}
               </h1>
-              <p className="text-xs text-gray-500">
-                {selectedMember && !selectedMember.isSelf 
+              <p className="text-xs text-gray-500 break-words">
+                {selectedMember && !selectedMember.isSelf
                   ? (
-                    <button
-                      onClick={() => setShowMemberProfile(true)}
-                      className="text-blue-600 active:text-green-600 hover:underline"
-                    >
-                      {(() => {
-                        const subtitle = formatDiarySearchDetails(selectedMember, { includeName: false });
-                        return subtitle
-                          ? subtitle
-                          : `Viewing ${selectedMember.userName}'s data`;
-                      })()}
-                    </button>
+                    <DiaryMemberSubtitle
+                      member={selectedMember}
+                      onOpenProfile={() => setShowMemberProfile(true)}
+                    />
                   )
                   : 'Track your wellness journey'
                 }

@@ -1,6 +1,6 @@
 /**
  * POST /api/testimonials/prepare-video-upload
- * Returns signed Supabase Storage URLs so the client can upload videos directly,
+ * Returns signed MySQL Storage URLs so the client can upload videos directly,
  * avoiding Vercel's serverless request-body size limit (~4.5 MB).
  */
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';

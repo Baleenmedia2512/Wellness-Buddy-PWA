@@ -6,7 +6,7 @@
  * Person type: 0 CoachId downlines → customer (API token `member`); any downline → sponsor
  * (not profile Role). UI label for no-team people is Customer.
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import {
   loadReportingContextForCoach,
 } from '../../../utils/reportingHierarchyService.js';
@@ -155,8 +155,8 @@ export async function buildActivityReportCoachScope(userId) {
   const hit = scopeCache.get(key);
   if (hit && hit.expiresAt > now) return hit.value;
 
-  const supabase = getSupabaseClient();
-  const context = await loadReportingContextForCoach(supabase, userIdNum);
+  const db = getMysqlClient();
+  const context = await loadReportingContextForCoach(db, userIdNum);
   const memberMeta = buildActivityReportMemberMeta(userIdNum, context);
 
   const value = {

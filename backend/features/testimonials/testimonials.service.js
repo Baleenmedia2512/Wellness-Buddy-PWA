@@ -6,17 +6,18 @@
 import bcrypt from 'bcryptjs';
 import { generateEmailOtp } from '../auth/domain/otp-length.rules.js';
 import crypto from 'node:crypto';
-import nodemailer from 'nodemailer';
 import * as repo from './testimonials.repository.js';
 import {
   hasCompletePhotoTestimonial,
-  hasRealBeforePhoto,
-  hasVisibleAfterCard,
   isPhotoPairComplete,
   resolveHealthIssueOtpChannel,
   shouldHydratePhotosFromProfile,
   shouldSendPhotoApprovalOtp,
 } from './domain/photoCompleteness.rules.js';
+import {
+  previousEmailCardPaths,
+  shouldShowPreviousNewEmailCards,
+} from './domain/emailPreviousCard.rules.js';
 import {
   resolveOtpRecipientIds,
   toPositiveUserId,
@@ -26,6 +27,7 @@ import {
   syncTestimonialPathsToProfileSafe,
 } from './profilePhotoSync.service.js';
 import logger from '../../shared/lib/logger.js';
+import { sendTransactionalMail } from '../../shared/lib/smtp-mail.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import {
   validateSubmitTestimonial,
@@ -572,27 +574,12 @@ async function sendCoachEmail({
     shareCardSrc: null,
   };
 
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
-
-  await transporter.sendMail({
-    from:    '"Wellness Valley" <easy2work.india@gmail.com>',
-    to:      coachEmail,
+  await sendTransactionalMail({
+    to: coachEmail,
     subject: buildTestimonialCoachEmailSubject({ memberName }),
-    text:    {
-      content: buildTestimonialCoachEmailText(emailParams),
-      charset: 'utf-8',
-    },
-    html:    {
-      content: buildTestimonialCoachEmailHtml(emailParams),
-      charset: 'utf-8',
-    },
-    headers: {
-      'Content-Language': 'en',
-    },
-    ...(cardPhotos.attachments.length ? { attachments: cardPhotos.attachments } : {}),
+    text: buildTestimonialCoachEmailText(emailParams),
+    html: buildTestimonialCoachEmailHtml(emailParams),
+    attachments: cardPhotos.attachments,
   });
 
   logger.info('[testimonials.service] Coach email dispatched', {
@@ -671,8 +658,8 @@ export async function submitTestimonial(rawBody) {
     row = await repo.insertTestimonial({
       userId:  payload.userId,
       coachId: userInfo.coachId,
-      // Placeholder paths for incomplete â€” will be replaced on completion
-      afterImagePath: afterPath ?? beforePath,
+      // After stays empty until a separate Transformation After is uploaded.
+      afterImagePath: afterPath ?? repo.videoOnlyPlaceholderPath(payload.userId),
       afterWeightKg:  payload.afterWeightKg ?? payload.beforeWeightKg,
       ...rowData,
     });
@@ -1238,11 +1225,6 @@ async function sendVideoCoachEmail({ coachEmail, memberName, otp, healthVideoPat
     repo.getEmailSignedUrl(businessVideoPath ?? null),
   ]);
 
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
-
   const emailParams = {
     memberName,
     otp,
@@ -1251,13 +1233,11 @@ async function sendVideoCoachEmail({ coachEmail, memberName, otp, healthVideoPat
     recoveredHealthIssues: recoveredHealthIssues ?? [],
   };
 
-  await transporter.sendMail({
-    from:    '"Wellness Valley" <easy2work.india@gmail.com>',
-    to:      coachEmail,
+  await sendTransactionalMail({
+    to: coachEmail,
     subject: buildVideoCoachEmailSubject({ memberName }),
-    text:    { content: buildVideoCoachEmailText(emailParams),  charset: 'utf-8' },
-    html:    { content: buildVideoCoachEmailHtml(emailParams),  charset: 'utf-8' },
-    headers: { 'Content-Language': 'en' },
+    text: buildVideoCoachEmailText(emailParams),
+    html: buildVideoCoachEmailHtml(emailParams),
   });
 
   logger.info('[testimonials.service] Video coach email dispatched', { coachEmail, memberName });
@@ -1344,7 +1324,7 @@ function assertAssembledVideoSize(buffer, slot) {
 }
 
 /**
- * Accept one chunk of a video upload, assemble on the final chunk, and store in Supabase.
+ * Accept one chunk of a video upload, assemble on the final chunk, and store in MySQL.
  */
 export async function uploadVideoChunk(rawBody) {
   const payload = validateUploadVideoChunk(rawBody);
@@ -1588,7 +1568,7 @@ export async function getTeamTestimonialReport(rawQuery) {
 // ─── Unified edit + OTP ───────────────────────────────────────────────────────
 
 /**
- * Helper: build and send the unified coach email via nodemailer.
+ * Helper: build and send the unified coach email via shared SMTP helper.
  */
 async function sendUnifiedCoachEmail({
   coachEmail,
@@ -1619,39 +1599,13 @@ async function sendUnifiedCoachEmail({
   const slots = new Set(changedSlots);
   void userId;
 
-  // Previous card = state before this submit (unchanged side keeps current path).
-  const previousCardBeforePath = (slots.has('before') && previousBeforeImagePath)
-    ? previousBeforeImagePath
-    : beforeImagePath;
-  const previousCardAfterPath = (slots.has('after') && previousAfterImagePath)
-    ? previousAfterImagePath
-    : ((slots.has('before') && previousBeforeImagePath && !previousAfterImagePath)
-      ? previousBeforeImagePath
-      : afterImagePath);
-
-  // If the before photo was updated, a valid previous before photo must have existed.
-  const hasValidPreviousBefore = slots.has('before')
-    ? Boolean(previousBeforeImagePath && !repo.isVideoOnlyPlaceholder(previousBeforeImagePath))
-    : Boolean(beforeImagePath && !repo.isVideoOnlyPlaceholder(beforeImagePath));
-
-  // If the after photo was updated, a valid previous after photo must have existed (and not be a mirror clone).
-  const hasValidPreviousAfter = slots.has('after')
-    ? Boolean(
-        previousAfterImagePath
-        && !repo.isVideoOnlyPlaceholder(previousAfterImagePath)
-        && previousAfterImagePath !== previousBeforeImagePath,
-      )
-    : Boolean(
-        afterImagePath
-        && !repo.isVideoOnlyPlaceholder(afterImagePath)
-        && (previousAfterImagePath ? previousAfterImagePath !== previousBeforeImagePath : true),
-      );
-
-  const hadPreviousCompleteCard = Boolean(
-    isComplete
-    && hasValidPreviousBefore
-    && hasValidPreviousAfter,
-  );
+  // Previous card = DB state before this submit. Clone After (same path as Before) is kept.
+  const { beforePath: previousCardBeforePath, afterPath: previousCardAfterPath } = previousEmailCardPaths({
+    previousBeforePath: previousBeforeImagePath,
+    previousAfterPath: previousAfterImagePath,
+    currentBeforePath: beforeImagePath,
+    currentAfterPath: afterImagePath,
+  });
 
   const photoSlotChanged = Boolean(
     (slots.has('before') || slots.has('after'))
@@ -1699,10 +1653,11 @@ async function sendUnifiedCoachEmail({
 
   const cardDetailsChanged = photoSlotChanged || weightChanged || durationChanged || goalChanged || issuesChanged;
 
-  const previousPairDistinct = Boolean(
-    hadPreviousCompleteCard
-    && cardDetailsChanged,
-  );
+  const previousPairDistinct = shouldShowPreviousNewEmailCards({
+    previousBeforePath: previousBeforeImagePath,
+    previousAfterPath: previousAfterImagePath,
+    cardDetailsChanged,
+  });
 
   const [
     currentBeforeHref,
@@ -1812,19 +1767,12 @@ async function sendUnifiedCoachEmail({
     shareCardSrc: null,
   };
 
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
-
-  await transporter.sendMail({
-    from:    '"Wellness Valley" <easy2work.india@gmail.com>',
-    to:      coachEmail,
+  await sendTransactionalMail({
+    to: coachEmail,
     subject: buildUnifiedSubmitEmailSubject({ memberName }),
-    text:    { content: buildUnifiedSubmitEmailText(emailParams),  charset: 'utf-8' },
-    html:    { content: buildUnifiedSubmitEmailHtml(emailParams),  charset: 'utf-8' },
-    headers: { 'Content-Language': 'en' },
-    ...(attachments.length ? { attachments } : {}),
+    text: buildUnifiedSubmitEmailText(emailParams),
+    html: buildUnifiedSubmitEmailHtml(emailParams),
+    attachments,
   });
 
   logger.info('[testimonials.service] Unified coach email dispatched', {
@@ -1987,9 +1935,7 @@ export async function submitAllEdits(rawBody) {
     afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
   });
 
-  // Visible Before+After (including a seeded clone) + Submit for Approval → OTP.
-  // Do not wait for a distinct after path or a weight change — that left
-  // seeded cards on silent save with no coach email.
+  // OTP only when Before and After are two different stored files.
   const photoNeedsOtp = (hasPhotoDirty || payload.submitForApproval)
     && shouldSendPhotoApprovalOtp(existing, {
     beforePath: newBeforePath,
@@ -1998,15 +1944,6 @@ export async function submitAllEdits(rawBody) {
     afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
     status: existing.status,
   });
-
-  // Persist the UI After clone so the pair exists when coach reviews the email.
-  if (
-    photoNeedsOtp
-    && !hasVisibleAfterCard({ after_image_path: newAfterPath })
-    && hasRealBeforePhoto({ before_image_path: newBeforePath })
-  ) {
-    photoUpdates.afterImagePath = newBeforePath;
-  }
 
   // Health issues are optional — empty list is allowed on photo submit.
   const resolvedHealthIssues = mergedIssues;
@@ -2023,9 +1960,9 @@ export async function submitAllEdits(rawBody) {
 
   const needsOtp = photoNeedsOtp || Boolean(issuesOtpChannel) || hasVideoDirty;
 
-  // Member asked for coach approval — never silent-save with otpSent:false
-  // (that surfaces as "Coach approval did not start" in the app).
-  if (payload.submitForApproval && !needsOtp) {
+  // A Before-only or After-only edit is saved below without OTP.
+  // Reject approval only when nothing was uploaded and the pair is still incomplete.
+  if (payload.submitForApproval && !needsOtp && !hasPhotoDirty && !hasVideoDirty && !hasIssuesDirty) {
     throw new ValidationError(
       422,
       'Add before and after photos on Transformation, then submit for coach approval.',

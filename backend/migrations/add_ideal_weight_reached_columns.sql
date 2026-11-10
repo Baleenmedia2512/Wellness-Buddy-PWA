@@ -1,6 +1,6 @@
 -- Migration: add_ideal_weight_reached_columns
 -- First-time ideal BMI (19–23) milestone for Ideal Weight Report + coach email.
--- Run in Supabase SQL editor before relying on firstReachedAt / coach notify.
+-- Run on MySQL before relying on firstReachedAt / coach notify.
 -- Backfill historical dates with: node --env-file=.env scripts/backfill-ideal-weight-reached.js --write
 -- Removal condition: after product retires milestone tracking (unlikely); columns are additive.
 

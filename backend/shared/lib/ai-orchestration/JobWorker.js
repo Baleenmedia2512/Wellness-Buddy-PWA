@@ -80,10 +80,10 @@ async function persistEnrichment(foodRowId, enrichmentPayload) {
   if (!foodRowId || Object.keys(enrichmentPayload).length === 0) return;
 
   // Dynamic import avoids circular dependency at module load
-  const { getSupabaseClient } = await import('../../../utils/supabaseClient.js');
-  const supabase = getSupabaseClient();
+  const { getMysqlClient } = await import('../../../utils/mysqlClient.js');
+  const db = getMysqlClient();
 
-  const { error } = await supabase
+  const { error } = await db
     .from('food_nutrition_data_table')
     .update({ ...enrichmentPayload, EnrichmentStatus: 'completed' })
     .eq('"ID"', foodRowId);

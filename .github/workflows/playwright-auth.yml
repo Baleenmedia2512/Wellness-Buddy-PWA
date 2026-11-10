@@ -135,10 +135,6 @@ jobs:
 
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
 
         run: |
@@ -166,10 +162,6 @@ jobs:
           DB_SSL=$DB_SSL
 
           DATABASE_URL=$DATABASE_URL
-
-          SUPABASE_URL=$SUPABASE_URL
-          SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
-          SUPABASE_SERVICE_KEY=$SUPABASE_SERVICE_KEY
 
           CRON_SECRET=$CRON_SECRET
           EOF

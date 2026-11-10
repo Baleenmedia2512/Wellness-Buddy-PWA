@@ -10,7 +10,7 @@
  * Only returns leads where user_id IS NULL (i.e. not yet linked to an account).
  * The most-recent assessment for that phone is returned.
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import logger from '../../../shared/lib/logger.js';
 
 export default async function handler(req, res) {
@@ -32,14 +32,14 @@ export default async function handler(req, res) {
   const normalised = phone.trim().replace(/[\s\-()]/g, '');
 
   try {
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
 
     // Look for unlinked lead assessments with a matching phone number.
     // We strip formatting server-side by searching for the last 10 digits
     // (works for +91 XXXXXXXXXX and 0XXXXXXXXXX formats used in India).
     const last10 = normalised.slice(-10);
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('wellness_counselling_assessments')
       .select('id, lead_name, lead_phone, health_problems, eating_habits, sleep_data, submitted_at')
       .is('user_id', null)

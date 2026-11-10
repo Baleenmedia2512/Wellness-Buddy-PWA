@@ -3,7 +3,7 @@
  * @module backend/features/idle-cleanup/data/return-notify.repo
  */
 import nodemailer from 'nodemailer';
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { getInactivityCutoff } from '../domain/inactivity-rules.js';
 import logger from '../../../shared/lib/logger.js';
@@ -13,8 +13,8 @@ import logger from '../../../shared/lib/logger.js';
  * @returns {Promise<{ coachId: number|null, memberName: string|null }>}
  */
 export async function findMemberCoachContext(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"CoachId", "UserName"')
     .eq('"UserId"', userId)
@@ -41,8 +41,8 @@ export async function findMemberCoachContext(userId) {
 export async function findCoachContact(coachId) {
   if (!coachId) return { email: null, name: null };
 
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"Email", "UserName"')
     .eq('"UserId"', coachId)
@@ -76,12 +76,12 @@ export async function findCoachContact(coachId) {
 export async function claimIdleReturnNotify(userId, { now = new Date() } = {}) {
   if (!userId) return false;
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const cutoffIso = getInactivityCutoff(now).toISOString();
   const stamped = nowUtc();
 
   // Path A: LastActiveAt itself is old enough
-  const { data: byLastActive, error: errA } = await supabase
+  const { data: byLastActive, error: errA } = await db
     .from('team_table')
     .update({ LastActiveAt: stamped })
     .eq('UserId', userId)
@@ -98,7 +98,7 @@ export async function claimIdleReturnNotify(userId, { now = new Date() } = {}) {
   if (byLastActive?.length) return true;
 
   // Path B: never stamped LastActiveAt — use EntryDateTime (same as lookup fallback)
-  const { data: byEntry, error: errB } = await supabase
+  const { data: byEntry, error: errB } = await db
     .from('team_table')
     .update({ LastActiveAt: stamped })
     .eq('UserId', userId)
@@ -123,8 +123,8 @@ export async function claimIdleReturnNotify(userId, { now = new Date() } = {}) {
  */
 export async function touchLastActive(userId) {
   if (!userId) return;
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from('team_table')
     .update({ LastActiveAt: nowUtc() })
     .eq('UserId', userId);

@@ -51,6 +51,7 @@ export default function DownlineWeightReport({
   user,
   tabVisitKey = 0,
   hidePageTitle = false,
+  hideDetails = false,
   onRefreshRegister,
 }) {
   const coachId = user?.id ?? null;
@@ -72,7 +73,7 @@ export default function DownlineWeightReport({
     loadMore,
     error,
     refresh,
-  } = useDownlineWeightReport({ coachId, tabVisitKey });
+  } = useDownlineWeightReport({ coachId, tabVisitKey, hideDetails });
 
   useEffect(() => {
     if (typeof onRefreshRegister !== 'function') return undefined;
@@ -160,7 +161,8 @@ export default function DownlineWeightReport({
           })}
         </div>
 
-        {/* Status filter chips — horizontal scroll on mobile, wrap on larger screens */}
+        {/* Status counts are weight details, so they stay hidden until the trial or Premium. */}
+        {hideDetails ? null : (
         <div
           className="flex gap-1.5 overflow-x-auto scrollbar-hide sm:flex-wrap sm:gap-2 sm:overflow-visible"
           role="group"
@@ -184,6 +186,7 @@ export default function DownlineWeightReport({
             );
           })}
         </div>
+        )}
 
         {/* Body */}
         <div className="space-y-3">
@@ -231,7 +234,8 @@ export default function DownlineWeightReport({
           <WeightStatusRow
             key={row.userId}
             row={row}
-            teamPerformance={resolveRowTeamPerformance({
+            hideDetails={hideDetails}
+            teamPerformance={hideDetails ? null : resolveRowTeamPerformance({
               row,
               teamScope,
               self,

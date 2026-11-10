@@ -40,6 +40,13 @@ describe('avatarDisplayVersion', () => {
     );
   });
 
+  it('buildUserAvatarUrl appends profileOnly=1 when the centre photo must stay off the circle', () => {
+    assert.equal(
+      buildUserAvatarUrl('https://api.example', 42, 0, { profileOnly: true }),
+      'https://api.example/api/user/avatar?userId=42&profileOnly=1',
+    );
+  });
+
   it('buildUserAvatarUrl appends inline=1 for crop fallback', () => {
     assert.equal(
       buildUserAvatarUrl('https://api.example', 42, 0, { inline: true }),

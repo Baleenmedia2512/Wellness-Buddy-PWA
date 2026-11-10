@@ -36,9 +36,15 @@ export function canUseTeamSearch(role, hasTeamMembers) {
 export function invalidateHasTeamMembersCache(userId) {
   if (userId == null || userId === '') return;
   cacheManager.clear(cacheManager.generateKey('hasTeamMembers', String(userId)));
-  // Keys match teamHierarchyService.getTeamHierarchy (service + version + coachId + includeInactive).
-  cacheManager.clear(cacheManager.generateKey('teamHierarchy', 'v2-bcm-weight', userId, false));
-  cacheManager.clear(cacheManager.generateKey('teamHierarchy', 'v2-bcm-weight', userId, true));
+  // Keys match teamHierarchyService.getTeamHierarchy (version + coachId + includeInactive + purpose).
+  const version = 'v6-purpose-search';
+  for (const includeInactive of [false, true]) {
+    for (const purpose of ['search', 'full']) {
+      cacheManager.clear(
+        cacheManager.generateKey('teamHierarchy', version, userId, includeInactive, purpose),
+      );
+    }
+  }
 }
 
 export async function fetchHasTeamMembers(userId) {
@@ -148,7 +154,9 @@ export function withDirectCoachCommunityIds(members) {
 export async function fetchTeamMembers({
   coachId, coachName, coachEmail, coachRole, coachCommunityId = null, coachPhone = null,
 }) {
-  const flatList = await teamHierarchyService.getFlatTeamList(coachId);
+  const flatList = await teamHierarchyService.getFlatTeamList(coachId, {
+    purpose: 'search',
+  });
   // Defense-in-depth: backend already returns Active-only; drop any Inactive rows.
   const activeOnly = flatList.filter((m) => {
     if (m.userId === coachId) return true;
@@ -218,18 +226,32 @@ export function formatMemberSubtitle(email, communityId) {
 }
 
 /**
- * Diary search row: Name | Community ID | Club name | Phone.
- * Club name is uppercased. Empty parts are left out so the line never has a bare pipe.
+ * Diary search row pieces: Name, Community ID, Club name, Email, Phone.
+ * Club name is uppercased. Empty parts are left out.
+ * Phone is marked so the diary header can start a call from that number alone.
+ * Email is marked so the diary header can open a mail composer for that address.
+ * @returns {Array<{ kind: 'text'|'phone'|'email', value: string }>}
  */
-export function formatDiarySearchDetails(member, { includeName = true } = {}) {
+export function diarySearchDetailParts(member, { includeName = true } = {}) {
   const club = String(member?.clubName || '').trim().toUpperCase();
-  const parts = [
-    includeName ? String(member?.userName || member?.name || '').trim() : '',
-    String(member?.communityId || '').trim(),
-    club,
-    String(member?.phoneNumber || member?.PhoneNumber || '').trim(),
-  ].filter(Boolean);
-  return parts.join(' | ');
+  const phone = String(member?.phoneNumber || member?.PhoneNumber || '').trim();
+  const email = String(member?.email || member?.Email || '').trim();
+  return [
+    includeName ? { kind: 'text', value: String(member?.userName || member?.name || '').trim() } : null,
+    { kind: 'text', value: String(member?.communityId || '').trim() },
+    { kind: 'text', value: club },
+    email ? { kind: 'email', value: email } : null,
+    phone ? { kind: 'phone', value: phone } : null,
+  ].filter((part) => part && part.value);
+}
+
+/**
+ * Diary search row: Name | Community ID | Club name | Email | Phone.
+ * Club name is uppercased. Empty parts are left out so the line never has a bare pipe.
+ * The email is the searched member's own email (never the logged-in user's).
+ */
+export function formatDiarySearchDetails(member, options) {
+  return diarySearchDetailParts(member, options).map((part) => part.value).join(' | ');
 }
 
 /** Map the slim DB shape into the user-object shape the rest of the app expects. */

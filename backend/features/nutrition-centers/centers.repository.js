@@ -1,10 +1,10 @@
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { applyDateRangeFilter } from '../../shared/lib/datetime/applyDayFilter.js';
 import { IANA_IST } from '../../shared/lib/datetime/index.js';
 
 export async function findByName(name) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('nutrition_centers_table')
     .select('id, center_name')
     .ilike('center_name', name)
@@ -14,8 +14,8 @@ export async function findByName(name) {
 }
 
 export async function findUserById(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"UserId"')
     .eq('"UserId"', userId)
@@ -24,8 +24,8 @@ export async function findUserById(userId) {
 }
 
 export async function findUserRole(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"Role"')
     .eq('"UserId"', userId)
@@ -34,8 +34,8 @@ export async function findUserRole(userId) {
 }
 
 export async function insertCenter(payload) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('nutrition_centers_table')
     .insert(payload)
     .select()
@@ -45,8 +45,8 @@ export async function insertCenter(payload) {
 }
 
 export async function findCenterOwner(centerId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('nutrition_centers_table')
     .select('owner_user_id')
     .eq('id', centerId)
@@ -56,8 +56,8 @@ export async function findCenterOwner(centerId) {
 }
 
 export async function findCenterById(centerId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('nutrition_centers_table')
     .select('id, center_name, latitude, longitude, education_hour, owner_user_id, owner_phone')
     .eq('id', centerId)
@@ -67,8 +67,8 @@ export async function findCenterById(centerId) {
 }
 
 export async function updateCenter(centerId, payload) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('nutrition_centers_table')
     .update(payload)
     .eq('id', centerId)
@@ -80,8 +80,8 @@ export async function updateCenter(centerId, payload) {
 }
 
 export async function softDeleteCenter(centerId) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from('nutrition_centers_table')
     .update({ status: 'inactive', is_deleted: true })
     .eq('id', centerId);
@@ -89,8 +89,8 @@ export async function softDeleteCenter(centerId) {
 }
 
 export async function findCoachTeamForUser(userIdNum) {
-  const supabase = getSupabaseClient();
-  const { data } = await supabase
+  const db = getMysqlClient();
+  const { data } = await db
     .from('coach_teams_table')
     .select('CoachId, CoCoachId')
     .or(`CoachId.eq.${userIdNum},CoCoachId.eq.${userIdNum}`)
@@ -100,8 +100,8 @@ export async function findCoachTeamForUser(userIdNum) {
 }
 
 export async function findDirectMembers(userIdNum) {
-  const supabase = getSupabaseClient();
-  const { data } = await supabase
+  const db = getMysqlClient();
+  const { data } = await db
     .from('team_table')
     .select('UserId')
     .eq('CoachId', userIdNum)
@@ -110,8 +110,8 @@ export async function findDirectMembers(userIdNum) {
 }
 
 export async function findCoCoachTeams(userIdNum) {
-  const supabase = getSupabaseClient();
-  const { data } = await supabase
+  const db = getMysqlClient();
+  const { data } = await db
     .from('coach_teams_table')
     .select('CoachId')
     .eq('CoCoachId', userIdNum)
@@ -120,8 +120,8 @@ export async function findCoCoachTeams(userIdNum) {
 }
 
 export async function findMembersByCoachIds(coachIds) {
-  const supabase = getSupabaseClient();
-  const { data } = await supabase
+  const db = getMysqlClient();
+  const { data } = await db
     .from('team_table')
     .select('UserId')
     .in('CoachId', coachIds)
@@ -130,8 +130,8 @@ export async function findMembersByCoachIds(coachIds) {
 }
 
 export async function listCenters({ teamUserIds, scope }) {
-  const supabase = getSupabaseClient();
-  let q = supabase
+  const db = getMysqlClient();
+  let q = db
     .from('nutrition_centers_table')
     .select(`
       id, center_name, latitude, longitude, education_hour,
@@ -149,8 +149,8 @@ export async function listCenters({ teamUserIds, scope }) {
 
 export async function getOwnerNames(ownerIds) {
   if (ownerIds.length === 0) return [];
-  const supabase = getSupabaseClient();
-  const { data } = await supabase
+  const db = getMysqlClient();
+  const { data } = await db
     .from('team_table')
     .select('UserId, UserName')
     .in('UserId', ownerIds);
@@ -172,23 +172,23 @@ export async function attendanceForCenters(centerIds, startDate, endDate, timezo
   ids.forEach((id) => result.set(id, []));
   if (ids.length === 0) return result;
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
 
-  let eduQuery = supabase
+  let eduQuery = db
     .from('education_logs_table')
     .select('"UserId", nutrition_center_id')
     .in('nutrition_center_id', ids)
     .eq('"IsDeleted"', false);
   eduQuery = applyDateRangeFilter(eduQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
 
-  let weightQuery = supabase
+  let weightQuery = db
     .from('weight_records_table')
     .select('"UserId", "NutritionCenterId"')
     .in('"NutritionCenterId"', ids)
     .eq('"IsDeleted"', false);
   weightQuery = applyDateRangeFilter(weightQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
 
-  let foodQuery = supabase
+  let foodQuery = db
     .from('food_nutrition_data_table')
     .select('"UserID", "NutritionCenterId"')
     .in('"NutritionCenterId"', ids)
@@ -215,23 +215,23 @@ export async function attendanceForCenters(centerIds, startDate, endDate, timezo
 }
 
 export async function getAttendeeList(centerId, startDate, endDate, timezoneIana = IANA_IST) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   
-  let eduQuery = supabase
+  let eduQuery = db
     .from('education_logs_table')
     .select('"UserId", "CreatedAt"')
     .eq('nutrition_center_id', centerId)
     .eq('"IsDeleted"', false);
   eduQuery = applyDateRangeFilter(eduQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
 
-  let weightQuery = supabase
+  let weightQuery = db
     .from('weight_records_table')
     .select('"UserId", "CreatedAt"')
     .eq('"NutritionCenterId"', centerId)
     .eq('"IsDeleted"', false);
   weightQuery = applyDateRangeFilter(weightQuery, '"CreatedAt"', startDate, endDate, timezoneIana);
 
-  let foodQuery = supabase
+  let foodQuery = db
     .from('food_nutrition_data_table')
     .select('"UserID", "CreatedAt"')
     .eq('"NutritionCenterId"', centerId)
@@ -261,7 +261,7 @@ export async function getAttendeeList(centerId, startDate, endDate, timezoneIana
   // Collect unique user IDs to fetch names
   const uniqueUserIds = [...new Set(allLogs.map((l) => l.UserId))];
 
-  const { data: users } = await supabase
+  const { data: users } = await db
     .from('team_table')
     .select('"UserId", "UserName"')
     .in('"UserId"', uniqueUserIds);
@@ -279,8 +279,8 @@ export async function getAttendeeList(centerId, startDate, endDate, timezoneIana
 }
 
 export async function findCoachId(userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"CoachId"')
     .eq('"UserId"', userId)
@@ -293,8 +293,8 @@ export async function findCoachId(userId) {
 export async function findActiveCentersByOwnerIds(ownerIds) {
   const ids = [...new Set((ownerIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
   if (ids.length === 0) return [];
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('nutrition_centers_table')
     .select('id, center_name, owner_user_id, registered_at')
     .in('owner_user_id', ids)

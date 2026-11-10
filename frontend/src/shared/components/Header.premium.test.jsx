@@ -1,0 +1,78 @@
+/**
+ * @jest-environment jsdom
+ */
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { act } from 'react-dom/test-utils';
+import Header from './Header';
+import usePremiumStatus from '../../features/payments/hooks/usePremiumStatus';
+
+jest.mock('../../features/payments/hooks/usePremiumStatus');
+jest.mock('../../features/user/services/user.api', () => ({
+  getProfile: jest.fn(() => Promise.resolve({ success: false })),
+}));
+
+function renderHeader(props = {}) {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  act(() => {
+    root.render(<Header user={{ id: 42, email: 'a@b.com' }} {...props} />);
+  });
+  return {
+    container,
+    unmount() {
+      act(() => root.unmount());
+      container.remove();
+    },
+  };
+}
+
+describe('Header premium crown', () => {
+  it('shows the ring on the avatar for a Premium member and no Premium tag', () => {
+    usePremiumStatus.mockReturnValue({ premium: true, refresh: jest.fn() });
+    const view = renderHeader();
+    expect(view.container.querySelector('[data-testid="premium-header-tag"]')).toBeNull();
+    expect(view.container.textContent).not.toMatch(/Premium/);
+    expect(view.container.querySelector('[data-testid="premium-avatar-ring"]')).not.toBeNull();
+    const crown = view.container.querySelector('[data-testid="premium-crown"]');
+    expect(crown).not.toBeNull();
+    expect(crown.className).not.toMatch(/hidden/);
+    view.unmount();
+  });
+
+  it('leaves the avatar unchanged for everyone else', () => {
+    usePremiumStatus.mockReturnValue({ premium: false, refresh: jest.fn() });
+    const view = renderHeader();
+    expect(view.container.querySelector('[data-testid="premium-crown"]')).toBeNull();
+    expect(view.container.querySelector('[data-testid="premium-avatar-ring"]')).toBeNull();
+    expect(view.container.querySelector('button[aria-label="My Profile"]')).not.toBeNull();
+    view.unmount();
+  });
+
+  it('keeps the original white header for a Premium member', () => {
+    usePremiumStatus.mockReturnValue({ premium: true, refresh: jest.fn() });
+    const view = renderHeader();
+    expect(view.container.querySelector('header').className).toMatch(/bg-white/);
+    expect(view.container.querySelector('header').className).toMatch(/border-green-500/);
+    expect(view.container.querySelector('header').className).not.toMatch(/from-sky-100/);
+    view.unmount();
+  });
+
+  it('keeps the green header for everyone else', () => {
+    usePremiumStatus.mockReturnValue({ premium: false, refresh: jest.fn() });
+    const view = renderHeader();
+    expect(view.container.querySelector('header').className).toMatch(/border-green-500/);
+    expect(view.container.querySelector('header').className).not.toMatch(/from-sky-100/);
+    view.unmount();
+  });
+
+  it('keeps the original white bar on the tab-only header', () => {
+    usePremiumStatus.mockReturnValue({ premium: true, refresh: jest.fn() });
+    const view = renderHeader({ navOnly: true });
+    expect(usePremiumStatus).toHaveBeenLastCalledWith(42);
+    expect(view.container.querySelector('nav').className).toMatch(/bg-white/);
+    expect(view.container.querySelector('nav').className).toMatch(/border-green-500/);
+    view.unmount();
+  });
+});

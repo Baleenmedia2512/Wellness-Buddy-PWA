@@ -27,7 +27,7 @@ import {
 } from './domain/bcmProfileReview.rules.js';
 import { buildProfileCardSyncPayload } from '../body-parameters-card/domain/sync.rules.js';
 import { computeBmiFromHeightWeight } from '../body-parameters-card/domain/card.rules.js';
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { resolveLeadSeatForUser } from '../../utils/coachTeamSeats.js';
 import { syncProfileCommunityIdToTeamAssignment } from './communityIdTeamAssignment.service.js';
 import { buildTeamFieldsFromProfileCommunityId } from './domain/communityIdTeamAssignment.rules.js';
@@ -47,6 +47,7 @@ import { resolveSponsorAndIdealCoach } from '../../utils/sponsorCoachResolution.
 import * as weightRepo from '../weight/weight.repository.js';
 import { resolveMarathonWeightComparison } from '../marathon/domain/marathonWeightComparison.service.js';
 import { persistAvatarKey, avatarUrlForKey, r2AvatarsEnabled } from './avatar-storage.service.js';
+import { isMileswebStorageEnabled } from '../../shared/lib/milesweb/config.js';
 import {
   resolveIncomingAvatarDataUri,
   shouldSkipProfileImageBase64,
@@ -120,7 +121,7 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
     bcmReviewFields?.BcmProfileReviewedAt,
   );
   const leadSeat = await resolveLeadSeatForUser(
-    getSupabaseClient(),
+    getMysqlClient(),
     user.UserId,
     user.CommunityId || teamCodeFields?.TeamId || null,
   );
@@ -167,9 +168,24 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
   const gender = user.Gender
     || (bodyGender === 'Male' || bodyGender === 'Female' ? bodyGender : null)
     || null;
-  const avatarUrl = (r2AvatarsEnabled() && user.ProfileImageKey)
+  let avatarUrl = (r2AvatarsEnabled() && user.ProfileImageKey)
     ? avatarUrlForKey(user.ProfileImageKey)
     : null;
+  if (!avatarUrl && user.ProfileImageKey) {
+    try {
+      const { isMileswebStorageEnabled } = await import('../../shared/lib/milesweb/config.js');
+      if (isMileswebStorageEnabled()) {
+        const { resolveStoredImageUrl } = await import('../../shared/lib/milesweb/storedImage.js');
+        const { isMileswebServedUrl } = await import('../../shared/lib/milesweb/objectKey.js');
+        const stored = await resolveStoredImageUrl(user.ProfileImageKey);
+        if (isMileswebServedUrl(stored)) avatarUrl = stored;
+      }
+    } catch (err) {
+      logger.warn('[profile] avatar file lookup skipped', {
+        message: err?.message || String(err),
+      });
+    }
+  }
   const profileImage = avatarUrl
     || (isHttpsImageUrl(user.ProfileImage) ? user.ProfileImage : null);
   const resolvedBodyFatForBmr = hasValidBodyFatPercent(resolvedWeightBodyFat)
@@ -262,6 +278,21 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
   });
   const resolvedUserName = persistedUserName;
 
+  let resolveTransformUrl = transformationPhotoUrlForKey;
+  if (preferTransformR2) {
+    try {
+      const { isMileswebStorageEnabled } = await import('../../shared/lib/milesweb/config.js');
+      if (isMileswebStorageEnabled()) {
+        const { resolveTransformationPhotoUrls } = await import('./transformation-photo-storage.service.js');
+        resolveTransformUrl = await resolveTransformationPhotoUrls(user.transformation_photos);
+      }
+    } catch (err) {
+      logger.warn('[profile] transformation photo url lookup skipped', {
+        message: err?.message || String(err),
+      });
+    }
+  }
+
   const result = {
     httpStatus: 200,
     body: {
@@ -326,7 +357,7 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
         recoveredHealthIssues: mapTeamRecoveredHealthIssues(user.recovered_health_issues),
         transformationPhotos: mapTransformationPhotosForClient(user.transformation_photos, {
           preferR2: preferTransformR2,
-          resolveR2Url: transformationPhotoUrlForKey,
+          resolveR2Url: resolveTransformUrl,
         }),
         // Phone lead created from coach BCM — Complete Profile should open once for review.
         isBcmLead: String(entryUser || '') === 'Body Parameters Card'
@@ -508,15 +539,16 @@ export async function updateProfile(input) {
     });
   }
 
+  const skipProfileImageBase64 = shouldSkipProfileImageBase64({
+    r2Enabled: r2AvatarsEnabled() || isMileswebStorageEnabled(),
+    appVersion,
+  });
   const { updateData, cleanedPhoneNumber, avatarDataUri } = buildProfileUpdate({
     ...input,
     height: appliedHeight,
     communityId: appliedCommunityId,
     existingTransformationPhotos: user.transformation_photos,
-    skipProfileImageBase64: shouldSkipProfileImageBase64({
-      r2Enabled: r2AvatarsEnabled(),
-      appVersion,
-    }),
+    skipProfileImageBase64,
   });
 
   const teamFieldsFromCommunityId = buildTeamFieldsFromProfileCommunityId(appliedCommunityId);
@@ -543,7 +575,7 @@ export async function updateProfile(input) {
     });
     const avatarSource = updateData.ProfileImage || avatarDataUri;
     if (avatarSource) {
-      await persistAvatarKey(userId, avatarSource);
+      await persistAvatarKey(userId, avatarSource, { clearProfileImage: skipProfileImageBase64 });
       try { cache.delete(cacheKeys.userAvatar(userId)); } catch { /* non-fatal */ }
     }
     try { await repo.updateUserById(userId, { LastActiveAt: nowUtc() }); } catch { /* non-fatal */ }
@@ -555,7 +587,7 @@ export async function updateProfile(input) {
     });
     if (appliedCommunityId !== undefined) savedCommunityId = appliedCommunityId;
   } else if (avatarDataUri) {
-    await persistAvatarKey(userId, avatarDataUri);
+    await persistAvatarKey(userId, avatarDataUri, { clearProfileImage: skipProfileImageBase64 });
     try { cache.delete(cacheKeys.userAvatar(userId)); } catch { /* non-fatal */ }
   }
 

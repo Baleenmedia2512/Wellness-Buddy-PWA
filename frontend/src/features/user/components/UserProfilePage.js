@@ -8,7 +8,8 @@
 //   2. Profile fields (name, height, phone, community ID / team code, email, diet, BMR, PAL)
 //   3. Transformation photos (Left / Centre / Right — same as onboarding; do not update avatar)
 //   4. Settings  (auto camera toggle)
-//   5. Account actions (sign out, delete account)
+//   5. Account actions (recover, sign out, delete account)
+// Go Premium sits on the green title row, not in Account.
 //
 // Lead pre-fill: on first load, if the profile has no name or phone and the
 // user has a phone number from auth, the app checks for a counselling lead
@@ -23,7 +24,6 @@ import {
 } from '../../../shared/utils/autoCameraPreference';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile, requestCommunityId, verifyCommunityIdOtp, requestHeightChangeOtp, verifyHeightChangeOtp } from '../services/profileService';
-import { loadWorkingPhysicalCentre } from '../services/workingPhysicalCentreService';
 import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import { loadProfileMarathonWeightComparison } from '../../marathon';
 import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/counsellingApi';
@@ -53,6 +53,9 @@ import { isFlagEnabled } from '../../../config/featureFlags';
 import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
 import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked, validateHeightCm } from '../domain/heightChange';
 import { looksLikeEmail } from '../domain/onboardingEmail';
+import GoPremiumButton from '../../payments/components/GoPremiumButton';
+import { PremiumAvatarRing, PremiumCrownMark } from '../../payments/components/PremiumBadge';
+import usePremiumStatus from '../../payments/hooks/usePremiumStatus';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -80,6 +83,9 @@ const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', up
 
 const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfileUpdate }) => {
   const form = useProfileForm();
+  const resolvedUserId = user?.id ?? user?._id ?? user?.UserId ?? user?.userId ?? form.userId ?? Session.getDbUserId() ?? null;
+  const premiumUserId = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
+  const { premium: isPremiumMember, refresh: refreshPremium } = usePremiumStatus(premiumUserId);
   const transformationPhotos = useTransformationPhotos();
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
@@ -94,7 +100,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [communityIdPair, setCommunityIdPair] = useState(null);
   const [communityIdBusy, setCommunityIdBusy] = useState(false);
   const [communityIdError, setCommunityIdError] = useState('');
-  const [workingPhysicalCentre, setWorkingPhysicalCentre] = useState(null);
   const [lockedHeight, setLockedHeight] = useState(null);
   const [heightOtpBusy, setHeightOtpBusy] = useState(false);
   const [heightOtpError, setHeightOtpError] = useState('');
@@ -222,19 +227,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setTeamSeat(data?.teamSeat || null);
       setCommunityIdRequest(data?.communityIdRequest || null);
       setCommunityIdPair(data?.communityIdPair || null);
-      const profileCentre = data?.workingPhysicalCentre || null;
-      setWorkingPhysicalCentre(profileCentre);
-      const centreUserId = data?.userId || uid;
-      if (!profileCentre?.name && !(profileCentre?.options || []).length && centreUserId) {
-        loadWorkingPhysicalCentre({ userId: centreUserId, profileCentre })
-          .then((centre) => {
-            if (loadGen !== profileLoadGenRef.current) return;
-            setWorkingPhysicalCentre(centre);
-          })
-          .catch((err) => {
-            console.warn('[profile] working physical centre', err?.message || err);
-          });
-      }
       setCommunityIdError('');
       transformationPhotos.loadFromProfile(data?.transformationPhotos);
       
@@ -669,65 +661,81 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   return (
     <div className="min-h-full bg-gray-50 pb-8">
       {/* Page Header */}
-      <div className="bg-gradient-to-r from-green-600 to-green-700 px-4 pt-4 pb-6">
-        <div className="flex items-center gap-3 mb-4">
+      <div className={`px-4 pt-4 pb-6 ${
+        isPremiumMember
+          ? 'bg-[#E3F2FD]'
+          : 'bg-gradient-to-r from-green-600 to-green-700'
+      }`}>
+        <div className="mb-4 flex items-center gap-3">
           <TouchFeedbackButton
             onClick={onBack}
-            className="p-2 rounded-full hover:bg-green-700 transition-colors text-white"
+            className={`p-2 rounded-full transition-colors ${
+              isPremiumMember ? 'text-sky-950 hover:bg-sky-200/80' : 'text-white hover:bg-green-700'
+            }`}
             ariaLabel="Back"
           >
             <ArrowLeft className="w-5 h-5" />
           </TouchFeedbackButton>
-          <h1 className="text-lg font-bold text-white">My Profile</h1>
+          <h1 className={`min-w-0 flex-1 truncate text-lg font-bold ${isPremiumMember ? 'text-sky-950' : 'text-white'}`}>My Profile</h1>
+          <GoPremiumButton
+            userId={premiumUserId}
+            isPremium={isPremiumMember}
+            onPremiumCheck={refreshPremium}
+          />
         </div>
 
         {/* Avatar — tap photo to view; Edit badge to change */}
         <div className="flex items-center gap-4">
-          <div className="relative w-20 h-20 flex-shrink-0 rounded-full overflow-hidden shadow-lg border-[3px] border-white">
-            <TouchFeedbackButton
-              type="button"
-              onClick={() => {
-                if (isUploadingPhoto || isSaving) return;
-                if (profileImagePreview) setShowPhotoViewer(true);
-                else setShowChangePhotoModal(true);
-              }}
-              disabled={isUploadingPhoto || isSaving}
-              className="w-full h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-70"
-              ariaLabel={profileImagePreview ? 'View profile photo' : 'Add profile photo'}
-              title={profileImagePreview ? 'View profile photo' : 'Add profile photo'}
-            >
-              {profileImagePreview ? (
-                <img
-                  src={profileImagePreview}
-                  alt={displayName}
-                  className="w-full h-full object-cover pointer-events-none"
-                  loading="lazy"
-                  decoding="async"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className={`w-full h-full flex items-center justify-center text-white font-bold text-3xl ${colorOf(form.name, accountEmail)}`}>
-                  {initialOf(form.name || user?.displayName || user?.name, accountEmail)}
-                </div>
-              )}
-            </TouchFeedbackButton>
-            <TouchFeedbackButton
-              type="button"
-              onClick={() => {
-                if (!isUploadingPhoto && !isSaving) setShowChangePhotoModal(true);
-              }}
-              disabled={isUploadingPhoto || isSaving}
-              className="absolute inset-x-0 bottom-0 rounded-b-full bg-black/45 text-white text-[10px] font-semibold py-0.5 flex items-center justify-center gap-1"
-              ariaLabel="Change profile photo"
-              title="Change profile photo"
-            >
-              <Camera className="w-3 h-3" />
-              {isUploadingPhoto ? '…' : 'Edit'}
-            </TouchFeedbackButton>
-          </div>
+          <span className="relative inline-flex shrink-0">
+            <PremiumAvatarRing enabled={isPremiumMember}>
+            <div className={`relative aspect-square h-20 w-20 flex-shrink-0 overflow-hidden rounded-full shadow-lg ${isPremiumMember ? '' : 'border-[3px] border-white'}`}>
+              <TouchFeedbackButton
+                type="button"
+                onClick={() => {
+                  if (isUploadingPhoto || isSaving) return;
+                  if (profileImagePreview) setShowPhotoViewer(true);
+                  else setShowChangePhotoModal(true);
+                }}
+                disabled={isUploadingPhoto || isSaving}
+                className="w-full h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-70"
+                ariaLabel={profileImagePreview ? 'View profile photo' : 'Add profile photo'}
+                title={profileImagePreview ? 'View profile photo' : 'Add profile photo'}
+              >
+                {profileImagePreview ? (
+                  <img
+                    src={profileImagePreview}
+                    alt={displayName}
+                    className="w-full h-full object-cover pointer-events-none"
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className={`w-full h-full flex items-center justify-center text-white font-bold text-3xl ${colorOf(form.name, accountEmail)}`}>
+                    {initialOf(form.name || user?.displayName || user?.name, accountEmail)}
+                  </div>
+                )}
+              </TouchFeedbackButton>
+              <TouchFeedbackButton
+                type="button"
+                onClick={() => {
+                  if (!isUploadingPhoto && !isSaving) setShowChangePhotoModal(true);
+                }}
+                disabled={isUploadingPhoto || isSaving}
+                className="absolute inset-x-0 bottom-0 rounded-b-full bg-black/45 text-white text-[10px] font-semibold py-0.5 flex items-center justify-center gap-1"
+                ariaLabel="Change profile photo"
+                title="Change profile photo"
+              >
+                <Camera className="w-3 h-3" />
+                {isUploadingPhoto ? '…' : 'Edit'}
+              </TouchFeedbackButton>
+            </div>
+            </PremiumAvatarRing>
+            {isPremiumMember ? <PremiumCrownMark size="lg" /> : null}
+          </span>
           <div className="flex-1 min-w-0">
-            <p className="text-xl font-bold text-white truncate">{displayName}</p>
-            <p className="text-sm text-green-100 truncate">{accountEmail || user?.email}</p>
+            <p className={`text-xl font-bold truncate ${isPremiumMember ? 'text-sky-950' : 'text-white'}`}>{displayName}</p>
+            <p className={`text-sm truncate ${isPremiumMember ? 'text-sky-700' : 'text-green-100'}`}>{accountEmail || user?.email}</p>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-900">
                 {role}
@@ -750,12 +758,20 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                 </span>
               )}
               {coachName && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-white/20 text-white border border-white/40">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${
+                  isPremiumMember
+                    ? 'bg-white text-sky-950 border-sky-300'
+                    : 'bg-white/20 text-white border-white/40'
+                }`}>
                   Sponsor: {coachName}
                 </span>
               )}
               {idealCoachName && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-white/20 text-white border border-white/40">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${
+                  isPremiumMember
+                    ? 'bg-white text-sky-950 border-sky-300'
+                    : 'bg-white/20 text-white border-white/40'
+                }`}>
                   Coach: {idealCoachName}
                 </span>
               )}
@@ -789,6 +805,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   email={form.email}
                   hideEmailField
                   hideCommunityIdField
+                  hideWorkingPhysicalCentreField
+                  userId={resolvedUserId}
                   name={form.name} setName={form.setName}
                   height={form.height} setHeight={form.setHeight}
                   phone={form.phone} setPhone={form.setPhone}
@@ -843,7 +861,11 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   sponsorName={coachName}
                   sponsorEmail={sponsorEmail}
                 />
-                <WorkingPhysicalCentreField centre={workingPhysicalCentre} />
+                <WorkingPhysicalCentreField
+                  userId={resolvedUserId}
+                  value={form.workingPhysicalCentreId}
+                  onChange={form.setWorkingPhysicalCentreId}
+                />
                 <IdealWeightCards
                   height={form.height}
                   latestWeight={latestWeight}
@@ -965,7 +987,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
             <h2 className="text-sm font-semibold text-gray-700">Account</h2>
           </div>
           <div className="divide-y divide-gray-100">
-            {/* Sign Out */}
             <TouchFeedbackButton
               onClick={() => {
                 setEmailKycMode('recover');

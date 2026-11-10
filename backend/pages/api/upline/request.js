@@ -7,8 +7,8 @@
  */
 
 import {
-  getSupabaseClient,
-} from "../../../utils/supabaseClient.js";
+  getMysqlClient,
+} from "../../../utils/mysqlClient.js";
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { resolveActiveCoach } from "../../../utils/hierarchyHelpers.js";
 import bcrypt from "bcryptjs";
@@ -18,11 +18,11 @@ import { sendTransactionalMail } from '../../../shared/lib/smtp-mail.js';
 import { buildSponsorOtpEmail } from '../../../features/auth/domain/otp-email.rules.js';
 
 /** Resolve requester row by userId, email (case-insensitive), or phone. */
-async function findRequester(supabase, { userId, email, phone }) {
+async function findRequester(db, { userId, email, phone }) {
   const cols = "UserId, UserName, Email, TeamId, CoachId, Status, PhoneNumber";
 
   if (userId) {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("team_table")
       .select(cols)
       .eq("UserId", userId)
@@ -32,7 +32,7 @@ async function findRequester(supabase, { userId, email, phone }) {
   }
 
   if (email) {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("team_table")
       .select(cols)
       .ilike("Email", email.trim())
@@ -43,7 +43,7 @@ async function findRequester(supabase, { userId, email, phone }) {
 
   if (phone) {
     const normalized = String(phone).trim();
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("team_table")
       .select(cols)
       .eq("PhoneNumber", normalized)
@@ -53,7 +53,7 @@ async function findRequester(supabase, { userId, email, phone }) {
 
     const digits = normalized.replace(/\D/g, "");
     if (digits.length >= 10) {
-      const { data: bySuffix, error: suffixErr } = await supabase
+      const { data: bySuffix, error: suffixErr } = await db
         .from("team_table")
         .select(cols)
         .ilike("PhoneNumber", `%${digits.slice(-10)}`)
@@ -67,11 +67,11 @@ async function findRequester(supabase, { userId, email, phone }) {
 }
 
 /** Resolve coach id for inactive reactivation when client did not supply one. */
-async function resolveCoachForReactivation(supabase, requester, explicitCoachId) {
+async function resolveCoachForReactivation(db, requester, explicitCoachId) {
   if (explicitCoachId) return explicitCoachId;
   if (!requester.CoachId) return null;
 
-  const { coachId } = await resolveActiveCoach(requester.UserId, supabase);
+  const { coachId } = await resolveActiveCoach(requester.UserId, db);
   return coachId || requester.CoachId;
 }
 
@@ -127,7 +127,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
 
     // ── Demo account: auto-assign Yasheer J as coach with fixed OTP 0000 ──
     // No email is sent; the tester enters 0000 to complete setup.
@@ -137,7 +137,7 @@ export default async function handler(req, res) {
       logger.debug('ℹ️ [upline/request] Demo account — auto-assigning Yasheer J as coach');
 
       // Look up Yasheer J from DB dynamically (no hardcoded ID)
-      const { data: yasheerRows, error: yasheerErr } = await supabase
+      const { data: yasheerRows, error: yasheerErr } = await db
         .from('team_table')
         .select('UserId, UserName, Email')
         .ilike('UserName', 'Yasheer J')
@@ -151,7 +151,7 @@ export default async function handler(req, res) {
       const demoCoach = yasheerRows[0];
 
       // Get demo requester's UserId
-      const { data: demoRequesterRows, error: demoRequesterErr } = await supabase
+      const { data: demoRequesterRows, error: demoRequesterErr } = await db
         .from('team_table')
         .select('UserId, UserName, CoachId')
         .ilike('Email', email)
@@ -168,7 +168,7 @@ export default async function handler(req, res) {
       }
 
       // Cancel any existing pending requests
-      await supabase
+      await db
         .from('approval_requests_table')
         .update({ Status: 'cancelled', ProcessedAt: nowUtc() })
         .eq('RequesterId', demoRequester.UserId)
@@ -179,7 +179,7 @@ export default async function handler(req, res) {
       const requestedAt = new Date();
       const otpExpiresAt = new Date(requestedAt.getTime() + 24 * 60 * 60 * 1000);
 
-      const { data: demoInsert, error: demoInsertErr } = await supabase
+      const { data: demoInsert, error: demoInsertErr } = await db
         .from('approval_requests_table')
         .insert([{
           RequesterId: demoRequester.UserId,
@@ -207,7 +207,7 @@ export default async function handler(req, res) {
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    const requester = await findRequester(supabase, { userId, email, phone });
+    const requester = await findRequester(db, { userId, email, phone });
 
     if (!requester) {
       res.status(404).json({
@@ -219,7 +219,7 @@ export default async function handler(req, res) {
 
     const requesterId = requester.UserId;
     const coachId = await resolveCoachForReactivation(
-      supabase,
+      db,
       requester,
       bodyCoachId,
     );
@@ -258,7 +258,7 @@ export default async function handler(req, res) {
     }
 
     const now = nowUtc();
-    const { data: existingPendingRows, error: existingPendingErr } = await supabase
+    const { data: existingPendingRows, error: existingPendingErr } = await db
       .from("approval_requests_table")
       .select("Id, UplineCoachId, OtpExpiresAt, Status")
       .eq("RequesterId", requesterId)
@@ -276,7 +276,7 @@ export default async function handler(req, res) {
     );
 
     if (existingStillValid) {
-      const { data: existingCoachRows } = await supabase
+      const { data: existingCoachRows } = await db
         .from("team_table")
         .select("UserName")
         .eq("UserId", coachId)
@@ -293,14 +293,14 @@ export default async function handler(req, res) {
     }
 
     // Cancel any existing pending requests for this user
-    await supabase
+    await db
       .from("approval_requests_table")
       .update({ Status: "cancelled", ProcessedAt: now })
       .eq("RequesterId", requesterId)
       .eq("Status", "pending");
 
     // Get coach details
-    const { data: coachRows, error: coachError } = await supabase
+    const { data: coachRows, error: coachError } = await db
       .from("team_table")
       .select("UserId, UserName, Email, CoachName, Role")
       .eq("UserId", coachId);
@@ -328,7 +328,7 @@ export default async function handler(req, res) {
     const currentTime = nowUtc();
 
     // Create approval request with 24-hour expiry
-    const { data: insertResult, error: insertError } = await supabase
+    const { data: insertResult, error: insertError } = await db
       .from("approval_requests_table")
       .insert([
         {

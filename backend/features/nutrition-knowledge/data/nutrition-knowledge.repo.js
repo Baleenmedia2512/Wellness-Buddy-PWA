@@ -1,7 +1,7 @@
 /**
  * backend/features/nutrition-knowledge/data/nutrition-knowledge.repo.js
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import logger from '../../../shared/lib/logger.js';
 import { foodNameMatchesQuery, normalizeFoodName, sortByFoodNameMatch } from '../domain/nutrition.rules.js';
 
@@ -35,7 +35,7 @@ function mapRow(row) {
  * @returns {Promise<object[]|null>} null when table/query failed (caller uses seeds)
  */
 export async function searchProfiles(term, { status = 'approved', limit = 20 } = {}) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const q = String(term || '').trim();
   if (q.length < 1) return [];
 
@@ -46,7 +46,7 @@ export async function searchProfiles(term, { status = 'approved', limit = 20 } =
   // would bury "Onion" behind many mid-string "o" hits.
   const fetchLimit = Math.max(limit * 4, 80);
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .select('*')
     .eq('status', status)
@@ -66,7 +66,7 @@ export async function searchProfiles(term, { status = 'approved', limit = 20 } =
   if (rows.length === 0 && safe.length >= 3) {
     const prefix = safe.slice(0, 2).replace(/[%_,]/g, ' ').trim();
     if (prefix.length >= 1) {
-      const broad = await supabase
+      const broad = await db
         .from(TABLE)
         .select('*')
         .eq('status', status)
@@ -96,9 +96,9 @@ export async function searchProfiles(term, { status = 'approved', limit = 20 } =
 export async function findProfileByName(name, { status = 'approved' } = {}) {
   const key = normalizeFoodName(name);
   if (!key) return null;
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .select('*')
     .eq('status', status)
@@ -112,7 +112,7 @@ export async function findProfileByName(name, { status = 'approved' } = {}) {
   if (Array.isArray(data) && data.length > 0) return mapRow(data[0]);
 
   // Alias match — fetch a small approved set and filter in memory (aliases jsonb).
-  const { data: approved, error: err2 } = await supabase
+  const { data: approved, error: err2 } = await db
     .from(TABLE)
     .select('*')
     .eq('status', status)
@@ -137,9 +137,9 @@ export async function findProfileByName(name, { status = 'approved' } = {}) {
 export async function findAnyProfileByName(name) {
   const key = normalizeFoodName(name);
   if (!key) return undefined;
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .select('*')
     .eq('normalized_name', key)
@@ -181,7 +181,7 @@ function syntheticCustomFoodRow(p) {
  * @param {{ userId: number, foodName: string, unit: 'g'|'ml', quantity: number, profileId?: number|null }} input
  */
 export async function insertCustomFoodSubmission(input) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const userId = Number(input.userId);
   const foodName = String(input.foodName || '').trim();
   const normalized = normalizeFoodName(foodName);
@@ -191,7 +191,7 @@ export async function insertCustomFoodSubmission(input) {
     return null;
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(SUBMISSIONS_TABLE)
     .insert({
       user_id: userId,
@@ -221,10 +221,10 @@ export async function listCustomFoodSubmissionsForExport({
   limit = 5000,
   pendingNutritionOnly = false,
 } = {}) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const fetchLimit = Math.min(Math.max(Number(limit) || 5000, 1), 20_000);
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(SUBMISSIONS_TABLE)
     .select('*')
     .order('created_at', { ascending: false })
@@ -243,7 +243,7 @@ export async function listCustomFoodSubmissionsForExport({
   const profileIds = [...new Set(rows.map((r) => r.profile_id).filter(Boolean))];
   let nutritionById = new Map();
   if (profileIds.length > 0) {
-    const { data: profiles, error: pErr } = await supabase
+    const { data: profiles, error: pErr } = await db
       .from(TABLE)
       .select('id, nutrition')
       .in('id', profileIds);
@@ -279,7 +279,7 @@ export async function listCustomFoodSubmissionsForExport({
  * @param {{ profileId: number, nutrition: object, referenceWeightG?: number|null, reviewedByUserId?: number|null }} input
  */
 export async function updateProfileNutrition(input) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const profileId = Number(input.profileId);
   if (!Number.isFinite(profileId) || profileId <= 0) return null;
 
@@ -295,7 +295,7 @@ export async function updateProfileNutrition(input) {
     patch.reviewed_by_user_id = Number(input.reviewedByUserId);
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .update(patch)
     .eq('id', profileId)
@@ -319,7 +319,7 @@ export async function updateProfileNutrition(input) {
  * @returns {Promise<{ row: object, created: boolean, error?: string }|null>}
  */
 export async function upsertUserCustomFood(input) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const canonicalName = String(input.canonicalName || '').trim();
   const normalized = normalizeFoodName(canonicalName);
   if (!normalized) {
@@ -370,7 +370,7 @@ export async function upsertUserCustomFood(input) {
       ...(hasCreator ? { created_by_user_id: createdByUserId } : {}),
     };
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from(TABLE)
       .insert(payload)
       .select('*')
@@ -379,7 +379,7 @@ export async function upsertUserCustomFood(input) {
     if (error) {
       lastError = error;
       // Race: another request inserted the same normalized_name.
-      if (String(error.code) === '23505' || /duplicate|unique/i.test(error.message || '')) {
+      if (String(error.code) === '1062' || /duplicate|unique/i.test(error.message || '')) {
         const raced = await findAnyProfileByName(canonicalName);
         if (raced) return { row: raced, created: false };
       }
@@ -447,11 +447,11 @@ export async function upsertUserCustomFood(input) {
  * @param {{ canonicalName: string, nutrition: object, referenceWeightG?: number, isLiquid?: boolean, portionLabel?: string }} input
  */
 export async function upsertAiCandidate(input) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const normalized = normalizeFoodName(input.canonicalName);
   if (!normalized) return null;
 
-  const { data: existingRows, error: findErr } = await supabase
+  const { data: existingRows, error: findErr } = await db
     .from(TABLE)
     .select('*')
     .eq('normalized_name', normalized)
@@ -468,7 +468,7 @@ export async function upsertAiCandidate(input) {
   if (existing) {
     // Never mutate approved seed/admin nutrition from AI traffic.
     if (existing.status === 'approved') {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from(TABLE)
         .update({
           sightings: (Number(existing.sightings) || 0) + 1,
@@ -485,7 +485,7 @@ export async function upsertAiCandidate(input) {
     }
 
     const nextSightings = (Number(existing.sightings) || 0) + 1;
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from(TABLE)
       .update({
         canonical_name: input.canonicalName,
@@ -509,7 +509,7 @@ export async function upsertAiCandidate(input) {
     return mapRow(data?.[0]);
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .insert({
       canonical_name: input.canonicalName,
@@ -539,8 +539,8 @@ export async function upsertAiCandidate(input) {
  * @param {{ reviewedByUserId?: number|null }} [opts]
  */
 export async function approveProfile(profileId, { reviewedByUserId = null } = {}) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .update({
       status: 'approved',

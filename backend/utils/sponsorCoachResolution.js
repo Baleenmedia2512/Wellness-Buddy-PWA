@@ -13,7 +13,7 @@
  * - List resolution walks CoachId chains in BFS batches (not one query per hop × sponsor).
  */
 
-import { getSupabaseClient } from './supabaseClient.js';
+import { getMysqlClient } from './mysqlClient.js';
 import { computeIdealWeightRange } from './weightValidation.js';
 import {
   buildRoleByUserIdFromProfiles,
@@ -83,10 +83,10 @@ export function pickIdealCoachFromProfiles(ancestors) {
  * Each BFS depth level uses one `.in(UserId, frontier)` query (max MAX_CHAIN_DEPTH rounds).
  *
  * @param {string[]} startUserIds
- * @param {object} [supabase]
+ * @param {object} [db]
  * @returns {Promise<Map<string, string[]>>} startId → ordered chain (inclusive)
  */
-export async function walkCoachIdChainsBatched(startUserIds, supabase = getSupabaseClient()) {
+export async function walkCoachIdChainsBatched(startUserIds, db = getMysqlClient()) {
   const starts = [...new Set((startUserIds || []).map((id) => String(id)).filter(Boolean))];
   const result = new Map();
   if (starts.length === 0) return result;
@@ -99,7 +99,7 @@ export async function walkCoachIdChainsBatched(startUserIds, supabase = getSupab
     const need = frontier.filter((id) => !parentOf.has(id));
     if (need.length === 0) break;
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('team_table')
       .select('"UserId", "CoachId"')
       .in('UserId', need);
@@ -148,13 +148,13 @@ export async function walkCoachIdChainsBatched(startUserIds, supabase = getSupab
  * Prefer walkCoachIdChainsBatched when resolving many sponsors.
  *
  * @param {string} startUserId
- * @param {object} [supabase]
+ * @param {object} [db]
  * @returns {Promise<string[]>}
  */
-export async function walkCoachIdChain(startUserId, supabase = getSupabaseClient()) {
+export async function walkCoachIdChain(startUserId, db = getMysqlClient()) {
   const batched = await walkCoachIdChainsBatched(
     startUserId != null ? [String(startUserId)] : [],
-    supabase,
+    db,
   );
   return batched.get(String(startUserId)) || [];
 }
@@ -164,15 +164,15 @@ export async function walkCoachIdChain(startUserId, supabase = getSupabaseClient
  * Weight = first row after CreatedAt DESC per user (not max Weight).
  *
  * @param {string[]} userIds
- * @param {object} [supabase]
+ * @param {object} [db]
  * @returns {Promise<Map<string, { userId: string, userName: string|null, heightCm: number|null, weightKg: number|null }>>}
  */
-export async function loadAncestorProfiles(userIds, supabase = getSupabaseClient()) {
+export async function loadAncestorProfiles(userIds, db = getMysqlClient()) {
   const map = new Map();
   const ids = [...new Set((userIds || []).map((id) => String(id)).filter(Boolean))];
   if (ids.length === 0) return map;
 
-  const { data: rows, error } = await supabase
+  const { data: rows, error } = await db
     .from('team_table')
     .select('"UserId", "UserName", "Height", "Role"')
     .in('UserId', ids);
@@ -194,7 +194,7 @@ export async function loadAncestorProfiles(userIds, supabase = getSupabaseClient
   // Latest weight only per ancestor — never download full history.
   const weightRows = await Promise.all(
     ids.map(async (uid) => {
-      const { data, error: wErr } = await supabase
+      const { data, error: wErr } = await db
         .from('weight_records_table')
         .select('"UserId", "Weight", "CreatedAt"')
         .eq('UserId', uid)
@@ -219,10 +219,10 @@ export async function loadAncestorProfiles(userIds, supabase = getSupabaseClient
  * Resolve sponsor + ideal-weight coach for one member.
  *
  * @param {string|number} memberUserId
- * @param {{ supabase?: object }} [opts]
+ * @param {{ db?: object }} [opts]
  */
 export async function resolveSponsorAndIdealCoach(memberUserId, opts = {}) {
-  const supabase = opts.supabase || getSupabaseClient();
+  const db = opts.db || getMysqlClient();
   const empty = {
     sponsorId: null,
     sponsorName: null,
@@ -231,7 +231,7 @@ export async function resolveSponsorAndIdealCoach(memberUserId, opts = {}) {
   };
   if (memberUserId == null || memberUserId === '') return empty;
 
-  const { data: member, error } = await supabase
+  const { data: member, error } = await db
     .from('team_table')
     .select('"CoachId", "Role"')
     .eq('"UserId"', String(memberUserId))
@@ -242,8 +242,8 @@ export async function resolveSponsorAndIdealCoach(memberUserId, opts = {}) {
   const sponsorId = member?.CoachId != null ? String(member.CoachId) : null;
   if (!sponsorId) return empty;
 
-  const chainIds = await walkCoachIdChain(sponsorId, supabase);
-  const profiles = await loadAncestorProfiles(chainIds, supabase);
+  const chainIds = await walkCoachIdChain(sponsorId, db);
+  const profiles = await loadAncestorProfiles(chainIds, db);
   const ordered = chainIds.map((id) => profiles.get(id) || {
     userId: id, userName: null, heightCm: null, weightKg: null, role: null,
   });
@@ -273,10 +273,10 @@ export async function resolveSponsorAndIdealCoach(memberUserId, opts = {}) {
  * Chain walks + ancestor metrics are batched (no per-ancestor metric queries).
  *
  * @param {Array<{ userId: string|number, coachId?: string|number|null }>} members
- * @param {{ supabase?: object }} [opts]
+ * @param {{ db?: object }} [opts]
  */
 export async function resolveSponsorAndIdealCoachForMembers(members, opts = {}) {
-  const supabase = opts.supabase || getSupabaseClient();
+  const db = opts.db || getMysqlClient();
   const result = new Map();
   const list = Array.isArray(members) ? members : [];
   if (list.length === 0) return result;
@@ -295,7 +295,7 @@ export async function resolveSponsorAndIdealCoachForMembers(members, opts = {}) 
   }
 
   if (needCoachLookup.length > 0) {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('team_table')
       .select('"UserId", "CoachId", "Role"')
       .in('UserId', needCoachLookup);
@@ -322,7 +322,7 @@ export async function resolveSponsorAndIdealCoachForMembers(members, opts = {}) 
     }
   }
   if (missingRoleIds.length > 0) {
-    const { data: memberRows, error: memberRoleErr } = await supabase
+    const { data: memberRows, error: memberRoleErr } = await db
       .from('team_table')
       .select('"UserId", "Role"')
       .in('UserId', missingRoleIds);
@@ -337,13 +337,13 @@ export async function resolveSponsorAndIdealCoachForMembers(members, opts = {}) 
   const uniqueSponsors = [...new Set([...memberSponsor.values()].filter(Boolean))];
   const sponsorIdealCache = new Map();
 
-  const chainsBySponsor = await walkCoachIdChainsBatched(uniqueSponsors, supabase);
+  const chainsBySponsor = await walkCoachIdChainsBatched(uniqueSponsors, db);
   const allChainIds = new Set();
   for (const chain of chainsBySponsor.values()) {
     chain.forEach((id) => allChainIds.add(id));
   }
 
-  const profiles = await loadAncestorProfiles([...allChainIds], supabase);
+  const profiles = await loadAncestorProfiles([...allChainIds], db);
   const roleByUserId = buildRoleByUserIdFromProfiles(profiles);
   for (const [mid, role] of memberRoleById.entries()) {
     roleByUserId.set(mid, role);

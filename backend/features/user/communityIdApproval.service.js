@@ -7,7 +7,7 @@ import { nowUtc } from '../../shared/lib/datetime/index.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { assignLeadSeat, releaseLeadSeat, releaseOtherLeadSeats, resolveLeadSeatForUser } from '../../utils/coachTeamSeats.js';
 import { generateEmailOtp } from '../auth/domain/otp-length.rules.js';
 import { sendTransactionalMail } from '../../shared/lib/smtp-mail.js';
@@ -150,7 +150,7 @@ export async function getCommunityIdLeadPair(teamId) {
 }
 
 async function buildAlreadyOwnedResponse({
-  supabase,
+  db,
   requester,
   code,
   leadSeat,
@@ -164,7 +164,7 @@ async function buildAlreadyOwnedResponse({
 
   let seat = leadSeat?.seat || null;
   if (!seat && ownedCode === normalizeTeamCodeFromCommunityId(code)) {
-    const heal = await assignLeadSeat(supabase, ownedCode, Number(requester.UserId));
+    const heal = await assignLeadSeat(db, ownedCode, Number(requester.UserId));
     if (heal.ok) {
       seat = heal.seat === 'already'
         ? (Number(occupancy?.sponsorUserId) === Number(requester.UserId)
@@ -217,11 +217,11 @@ export async function requestCommunityIdApproval({ email = null, userId = null, 
     throw new ValidationError(404, 'User not found');
   }
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const profileTeamHint = normalizeTeamCodeFromCommunityId(requester.CommunityId)
     || normalizeTeamCodeFromCommunityId(requester.TeamId);
   const leadSeat = await resolveLeadSeatForUser(
-    supabase,
+    db,
     requester.UserId,
     profileTeamHint,
   );
@@ -255,7 +255,7 @@ export async function requestCommunityIdApproval({ email = null, userId = null, 
   });
   if (ownsRequested) {
     return buildAlreadyOwnedResponse({
-      supabase,
+      db,
       requester,
       code,
       leadSeat,
@@ -286,7 +286,7 @@ export async function requestCommunityIdApproval({ email = null, userId = null, 
   if (!classified.ok) {
     if (classified.status === CLAIM_ALREADY_OWNED) {
       return buildAlreadyOwnedResponse({
-        supabase,
+        db,
         requester,
         code: classified.code,
         leadSeat,
@@ -437,12 +437,12 @@ export async function verifyCommunityIdOtp({ email = null, userId = null, otp })
     );
   }
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const nextCode = normalizeTeamCodeFromCommunityId(pending.CommunityId);
   const profileHint = normalizeTeamCodeFromCommunityId(requester.CommunityId)
     || normalizeTeamCodeFromCommunityId(requester.TeamId);
   const previousSeat = await resolveLeadSeatForUser(
-    supabase,
+    db,
     requester.UserId,
     profileHint,
   );
@@ -451,13 +451,13 @@ export async function verifyCommunityIdOtp({ email = null, userId = null, otp })
   // Release old / stale seats first, then claim the new code.
   // Assign-before-release left users on two teams and blocked later changes.
   if (nextCode) {
-    await releaseOtherLeadSeats(supabase, Number(requester.UserId), nextCode);
+    await releaseOtherLeadSeats(db, Number(requester.UserId), nextCode);
   } else if (previousSeat.seat && previousCode) {
-    await releaseLeadSeat(supabase, Number(requester.UserId), previousCode);
+    await releaseLeadSeat(db, Number(requester.UserId), previousCode);
   }
 
   const seatResult = await assignLeadSeat(
-    supabase,
+    db,
     nextCode || pending.CommunityId,
     Number(requester.UserId),
   );
