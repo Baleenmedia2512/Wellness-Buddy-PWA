@@ -55,9 +55,19 @@ function fieldData(patch) {
   return data;
 }
 
+function eventsDelegate(prisma) {
+  const delegate = prisma?.events_table;
+  if (!delegate) {
+    const err = new Error('events_table is missing from the Prisma client. Run npm run prisma:generate in backend and restart the API.');
+    err.code = 'P2021';
+    throw err;
+  }
+  return delegate;
+}
+
 export async function listEventsByOwner(userId) {
   const prisma = getPrisma();
-  const rows = await prisma.events_table.findMany({
+  const rows = await eventsDelegate(prisma).findMany({
     where: { CreatedByUserId: userId, IsDeleted: 0 },
     orderBy: { UpdatedAt: 'desc' },
   });
@@ -66,7 +76,7 @@ export async function listEventsByOwner(userId) {
 
 export async function insertEvent(input) {
   const prisma = getPrisma();
-  const row = await prisma.events_table.create({
+  const row = await eventsDelegate(prisma).create({
     data: {
       CreatedByUserId: input.userId,
       Status: 'scheduled',
@@ -79,7 +89,7 @@ export async function insertEvent(input) {
 
 export async function findOwnedEvent(id, userId) {
   const prisma = getPrisma();
-  const row = await prisma.events_table.findFirst({
+  const row = await eventsDelegate(prisma).findFirst({
     where: { Id: id, CreatedByUserId: userId, IsDeleted: 0 },
   });
   return toEvent(row);
@@ -87,7 +97,7 @@ export async function findOwnedEvent(id, userId) {
 
 export async function updateOwnedEvent(id, userId, patch) {
   const prisma = getPrisma();
-  const result = await prisma.events_table.updateMany({
+  const result = await eventsDelegate(prisma).updateMany({
     where: { Id: id, CreatedByUserId: userId, IsDeleted: 0 },
     data: fieldData(patch),
   });
@@ -97,7 +107,7 @@ export async function updateOwnedEvent(id, userId, patch) {
 
 export async function softDeleteOwnedEvent(id, userId) {
   const prisma = getPrisma();
-  const result = await prisma.events_table.updateMany({
+  const result = await eventsDelegate(prisma).updateMany({
     where: { Id: id, CreatedByUserId: userId, IsDeleted: 0 },
     data: { IsDeleted: 1 },
   });
