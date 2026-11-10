@@ -200,15 +200,24 @@ export async function displayNameTakenByOther(displayName, userId) {
  * Pick a PublicSlug not owned by another coach (base path, then -userId, -userId-2…).
  * @param {string} desired
  * @param {number} userId
+ * @param {{ skip?: string[] }} [opts]  Slugs that just hit MySQL 1062 — never reuse them.
  * @returns {Promise<string>}
  */
-async function resolveUniquePublicSlug(desired, userId) {
+async function resolveUniquePublicSlug(desired, userId, { skip = [] } = {}) {
+  const skipped = new Set(
+    (Array.isArray(skip) ? skip : [])
+      .map((s) => String(s || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
   let candidate = String(desired || '').slice(0, 160);
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    if (!(await slugTakenByOther(candidate, userId))) return candidate;
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    const key = candidate.trim().toLowerCase();
+    const blocked = skipped.has(key) || (await slugTakenByOther(candidate, userId));
+    if (!blocked) return candidate;
+    // Always suffix from the original desired base so -userId does not collapse into itself.
     candidate = suffixPublicSlugForUser(desired, userId, attempt);
   }
-  return suffixPublicSlugForUser(desired, userId, Date.now() % 1000);
+  return suffixPublicSlugForUser(desired, userId, Date.now() % 10000);
 }
 
 async function writePublicSlug(userId, publicSlug, { markPublished = false } = {}) {
@@ -251,25 +260,34 @@ export async function assignPublicSlug(userId, { markPublished = false } = {}) {
     userId,
   }).publicSlug;
 
-  let publicSlug = await resolveUniquePublicSlug(desired, userId);
   const publish = markPublished || row.isPublished === true;
+  const skip = [];
+  let lastDuplicate = null;
 
-  if (row.publicSlug === publicSlug && (!publish || row.isPublished)) {
-    return row;
+  for (let retry = 0; retry < 10; retry += 1) {
+    const publicSlug = await resolveUniquePublicSlug(desired, userId, { skip });
+
+    if (row.publicSlug === publicSlug && (!publish || row.isPublished)) {
+      return row;
+    }
+
+    try {
+      await writePublicSlug(userId, publicSlug, { markPublished: publish });
+      return findSubmissionByUserId(userId);
+    } catch (error) {
+      if (!isDuplicatePublicSlugError(error)) throw error;
+      // Race / missed pre-check: remember the colliding slug and try the next suffix.
+      lastDuplicate = error;
+      skip.push(publicSlug);
+      logger.warn('coach-portfolio PublicSlug collision; retrying', {
+        userId: Number(userId),
+        publicSlug,
+        attempt: retry + 1,
+      });
+    }
   }
 
-  try {
-    await writePublicSlug(userId, publicSlug, { markPublished: publish });
-  } catch (error) {
-    if (!isDuplicatePublicSlugError(error)) throw error;
-    // Race / missed pre-check: force a user-specific leaf and retry once.
-    publicSlug = await resolveUniquePublicSlug(
-      suffixPublicSlugForUser(desired, userId, 0),
-      userId,
-    );
-    await writePublicSlug(userId, publicSlug, { markPublished: publish });
-  }
-  return findSubmissionByUserId(userId);
+  throw lastDuplicate;
 }
 
 /**
