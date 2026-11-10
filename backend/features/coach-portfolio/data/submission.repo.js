@@ -167,12 +167,28 @@ export async function slugTakenByOther(publicSlug, userId) {
   if (!needle) return false;
   const rows = await getPrisma().$queryRawUnsafe(
     `SELECT UserId AS userId FROM coach_portfolio_submissions_table
-     WHERE LOWER(TRIM(PublicSlug)) = ? AND UserId <> ?
+     WHERE PublicSlug IS NOT NULL
+       AND LOWER(TRIM(PublicSlug)) = ?
+       AND UserId <> ?
      LIMIT 1`,
     needle,
     Number(userId),
   );
   return Array.isArray(rows) && rows.length > 0;
+}
+
+/** Guaranteed-unique leaf when the normal -userId/-2… ladder is exhausted or races. */
+function timestampPublicSlug(desired, userId) {
+  const parsed = String(desired || '').split('/').filter(Boolean);
+  const city = parsed[0] || 'india';
+  const area = parsed[1] || 'center';
+  const leaf = `u${Number(userId)}-${Date.now()}`.slice(0, 48);
+  return `${city}/${area}/${leaf}`.slice(0, 160);
+}
+
+function duplicateEntryFromError(error) {
+  const m = String(error?.message || '').match(/Duplicate entry '([^']+)'/i);
+  return m ? m[1] : null;
 }
 
 /**
@@ -217,16 +233,18 @@ async function resolveUniquePublicSlug(desired, userId, { skip = [] } = {}) {
     // Always suffix from the original desired base so -userId does not collapse into itself.
     candidate = suffixPublicSlugForUser(desired, userId, attempt);
   }
-  return suffixPublicSlugForUser(desired, userId, Date.now() % 10000);
+  return timestampPublicSlug(desired, userId);
 }
 
-async function writePublicSlug(userId, publicSlug, { markPublished = false } = {}) {
+async function writePublicSlug(rowId, userId, publicSlug, { markPublished = false } = {}) {
+  // Update by primary key so a corrupted double-row UserId cannot 1062 itself.
   if (markPublished) {
     await getPrisma().$executeRawUnsafe(
       `UPDATE coach_portfolio_submissions_table
        SET PublicSlug = ?, IsPublished = 1
-       WHERE UserId = ?`,
+       WHERE Id = ? AND UserId = ?`,
       publicSlug,
+      Number(rowId),
       Number(userId),
     );
     return;
@@ -234,8 +252,9 @@ async function writePublicSlug(userId, publicSlug, { markPublished = false } = {
   await getPrisma().$executeRawUnsafe(
     `UPDATE coach_portfolio_submissions_table
      SET PublicSlug = ?
-     WHERE UserId = ?`,
+     WHERE Id = ? AND UserId = ?`,
     publicSlug,
+    Number(rowId),
     Number(userId),
   );
 }
@@ -264,24 +283,33 @@ export async function assignPublicSlug(userId, { markPublished = false } = {}) {
   const skip = [];
   let lastDuplicate = null;
 
-  for (let retry = 0; retry < 10; retry += 1) {
-    const publicSlug = await resolveUniquePublicSlug(desired, userId, { skip });
+  for (let retry = 0; retry < 12; retry += 1) {
+    const publicSlug = retry >= 3
+      ? timestampPublicSlug(desired, userId)
+      : await resolveUniquePublicSlug(desired, userId, { skip });
 
-    if (row.publicSlug === publicSlug && (!publish || row.isPublished)) {
+    if (
+      row.publicSlug
+      && String(row.publicSlug).toLowerCase() === String(publicSlug).toLowerCase()
+      && (!publish || row.isPublished)
+    ) {
       return row;
     }
 
     try {
-      await writePublicSlug(userId, publicSlug, { markPublished: publish });
+      await writePublicSlug(row.id, userId, publicSlug, { markPublished: publish });
       return findSubmissionByUserId(userId);
     } catch (error) {
       if (!isDuplicatePublicSlugError(error)) throw error;
       // Race / missed pre-check: remember the colliding slug and try the next suffix.
       lastDuplicate = error;
       skip.push(publicSlug);
+      const fromMysql = duplicateEntryFromError(error);
+      if (fromMysql) skip.push(fromMysql);
       logger.warn('coach-portfolio PublicSlug collision; retrying', {
         userId: Number(userId),
         publicSlug,
+        fromMysql,
         attempt: retry + 1,
       });
     }
