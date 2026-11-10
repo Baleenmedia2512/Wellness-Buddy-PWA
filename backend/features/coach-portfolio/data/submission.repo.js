@@ -6,8 +6,10 @@ import logger from '../../../shared/lib/logger.js';
 import { SUBMISSION_STATUS, normalizeFormJson } from '../domain/submission.rules.js';
 import {
   buildCoachPortfolioPath,
+  isDuplicatePublicSlugError,
   isValidCoachPublicSlug,
   isValidCoachSlug,
+  suffixPublicSlugForUser,
 } from '../domain/slug.rules.js';
 
 const CREATE_TABLE_SQL = `CREATE TABLE IF NOT EXISTS coach_portfolio_submissions_table (
@@ -43,7 +45,10 @@ async function runIgnoreDuplicate(sql) {
     await getPrisma().$executeRawUnsafe(sql);
   } catch (error) {
     const msg = error?.message || String(error);
-    if (!/duplicate|exists|1060|1061/i.test(msg)) throw error;
+    // Only ignore "already exists" DDL — never swallow row unique violations (1062).
+    if (!/1060|1061|Duplicate column|Duplicate key name|already exists/i.test(msg)) {
+      throw error;
+    }
   }
 }
 
@@ -158,11 +163,13 @@ export async function findPublishedBySlug(slug) {
 
 export async function slugTakenByOther(publicSlug, userId) {
   await ensureSchema();
+  const needle = String(publicSlug || '').trim().toLowerCase();
+  if (!needle) return false;
   const rows = await getPrisma().$queryRawUnsafe(
     `SELECT UserId AS userId FROM coach_portfolio_submissions_table
-     WHERE PublicSlug = ? AND UserId <> ?
+     WHERE LOWER(TRIM(PublicSlug)) = ? AND UserId <> ?
      LIMIT 1`,
-    String(publicSlug),
+    needle,
     Number(userId),
   );
   return Array.isArray(rows) && rows.length > 0;
@@ -190,6 +197,41 @@ export async function displayNameTakenByOther(displayName, userId) {
 }
 
 /**
+ * Pick a PublicSlug not owned by another coach (base path, then -userId, -userId-2…).
+ * @param {string} desired
+ * @param {number} userId
+ * @returns {Promise<string>}
+ */
+async function resolveUniquePublicSlug(desired, userId) {
+  let candidate = String(desired || '').slice(0, 160);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    if (!(await slugTakenByOther(candidate, userId))) return candidate;
+    candidate = suffixPublicSlugForUser(desired, userId, attempt);
+  }
+  return suffixPublicSlugForUser(desired, userId, Date.now() % 1000);
+}
+
+async function writePublicSlug(userId, publicSlug, { markPublished = false } = {}) {
+  if (markPublished) {
+    await getPrisma().$executeRawUnsafe(
+      `UPDATE coach_portfolio_submissions_table
+       SET PublicSlug = ?, IsPublished = 1
+       WHERE UserId = ?`,
+      publicSlug,
+      Number(userId),
+    );
+    return;
+  }
+  await getPrisma().$executeRawUnsafe(
+    `UPDATE coach_portfolio_submissions_table
+     SET PublicSlug = ?
+     WHERE UserId = ?`,
+    publicSlug,
+    Number(userId),
+  );
+}
+
+/**
  * Rebuild PublicSlug from FormJson:
  *   /coach/<city>/<area>/<website-display-name>
  * @param {number} userId
@@ -201,7 +243,7 @@ export async function assignPublicSlug(userId, { markPublished = false } = {}) {
   if (!row) return null;
 
   const form = row.formJson || {};
-  let publicSlug = buildCoachPortfolioPath({
+  const desired = buildCoachPortfolioPath({
     websiteDisplayName: form.mediaBrand?.websiteDisplayName,
     fullName: form.personal?.fullName || row.userName,
     city: form.center?.city,
@@ -209,30 +251,23 @@ export async function assignPublicSlug(userId, { markPublished = false } = {}) {
     userId,
   }).publicSlug;
 
-  if (await slugTakenByOther(publicSlug, userId)) {
-    const parsed = publicSlug.split('/');
-    const city = parsed[0] || 'india';
-    const area = parsed[1] || 'center';
-    const leaf = `${parsed[2] || 'coach'}-${userId}`.slice(0, 48);
-    publicSlug = `${city}/${area}/${leaf}`.slice(0, 160);
+  let publicSlug = await resolveUniquePublicSlug(desired, userId);
+  const publish = markPublished || row.isPublished === true;
+
+  if (row.publicSlug === publicSlug && (!publish || row.isPublished)) {
+    return row;
   }
 
-  if (markPublished || row.isPublished) {
-    await getPrisma().$executeRawUnsafe(
-      `UPDATE coach_portfolio_submissions_table
-       SET PublicSlug = ?, IsPublished = 1
-       WHERE UserId = ?`,
-      publicSlug,
-      Number(userId),
+  try {
+    await writePublicSlug(userId, publicSlug, { markPublished: publish });
+  } catch (error) {
+    if (!isDuplicatePublicSlugError(error)) throw error;
+    // Race / missed pre-check: force a user-specific leaf and retry once.
+    publicSlug = await resolveUniquePublicSlug(
+      suffixPublicSlugForUser(desired, userId, 0),
+      userId,
     );
-  } else {
-    await getPrisma().$executeRawUnsafe(
-      `UPDATE coach_portfolio_submissions_table
-       SET PublicSlug = ?
-       WHERE UserId = ?`,
-      publicSlug,
-      Number(userId),
-    );
+    await writePublicSlug(userId, publicSlug, { markPublished: publish });
   }
   return findSubmissionByUserId(userId);
 }

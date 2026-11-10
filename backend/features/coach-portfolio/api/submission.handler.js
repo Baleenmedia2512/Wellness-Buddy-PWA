@@ -1,5 +1,6 @@
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
+import logger from '../../../shared/lib/logger.js';
 import { findByUserId } from '../../user/user.repository.js';
 import * as submissionRepo from '../data/submission.repo.js';
 import { PORTFOLIO_FLAG } from '../domain/access.rules.js';
@@ -70,9 +71,17 @@ export async function getMySubmission({ userId: rawUserId }) {
     form,
     markSubmitted: false,
   });
-  latest = await submissionRepo.assignPublicSlug(userId, {
-    markPublished: latest?.isPublished === true,
-  }) || latest;
+  try {
+    latest = await submissionRepo.assignPublicSlug(userId, {
+      markPublished: latest?.isPublished === true,
+    }) || latest;
+  } catch (error) {
+    // Never block the CMS form on a slug race — keep last good row.
+    logger.warn('coach-portfolio assignPublicSlug failed on GET', {
+      userId,
+      message: error?.message || String(error),
+    });
+  }
 
   const path = buildCoachPortfolioPath({
     websiteDisplayName: form.mediaBrand?.websiteDisplayName,
