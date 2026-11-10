@@ -56,6 +56,11 @@ import { looksLikeEmail } from '../domain/onboardingEmail';
 import GoPremiumButton from '../../payments/components/GoPremiumButton';
 import { PremiumAvatarRing, PremiumCrownMark } from '../../payments/components/PremiumBadge';
 import usePremiumStatus from '../../payments/hooks/usePremiumStatus';
+import { WalletButton } from '../../wallet';
+import {
+  CoachWebsiteButton,
+  AdminPortfolioAccessButton,
+} from '../../coach-portfolio';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -987,6 +992,14 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
             <h2 className="text-sm font-semibold text-gray-700">Account</h2>
           </div>
           <div className="divide-y divide-gray-100">
+            <WalletButton userId={premiumUserId} />
+            <GoPremiumButton
+              userId={premiumUserId}
+              isPremium={isPremiumMember}
+              onPremiumCheck={refreshPremium}
+            />
+            <CoachWebsiteButton userId={premiumUserId} />
+            <AdminPortfolioAccessButton userId={premiumUserId} userRole={userRole} />
             <TouchFeedbackButton
               onClick={() => {
                 setEmailKycMode('recover');

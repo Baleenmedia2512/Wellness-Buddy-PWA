@@ -70,6 +70,15 @@ const REGISTRY = Object.freeze({
     description:    'Contact Picker API shortcut on the phone login field.',
   },
 
+  // Sample Events page and name-only demo registration. Owner: @principal-eng.
+  // Remove by 2027-01-31, or when live event data replaces this demo.
+  'ff.events': {
+    envKey:         'REACT_APP_FF_EVENTS',
+    storageKey:     'ff.events',
+    defaultEnabled: true,
+    description:    'Sample Events page and non-persistent name-only registration demo.',
+  },
+
   // Testimonials — before/after Herbalife transformation photos with
   // coach OTP verification. Members upload; coach verifies via emailed OTP.
   // Default ON. Set REACT_APP_FF_TESTIMONIALS=false or
@@ -201,12 +210,31 @@ const REGISTRY = Object.freeze({
     description:    'Profile Go Premium opens Cashfree checkout.',
   },
 
-  // Reports detail trial. Kill switch shows the full report again.
-  'ff.report-trial': {
-    envKey:         'REACT_APP_FF_REPORT_TRIAL',
-    storageKey:     'ff.report-trial',
+  // Create Event — event form plus update, delete, postpone, and cancel.
+  'ff.create-event': {
+    envKey:         'REACT_APP_FF_CREATE_EVENT',
+    storageKey:     'ff.create-event',
     defaultEnabled: true,
-    description:    'Unpaid report details stay hidden until a 14-day trial or Premium.',
+    description:    'Create Event page in the main navigation.',
+  },
+
+  // Unique per-user wallet. Cash-in after OTP to a selected Wellness Valley person.
+  // Default ON. Set REACT_APP_FF_WALLET=false or localStorage 'ff.wallet'='false' to hide.
+  'ff.wallet': {
+    envKey:         'REACT_APP_FF_WALLET',
+    storageKey:     'ff.wallet',
+    defaultEnabled: true,
+    description:    'Profile Wallet: unique balance and OTP-approved cash-in.',
+  },
+
+  // Coach Website portfolio — paid gate + form entry (Cashfree later).
+  // Default ON. Set REACT_APP_FF_COACH_PORTFOLIO=false or
+  // localStorage 'ff.coach-portfolio'='false' to hide.
+  'ff.coach-portfolio': {
+    envKey:         'REACT_APP_FF_COACH_PORTFOLIO',
+    storageKey:     'ff.coach-portfolio',
+    defaultEnabled: true,
+    description:    'Coach Website: paid unlock and portfolio form entry.',
   },
 });
 

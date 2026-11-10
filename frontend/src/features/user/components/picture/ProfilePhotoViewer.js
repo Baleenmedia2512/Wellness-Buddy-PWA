@@ -1,7 +1,7 @@
 // Full-screen profile photo viewer — tap the avatar to see the image.
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Camera, Crop, X } from 'lucide-react';
+import { ArrowLeft, Camera, Crop } from 'lucide-react';
 
 const ProfilePhotoViewer = ({
   isOpen,
@@ -37,29 +37,29 @@ const ProfilePhotoViewer = ({
       onClick={onClose}
     >
       <header
-        className="flex-shrink-0 flex items-center justify-between px-4"
+        className="flex-shrink-0 flex items-center gap-2 px-2"
         style={{
           paddingTop: 'max(12px, env(safe-area-inset-top))',
           paddingBottom: '12px',
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <span className="text-white font-semibold text-base">Profile photo</span>
         <button
           type="button"
           onClick={onClose}
-          className="p-2 rounded-full bg-white/15 text-white hover:bg-white/25"
-          aria-label="Close"
+          className="p-2 rounded-full text-white hover:bg-white/15"
+          aria-label="Back"
         >
-          <X className="w-5 h-5" />
+          <ArrowLeft className="w-6 h-6" />
         </button>
+        <span className="flex-1 text-white font-semibold text-base">Profile photo</span>
       </header>
 
-      <div className="relative flex-1 min-h-0 flex items-center justify-center px-3">
+      <div className="relative flex-1 min-h-0 flex items-center justify-center">
         <img
           src={src}
           alt={alt}
-          className="max-h-full max-w-full object-contain rounded-xl"
+          className="w-full max-h-full object-contain rounded-xl"
           onClick={(e) => e.stopPropagation()}
         />
       </div>

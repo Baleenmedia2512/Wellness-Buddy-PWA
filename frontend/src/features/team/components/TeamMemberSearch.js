@@ -17,7 +17,7 @@ const TeamMemberSearch = ({
   const vm = useTeamSearch({
     user, userRole, selectedMember, onMemberSelect, refreshKey,
   });
-  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileMember, setProfileMember] = useState(null);
 
   if (!vm.isCoach) return null;
 
@@ -45,17 +45,19 @@ const TeamMemberSearch = ({
               suggestions={vm.suggestions}
               selectedMemberId={selectedMember?.userId}
               onSelect={vm.selectMember}
+              onViewProfile={setProfileMember}
               resultVariant={resultVariant}
             />
           )}
         </div>
       </div>
 
-      {selectedMember && !selectedMember.isSelf && (
+      {profileMember && !profileMember.isSelf && (
         <TeamMemberProfileModal
-          isOpen={showProfileModal}
-          onClose={() => setShowProfileModal(false)}
-          memberEmail={selectedMember.email}
+          isOpen={Boolean(profileMember)}
+          onClose={() => setProfileMember(null)}
+          memberEmail={profileMember.email}
+          memberUserId={profileMember.userId}
         />
       )}
     </>

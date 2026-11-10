@@ -12,6 +12,7 @@ import {
   normalizeMatrix,
   matrixWithDefaultsForNewPages,
   DEFAULT_NAV_ACCESS_MATRIX,
+  NAV_PAGE_KEYS,
   allowedPageKeys,
   allPagesAllowed,
 } from '../domain/navAccess.rules.js';
@@ -51,6 +52,7 @@ describe('DEFAULT_NAV_ACCESS_MATRIX', () => {
     assert.equal(pages.enrollment, true);
     assert.equal(pages.testimonials, true);
     assert.equal(pages.broadcast, true);
+    assert.equal(pages['create-event'], true);
     assert.equal(pages['activity-report'], false);
     assert.equal(pages.counselling, false);
     assert.equal(pages['physical-club'], false);
@@ -60,7 +62,7 @@ describe('DEFAULT_NAV_ACCESS_MATRIX', () => {
   it('seeds sponsor/admin/developer with all pages on', () => {
     for (const role of ['coach', 'admin', 'developer']) {
       const keys = allowedPageKeys(DEFAULT_NAV_ACCESS_MATRIX[role]);
-      assert.equal(keys.length, 9);
+      assert.equal(keys.length, NAV_PAGE_KEYS.length);
     }
   });
 

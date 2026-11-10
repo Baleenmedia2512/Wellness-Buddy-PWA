@@ -4,6 +4,7 @@ import { X, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import { debugLog } from '../../../shared/utils/logger.js';
 import LeaderboardAvatar from '../../leaderboard/components/LeaderboardAvatar';
+import { TeamMemberProfileModal } from '../../../shared/components/TeamMemberProfileModal';
 
 import { formatBusinessTime } from '../../../shared/utils/datetimeUtils';
 
@@ -79,6 +80,7 @@ const AttendeeListModal = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [expandedUsers, setExpandedUsers] = useState(new Set());
+  const [profileUserId, setProfileUserId] = useState(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -171,6 +173,7 @@ const AttendeeListModal = ({
   const uniqueAttendeeCount = groupedAttendees.length;
 
   return (
+    <>
     <AnimatePresence>
       {isOpen && (
         <>
@@ -246,21 +249,24 @@ const AttendeeListModal = ({
                         key={user.userId}
                         className="border border-gray-100 rounded-lg overflow-hidden"
                       >
-                        {/* User Header - clickable */}
-                        <button
-                          onClick={() => toggleUser(user.userId)}
-                          className="w-full flex items-center gap-3 py-3 px-3 hover:bg-gray-50 transition-colors text-left"
-                        >
+                        <div className="w-full flex items-center gap-3 py-3 px-3 hover:bg-gray-50 transition-colors text-left">
                           <span className="shrink-0">
                             <LeaderboardAvatar
                               apiBaseUrl={apiBaseUrl}
                               userId={user.userId}
                               userName={user.userName}
+                              onViewProfile={() => setProfileUserId(user.userId)}
                             />
                           </span>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-gray-800 block truncate">{user.userName}</span>
+                              <button
+                                type="button"
+                                onClick={() => setProfileUserId(user.userId)}
+                                className="text-sm font-medium text-gray-800 block truncate text-left hover:underline"
+                              >
+                                {user.userName}
+                              </button>
                               {user.firstLogTime && (
                                 <span className="text-xs font-semibold text-green-600 shrink-0">
                                   {formatTime(user.firstLogTime)}
@@ -271,13 +277,19 @@ const AttendeeListModal = ({
                               {user.logs.length} {user.logs.length === 1 ? 'log' : 'logs'}
                             </span>
                           </div>
-                          {/* Expand/Collapse icon */}
-                          {isExpanded ? (
-                            <ChevronUp className="w-4 h-4 text-gray-400 shrink-0" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
-                          )}
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleUser(user.userId)}
+                            className="p-1"
+                            aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${user.userName}'s logs`}
+                          >
+                            {isExpanded ? (
+                              <ChevronUp className="w-4 h-4 text-gray-400 shrink-0" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                            )}
+                          </button>
+                        </div>
 
                         {/* Expanded Log Details */}
                         {isExpanded && (
@@ -319,6 +331,13 @@ const AttendeeListModal = ({
         </>
       )}
     </AnimatePresence>
+    <TeamMemberProfileModal
+      isOpen={Boolean(profileUserId)}
+      onClose={() => setProfileUserId(null)}
+      memberUserId={profileUserId}
+      apiBaseUrl={apiBaseUrl}
+    />
+    </>
   );
 };
 

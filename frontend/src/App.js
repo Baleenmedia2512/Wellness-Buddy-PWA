@@ -65,7 +65,7 @@ import { WeightShareCard } from "./shell/components/WeightShareCard";
 import { WeightResultCard } from "./shell/components/WeightResultCard";
 import { Capacitor } from "@capacitor/core";
 import wellnessValleyIcon from "./assets/wellness-valley-icon.png";
-import { Bug, Share2, Pencil, Check, X as XIcon, Sparkles } from "lucide-react";
+import { Bug, Share2, Pencil, Check, X as XIcon, Sparkles, CalendarDays, ArrowRight } from "lucide-react";
 import ImageUpload from "./shared/components/ImageUpload";
 import {
   NutritionCard,
@@ -79,6 +79,7 @@ import {
   withMarathonWhatsAppNotice,
 } from "./features/marathon";
 import { EducationLogCard } from "./features/education";
+import { EventsPage } from "./features/events";
 import { WatchActivityCard } from "./features/activity";
 import LoadingSpinner from "./shared/components/LoadingSpinner";
 import { Login, ConsentForm } from "./features/user";
@@ -307,6 +308,12 @@ const TestimonialsPage = lazy(() =>
 );
 const BroadcastPage = lazy(() =>
   import("./features/broadcast").then((m) => ({ default: m.BroadcastPage })),
+);
+const PaidFeaturesPage = lazy(() =>
+  import("./features/coach-portfolio").then((m) => ({ default: m.PaidFeaturesPage })),
+);
+const CreateEventPage = lazy(() =>
+  import("./features/events").then((m) => ({ default: m.CreateEventPage })),
 );
 // Reports Dashboard — Ideal Weight + Wellness Score Report tabs
 const ReportsDashboard = lazy(() =>
@@ -1069,6 +1076,9 @@ function WellnessValleyApp() {
   // Testimonials page � member upload + coach verification
   const [showTestimonials, setShowTestimonials] = useState(false);
   const [showBroadcast, setShowBroadcast] = useState(false);
+  const [showCreateEvent, setShowCreateEvent] = useState(false);
+  const [showPaidFeatures, setShowPaidFeatures] = useState(false);
+  const [showEvents, setShowEvents] = useState(false);
   // Reports page — common module (Ideal Weight, Wellness Score, Nutrition, Trend).
   const [showReports, setShowReports] = useState(false);
   const [reportsDashboardTab, setReportsDashboardTab] = useState(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
@@ -1248,7 +1258,10 @@ function WellnessValleyApp() {
         setShowActivityReport(false);
         setShowActivityTimeReport(false);
         setShowTestimonials(false);
+        setShowEvents(false);
         setShowBroadcast(false);
+        setShowCreateEvent(false);
+        setShowPaidFeatures(false);
         setShowReports(false);
         setShowProfilePage(false);
         setShowAdminConfigSetup(false);
@@ -1289,7 +1302,26 @@ function WellnessValleyApp() {
       } else if (page === 'testimonials') {
         bumpTabVisitKeyRef.current('testimonials');
         setShowBroadcast(false);
+        setShowCreateEvent(false);
+        setShowPaidFeatures(false);
         startTransition(() => setShowTestimonials(true));
+        Session.setCurrentPage('main');
+      } else if (page === 'events') {
+        if (!isFlagEnabled('ff.events')) return;
+        setShowDashboard(false);
+        setShowWellnessCounselling(false);
+        setShowUniversityEnrollment(false);
+        setShowNutritionCentersMap(false);
+        setShowActivityReport(false);
+        setShowActivityTimeReport(false);
+        setShowTestimonials(false);
+        setShowBroadcast(false);
+        setShowReports(false);
+        setShowAdminConfigSetup(false);
+        setShowManualEntry(false);
+        setShowWellnessScore(false);
+        setShowProfilePage(false);
+        startTransition(() => setShowEvents(true));
         Session.setCurrentPage('main');
       } else if (page === 'broadcast') {
         if (!isFlagEnabled('ff.broadcast')) return;
@@ -1305,7 +1337,46 @@ function WellnessValleyApp() {
         setShowAdminConfigSetup(false);
         setShowWellnessScore(false);
         setShowProfilePage(false);
+        setShowCreateEvent(false);
+        setShowPaidFeatures(false);
         startTransition(() => setShowBroadcast(true));
+        Session.setCurrentPage('main');
+      } else if (page === 'create-event') {
+        if (!isFlagEnabled('ff.create-event')) return;
+        bumpTabVisitKeyRef.current('create-event');
+        setShowDashboard(false);
+        setShowWellnessCounselling(false);
+        setShowUniversityEnrollment(false);
+        setShowNutritionCentersMap(false);
+        setShowActivityReport(false);
+        setShowActivityTimeReport(false);
+        setShowTestimonials(false);
+        setShowBroadcast(false);
+        setShowPaidFeatures(false);
+        setShowReports(false);
+        setShowAdminConfigSetup(false);
+        setShowWellnessScore(false);
+        setShowProfilePage(false);
+        startTransition(() => setShowCreateEvent(true));
+        Session.setCurrentPage('main');
+      } else if (page === 'paid-features') {
+        if (!isFlagEnabled('ff.coach-portfolio')) return;
+        bumpTabVisitKeyRef.current('paid-features');
+        setShowDashboard(false);
+        setShowWellnessCounselling(false);
+        setShowUniversityEnrollment(false);
+        setShowNutritionCentersMap(false);
+        setShowActivityReport(false);
+        setShowActivityTimeReport(false);
+        setShowTestimonials(false);
+        setShowEvents(false);
+        setShowBroadcast(false);
+        setShowCreateEvent(false);
+        setShowReports(false);
+        setShowAdminConfigSetup(false);
+        setShowWellnessScore(false);
+        setShowProfilePage(false);
+        startTransition(() => setShowPaidFeatures(true));
         Session.setCurrentPage('main');
       } else if (page === 'reports' || page === 'wellness-score-report') {
         if (!isFlagEnabled('ff.reports-module') || !canAccessReportsModule(userRole)) {
@@ -2452,6 +2523,21 @@ function WellnessValleyApp() {
       }
       if (showBroadcast) {
         setShowBroadcast(false);
+        setShowCreateEvent(false);
+        setShowPaidFeatures(false);
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        return true;
+      }
+      if (showCreateEvent) {
+        setShowCreateEvent(false);
+        setShowPaidFeatures(false);
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        return true;
+      }
+      if (showEvents) {
+        setShowEvents(false);
         const currentWvPage = window.history.state?.wvPage;
         if (currentWvPage && currentWvPage !== 'main') window.history.back();
         return true;
@@ -2462,7 +2548,7 @@ function WellnessValleyApp() {
     initializeBackButton(
       goBack,
       showToast,
-      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showBroadcast && !showReports && !showAdminConfigSetup && !showManualEntry && !showWellnessScore && !showProfilePage,
+      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showBroadcast && !showCreateEvent && !showPaidFeatures && !showEvents && !showReports && !showAdminConfigSetup && !showManualEntry && !showWellnessScore && !showProfilePage,
     );
     return () => cleanupBackButton();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- showMainPage is useCallback([]) stable; listing it here causes a TDZ crash because it is declared after this effect
@@ -2475,6 +2561,8 @@ function WellnessValleyApp() {
     showActivityTimeReport,
     showTestimonials,
     showBroadcast,
+    showCreateEvent,
+    showEvents,
     showReports,
     showAdminConfigSetup,
     showManualEntry,
@@ -2805,7 +2893,10 @@ function WellnessValleyApp() {
       setShowActivityReport(false);
       setShowActivityTimeReport(false);
       setShowTestimonials(false);
+      setShowEvents(false);
       setShowBroadcast(false);
+      setShowCreateEvent(false);
+      setShowPaidFeatures(false);
       setShowReports(false);
       setShowAdminConfigSetup(false);
       setShowManualEntry(false);
@@ -2835,7 +2926,10 @@ function WellnessValleyApp() {
         setShowActivityReport(false);
         setShowActivityTimeReport(false);
         setShowTestimonials(false);
+        setShowEvents(false);
         setShowBroadcast(false);
+        setShowCreateEvent(false);
+        setShowPaidFeatures(false);
         setShowReports(false);
         setShowAdminConfigSetup(false);
         setShowManualEntry(false);
@@ -2863,7 +2957,10 @@ function WellnessValleyApp() {
     setShowActivityReport(false);
     setShowActivityTimeReport(false);
     setShowTestimonials(false);
+    setShowEvents(false);
     setShowBroadcast(false);
+    setShowCreateEvent(false);
+    setShowPaidFeatures(false);
     setShowReports(false);
     setShowAdminConfigSetup(false);
     setShowManualEntry(false);
@@ -2906,9 +3003,22 @@ function WellnessValleyApp() {
       case 'testimonials':
         setShowTestimonials(true);
         break;
+      case 'events':
+        if (isFlagEnabled('ff.events')) setShowEvents(true);
+        break;
       case 'broadcast':
         if (isFlagEnabled('ff.broadcast')) {
           setShowBroadcast(true);
+        }
+        break;
+      case 'create-event':
+        if (isFlagEnabled('ff.create-event')) {
+          setShowCreateEvent(true);
+        }
+        break;
+      case 'paid-features':
+        if (isFlagEnabled('ff.coach-portfolio')) {
+          setShowPaidFeatures(true);
         }
         break;
       case 'reports':
@@ -7938,6 +8048,8 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
+          onShowCreateEvent={() => navigateTo('create-event')}
+          onShowPaidFeatures={() => navigateTo('paid-features')}
           onShowReports={() => navigateTo('reports')}
         />
         <div className="ios-scroll-body">
@@ -8078,6 +8190,8 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
+          onShowCreateEvent={() => navigateTo('create-event')}
+          onShowPaidFeatures={() => navigateTo('paid-features')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -8122,6 +8236,8 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
+          onShowCreateEvent={() => navigateTo('create-event')}
+          onShowPaidFeatures={() => navigateTo('paid-features')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -8162,6 +8278,8 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
+          onShowCreateEvent={() => navigateTo('create-event')}
+          onShowPaidFeatures={() => navigateTo('paid-features')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -8201,6 +8319,8 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
+          onShowCreateEvent={() => navigateTo('create-event')}
+          onShowPaidFeatures={() => navigateTo('paid-features')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -8239,6 +8359,8 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
+          onShowCreateEvent={() => navigateTo('create-event')}
+          onShowPaidFeatures={() => navigateTo('paid-features')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -8276,6 +8398,8 @@ function WellnessValleyApp() {
             onShowActivityReport={() => navigateTo('activity-report')}
             onShowTestimonials={() => navigateTo('testimonials')}
             onShowBroadcast={() => navigateTo('broadcast')}
+          onShowCreateEvent={() => navigateTo('create-event')}
+          onShowPaidFeatures={() => navigateTo('paid-features')}
             onShowReports={() => navigateTo('reports')}
             onOpenProfile={() => navigateTo('profile')}
             profileKey={headerProfileKey}
@@ -8337,6 +8461,8 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
+          onShowCreateEvent={() => navigateTo('create-event')}
+          onShowPaidFeatures={() => navigateTo('paid-features')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -8368,6 +8494,31 @@ function WellnessValleyApp() {
         </div>
       </div>
     );
+  } else if (showEvents && isFlagEnabled('ff.events')) {
+    homeOverlay = (
+      <div className="ios-full-page bg-gray-50">
+        <Header
+          user={user}
+          userRole={userRole}
+          allowedPages={navAccessPages}
+          activePage="events"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+          onShowBroadcast={() => navigateTo('broadcast')}
+          onShowReports={() => navigateTo('reports')}
+          onOpenProfile={() => navigateTo('profile')}
+          profileKey={headerProfileKey}
+        />
+        <div className="ios-scroll-body">
+          <EventsPage user={user} />
+        </div>
+      </div>
+    );
   } else if (showBroadcast && isFlagEnabled('ff.broadcast')) {
     homeOverlay = (
       <div className="ios-full-page bg-gray-50">
@@ -8384,6 +8535,8 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
+          onShowCreateEvent={() => navigateTo('create-event')}
+          onShowPaidFeatures={() => navigateTo('paid-features')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -8395,6 +8548,65 @@ function WellnessValleyApp() {
         </div>
       </div>
     );
+  } else if (showCreateEvent && isFlagEnabled('ff.create-event')) {
+    homeOverlay = (
+      <div className="ios-full-page bg-gray-50">
+        <Header
+          user={user}
+          userRole={userRole}
+          allowedPages={navAccessPages}
+          activePage="create-event"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+          onShowBroadcast={() => navigateTo('broadcast')}
+          onShowCreateEvent={() => navigateTo('create-event')}
+          onShowPaidFeatures={() => navigateTo('paid-features')}
+          onShowReports={() => navigateTo('reports')}
+          onOpenProfile={() => navigateTo('profile')}
+          profileKey={headerProfileKey}
+        />
+        <div className="ios-scroll-body">
+          <Suspense fallback={<LoadingSpinner message="Loading Create Event..." />}>
+            <CreateEventPage user={user} />
+          </Suspense>
+        </div>
+      </div>
+    );
+  } else if (showPaidFeatures && isFlagEnabled('ff.coach-portfolio')) {
+    homeOverlay = (
+      <div className="ios-full-page bg-gray-50">
+        <Header
+          user={user}
+          userRole={userRole}
+          allowedPages={navAccessPages}
+          activePage="paid-features"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+          onShowBroadcast={() => navigateTo('broadcast')}
+          onShowCreateEvent={() => navigateTo('create-event')}
+          onShowPaidFeatures={() => navigateTo('paid-features')}
+          onShowReports={() => navigateTo('reports')}
+          onOpenProfile={() => navigateTo('profile')}
+          profileKey={headerProfileKey}
+        />
+        <div className="ios-scroll-body">
+          <Suspense fallback={<LoadingSpinner message="Loading Paid Features..." />}>
+            <PaidFeaturesPage userId={user?.id || user?.UserId || user?.userId || null} />
+          </Suspense>
+        </div>
+      </div>
+    );
+
   } else if (showAdminConfigSetup && adminLikeRole) {
     homeOverlay = (
       <Suspense fallback={<LoadingSpinner message="Loading Admin Config Setup..." />}>
@@ -8559,6 +8771,8 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
+          onShowCreateEvent={() => navigateTo('create-event')}
+          onShowPaidFeatures={() => navigateTo('paid-features')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
@@ -8879,6 +9093,8 @@ function WellnessValleyApp() {
           onShowActivityReport={() => navigateTo('activity-report')}
           onShowTestimonials={() => navigateTo('testimonials')}
           onShowBroadcast={() => navigateTo('broadcast')}
+          onShowCreateEvent={() => navigateTo('create-event')}
+          onShowPaidFeatures={() => navigateTo('paid-features')}
           onShowReports={() => navigateTo('reports')}
           onShowWellnessScoreSetup={() => navigateTo('wellness-score-setup')}
           wellnessScoreSetupEnabled={['admin', 'developer'].includes(userRole) && isFlagEnabled('ff.wellness-score-sheet')}
@@ -8889,7 +9105,10 @@ function WellnessValleyApp() {
             showNutritionCentersMap ? 'physical-club' :
             showActivityReport || showActivityTimeReport ? 'activity-report' :
             showTestimonials ? 'testimonials' :
+            showEvents ? 'events' :
             showBroadcast ? 'broadcast' :
+            showCreateEvent ? 'create-event' :
+            showPaidFeatures ? 'paid-features' :
             showReports ? 'reports' :
             showAdminConfigSetup ? 'admin-config-setup' :
             'home'
@@ -9276,6 +9495,22 @@ function WellnessValleyApp() {
 
             {/* Bottom leaderboard tiles — static (no marquee scroll) */}
             <div className="space-y-2 xs:space-y-3 pt-1">
+              {isFlagEnabled('ff.events') && (
+                <button
+                  type="button"
+                  onClick={() => navigateTo('events')}
+                  className="flex w-full items-center gap-3 rounded-2xl border border-emerald-100 bg-white p-4 text-left shadow-sm transition hover:border-emerald-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100">
+                    <CalendarDays className="h-5 w-5 text-emerald-800" aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-bold text-gray-900">Wellness events</span>
+                    <span className="block text-xs text-gray-600">Explore activities and register</span>
+                  </span>
+                  <ArrowRight className="h-5 w-5 shrink-0 text-emerald-700" aria-hidden="true" />
+                </button>
+              )}
               {isFlagEnabled('ff.wellness-score-sheet') && (
                 <WellnessScoreLeaderboard
                   ref={wellnessLeaderboardRef}
@@ -10292,9 +10527,3 @@ const AppWithProviders = () => (
 );
 
 export default AppWithProviders;
-
-
-
-
-
-
