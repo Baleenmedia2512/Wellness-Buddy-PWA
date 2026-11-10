@@ -30,7 +30,8 @@
 			"*.firebaseio.com",
 			"share.wellnessvalley.app",
 			"*.wellnessvalley.app",
-			"wellnessvalley.in"
+			"wellnessvalley.in",
+			"test.wellnessvalley.in"
 		],
 		"cleartext": true
 	},
@@ -43,6 +44,9 @@
 		"initialFocus": true
 	},
 	"plugins": {
+		"CapacitorHttp": {
+			"enabled": true
+		},
 		"GoogleAuth": {
 			"scopes": [
 				"profile",
@@ -88,6 +92,7 @@
 		"SharePlugin",
 		"SplashScreenPlugin",
 		"StatusBarPlugin",
+		"AndroidSmsRetrieverPlugin",
 		"CapgoNavigationBarPlugin",
 		"GoogleAuth"
 	]

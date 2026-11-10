@@ -11,6 +11,7 @@ import {
 } from './reports.repository.js';
 import { computeIdealWeightRange } from '../../utils/weightValidation.js';
 import { paginateDownlineWeightRecords } from './domain/downline-weight.pagination.js';
+import { redactDownlineWeightResponse } from './domain/report-details.redaction.js';
 import { cache } from '../../utils/cache.js';
 
 /** Short TTL so page/filter changes reuse the expensive hierarchy+weight build. */
@@ -261,9 +262,10 @@ async function buildDownlineWeightSnapshot(coachId) {
  * search filters. Aggregate chip counts always reflect the full scoped set.
  *
  * @param {object} rawQuery
+ * @param {{ hideDetails?: boolean }} [options]
  * @returns {{ httpStatus: number, body: object }}
  */
-export async function getDownlineWeightStatus(rawQuery) {
+export async function getDownlineWeightStatus(rawQuery, options = {}) {
   const {
     coachId,
     page,
@@ -322,7 +324,7 @@ export async function getDownlineWeightStatus(rawQuery) {
     }
   }
 
-  return {
+  const result = {
     httpStatus: 200,
     body: {
       success: true,
@@ -343,4 +345,5 @@ export async function getDownlineWeightStatus(rawQuery) {
       pagination,
     },
   };
+  return options.hideDetails ? redactDownlineWeightResponse(result) : result;
 }

@@ -72,3 +72,41 @@ export async function hasPaidPremium({ userId, mode }) {
   );
   return Array.isArray(rows) && rows.length > 0;
 }
+
+/**
+ * Mark ranked people who have a paid Premium order.
+ * Extra `isPremium` on a list is safe for older apps: they ignore unknown fields.
+ * If the lookup fails, every row stays non-premium so the list still loads.
+ * @param {Array<object>} entries
+ * @param {{ mode: 'sandbox'|'production' }} input
+ * @returns {Promise<Array<object>>}
+ */
+export async function attachPremiumFlags(entries, { mode }) {
+  const list = Array.isArray(entries) ? entries : [];
+  const plain = () => list.map((entry) => ({ ...entry, isPremium: false }));
+  const ids = [...new Set(
+    list
+      .map((entry) => Number(entry?.userId))
+      .filter((id) => Number.isInteger(id) && id > 0),
+  )];
+  if (!ids.length) return plain();
+
+  try {
+    await ensureTable();
+    const placeholders = ids.map(() => '?').join(', ');
+    const rows = await getPrisma().$queryRawUnsafe(
+      `SELECT DISTINCT UserId AS userId FROM premium_orders_table
+       WHERE Mode = ? AND Status = 'paid' AND UserId IN (${placeholders})`,
+      String(mode),
+      ...ids,
+    );
+    const paid = new Set((rows || []).map((row) => Number(row.userId ?? row.UserId)));
+    return list.map((entry) => ({
+      ...entry,
+      isPremium: paid.has(Number(entry.userId)),
+    }));
+  } catch (error) {
+    logger.warn('premium flags skipped', { message: error?.message || String(error) });
+    return plain();
+  }
+}

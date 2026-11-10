@@ -18,11 +18,12 @@ import {
 
 const SEARCH_DEBOUNCE_MS = 300;
 
-export function useDownlineWeightReport({ coachId, tabVisitKey = 0 }) {
+export function useDownlineWeightReport({ coachId, tabVisitKey = 0, hideDetails = false }) {
   const [self, setSelf] = useState(null);
   const [filtered, setFiltered] = useState([]);
   const [teamScope, setTeamScope] = useState(TEAM_SCOPES.DIRECT);
   const [statusFilter, setStatusFilter] = useState(STATUS_FILTERS.OFF_TRACK);
+  const appliedStatusFilter = hideDetails ? STATUS_FILTERS.ALL : statusFilter;
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusCounts, setStatusCounts] = useState({
@@ -74,16 +75,16 @@ export function useDownlineWeightReport({ coachId, tabVisitKey = 0 }) {
         coachId,
         page,
         teamScope,
-        statusFilter,
+        appliedStatusFilter,
         debouncedSearch,
-        statusFilter === STATUS_FILTERS.ON_TRACK
+        appliedStatusFilter === STATUS_FILTERS.ON_TRACK
           ? 'reached_date'
-          : statusFilter === STATUS_FILTERS.OFF_TRACK || statusFilter === STATUS_FILTERS.ALL
+          : appliedStatusFilter === STATUS_FILTERS.OFF_TRACK || appliedStatusFilter === STATUS_FILTERS.ALL
             ? 'difference'
             : 'status',
         DOWNLINE_WEIGHT_PAGE_SIZE,
       ].join('|'),
-    [coachId, teamScope, statusFilter, debouncedSearch],
+    [coachId, teamScope, appliedStatusFilter, debouncedSearch],
   );
 
   const fetchPage = useCallback(
@@ -101,9 +102,9 @@ export function useDownlineWeightReport({ coachId, tabVisitKey = 0 }) {
       setError(null);
 
       const sort =
-        statusFilter === STATUS_FILTERS.ON_TRACK
+        appliedStatusFilter === STATUS_FILTERS.ON_TRACK
           ? 'reached_date'
-          : statusFilter === STATUS_FILTERS.OFF_TRACK || statusFilter === STATUS_FILTERS.ALL
+          : appliedStatusFilter === STATUS_FILTERS.OFF_TRACK || appliedStatusFilter === STATUS_FILTERS.ALL
             ? 'difference'
             : 'status';
 
@@ -113,7 +114,7 @@ export function useDownlineWeightReport({ coachId, tabVisitKey = 0 }) {
           limit: DOWNLINE_WEIGHT_PAGE_SIZE,
           search: debouncedSearch,
           teamFilter: teamScope,
-          statusFilter,
+          statusFilter: appliedStatusFilter,
           sort,
           bustCache,
         });
@@ -155,7 +156,7 @@ export function useDownlineWeightReport({ coachId, tabVisitKey = 0 }) {
         }
       }
     },
-    [coachId, teamScope, statusFilter, debouncedSearch, buildRequestKey],
+    [coachId, teamScope, appliedStatusFilter, debouncedSearch, buildRequestKey],
   );
 
   // Reset + fetch page 1 when filters / coach / tab visit change.

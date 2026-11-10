@@ -5,10 +5,15 @@ const STORAGE_MESSAGE = 'Events storage is not ready. Run backend/migrations/cre
 
 function storageFailure(err) {
   const message = String(err?.message || '');
+  // Stale Prisma client (model missing → undefined.findMany) or DB table absent.
   const missingTable = err?.code === 'P2021'
     || message.includes('events_table')
     || message.includes('does not exist')
-    || message.includes('datamodel');
+    || message.includes('datamodel')
+    || /reading 'findMany'/i.test(message)
+    || /reading 'create'/i.test(message)
+    || /reading 'findFirst'/i.test(message)
+    || /reading 'updateMany'/i.test(message);
   if (!missingTable) return null;
   return {
     httpStatus: 503,

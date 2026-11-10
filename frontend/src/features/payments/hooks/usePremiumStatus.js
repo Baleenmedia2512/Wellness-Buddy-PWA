@@ -22,6 +22,16 @@ export default function usePremiumStatus(userId) {
     return unsubscribe;
   }, [key]);
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    if (!key) {
+      document.documentElement.classList.remove('premium-theme');
+      return undefined;
+    }
+    document.documentElement.classList.toggle('premium-theme', premium === true);
+    return undefined;
+  }, [key, premium]);
+
   const refresh = useCallback(
     () => (key ? premiumStatusStore.load(key, { force: true }) : Promise.resolve(false)),
     [key],

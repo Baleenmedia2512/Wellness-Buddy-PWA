@@ -339,6 +339,7 @@ export default function WellnessScoreReport({
   user,
   tabVisitKey = 0,
   hidePageTitle = false,
+  hideDetails = false,
   embeddedStickyClass = 'sticky top-[6.5rem] z-20',
   onRefreshRegister,
 }) {
@@ -502,7 +503,7 @@ export default function WellnessScoreReport({
 
             <TouchFeedbackButton
               onClick={handleShare}
-              disabled={exporting || filtersBusy}
+              disabled={exporting || filtersBusy || hideDetails}
               className="flex-shrink-0 inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold bg-teal-50 text-teal-800 border border-teal-200 disabled:opacity-40"
               ariaLabel="Share Excel"
             >
@@ -642,19 +643,23 @@ export default function WellnessScoreReport({
                       </td>
                       <td className={`px-1 sm:px-2 py-1.5 text-[11px] sm:text-sm text-gray-800 border-b border-r border-gray-200 align-middle overflow-hidden ${TABLE_HEADERS[1].colClass}`}>
                         <span className="block truncate tabular-nums">
-                          {formatWeightKg(row.todayWeight, { compact: true }) || '—'}
+                          {hideDetails ? '—' : (formatWeightKg(row.todayWeight, { compact: true }) || '—')}
                         </span>
                       </td>
                       <td className={`px-0.5 sm:px-1.5 py-1.5 border-b border-r border-gray-200 align-middle overflow-hidden ${TABLE_HEADERS[2].colClass}`}>
-                        <WeightChangeCell
-                          todayWeight={row.todayWeight}
-                          previousWeight={row.previousWeight}
-                          difference={row.difference}
-                        />
+                        {hideDetails ? (
+                          <span className="block truncate text-[11px] sm:text-sm text-gray-400">—</span>
+                        ) : (
+                          <WeightChangeCell
+                            todayWeight={row.todayWeight}
+                            previousWeight={row.previousWeight}
+                            difference={row.difference}
+                          />
+                        )}
                       </td>
                       <td className={`px-1 sm:px-2 py-1.5 text-[11px] sm:text-sm font-semibold text-teal-800 border-b border-r border-gray-200 align-middle overflow-hidden tabular-nums ${TABLE_HEADERS[3].colClass}`}>
                         <span className="block truncate">
-                          {formatWellnessScore(row.totalEarned ?? row.wellnessScore)}
+                          {hideDetails ? '—' : formatWellnessScore(row.totalEarned ?? row.wellnessScore)}
                         </span>
                       </td>
                       <td className={`px-1 sm:px-2 py-1.5 text-[11px] sm:text-sm text-gray-700 border-b border-gray-200 align-middle overflow-hidden ${TABLE_HEADERS[4].colClass}`}>

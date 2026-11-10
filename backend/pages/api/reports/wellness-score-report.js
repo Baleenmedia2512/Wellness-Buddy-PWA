@@ -11,6 +11,7 @@
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import { getWellnessScoreReport } from '../../../features/reports/wellness-score-report.service.js';
+import { shouldHideReportDetails } from '../../../features/payments/api/report-access.handler.js';
 
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET, OPTIONS')) return;
@@ -23,5 +24,8 @@ export default async function handler(req, res) {
   // Avoid browser 304 revalidation (was waiting ~2s on a full origin recompute).
   // Client + server memory caches own freshness instead.
   res.setHeader('Cache-Control', 'private, no-store');
-  return runService(res, () => getWellnessScoreReport(req.query));
+  return runService(res, async () => {
+    const hideDetails = await shouldHideReportDetails(req, req.query?.coachId);
+    return getWellnessScoreReport(req.query, { hideDetails });
+  });
 }
