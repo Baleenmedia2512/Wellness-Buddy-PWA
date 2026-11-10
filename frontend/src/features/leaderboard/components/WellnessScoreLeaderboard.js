@@ -96,6 +96,9 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
   const [expandedAvatar, setExpandedAvatar] = useState(null);
   const [profileMember, setProfileMember] = useState(null);
   const isTile = variant === 'tile';
+  const [showTenDay, setShowTenDay] = useState(false);
+  const [tenDayData, setTenDayData] = useState([]);
+  const [tenDayStatus, setTenDayStatus] = useState('idle');
   const showTenDayRef = useRef(false);
   const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
     enabled: !isTile && isVisible && leaderboardData.length > 0,
