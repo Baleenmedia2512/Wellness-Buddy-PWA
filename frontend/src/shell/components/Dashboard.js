@@ -1438,6 +1438,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         isOpen={showMemberProfile}
         onClose={() => setShowMemberProfile(false)}
         memberEmail={selectedMember.email}
+        memberUserId={selectedMember.userId}
         apiBaseUrl={apiBaseUrl}
       />
     )}

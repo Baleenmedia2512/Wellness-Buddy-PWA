@@ -40,9 +40,10 @@ function displayText(value) {
  * @param {boolean}  isOpen        - Whether the modal is visible
  * @param {Function} onClose       - Close handler
  * @param {string}   memberEmail   - Email of the member whose profile to load
+ * @param {number|string} memberUserId - Numeric user id when email is unavailable
  * @param {string}   apiBaseUrl    - Base URL for API calls
  */
-const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) => {
+const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, memberUserId, apiBaseUrl }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -50,7 +51,11 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
   const [avatarBroken, setAvatarBroken] = useState(false);
 
   useEffect(() => {
-    if (!isOpen || !memberEmail) return undefined;
+    const email = String(memberEmail || '').trim();
+    const userId = memberUserId != null && String(memberUserId).trim() !== ''
+      ? memberUserId
+      : null;
+    if (!isOpen || (!email && !userId)) return undefined;
 
     let cancelled = false;
     const fetchProfile = async () => {
@@ -60,7 +65,7 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
       setEnlargedPhoto(null);
       setAvatarBroken(false);
       try {
-        const data = await fetchTeamMemberProfile(memberEmail, apiBaseUrl);
+        const data = await fetchTeamMemberProfile(email, apiBaseUrl, userId);
         if (cancelled) return;
         if (data.success && data.data) {
           setProfile(data.data);
@@ -78,7 +83,7 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
     return () => {
       cancelled = true;
     };
-  }, [isOpen, memberEmail, apiBaseUrl]);
+  }, [isOpen, memberEmail, memberUserId, apiBaseUrl]);
 
   if (!isOpen) return null;
 

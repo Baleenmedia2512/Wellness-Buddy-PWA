@@ -33,4 +33,21 @@ describe('fetchTeamMemberProfile', () => {
     assert.equal(data.success, true);
     assert.equal(data.data.userName, 'Balaji');
   });
+
+  it('loads by userId when email is missing', async () => {
+    let capturedUrl;
+    mock.method(global, 'fetch', async (url) => {
+      capturedUrl = String(url);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { userName: 'Dhivya' } }),
+      };
+    });
+
+    const data = await fetchTeamMemberProfile('', 'https://api.example.com', 922021);
+
+    assert.match(capturedUrl, /\/api\/user\/profile\?userId=922021/);
+    assert.equal(data.data.userName, 'Dhivya');
+  });
 });
