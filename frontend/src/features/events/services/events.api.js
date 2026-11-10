@@ -108,3 +108,85 @@ export function reportEventCheckInMisuse(payload) {
     body: JSON.stringify(payload),
   }).then(readJson);
 }
+export function formatEventTime(timeStr) {
+  if (!timeStr) return '';
+  const match = /^(\d{1,2}):(\d{2})/.exec(String(timeStr).trim());
+  if (!match) return String(timeStr);
+  let hours = Number(match[1]);
+  const minutes = match[2];
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12 || 12;
+  return `${hours}:${minutes} ${ampm}`;
+}
+
+export function formatEventTimeRange(start, end) {
+  const s = formatEventTime(start);
+  const e = formatEventTime(end);
+  if (s && e) return `${s} - ${e}`;
+  if (s) return s;
+  if (e) return e;
+  return '';
+}
+
+export function getEventDatesList(event) {
+  if (Array.isArray(event?.eventDates) && event.eventDates.length > 0) {
+    return event.eventDates.map((item) => {
+      if (typeof item === 'string') return { date: item, startTime: null, endTime: null };
+      return {
+        date: item.date || item.eventDate || '',
+        startTime: item.startTime || null,
+        endTime: item.endTime || null,
+      };
+    }).filter((item) => Boolean(item.date));
+  }
+  if (event?.eventDate) {
+    return [{
+      date: event.eventDate,
+      startTime: event.startTime || null,
+      endTime: event.endTime || null,
+    }];
+  }
+  return [];
+}
+
+export function formatEventScheduleSummary(event) {
+  const dates = getEventDatesList(event);
+  if (dates.length === 0) return '';
+  if (dates.length === 1) {
+    const single = dates[0];
+    const time = formatEventTimeRange(single.startTime, single.endTime);
+    return time ? `${single.date} · ${time}` : single.date;
+  }
+  const dateStrings = dates.map((d) => d.date).join(', ');
+  return `${dateStrings} (${dates.length} dates)`;
+}
+
+export function getEventPlacesList(event) {
+  if (Array.isArray(event?.places) && event.places.length > 0) {
+    return event.places.map((item) => {
+      if (typeof item === 'string') return { city: item, venue: null };
+      return {
+        city: item.city || item.place || '',
+        venue: item.venue || null,
+      };
+    }).filter((item) => Boolean(item.city));
+  }
+  const city = event?.city || event?.place || '';
+  if (city) {
+    return [{
+      city,
+      venue: event?.venue || null,
+    }];
+  }
+  return [];
+}
+
+export function formatEventPlacesSummary(event) {
+  const places = getEventPlacesList(event);
+  if (places.length === 0) return '';
+  if (places.length === 1) {
+    const single = places[0];
+    return single.venue ? `${single.city} · ${single.venue}` : single.city;
+  }
+  return places.map((p) => (p.venue ? `${p.city} (${p.venue})` : p.city)).join(' · ');
+}

@@ -2,7 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { ArrowRight, CalendarDays, MapPin, Ticket, User } from 'lucide-react';
 import wellnessValleyIcon from '../../../assets/wellness-valley-icon.png';
 import { getUserId } from '../../../shared/services/getUserId.js';
-import { listMyEventRegistrations } from '../services/events.api.js';
+import {
+  formatEventScheduleSummary,
+  formatEventTimeRange,
+  listMyEventRegistrations,
+} from '../services/events.api.js';
 import RegistrationQrCard from './RegistrationQrCard.jsx';
 
 const LIST_CARD_STYLES = [
@@ -32,7 +36,7 @@ function BookingPassCard({ booking, onBack }) {
   const eventName = booking.event?.eventName || `Event #${booking.eventId}`;
   const hostName = booking.event?.hostName || '';
   const place = booking.event?.place || '—';
-  const eventDate = booking.event?.eventDate || '—';
+  const eventDate = formatEventScheduleSummary(booking.event) || booking.event?.eventDate || '—';
   return (
     <div className="space-y-3">
       <button
@@ -172,7 +176,7 @@ export default function MyBookingsPanel({ user }) {
             const eventName = row.event?.eventName || `Event #${row.eventId}`;
             const hostName = row.event?.hostName || '';
             const place = row.event?.place || '—';
-            const eventDate = row.event?.eventDate || '—';
+            const eventDate = formatEventScheduleSummary(row.event) || row.event?.eventDate || '—';
             const checkedIn = Boolean(row.checkedInAt);
             const gradient = LIST_CARD_STYLES[index % LIST_CARD_STYLES.length];
             return (

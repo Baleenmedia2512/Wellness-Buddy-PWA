@@ -2,7 +2,7 @@ import { getPrisma } from '../../../shared/lib/prisma.js';
 import logger from '../../../shared/lib/logger.js';
 
 let ensureEventsColumnsPromise = null;
-let venueColumnReady = false;
+let eventColumnsReady = false;
 
 async function columnExists(prisma, columnName) {
   const rows = await prisma.$queryRawUnsafe(
@@ -17,12 +17,12 @@ async function columnExists(prisma, columnName) {
 }
 
 /**
- * Additive Venue column — old Place (city) rows stay valid.
- * Venue is read/written via raw SQL so a stale Prisma client without Venue still works.
- * Never throws: returns true when Venue is usable.
+ * Additive Venue, StartTime, and EndTime columns — old Place (city) rows stay valid.
+ * Read/written via raw SQL so a stale Prisma client without these columns still works.
+ * Never throws: returns true when columns are usable.
  */
-export async function ensureEventsVenueColumn() {
-  if (venueColumnReady) return true;
+export async function ensureEventsColumns() {
+  if (eventColumnsReady) return true;
   if (!ensureEventsColumnsPromise) {
     ensureEventsColumnsPromise = (async () => {
       try {
@@ -33,11 +33,35 @@ export async function ensureEventsVenueColumn() {
              ADD COLUMN Venue VARCHAR(300) NULL AFTER Place`,
           );
         }
-        venueColumnReady = true;
+        if (!(await columnExists(prisma, 'StartTime'))) {
+          await prisma.$executeRawUnsafe(
+            `ALTER TABLE events_table
+             ADD COLUMN StartTime VARCHAR(20) NULL AFTER EventDate`,
+          );
+        }
+        if (!(await columnExists(prisma, 'EndTime'))) {
+          await prisma.$executeRawUnsafe(
+            `ALTER TABLE events_table
+             ADD COLUMN EndTime VARCHAR(20) NULL AFTER StartTime`,
+          );
+        }
+        if (!(await columnExists(prisma, 'EventDates'))) {
+          await prisma.$executeRawUnsafe(
+            `ALTER TABLE events_table
+             ADD COLUMN EventDates JSON NULL AFTER EndTime`,
+          );
+        }
+        if (!(await columnExists(prisma, 'Places'))) {
+          await prisma.$executeRawUnsafe(
+            `ALTER TABLE events_table
+             ADD COLUMN Places JSON NULL AFTER EventDates`,
+          );
+        }
+        eventColumnsReady = true;
         return true;
       } catch (error) {
         ensureEventsColumnsPromise = null;
-        logger.warn('events venue column ensure failed', {
+        logger.warn('events columns ensure failed', {
           message: error?.message || String(error),
         });
         return false;
@@ -46,6 +70,8 @@ export async function ensureEventsVenueColumn() {
   }
   return ensureEventsColumnsPromise;
 }
+
+export const ensureEventsVenueColumn = ensureEventsColumns;
 
 function formatEventDate(value) {
   if (!value) return '';
@@ -72,26 +98,69 @@ function people(value) {
     .filter((item) => Number.isInteger(item.userId) && item.userId > 0 && item.name);
 }
 
-function toEvent(row, venueById = null) {
+function parseEventDatesJson(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function parsePlacesJson(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function toEvent(row, detailsById = null) {
   if (!row) return null;
   const place = row.Place;
   const id = row.Id;
-  let venue = null;
-  if (venueById && venueById.has(id)) {
-    venue = venueById.get(id);
-  } else if (row.Venue != null) {
-    venue = String(row.Venue || '').trim() || null;
-  }
+  const details = detailsById?.get(id) || {};
+  const venue = details.venue !== undefined
+    ? details.venue
+    : (row.Venue != null ? String(row.Venue || '').trim() || null : null);
+  const places = Array.isArray(details.places) && details.places.length > 0
+    ? details.places
+    : (place ? [{ city: place, place, venue: venue || null }] : []);
+  const startTime = details.startTime !== undefined
+    ? details.startTime
+    : (row.StartTime != null ? String(row.StartTime || '').trim() || null : null);
+  const endTime = details.endTime !== undefined
+    ? details.endTime
+    : (row.EndTime != null ? String(row.EndTime || '').trim() || null : null);
+  const eventDate = formatEventDate(row.EventDate);
+  const eventDates = Array.isArray(details.eventDates) && details.eventDates.length > 0
+    ? details.eventDates
+    : (eventDate ? [{ date: eventDate, startTime, endTime }] : []);
+
   return {
     id,
     createdByUserId: Number(row.CreatedByUserId) || undefined,
     eventName: row.EventName,
     hostName: row.HostName,
     place,
-    // Additive aliases for check-in / create UI — place stays for older clients.
     city: place,
     venue,
-    eventDate: formatEventDate(row.EventDate),
+    places,
+    eventDate,
+    startTime,
+    endTime,
+    eventDates,
     ticketPrice: money(row.TicketPrice),
     seatCount: row.SeatCount,
     designatedPersons: people(row.DesignatedPersons),
@@ -114,59 +183,99 @@ function fieldData(patch) {
   return data;
 }
 
-/** Load Venue values without going through Prisma model fields. */
-async function loadVenuesByIds(ids) {
+/** Load Venue, StartTime, EndTime, EventDates, Places values without going through Prisma model fields. */
+async function loadEventDetailsByIds(ids) {
   const map = new Map();
   const list = (Array.isArray(ids) ? ids : [])
     .map((id) => Number(id))
     .filter((id) => Number.isInteger(id) && id > 0);
   if (list.length === 0) return map;
-  const hasVenue = await ensureEventsVenueColumn();
-  if (!hasVenue) return map;
+  const hasColumns = await ensureEventsColumns();
+  if (!hasColumns) return map;
   try {
     const prisma = getPrisma();
     const placeholders = list.map(() => '?').join(', ');
-    const rows = await prisma.$queryRawUnsafe(
-      `SELECT Id, Venue FROM events_table WHERE Id IN (${placeholders})`,
-      ...list,
-    );
+    let rows;
+    try {
+      rows = await prisma.$queryRawUnsafe(
+        `SELECT Id, Venue, StartTime, EndTime, EventDates, Places FROM events_table WHERE Id IN (${placeholders})`,
+        ...list,
+      );
+    } catch {
+      rows = await prisma.$queryRawUnsafe(
+        `SELECT Id, Venue, StartTime, EndTime, EventDates FROM events_table WHERE Id IN (${placeholders})`,
+        ...list,
+      );
+    }
     for (const row of rows || []) {
       const id = Number(row.Id);
       const venue = String(row.Venue || '').trim() || null;
-      map.set(id, venue);
+      const startTime = String(row.StartTime || '').trim() || null;
+      const endTime = String(row.EndTime || '').trim() || null;
+      const eventDates = parseEventDatesJson(row.EventDates);
+      const places = parsePlacesJson(row.Places);
+      map.set(id, { venue, startTime, endTime, eventDates, places });
     }
   } catch (error) {
-    logger.warn('events venue load failed', { message: error?.message || String(error) });
+    logger.warn('events details load failed', { message: error?.message || String(error) });
   }
   return map;
 }
 
-async function saveVenueForEvent(id, venue) {
+async function saveEventDetails(id, { venue, startTime, endTime, eventDates, places } = {}) {
   const eventId = Number(id);
   if (!Number.isInteger(eventId) || eventId <= 0) return;
-  if (venue === undefined) return;
-  const hasVenue = await ensureEventsVenueColumn();
-  if (!hasVenue) return;
+  if (
+    venue === undefined
+    && startTime === undefined
+    && endTime === undefined
+    && eventDates === undefined
+    && places === undefined
+  ) return;
+  const hasColumns = await ensureEventsColumns();
+  if (!hasColumns) return;
   try {
     const prisma = getPrisma();
-    const value = venue ? String(venue).trim() : null;
+    const updates = [];
+    const params = [];
+    if (venue !== undefined) {
+      updates.push('Venue = ?');
+      params.push(venue ? String(venue).trim() : null);
+    }
+    if (startTime !== undefined) {
+      updates.push('StartTime = ?');
+      params.push(startTime ? String(startTime).trim() : null);
+    }
+    if (endTime !== undefined) {
+      updates.push('EndTime = ?');
+      params.push(endTime ? String(endTime).trim() : null);
+    }
+    if (eventDates !== undefined) {
+      updates.push('EventDates = ?');
+      params.push(Array.isArray(eventDates) && eventDates.length > 0 ? JSON.stringify(eventDates) : null);
+    }
+    if (places !== undefined) {
+      updates.push('Places = ?');
+      params.push(Array.isArray(places) && places.length > 0 ? JSON.stringify(places) : null);
+    }
+    if (updates.length === 0) return;
+    params.push(eventId);
     await prisma.$executeRawUnsafe(
-      `UPDATE events_table SET Venue = ? WHERE Id = ?`,
-      value,
-      eventId,
+      `UPDATE events_table SET ${updates.join(', ')} WHERE Id = ?`,
+      ...params,
     );
   } catch (error) {
-    logger.warn('events venue save failed', {
+    logger.warn('events details save failed', {
       eventId,
       message: error?.message || String(error),
     });
   }
 }
 
-async function withVenues(rows) {
+async function withEventDetails(rows) {
   const list = Array.isArray(rows) ? rows.filter(Boolean) : [];
-  const venueById = await loadVenuesByIds(list.map((row) => row.Id));
-  return list.map((row) => toEvent(row, venueById));
+  const detailsById = await loadEventDetailsByIds(list.map((row) => row.Id));
+  return list.map((row) => toEvent(row, detailsById));
 }
 
 export async function listEventsByOwner(userId) {
@@ -175,7 +284,7 @@ export async function listEventsByOwner(userId) {
     where: { CreatedByUserId: userId, IsDeleted: 0 },
     orderBy: { UpdatedAt: 'desc' },
   });
-  return withVenues(rows);
+  return withEventDetails(rows);
 }
 
 export async function insertEvent(input) {
@@ -188,8 +297,14 @@ export async function insertEvent(input) {
       ...fieldData(input),
     },
   });
-  await saveVenueForEvent(row.Id, input.venue);
-  const [event] = await withVenues([row]);
+  await saveEventDetails(row.Id, {
+    venue: input.venue,
+    startTime: input.startTime,
+    endTime: input.endTime,
+    eventDates: input.eventDates,
+    places: input.places,
+  });
+  const [event] = await withEventDetails([row]);
   return event;
 }
 
@@ -199,7 +314,7 @@ export async function findOwnedEvent(id, userId) {
     where: { Id: id, CreatedByUserId: userId, IsDeleted: 0 },
   });
   if (!row) return null;
-  const [event] = await withVenues([row]);
+  const [event] = await withEventDetails([row]);
   return event;
 }
 
@@ -209,7 +324,7 @@ export async function findActiveEventById(id) {
     where: { Id: id, IsDeleted: 0 },
   });
   if (!row) return null;
-  const [event] = await withVenues([row]);
+  const [event] = await withEventDetails([row]);
   return event;
 }
 
@@ -222,7 +337,7 @@ export async function listOpenEvents() {
       Status: { in: ['scheduled', 'postponed'] },
     },
     // Only fields the list/register UI needs — keeps open-list fast.
-    // Do not select Venue here — Prisma client may be stale; venue loaded via raw SQL.
+    // Do not select additive raw SQL columns here so stale clients keep working.
     select: {
       Id: true,
       CreatedByUserId: true,
@@ -239,7 +354,7 @@ export async function listOpenEvents() {
     },
     orderBy: [{ EventDate: 'asc' }, { UpdatedAt: 'desc' }],
   });
-  return withVenues(rows);
+  return withEventDetails(rows);
 }
 
 export async function updateOwnedEvent(id, userId, patch) {
@@ -249,8 +364,20 @@ export async function updateOwnedEvent(id, userId, patch) {
     data: fieldData(patch),
   });
   if (result.count !== 1) return null;
-  if (patch.venue !== undefined) {
-    await saveVenueForEvent(id, patch.venue);
+  if (
+    patch.venue !== undefined
+    || patch.startTime !== undefined
+    || patch.endTime !== undefined
+    || patch.eventDates !== undefined
+    || patch.places !== undefined
+  ) {
+    await saveEventDetails(id, {
+      venue: patch.venue,
+      startTime: patch.startTime,
+      endTime: patch.endTime,
+      eventDates: patch.eventDates,
+      places: patch.places,
+    });
   }
   return findOwnedEvent(id, userId);
 }

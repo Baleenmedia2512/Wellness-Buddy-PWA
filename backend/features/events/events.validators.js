@@ -36,8 +36,13 @@ export function validateUpdateEvent(body) {
     || body?.hostName != null
     || body?.host != null
     || body?.place != null
+    || body?.places != null
+    || body?.venue != null
     || body?.eventDate != null
+    || body?.eventDates != null
     || body?.date != null
+    || body?.startTime != null
+    || body?.endTime != null
     || body?.ticketPrice != null
     || body?.seatCount != null
     || body?.designatedPersons != null;

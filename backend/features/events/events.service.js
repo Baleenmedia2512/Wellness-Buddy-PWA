@@ -79,7 +79,12 @@ function withEventSummary(registration, event) {
           eventName: event.eventName,
           hostName: event.hostName,
           place: event.place,
+          venue: event.venue,
+          places: event.places,
           eventDate: event.eventDate,
+          startTime: event.startTime,
+          endTime: event.endTime,
+          eventDates: event.eventDates,
           ticketPrice: event.ticketPrice,
           status: event.status,
         }

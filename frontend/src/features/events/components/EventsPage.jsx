@@ -16,6 +16,9 @@ import { WalletButton } from '../../wallet/index.js';
 import {
   createEventRegistration,
   EVENTS_UPDATED_EVENT,
+  formatEventPlacesSummary,
+  formatEventTimeRange,
+  getEventDatesList,
   listOpenEvents,
   notifyEventsUpdated,
 } from '../services/events.api.js';
@@ -78,7 +81,14 @@ function SoldOutSign({ className = '' }) {
 const FOOD_TYPE_OPTIONS = [
   'VEG',
   'NON VEG',
+  'NO PREFERENCE',
   'VEG & NON VEG',
+];
+
+const FOOD_TYPE_SELECT_OPTIONS = [
+  { value: 'VEG', label: 'Veg' },
+  { value: 'NON VEG', label: 'Non-Veg' },
+  { value: 'NO PREFERENCE', label: 'No Preference' },
 ];
 
 /** Profile-autofilled fields stay in state + API payload; not shown on the form UI. */
@@ -100,11 +110,25 @@ function isAttendOnline(value) {
   return String(value || '').trim().toLowerCase() === ATTEND_CITY_ONLINE;
 }
 
-function buildAttendCityOptions(place) {
+function buildAttendCityOptions(eventOrPlace) {
   const options = [ATTEND_CITY_ONLINE];
-  const trimmedPlace = String(place || '').trim();
-  if (trimmedPlace && !isAttendOnline(trimmedPlace)) {
-    options.push(trimmedPlace);
+  if (!eventOrPlace) return options;
+  if (typeof eventOrPlace === 'string') {
+    const trimmed = eventOrPlace.trim();
+    if (trimmed && !isAttendOnline(trimmed)) options.push(trimmed);
+    return options;
+  }
+  const seen = new Set();
+  const places = Array.isArray(eventOrPlace.places) && eventOrPlace.places.length > 0
+    ? eventOrPlace.places
+    : (eventOrPlace.place || eventOrPlace.city ? [{ city: eventOrPlace.place || eventOrPlace.city }] : []);
+
+  for (const p of places) {
+    const city = typeof p === 'string' ? p.trim() : String(p?.city || p?.place || '').trim();
+    if (city && !isAttendOnline(city) && !seen.has(city.toLowerCase())) {
+      seen.add(city.toLowerCase());
+      options.push(city);
+    }
   }
   return options;
 }
@@ -147,6 +171,14 @@ function mapDietPreferenceToFoodType(dietPreference) {
     || diet === 'pescatarian'
   ) {
     return 'NON VEG';
+  }
+  if (
+    diet === 'no preference'
+    || diet === 'none'
+    || diet === 'any'
+    || diet === 'no_preference'
+  ) {
+    return 'NO PREFERENCE';
   }
   if (FOOD_TYPE_OPTIONS.includes(String(dietPreference || '').trim().toUpperCase())) {
     return String(dietPreference).trim().toUpperCase();
@@ -398,7 +430,7 @@ function EventsPage({ user }) {
     // Autofill fields are hidden in UI — missing values mean Profile needs updating.
     if (!translation) nextErrors.translation = 'Set Translation in Profile';
     if (!attendCity) nextErrors.attendCity = 'This is a required question';
-    if (!foodType) nextErrors.foodType = 'Set Food Type (Diet Preference) in Profile';
+    if (!foodType) nextErrors.foodType = 'This is a required question';
     if (!uplinePresidentTeam?.name) nextErrors.uplinePresidentTeam = 'This is a required question';
     if (!uplineMillTeam?.name) nextErrors.uplineMillTeam = 'This is a required question';
     if (!teamIncharge?.name) nextErrors.teamIncharge = 'This is a required question';
@@ -494,7 +526,7 @@ function EventsPage({ user }) {
     }
   };
 
-  const attendCityOptions = buildAttendCityOptions(selectedEvent?.place);
+  const attendCityOptions = buildAttendCityOptions(selectedEvent);
 
   return (
     <main className="min-h-full overflow-x-hidden bg-gray-50 px-3 py-5 sm:px-5">
@@ -638,6 +670,34 @@ function EventsPage({ user }) {
                     {formErrors.attendCity ? (
                       <p className="mt-2 text-sm text-rose-600" role="alert">
                         {formErrors.attendCity}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div
+                    className={`rounded-xl border bg-white p-4 ${
+                      formErrors.foodType ? 'border-rose-400' : 'border-white/80'
+                    }`}
+                  >
+                    <label htmlFor="event-registration-food-type-trigger" className="block text-sm font-semibold text-gray-900">
+                      Food Type <span className="text-rose-600">*</span>
+                    </label>
+                    <RegistrationSelect
+                      id="event-registration-food-type"
+                      name="foodType"
+                      required
+                      placeholder="Choose food type"
+                      value={foodType}
+                      options={FOOD_TYPE_SELECT_OPTIONS}
+                      hasError={Boolean(formErrors.foodType)}
+                      onChange={(next) => {
+                        setFoodType(next);
+                        setFormErrors((prev) => ({ ...prev, foodType: undefined }));
+                      }}
+                    />
+                    {formErrors.foodType ? (
+                      <p className="mt-2 text-sm text-rose-600" role="alert">
+                        {formErrors.foodType}
                       </p>
                     ) : null}
                   </div>
@@ -856,10 +916,23 @@ function EventsPage({ user }) {
                           </h2>
                           <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] leading-4 text-white/95 sm:text-xs">
                             <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
-                            {event.place}
+                            {formatEventPlacesSummary(event) || event.place}
                           </p>
                           <p className="mt-1 text-[10px] leading-4 text-white/85">
-                            {event.eventDate} · Host: {event.hostName} · {formatTicketPrice(event.ticketPrice)} ·{' '}
+                            {getEventDatesList(event).length > 1 ? (
+                              <span>
+                                {getEventDatesList(event).length} dates: {getEventDatesList(event).map((d) => d.date).join(', ')}
+                              </span>
+                            ) : (
+                              <span>
+                                {event.eventDate}
+                                {formatEventTimeRange(event.startTime, event.endTime)
+                                  ? ` · ${formatEventTimeRange(event.startTime, event.endTime)}`
+                                  : ''}
+                              </span>
+                            )}
+                            {' · Host: '}
+                            {event.hostName} · {formatTicketPrice(event.ticketPrice)} ·{' '}
                             {event.seatCount} seats
                           </p>
                           {designatedNames.length > 0 && (

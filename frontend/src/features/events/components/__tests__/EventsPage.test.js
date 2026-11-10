@@ -19,14 +19,18 @@ jest.mock('../../../../shared/services/getUserId.js', () => ({
   getUserId: jest.fn(),
 }));
 
-jest.mock('../../services/events.api.js', () => ({
-  EVENTS_UPDATED_EVENT: 'wellness-events-updated',
-  listOpenEvents: jest.fn(),
-  listMyEventRegistrations: jest.fn().mockResolvedValue({ registrations: [] }),
-  checkInEventRegistration: jest.fn(),
-  searchEventPeople: jest.fn(),
-  createEventRegistration: jest.fn(),
-}));
+jest.mock('../../services/events.api.js', () => {
+  const actual = jest.requireActual('../../services/events.api.js');
+  return {
+    ...actual,
+    EVENTS_UPDATED_EVENT: 'wellness-events-updated',
+    listOpenEvents: jest.fn(),
+    listMyEventRegistrations: jest.fn().mockResolvedValue({ registrations: [] }),
+    checkInEventRegistration: jest.fn(),
+    searchEventPeople: jest.fn(),
+    createEventRegistration: jest.fn(),
+  };
+});
 
 jest.mock('../../../user/services/profileService.js', () => ({
   fetchProfile: jest.fn(),
@@ -164,12 +168,14 @@ describe('EventsPage', () => {
 
     const ticketInput = container.querySelector('input[name="ticketNo"]');
     const attendCitySelect = container.querySelector('select[name="attendCity"]');
+    const foodTypeSelect = container.querySelector('select[name="foodType"]');
     expect(ticketInput).not.toBeNull();
     expect(attendCitySelect).not.toBeNull();
+    expect(foodTypeSelect).not.toBeNull();
     expect(attendCitySelect.value).toBe('online');
+    expect(foodTypeSelect.value).toBe('VEG');
     // Autofill fields stay out of the UI but still go to the backend.
     expect(container.querySelector('select[name="translation"]')).toBeNull();
-    expect(container.querySelector('select[name="foodType"]')).toBeNull();
     expect(container.querySelector('select[name="yourCity"]')).toBeNull();
     expect(container.querySelector('select[name="level"]')).toBeNull();
     expect(container.querySelector('input[name="name"]')).toBeNull();

@@ -39,7 +39,15 @@ describe('normalizeEventDraft', () => {
       hostName: 'Anita',
       place: 'Club hall',
       venue: null,
+      places: [
+        { city: 'Club hall', place: 'Club hall', venue: null },
+      ],
       eventDate: '2026-11-02',
+      startTime: null,
+      endTime: null,
+      eventDates: [
+        { date: '2026-11-02', startTime: null, endTime: null },
+      ],
       ticketPrice: 199.5,
       seatCount: 40,
       designatedPersons: [
@@ -47,6 +55,81 @@ describe('normalizeEventDraft', () => {
         { userId: 18, name: 'Meera' },
       ],
     });
+  });
+
+  it('accepts multiple places and optional venues', () => {
+    const result = normalizeEventDraft({
+      ...validDraft,
+      places: [
+        { city: 'Chennai', venue: 'Trade Centre' },
+        { city: 'Madurai' },
+      ],
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.value.place, 'Chennai');
+    assert.equal(result.value.venue, 'Trade Centre');
+    assert.deepEqual(result.value.places, [
+      { city: 'Chennai', place: 'Chennai', venue: 'Trade Centre' },
+      { city: 'Madurai', place: 'Madurai', venue: null },
+    ]);
+  });
+
+  it('accepts multiple eventDates and sorts them chronologically', () => {
+    const result = normalizeEventDraft({
+      ...validDraft,
+      eventDates: [
+        { date: '2026-11-20', startTime: '14:00', endTime: '17:00' },
+        { date: '2026-11-15', startTime: '09:00', endTime: '12:00' },
+      ],
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.value.eventDate, '2026-11-15');
+    assert.equal(result.value.startTime, '09:00');
+    assert.equal(result.value.endTime, '12:00');
+    assert.deepEqual(result.value.eventDates, [
+      { date: '2026-11-15', startTime: '09:00', endTime: '12:00' },
+      { date: '2026-11-20', startTime: '14:00', endTime: '17:00' },
+    ]);
+  });
+
+  it('accepts valid start and end times and normalizes them', () => {
+    const result = normalizeEventDraft({
+      ...validDraft,
+      startTime: '09:30',
+      endTime: '11:00',
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.value.startTime, '09:30');
+    assert.equal(result.value.endTime, '11:00');
+  });
+
+  it('accepts 12-hour AM/PM times and normalizes to 24-hour format', () => {
+    const result = normalizeEventDraft({
+      ...validDraft,
+      startTime: '9:30 AM',
+      endTime: '2:15 PM',
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.value.startTime, '09:30');
+    assert.equal(result.value.endTime, '14:15');
+  });
+
+  it('rejects startTime equal to or after endTime', () => {
+    const result = normalizeEventDraft({
+      ...validDraft,
+      startTime: '14:00',
+      endTime: '10:00',
+    });
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.some((line) => line.includes('End time must be after start time')));
+
+    const sameTimeResult = normalizeEventDraft({
+      ...validDraft,
+      startTime: '10:00',
+      endTime: '10:00',
+    });
+    assert.equal(sameTimeResult.ok, false);
+    assert.ok(sameTimeResult.errors.some((line) => line.includes('End time must be after start time')));
   });
 
   it('rejects missing fields, a bad date, and no designated person', () => {
@@ -145,6 +228,58 @@ describe('normalizeEventRegistrationDraft', () => {
     assert.equal(result.value.translation, 'TAMIL');
     assert.equal(result.value.eventId, 8);
     assert.equal(result.value.daicyTeamIncharge.uplineLabel, 'Incharge Arun / President Ravi');
+  });
+
+  it('accepts NO PREFERENCE and normalizes non-veg food types', () => {
+    const res1 = normalizeEventRegistrationDraft({
+      eventId: 8,
+      translation: 'tamil',
+      attendCity: 'Community Hall',
+      foodType: 'no preference',
+      uplinePresidentTeam: { userId: 21, name: 'President Ravi' },
+      uplineMillTeam: { userId: 22, name: 'Mill Meena' },
+      clubNo: 'CLUB-17',
+      zoomEmail: 'creator@example.com',
+      name: 'Logged In User',
+      idNo: '17',
+      level: 'ASSOCIATE',
+      phoneNumber: '9000000017',
+      participantCount: 1,
+      ticketNo: 'T-55',
+      yourCity: 'CHENNAI',
+      teamIncharge: { userId: 23, name: 'Incharge Arun' },
+      daicyTeamIncharge: {
+        userId: 24,
+        name: 'Daicy Devi',
+      },
+    });
+    assert.equal(res1.ok, true);
+    assert.equal(res1.value.foodType, 'NO PREFERENCE');
+
+    const res2 = normalizeEventRegistrationDraft({
+      eventId: 8,
+      translation: 'tamil',
+      attendCity: 'Community Hall',
+      foodType: 'non-veg',
+      uplinePresidentTeam: { userId: 21, name: 'President Ravi' },
+      uplineMillTeam: { userId: 22, name: 'Mill Meena' },
+      clubNo: 'CLUB-17',
+      zoomEmail: 'creator@example.com',
+      name: 'Logged In User',
+      idNo: '17',
+      level: 'ASSOCIATE',
+      phoneNumber: '9000000017',
+      participantCount: 1,
+      ticketNo: 'T-55',
+      yourCity: 'CHENNAI',
+      teamIncharge: { userId: 23, name: 'Incharge Arun' },
+      daicyTeamIncharge: {
+        userId: 24,
+        name: 'Daicy Devi',
+      },
+    });
+    assert.equal(res2.ok, true);
+    assert.equal(res2.value.foodType, 'NON VEG');
   });
 
   it('rejects missing required registration fields', () => {
