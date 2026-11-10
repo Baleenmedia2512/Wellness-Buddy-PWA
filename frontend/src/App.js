@@ -65,7 +65,8 @@ import { WeightShareCard } from "./shell/components/WeightShareCard";
 import { WeightResultCard } from "./shell/components/WeightResultCard";
 import { Capacitor } from "@capacitor/core";
 import wellnessValleyIcon from "./assets/wellness-valley-icon.png";
-import { Bug, Share2, Pencil, Check, X as XIcon, Sparkles } from "lucide-react";
+
+import { Bug, Share2, Pencil, Check, X as XIcon, Sparkles, CalendarDays, ArrowRight, Megaphone } from "lucide-react";
 import ImageUpload from "./shared/components/ImageUpload";
 import {
   NutritionCard,
@@ -79,6 +80,7 @@ import {
   withMarathonWhatsAppNotice,
 } from "./features/marathon";
 import { EducationLogCard } from "./features/education";
+import { EventsPage } from "./features/events";
 import { WatchActivityCard } from "./features/activity";
 import LoadingSpinner from "./shared/components/LoadingSpinner";
 import { Login, ConsentForm } from "./features/user";
@@ -1072,6 +1074,7 @@ function WellnessValleyApp() {
   const [showTestimonials, setShowTestimonials] = useState(false);
   const [showBroadcast, setShowBroadcast] = useState(false);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
+  const [showEvents, setShowEvents] = useState(false);
   // Reports page — common module (Ideal Weight, Wellness Score, Nutrition, Trend).
   const [showReports, setShowReports] = useState(false);
   const [reportsDashboardTab, setReportsDashboardTab] = useState(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
@@ -1251,6 +1254,7 @@ function WellnessValleyApp() {
         setShowActivityReport(false);
         setShowActivityTimeReport(false);
         setShowTestimonials(false);
+        setShowEvents(false);
         setShowBroadcast(false);
         setShowCreateEvent(false);
         setShowReports(false);
@@ -1295,6 +1299,23 @@ function WellnessValleyApp() {
         setShowBroadcast(false);
         setShowCreateEvent(false);
         startTransition(() => setShowTestimonials(true));
+        Session.setCurrentPage('main');
+      } else if (page === 'events') {
+        if (!isFlagEnabled('ff.events')) return;
+        setShowDashboard(false);
+        setShowWellnessCounselling(false);
+        setShowUniversityEnrollment(false);
+        setShowNutritionCentersMap(false);
+        setShowActivityReport(false);
+        setShowActivityTimeReport(false);
+        setShowTestimonials(false);
+        setShowBroadcast(false);
+        setShowReports(false);
+        setShowAdminConfigSetup(false);
+        setShowManualEntry(false);
+        setShowWellnessScore(false);
+        setShowProfilePage(false);
+        startTransition(() => setShowEvents(true));
         Session.setCurrentPage('main');
       } else if (page === 'broadcast') {
         if (!isFlagEnabled('ff.broadcast')) return;
@@ -2486,13 +2507,19 @@ function WellnessValleyApp() {
         if (currentWvPage && currentWvPage !== 'main') window.history.back();
         return true;
       }
+      if (showEvents) {
+        setShowEvents(false);
+        const currentWvPage = window.history.state?.wvPage;
+        if (currentWvPage && currentWvPage !== 'main') window.history.back();
+        return true;
+      }
       return false; // all navigation cases handled above; no Ionic router fallback needed
     };
 
     initializeBackButton(
       goBack,
       showToast,
-      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showBroadcast && !showCreateEvent && !showReports && !showAdminConfigSetup && !showManualEntry && !showWellnessScore && !showProfilePage,
+      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showBroadcast && !showEvents && !showReports && !showAdminConfigSetup && !showManualEntry && !showWellnessScore && !showProfilePage,
     );
     return () => cleanupBackButton();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- showMainPage is useCallback([]) stable; listing it here causes a TDZ crash because it is declared after this effect
@@ -2506,6 +2533,7 @@ function WellnessValleyApp() {
     showTestimonials,
     showBroadcast,
     showCreateEvent,
+    showEvents,
     showReports,
     showAdminConfigSetup,
     showManualEntry,
@@ -2836,6 +2864,7 @@ function WellnessValleyApp() {
       setShowActivityReport(false);
       setShowActivityTimeReport(false);
       setShowTestimonials(false);
+      setShowEvents(false);
       setShowBroadcast(false);
       setShowCreateEvent(false);
       setShowReports(false);
@@ -2867,6 +2896,7 @@ function WellnessValleyApp() {
         setShowActivityReport(false);
         setShowActivityTimeReport(false);
         setShowTestimonials(false);
+        setShowEvents(false);
         setShowBroadcast(false);
         setShowCreateEvent(false);
         setShowReports(false);
@@ -2896,6 +2926,7 @@ function WellnessValleyApp() {
     setShowActivityReport(false);
     setShowActivityTimeReport(false);
     setShowTestimonials(false);
+    setShowEvents(false);
     setShowBroadcast(false);
     setShowCreateEvent(false);
     setShowReports(false);
@@ -2939,6 +2970,9 @@ function WellnessValleyApp() {
         break;
       case 'testimonials':
         setShowTestimonials(true);
+        break;
+      case 'events':
+        if (isFlagEnabled('ff.events')) setShowEvents(true);
         break;
       case 'broadcast':
         if (isFlagEnabled('ff.broadcast')) {
@@ -8415,6 +8449,32 @@ function WellnessValleyApp() {
         </div>
       </div>
     );
+  } else if (showEvents && isFlagEnabled('ff.events')) {
+    homeOverlay = (
+      <div className="ios-full-page bg-gray-50">
+        <Header
+          user={user}
+          userRole={userRole}
+          allowedPages={navAccessPages}
+          activePage="events"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+          onShowBroadcast={() => navigateTo('broadcast')}
+          onShowCreateEvent={() => navigateTo('create-event')}
+          onShowReports={() => navigateTo('reports')}
+          onOpenProfile={() => navigateTo('profile')}
+          profileKey={headerProfileKey}
+        />
+        <div className="ios-scroll-body">
+          <EventsPage user={user} />
+        </div>
+      </div>
+    );
   } else if (showBroadcast && isFlagEnabled('ff.broadcast')) {
     homeOverlay = (
       <div className="ios-full-page bg-gray-50">
@@ -8967,6 +9027,7 @@ function WellnessValleyApp() {
             showNutritionCentersMap ? 'physical-club' :
             showActivityReport || showActivityTimeReport ? 'activity-report' :
             showTestimonials ? 'testimonials' :
+            showEvents ? 'events' :
             showBroadcast ? 'broadcast' :
             showCreateEvent ? 'create-event' :
             showReports ? 'reports' :
@@ -9355,6 +9416,67 @@ function WellnessValleyApp() {
 
             {/* Bottom leaderboard tiles — static (no marquee scroll) */}
             <div className="space-y-2 xs:space-y-3 pt-1">
+             
+{isFlagEnabled('ff.events') && (
+  <button
+    type="button"
+    onClick={() => navigateTo('events')}
+    className="wellness-events-card group relative flex w-full items-center gap-3 overflow-hidden rounded-3xl border border-purple-200/80 p-4 text-left shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 sm:gap-5 sm:p-5"
+  >
+    {/* Soft animated background waves */}
+    <span
+      aria-hidden="true"
+      className="wellness-events-wave wellness-events-wave-one"
+    />
+    <span
+      aria-hidden="true"
+      className="wellness-events-wave wellness-events-wave-two"
+    />
+
+    {/* Floating sparkles */}
+    <span aria-hidden="true" className="wellness-events-sparkle sparkle-one">
+      ✦
+    </span>
+    <span aria-hidden="true" className="wellness-events-sparkle sparkle-two">
+      ✨
+    </span>
+
+    {/* Calendar illustration */}
+    <span
+      aria-hidden="true"
+      className="wellness-events-calendar relative z-10 flex h-16 w-16 shrink-0 items-center justify-center sm:h-20 sm:w-20"
+    >
+      <CalendarDays className="h-12 w-12 text-purple-700 drop-shadow-md sm:h-16 sm:w-16" />
+      <span className="wellness-events-star">★</span>
+    </span>
+
+    {/* Event text */}
+    <span className="relative z-10 min-w-0 flex-1">
+      <span className="block text-base font-extrabold tracking-tight text-purple-950 sm:text-xl">
+        Wellness Events
+      </span>
+      <span className="mt-1 block text-xs font-medium text-purple-800 sm:text-sm">
+        Discover events and register
+      </span>
+    </span>
+
+    {/* Megaphone illustration */}
+    <span
+      aria-hidden="true"
+      className="wellness-events-megaphone relative z-10 hidden shrink-0 sm:block"
+    >
+      <Megaphone className="h-10 w-10 text-purple-700 drop-shadow-sm" />
+    </span>
+
+    {/* Action button */}
+    <span className="relative z-10 inline-flex shrink-0 items-center gap-1 rounded-full border border-purple-300 bg-white/90 px-3 py-2 text-xs font-bold text-purple-900 shadow-sm transition-all duration-300 group-hover:border-purple-500 group-hover:bg-purple-700 group-hover:text-white sm:px-4 sm:text-sm">
+      Show events
+      <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+    </span>
+  </button>
+)}
+
+              
               {isFlagEnabled('ff.wellness-score-sheet') && (
                 <WellnessScoreLeaderboard
                   ref={wellnessLeaderboardRef}
@@ -10108,7 +10230,8 @@ function WellnessValleyApp() {
           >
             <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
               {/* Header */}
-              <div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white p-4 md:p-6 flex items-center justify-between">
+
+<div className="bg-gradient-to-r from-blue-700 to-sky-500 text-white p-4 md:p-6 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Bug className="w-6 h-6 md:w-8 md:h-8" />
                   <div>
@@ -10368,9 +10491,3 @@ const AppWithProviders = () => (
 );
 
 export default AppWithProviders;
-
-
-
-
-
-

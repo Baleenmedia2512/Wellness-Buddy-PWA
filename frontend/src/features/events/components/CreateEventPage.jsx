@@ -1,7 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { getUserId } from '../../../shared/services/getUserId.js';
-import { createEvent, deleteEvent, listEvents, updateEvent } from '../services/events.api.js';
+import {
+  createEvent,
+  deleteEvent,
+  listEvents,
+  notifyEventsUpdated,
+  updateEvent,
+} from '../services/events.api.js';
 import DesignatedPersonPicker from './DesignatedPersonPicker.jsx';
+import HostPersonPicker from './HostPersonPicker.jsx';
 
 const EMPTY_FORM = {
   eventName: '',
@@ -99,6 +106,7 @@ export default function CreateEventPage({ user }) {
       } else {
         await createEvent(payload);
       }
+      notifyEventsUpdated();
       resetForm();
       await loadEvents(userId);
     } catch (err) {
@@ -128,6 +136,7 @@ export default function CreateEventPage({ user }) {
     setError('');
     try {
       await updateEvent({ userId, id: item.id, status });
+      notifyEventsUpdated();
       await loadEvents(userId);
     } catch (err) {
       setError(err?.message || 'Could not update the event.');
@@ -142,6 +151,7 @@ export default function CreateEventPage({ user }) {
     setError('');
     try {
       await deleteEvent({ userId, id: item.id });
+      notifyEventsUpdated();
       if (editingId === item.id) resetForm();
       setPendingDeleteId(null);
       await loadEvents(userId);
@@ -173,10 +183,11 @@ export default function CreateEventPage({ user }) {
               Event name
               <input value={form.eventName} onChange={onChange('eventName')} maxLength={200} required className={inputClass} />
             </label>
-            <label className="block text-sm font-medium text-gray-700">
-              Host
-              <input value={form.hostName} onChange={onChange('hostName')} maxLength={200} required className={inputClass} />
-            </label>
+            <HostPersonPicker
+              userId={userId}
+              value={form.hostName}
+              onChange={(hostName) => setForm((prev) => ({ ...prev, hostName }))}
+            />
             <label className="block text-sm font-medium text-gray-700">
               Place
               <input value={form.place} onChange={onChange('place')} maxLength={300} required className={inputClass} />

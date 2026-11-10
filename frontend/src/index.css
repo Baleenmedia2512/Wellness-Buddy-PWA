@@ -614,3 +614,121 @@ header img {
   }
 }
 
+
+/* Wellness Events illustrated banner */
+.wellness-events-card {
+  isolation: isolate;
+  background: linear-gradient(
+    115deg,
+    #faf5ff 0%,
+    #f3e8ff 48%,
+    #e9d5ff 100%
+  );
+}
+
+.wellness-events-wave {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  width: 125%;
+  height: 75%;
+  left: -10%;
+  bottom: -43%;
+  border-radius: 48% 52% 0 0;
+  background: linear-gradient(120deg, #d8b4fe, #c084fc);
+  opacity: 0.42;
+  animation: wellness-wave-drift 7s ease-in-out infinite alternate;
+}
+
+.wellness-events-wave-two {
+  bottom: -54%;
+  left: 15%;
+  background: linear-gradient(120deg, #c4b5fd, #e9d5ff);
+  opacity: 0.65;
+  animation-delay: -3s;
+}
+
+.wellness-events-sparkle {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  color: #9333ea;
+  animation: wellness-sparkle-float 3s ease-in-out infinite;
+}
+
+.sparkle-one {
+  top: 12%;
+  left: 25%;
+  font-size: 22px;
+}
+
+.sparkle-two {
+  top: 8%;
+  right: 25%;
+  font-size: 15px;
+  animation-delay: -1.5s;
+}
+
+.wellness-events-calendar {
+  animation: wellness-calendar-float 3.5s ease-in-out infinite;
+}
+
+.wellness-events-star {
+  position: absolute;
+  right: 0;
+  bottom: 3px;
+  color: #f59e0b;
+  font-size: 25px;
+  filter: drop-shadow(0 2px 2px rgb(124 58 237 / 20%));
+}
+
+.wellness-events-megaphone {
+  animation: wellness-megaphone-bounce 2.5s ease-in-out infinite;
+}
+
+@keyframes wellness-wave-drift {
+  from {
+    transform: translateX(-3%) rotate(-2deg);
+  }
+  to {
+    transform: translateX(3%) rotate(2deg);
+  }
+}
+
+@keyframes wellness-sparkle-float {
+  0%, 100% {
+    transform: translateY(0) scale(0.9);
+    opacity: 0.65;
+  }
+  50% {
+    transform: translateY(-6px) scale(1.15);
+    opacity: 1;
+  }
+}
+
+@keyframes wellness-calendar-float {
+  0%, 100% {
+    transform: translateY(0) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-4px) rotate(2deg);
+  }
+}
+
+@keyframes wellness-megaphone-bounce {
+  0%, 100% {
+    transform: rotate(0);
+  }
+  50% {
+    transform: rotate(8deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wellness-events-wave,
+  .wellness-events-sparkle,
+  .wellness-events-calendar,
+  .wellness-events-megaphone {
+    animation: none;
+  }
+}

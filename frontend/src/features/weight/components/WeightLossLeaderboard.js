@@ -70,7 +70,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
   const [isVisible, setIsVisible] = useState(() => (readWeightLBCache(userId)?.length ?? 0) > 0);
   const [hasEntered, setHasEntered] = useState(() => (readWeightLBCache(userId)?.length ?? 0) > 0);
   const [expandedAvatar, setExpandedAvatar] = useState(null);
-  const [profileEmail, setProfileEmail] = useState(null);
+  const [profileMember, setProfileMember] = useState(null);
   const isTile = variant === 'tile';
   const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
     enabled: !isTile && isVisible && leaderboardData.length > 0,
@@ -210,15 +210,20 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
   }
 
   const openProfile = (user) => {
-    const memberEmail = String(user?.email || '').trim();
-    if (memberEmail) setProfileEmail(memberEmail);
+    const memberEmail = String(user?.email || user?.Email || '').trim();
+    const memberUserId = user?.userId ?? user?.UserId ?? user?.userID ?? user?.id;
+    if (memberEmail || memberUserId != null) {
+      setProfileMember({ email: memberEmail || null, userId: memberUserId ?? null });
+    }
   };
 
   const openExpandedAvatar = (user) => {
+    const memberUserId = user?.userId ?? user?.UserId ?? user?.userID ?? user?.id;
     setExpandedAvatar({
-      src: buildUserAvatarUrl(apiBaseUrl, user.userId, getAvatarDisplayVersion()),
-      name: user.userName || 'User',
-      email: user.email,
+      src: buildUserAvatarUrl(apiBaseUrl, memberUserId, getAvatarDisplayVersion()),
+      name: user?.userName || user?.UserName || 'User',
+      email: user?.email || user?.Email,
+      userId: memberUserId,
     });
   };
 
@@ -234,10 +239,11 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
     >
       <LeaderboardAvatar
         apiBaseUrl={apiBaseUrl}
-        userId={user.userId}
-        email={user.email}
-        userName={user.userName}
+        userId={user.userId ?? user.UserId ?? user.userID ?? user.id}
+        email={user.email || user.Email}
+        userName={user.userName || user.UserName}
         profileImage={user.profileImage}
+        interactive={false}
       />
     </button>
   );
@@ -248,18 +254,20 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
       src={expandedAvatar?.src}
       name={expandedAvatar?.name}
       onClose={() => setExpandedAvatar(null)}
-      onViewProfile={expandedAvatar?.email ? () => {
+      onViewProfile={() => {
+        const member = expandedAvatar;
         setExpandedAvatar(null);
-        openProfile(expandedAvatar);
-      } : undefined}
+        openProfile(member);
+      }}
     />
   );
 
   const profileViewer = (
     <TeamMemberProfileModal
-      isOpen={Boolean(profileEmail)}
-      onClose={() => setProfileEmail(null)}
-      memberEmail={profileEmail}
+      isOpen={Boolean(profileMember)}
+      onClose={() => setProfileMember(null)}
+      memberEmail={profileMember?.email}
+      memberUserId={profileMember?.userId}
       apiBaseUrl={apiBaseUrl}
     />
   );
@@ -289,7 +297,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
             event.stopPropagation();
             openProfile(user);
           }}
-          disabled={!user.email}
+          disabled={!user.email && user.userId == null}
           aria-label={`View ${user.userName || 'user'}'s profile`}
         >
           {user.userName}
@@ -339,7 +347,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
             type="button"
             className="block max-w-full truncate text-left text-sm font-semibold text-gray-800 hover:underline focus:outline-none focus-visible:underline"
             onClick={() => openProfile(user)}
-            disabled={!user.email}
+            disabled={!user.email && user.userId == null}
             aria-label={`View ${user.userName || 'user'}'s profile`}
           >
             {user.userName}

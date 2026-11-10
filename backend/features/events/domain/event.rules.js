@@ -135,3 +135,14 @@ export function normalizeEventStatus(status) {
   if (!EVENT_STATUSES.includes(value)) return null;
   return value;
 }
+
+export const EVENT_PEOPLE_LIMIT = 30;
+
+/** Empty query lists people; 2+ characters filters the full directory. */
+export function sanitizeEventPeopleQuery(raw) {
+  return String(raw ?? '')
+    .trim()
+    .replace(/[,%()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}

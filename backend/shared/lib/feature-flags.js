@@ -397,3 +397,12 @@ registerFlag({
   description:    'Create Event page: name, organizer, place, seating, plus update, delete, postpone, and cancel.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.wallet',
+  owner:          '@principal-eng',
+  createdAt:      '2026-10-30',
+  removeBy:       '2027-04-30',
+  description:    'Unique per-user wallet. Cash-in after OTP emailed to a selected Wellness Valley person. Kill switch hides the Profile row and wallet APIs.',
+  defaultEnabled: true,
+});

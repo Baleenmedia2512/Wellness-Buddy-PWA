@@ -70,6 +70,15 @@ const REGISTRY = Object.freeze({
     description:    'Contact Picker API shortcut on the phone login field.',
   },
 
+  // Sample Events page and name-only demo registration. Owner: @principal-eng.
+  // Remove by 2027-01-31, or when live event data replaces this demo.
+  'ff.events': {
+    envKey:         'REACT_APP_FF_EVENTS',
+    storageKey:     'ff.events',
+    defaultEnabled: true,
+    description:    'Sample Events page and non-persistent name-only registration demo.',
+  },
+
   // Testimonials — before/after Herbalife transformation photos with
   // coach OTP verification. Members upload; coach verifies via emailed OTP.
   // Default ON. Set REACT_APP_FF_TESTIMONIALS=false or
@@ -207,6 +216,15 @@ const REGISTRY = Object.freeze({
     storageKey:     'ff.create-event',
     defaultEnabled: true,
     description:    'Create Event page in the main navigation.',
+  },
+
+  // Unique per-user wallet. Cash-in after OTP to a selected Wellness Valley person.
+  // Default ON. Set REACT_APP_FF_WALLET=false or localStorage 'ff.wallet'='false' to hide.
+  'ff.wallet': {
+    envKey:         'REACT_APP_FF_WALLET',
+    storageKey:     'ff.wallet',
+    defaultEnabled: true,
+    description:    'Profile Wallet: unique balance and OTP-approved cash-in.',
   },
 });
 

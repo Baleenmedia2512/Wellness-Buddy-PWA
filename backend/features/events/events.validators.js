@@ -4,6 +4,7 @@ import {
   normalizeEventStatus,
   parseEventId,
   parseEventUserId,
+  sanitizeEventPeopleQuery,
 } from './domain/event.rules.js';
 
 function requireOwner(raw) {
@@ -62,4 +63,11 @@ export function validateDeleteEvent(body) {
   const id = parseEventId(body?.id);
   if (!id) throw new ValidationError(400, 'Event id is required.');
   return { userId, id };
+}
+
+export function validateSearchEventPeople(query) {
+  return {
+    userId: requireOwner(query),
+    q: sanitizeEventPeopleQuery(query?.q),
+  };
 }
