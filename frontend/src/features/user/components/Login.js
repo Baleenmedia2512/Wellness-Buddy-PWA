@@ -27,6 +27,13 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [forceOtpVerification]);
 
+  // Login is always brand green — never the premium blue remap.
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    document.documentElement.classList.remove('premium-theme');
+    return undefined;
+  }, []);
+
   // Cashfree / demo phone: auto-fill fixed OTP so reviewers are not blocked by SMS.
   useEffect(() => {
     if (!auth.otpSent) return;
