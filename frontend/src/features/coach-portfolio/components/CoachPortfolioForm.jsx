@@ -32,6 +32,7 @@ import {
   VideoUploadField,
   YesNo,
 } from './formFields';
+import { openPublicCoachUrl, resolvePublicCoachUrl } from '../utils/publicCoachUrl';
 
 async function uploadFormPhoto(userId, slot, file) {
   const data = await uploadPortfolioMedia({ userId, slot, file });
@@ -522,11 +523,13 @@ export default function CoachPortfolioForm({ userId, onClose }) {
               </div>
               {publicPath ? (
                 <a
-                  href={isPublished ? publicPath : undefined}
+                  href={isPublished ? (resolvePublicCoachUrl(publicPath) || publicPath) : undefined}
                   target={isPublished ? '_blank' : undefined}
                   rel={isPublished ? 'noreferrer' : undefined}
                   className="block rounded-2xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-sm font-semibold text-emerald-800"
-                  onClick={isPublished ? undefined : (e) => e.preventDefault()}
+                  onClick={isPublished
+                    ? (e) => openPublicCoachUrl(publicPath, e)
+                    : (e) => e.preventDefault()}
                 >
                   {isPublished ? 'Live page: ' : 'Your link: '}{publicPath}
                 </a>

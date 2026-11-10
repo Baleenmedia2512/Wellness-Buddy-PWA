@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ArrowLeft, Globe2, ExternalLink } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { fetchMyPortfolioSubmission } from '../services/portfolioApi';
+import { openPublicCoachUrl, resolvePublicCoachUrl } from '../utils/publicCoachUrl';
 import CoachPortfolioForm from './CoachPortfolioForm';
 
 /**
@@ -88,9 +89,10 @@ export default function CoachWebsitePage({
               </p>
               {isPublished && publicPath ? (
                 <a
-                  href={publicPath}
+                  href={resolvePublicCoachUrl(publicPath) || publicPath}
                   target="_blank"
                   rel="noreferrer"
+                  onClick={(e) => openPublicCoachUrl(publicPath, e)}
                   className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-sm font-semibold text-emerald-800"
                 >
                   <ExternalLink className="h-4 w-4 shrink-0" aria-hidden />

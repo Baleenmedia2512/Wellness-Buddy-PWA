@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, ExternalLink, ShieldCheck } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
-import { getApiBaseUrl } from '../../../config/api.config.js';
 import { ADMIN_STATUS_OPTIONS } from '../domain/formOptions';
 import {
   adminMarkPortfolioAccess,
@@ -11,6 +10,7 @@ import {
   publishAdminSubmission,
   updateAdminSubmissionStatus,
 } from '../services/portfolioApi';
+import { openPublicCoachUrl, resolvePublicCoachUrl } from '../utils/publicCoachUrl';
 
 /**
  * Admin/developer: mark paid + review form submissions.
@@ -158,9 +158,7 @@ export default function AdminPortfolioAccessPage({ requesterUserId, onClose }) {
     }
   };
 
-  const publicSiteUrl = detail?.publicPath
-    ? `${String(getApiBaseUrl() || '').replace(/\/$/, '')}${detail.publicPath}`
-    : null;
+  const publicSiteUrl = resolvePublicCoachUrl(detail?.publicPath);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#f4f7f5]">
@@ -313,6 +311,7 @@ export default function AdminPortfolioAccessPage({ requesterUserId, onClose }) {
                   href={publicSiteUrl}
                   target="_blank"
                   rel="noreferrer"
+                  onClick={(e) => openPublicCoachUrl(detail.publicPath, e)}
                   className="inline-flex items-center gap-1 font-semibold text-emerald-700"
                 >
                   Open {detail.publicPath}
