@@ -8,7 +8,7 @@ import { getProfile } from "../../features/user/services/user.api";
 import { isFlagEnabled } from "../../config/featureFlags";
 import { canAccessReportsModule } from "../../features/reports/domain/reportsAccess.rules.js";
 import { hasValidProfileName } from "../../features/user/domain/profileCompleteness";
-import { PremiumCrownMark, PremiumHeaderTag } from "../../features/payments/components/PremiumBadge";
+import { PremiumAvatarRing, PremiumCrownMark } from "../../features/payments/components/PremiumBadge";
 import usePremiumStatus from "../../features/payments/hooks/usePremiumStatus";
 import * as Session from "../services/sessionStorage";
 
@@ -26,6 +26,7 @@ const Header = ({
   onShowTestimonials,
   onShowBroadcast,
   onShowCreateEvent,
+  onShowPaidFeatures,
   onShowEventCheckIn,
   onShowReports,
   onShowWellnessScoreSetup,
@@ -46,10 +47,8 @@ const Header = ({
   const [savedProfileImage, setSavedProfileImage] = useState(null);
   const prevProfileKeyRef = useRef(profileKey);
 
-  // Premium crown on the avatar. Tab-only headers skip the check.
-  const premiumUserId = navOnly
-    ? null
-    : (user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null);
+  // Premium members get a light blue header. Tab-only bars use the same check.
+  const premiumUserId = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
   const { premium: isPremiumMember } = usePremiumStatus(premiumUserId);
 
   // Reports: common module for every signed-in user when the flag is on.
@@ -138,7 +137,7 @@ const Header = ({
     <img
       src={headerAvatarSrc}
       alt="User Avatar"
-      className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm pointer-events-none"
+      className={`block h-9 w-9 sm:h-10 sm:w-10 aspect-square rounded-full object-cover pointer-events-none ${isPremiumMember ? '' : 'border border-gray-300 shadow-sm'}`}
       loading="lazy"
       decoding="async"
       draggable="false"
@@ -154,7 +153,7 @@ const Header = ({
     />
   ) : (
     <div
-      className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}
+      className={`flex h-9 w-9 sm:h-10 sm:w-10 aspect-square items-center justify-center rounded-full ${getAvatarColor()} text-white font-bold text-base shadow-sm`}
     >
       {getInitial()}
     </div>
@@ -181,6 +180,7 @@ const Header = ({
           onShowTestimonials={onShowTestimonials}
           onShowBroadcast={onShowBroadcast}
           onShowCreateEvent={onShowCreateEvent}
+          onShowPaidFeatures={onShowPaidFeatures}
           onShowEventCheckIn={onShowEventCheckIn}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}
@@ -213,41 +213,40 @@ const Header = ({
               }}
             />
             <div className="flex-1 min-w-0 -ml-1">
-              <h1 className="text-lg xs:text-xl sm:text-2xl font-extrabold text-green-700 truncate flex items-baseline gap-1">
+              <h1 className={`text-lg xs:text-xl sm:text-2xl font-extrabold truncate flex items-baseline gap-1 ${isPremiumMember ? 'text-sky-800' : 'text-green-700'}`}>
                 Wellness Valley
                 <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-3xl border border-gray-200 text-[10px] font-medium text-gray-500 bg-transparent relative top-[1px] w-12 h-4">
                   <span className="text-gray-500">V{APP_VERSION.VERSION.split(".")[0]}</span>
                   <span className="text-gray-400">.</span>
-                  <span className="text-green-600">{APP_VERSION.VERSION.split(".")[1]}</span>
+                  <span className={isPremiumMember ? 'text-sky-600' : 'text-green-600'}>{APP_VERSION.VERSION.split(".")[1]}</span>
                   <span className="text-gray-400">.</span>
-                  <span className="text-green-600">{APP_VERSION.VERSION.split('.')[2]}</span>
+                  <span className={isPremiumMember ? 'text-sky-600' : 'text-green-600'}>{APP_VERSION.VERSION.split('.')[2]}</span>
                 </span>
               </h1>
-              <p className="text-xs sm:text-sm text-green-600 truncate">Tracking Wellness with Ease</p>
+              <p className={`text-xs sm:text-sm truncate ${isPremiumMember ? 'text-sky-600' : 'text-green-600'}`}>Tracking Wellness with Ease</p>
             </div>
           </div>
         </div>
 
         {/* Profile avatar — tap to navigate to full profile page */}
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-          {isPremiumMember ? <PremiumHeaderTag /> : null}
-          <TouchFeedbackButton
-            type="button"
-            onClick={(e) => {
-              if (e && typeof e.preventDefault === 'function') e.preventDefault();
-              if (typeof onOpenProfile === 'function') onOpenProfile();
-            }}
-            className="focus:outline-none rounded-full"
-            title="My Profile"
-            ariaLabel="My Profile"
-          >
-            {isPremiumMember ? (
-              <span className="relative inline-flex">
+          <span className="relative inline-flex">
+            <PremiumAvatarRing enabled={isPremiumMember}>
+              <TouchFeedbackButton
+                type="button"
+                onClick={(e) => {
+                  if (e && typeof e.preventDefault === 'function') e.preventDefault();
+                  if (typeof onOpenProfile === 'function') onOpenProfile();
+                }}
+                className="block aspect-square h-9 w-9 sm:h-10 sm:w-10 shrink-0 overflow-hidden rounded-full p-0 leading-none focus:outline-none"
+                title="My Profile"
+                ariaLabel="My Profile"
+              >
                 {avatarNode}
-                <PremiumCrownMark />
-              </span>
-            ) : avatarNode}
-          </TouchFeedbackButton>
+              </TouchFeedbackButton>
+            </PremiumAvatarRing>
+            {isPremiumMember ? <PremiumCrownMark /> : null}
+          </span>
         </div>
       </div>
 
@@ -265,6 +264,7 @@ const Header = ({
           onShowTestimonials={onShowTestimonials}
           onShowBroadcast={onShowBroadcast}
           onShowCreateEvent={onShowCreateEvent}
+          onShowPaidFeatures={onShowPaidFeatures}
           onShowEventCheckIn={onShowEventCheckIn}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}

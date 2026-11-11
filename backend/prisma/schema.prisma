@@ -914,6 +914,7 @@ model events_table {
   EventName           String   @db.VarChar(200)
   HostName            String   @db.VarChar(200)
   Place               String   @db.VarChar(300)
+  Venue               String?  @db.VarChar(300)
   /// Venue is additive in DB (raw SQL). Not on Prisma model so stale clients keep working.
   EventDate           DateTime @db.Date
   TicketPrice         Decimal  @db.Decimal(10, 2)

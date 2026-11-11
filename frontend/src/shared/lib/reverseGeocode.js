@@ -1,7 +1,9 @@
 /**
  * @file reverseGeocode.js — shared helper for Nominatim reverse-geocoding.
  *
- * Converts a GPS coordinate pair into a human-readable city + village pair.
+ * Converts a GPS coordinate pair into a city + short area pair
+ * (e.g. Chennai + Adyar — not a long multi-part address).
+ *
  * Used by every photo-save flow (education, food, weight) so the logic lives
  * in exactly one place (claude.md §1.1 rule 2 — Reuse before rewrite).
  *
@@ -10,6 +12,54 @@
  */
 
 import { debugLog } from '../utils/logger.js';
+
+const MAX_AREA_LEN = 28;
+
+/**
+ * @param {unknown} raw
+ * @returns {string|null}
+ */
+export function shortenAreaLabel(raw) {
+  let text = String(raw || '').trim();
+  if (!text) return null;
+  text = text.split(/[,/|]/)[0].trim();
+  text = text
+    .replace(/\bWard\s*\d+\b/gi, '')
+    .replace(/\bZone\s*\d+\b/gi, '')
+    .replace(/\bBlock\s*[A-Z0-9]+\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return null;
+  if (text.length > MAX_AREA_LEN) {
+    const words = text.split(/\s+/).filter(Boolean);
+    const two = words.slice(0, 2).join(' ');
+    if (two && two.length <= MAX_AREA_LEN) text = two;
+    else if (words[0] && words[0].length <= MAX_AREA_LEN) text = words[0];
+    else return null;
+  }
+  return text || null;
+}
+
+/**
+ * @param {Record<string, unknown>|null|undefined} addr
+ * @returns {string|null}
+ */
+export function pickShortAreaName(addr) {
+  if (!addr || typeof addr !== 'object') return null;
+  const candidates = [
+    addr.suburb,
+    addr.neighbourhood,
+    addr.city_district,
+    addr.quarter,
+    addr.residential,
+    addr.hamlet,
+  ];
+  for (const raw of candidates) {
+    const short = shortenAreaLabel(raw);
+    if (short) return short;
+  }
+  return null;
+}
 
 /**
  * Fetch city and village names from a GPS coordinate using Nominatim.
@@ -48,16 +98,9 @@ export async function fetchCityVillage(latitude, longitude) {
     }
 
     const addr = geoData.address;
-
-    // Primary city: city → town → village → county (in order of specificity)
-    const city = addr.city || addr.town || addr.village || addr.county || null;
-
-    // Village = finer-grained neighbourhood details
-    const villageParts = [];
-    if (addr.neighbourhood) villageParts.push(addr.neighbourhood);
-    if (addr.suburb && addr.suburb !== addr.neighbourhood) villageParts.push(addr.suburb);
-    if (addr.hamlet) villageParts.push(addr.hamlet);
-    const village = villageParts.length > 0 ? villageParts.join(', ') : null;
+    const cityRaw = addr.city || addr.town || addr.village || addr.county || null;
+    const city = shortenAreaLabel(cityRaw) || (cityRaw ? String(cityRaw).trim() : null);
+    const village = pickShortAreaName(addr);
 
     debugLog('✅ [reverseGeocode] Address extracted:', {
       city,
@@ -67,7 +110,6 @@ export async function fetchCityVillage(latitude, longitude) {
 
     return { city, village };
   } catch (err) {
-    // Network errors, JSON parse errors — never block the save
     debugLog('⚠️ [reverseGeocode] Failed to fetch address from GPS:', err.message);
     return { city: null, village: null };
   }

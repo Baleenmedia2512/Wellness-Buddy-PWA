@@ -158,7 +158,10 @@ export default function WellnessScoreSetup({ user, apiBaseUrl, onBack, embedded 
         {!loading && (
           <>
             <section className="overflow-hidden rounded-2xl border border-emerald-200/80 bg-white shadow-sm">
-              <div className="border-b border-emerald-100 bg-gradient-to-r from-emerald-600 to-emerald-700 px-4 py-4 text-white">
+              <div
+                className="border-b border-emerald-100 px-4 py-4 text-white"
+                style={{ background: 'var(--wv-hero)' }}
+              >
                 <p className="text-xs font-semibold uppercase tracking-wide opacity-90">
                   Total daily capacity
                 </p>

@@ -36,6 +36,7 @@ const REGISTRATION_STORAGE_MESSAGE = 'Event registration storage is not ready. R
 
 function storageFailure(err) {
   const message = String(err?.message || '');
+  // Stale Prisma client (model missing → undefined.findMany) or DB table absent.
   const missingRegistration = err?.code === 'P2021'
     || message.includes('event_registrations_table')
     || message.includes('event_registrations');
@@ -48,7 +49,11 @@ function storageFailure(err) {
   // Table missing only — do not treat additive column errors (e.g. Venue) as full storage down.
   const missingTable = err?.code === 'P2021'
     || (message.includes('events_table') && /does not exist|doesn't exist/i.test(message))
-    || (/events_table/i.test(message) && /datamodel/i.test(message));
+    || (/events_table/i.test(message) && /datamodel/i.test(message))
+    || /reading 'findMany'/i.test(message)
+    || /reading 'create'/i.test(message)
+    || /reading 'findFirst'/i.test(message)
+    || /reading 'updateMany'/i.test(message);
   if (!missingTable) return null;
   return {
     httpStatus: 503,

@@ -88,10 +88,9 @@ export default function LeaderboardAvatar({
   }
 
   return (
-    <div
-      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full ${COLORS[colorIndex]} flex items-center justify-center text-white font-bold text-sm sm:text-base shadow-md`}
-    >
-      {initial}
-    </div>
+    <span className="relative inline-flex shrink-0">
+      <PremiumAvatarRing enabled={isPremium}>{face}</PremiumAvatarRing>
+      {isPremium ? <PremiumCrownMark /> : null}
+    </span>
   );
 }

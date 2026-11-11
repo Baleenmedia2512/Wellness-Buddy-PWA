@@ -25,6 +25,7 @@ export default function WeightStatusRow({
   row,
   teamPerformance = null,
   onViewProfile,
+  hideDetails = false,
 }) {
   const { userName, email, communityId, currentWeight, idealMin, idealMax, status, firstReachedAt } = row;
   const bar = getBarProps(currentWeight, idealMin, idealMax);
@@ -87,9 +88,11 @@ export default function WeightStatusRow({
             ) : null}
           </div>
         </div>
-        <WeightStatusBadge status={status} />
+        {hideDetails ? null : <WeightStatusBadge status={status} />}
       </div>
 
+      {hideDetails ? null : (
+      <>
       {/* Weight details */}
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-600">
         <div>
@@ -160,6 +163,8 @@ export default function WeightStatusRow({
             </span>
           )}
         </p>
+      )}
+      </>
       )}
     </div>
   );
