@@ -59,6 +59,126 @@ function parseSeatCount(raw) {
   return count;
 }
 
+export function parseEventTime(raw) {
+  if (raw == null) return null;
+  const text = String(raw).trim();
+  if (!text) return null;
+  const match = /^([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?(?:\s*([APap][Mm]))?$/.exec(text);
+  if (match) {
+    let hours = Number(match[1]);
+    const minutes = match[2];
+    const ampm = match[3]?.toUpperCase();
+    if (ampm === 'PM' && hours < 12) hours += 12;
+    if (ampm === 'AM' && hours === 12) hours = 0;
+    return `${String(hours).padStart(2, '0')}:${minutes}`;
+  }
+  return text.slice(0, 20);
+}
+
+export function parseEventDates(raw, fallbackDate = null, fallbackStart = null, fallbackEnd = null) {
+  const dates = [];
+  const errors = [];
+  if (Array.isArray(raw) && raw.length > 0) {
+    for (let i = 0; i < raw.length; i += 1) {
+      const item = raw[i];
+      if (!item) continue;
+      const dateText = typeof item === 'string' ? item : (item.date ?? item.eventDate);
+      const parsedDate = parseEventDate(dateText);
+      if (!parsedDate) {
+        errors.push(`Date #${i + 1} is invalid. Use YYYY-MM-DD.`);
+        continue;
+      }
+      const itemStart = parseEventTime(item.startTime ?? item.StartTime);
+      const itemEnd = parseEventTime(item.endTime ?? item.EndTime);
+      if (itemStart && itemEnd && itemStart >= itemEnd) {
+        errors.push(raw.length === 1
+          ? 'End time must be after start time.'
+          : `For date ${parsedDate}: End time must be after start time.`);
+      }
+      dates.push({
+        date: parsedDate,
+        startTime: itemStart || null,
+        endTime: itemEnd || null,
+      });
+    }
+  }
+
+  if (dates.length === 0 && fallbackDate) {
+    const singleDate = parseEventDate(fallbackDate);
+    if (!singleDate) {
+      errors.push('Date is invalid. Use YYYY-MM-DD.');
+    } else {
+      const start = parseEventTime(fallbackStart);
+      const end = parseEventTime(fallbackEnd);
+      if (start && end && start >= end) {
+        errors.push('End time must be after start time.');
+      }
+      dates.push({
+        date: singleDate,
+        startTime: start || null,
+        endTime: end || null,
+      });
+    }
+  }
+
+  const uniqueDatesMap = new Map();
+  for (const d of dates) {
+    if (!uniqueDatesMap.has(d.date)) {
+      uniqueDatesMap.set(d.date, d);
+    }
+  }
+  const uniqueDates = Array.from(uniqueDatesMap.values());
+  uniqueDates.sort((a, b) => a.date.localeCompare(b.date) || (a.startTime || '').localeCompare(b.startTime || ''));
+
+  return { dates: uniqueDates, errors };
+}
+
+export function parseEventPlaces(raw, fallbackPlace = null, fallbackVenue = null) {
+  const places = [];
+  const errors = [];
+  if (Array.isArray(raw) && raw.length > 0) {
+    for (let i = 0; i < raw.length; i += 1) {
+      const item = raw[i];
+      if (!item) continue;
+      const city = cleanText(typeof item === 'string' ? item : (item.city ?? item.place));
+      if (!city) {
+        errors.push(raw.length === 1 ? 'City is required.' : `City #${i + 1} is required.`);
+        continue;
+      }
+      if (city.length > PLACE_MAX) {
+        errors.push(`City must be ${PLACE_MAX} characters or fewer.`);
+      }
+      const venue = cleanText(typeof item === 'object' ? item.venue : null);
+      if (venue && venue.length > PLACE_MAX) {
+        errors.push(`Venue must be ${PLACE_MAX} characters or fewer.`);
+      }
+      places.push({
+        city,
+        place: city,
+        venue: venue || null,
+      });
+    }
+  }
+
+  if (places.length === 0 && fallbackPlace) {
+    const city = cleanText(fallbackPlace);
+    if (city.length > PLACE_MAX) {
+      errors.push(`City must be ${PLACE_MAX} characters or fewer.`);
+    }
+    const venue = cleanText(fallbackVenue);
+    if (venue && venue.length > PLACE_MAX) {
+      errors.push(`Venue must be ${PLACE_MAX} characters or fewer.`);
+    }
+    places.push({
+      city,
+      place: city,
+      venue: venue || null,
+    });
+  }
+
+  return { places, errors };
+}
+
 function parseDesignatedPersons(raw) {
   if (!Array.isArray(raw) || raw.length === 0) {
     return { error: 'Select at least one designated person.' };
@@ -90,12 +210,24 @@ export function normalizeEventDraft(raw) {
   const input = raw && typeof raw === 'object' ? raw : {};
   const eventName = cleanText(input.eventName);
   const hostName = cleanText(input.hostName ?? input.host);
-  const place = cleanText(input.place);
-  const eventDate = parseEventDate(input.eventDate ?? input.date);
+  const fallbackPlace = cleanText(input.place) || cleanText(input.city);
+  const fallbackVenue = cleanText(input.venue);
+  const { places, errors: placeErrors } = parseEventPlaces(
+    input.places,
+    fallbackPlace,
+    fallbackVenue,
+  );
+  const fallbackDate = cleanText(input.eventDate) || cleanText(input.date);
+  const { dates, errors: dateErrors } = parseEventDates(
+    input.eventDates,
+    fallbackDate,
+    input.startTime ?? input.StartTime,
+    input.endTime ?? input.EndTime,
+  );
   const ticketPrice = parseTicketPrice(input.ticketPrice);
   const seatCount = parseSeatCount(input.seatCount);
   const persons = parseDesignatedPersons(input.designatedPersons);
-  const errors = [];
+  const errors = [...placeErrors, ...dateErrors];
 
   if (!eventName) errors.push('Event name is required.');
   else if (eventName.length > NAME_MAX) errors.push(`Event name must be ${NAME_MAX} characters or fewer.`);
@@ -103,22 +235,27 @@ export function normalizeEventDraft(raw) {
   if (!hostName) errors.push('Host is required.');
   else if (hostName.length > NAME_MAX) errors.push(`Host must be ${NAME_MAX} characters or fewer.`);
 
-  if (!place) errors.push('Place is required.');
-  else if (place.length > PLACE_MAX) errors.push(`Place must be ${PLACE_MAX} characters or fewer.`);
-
-  if (!eventDate) errors.push('Date is required.');
+  if (places.length === 0) errors.push('City is required.');
+  if (dates.length === 0) errors.push('Date is required.');
   if (ticketPrice == null) errors.push('Ticket price must be a number with up to 2 decimal places.');
   if (seatCount == null) errors.push('No of seats must be a whole number from 1 to 100000.');
   if (persons.error) errors.push(persons.error);
 
   if (errors.length > 0) return { ok: false, errors };
+  const primaryDate = dates[0];
+  const primaryPlace = places[0];
   return {
     ok: true,
     value: {
       eventName,
       hostName,
-      place,
-      eventDate,
+      place: primaryPlace.city,
+      venue: primaryPlace.venue || null,
+      places,
+      eventDate: primaryDate.date,
+      startTime: primaryDate.startTime || null,
+      endTime: primaryDate.endTime || null,
+      eventDates: dates,
       ticketPrice,
       seatCount,
       designatedPersons: persons.people,
@@ -138,6 +275,34 @@ export function normalizeEventStatus(status) {
 
 export const EVENT_PEOPLE_LIMIT = 30;
 
+const TRANSLATION_OPTIONS = Object.freeze([
+  'TAMIL',
+  'ENGLISH',
+  'MALAYALAM',
+  'HINDI',
+  'TELUGU',
+  'KANNADA',
+]);
+
+const FOOD_TYPE_OPTIONS = Object.freeze([
+  'VEG',
+  'NON VEG',
+  'NO PREFERENCE',
+  'VEG & NON VEG',
+]);
+
+const LEVEL_OPTIONS = Object.freeze([
+  'PC',
+  'ASSOCIATE',
+  'SV',
+  'WT',
+  'AWT',
+  'GET TEAM',
+  '2500 GET TEAM',
+  'MILL TEAM',
+  'PT',
+]);
+
 /** Empty query lists people; 2+ characters filters the full directory. */
 export function sanitizeEventPeopleQuery(raw) {
   return String(raw ?? '')
@@ -145,4 +310,162 @@ export function sanitizeEventPeopleQuery(raw) {
     .replace(/[,%()]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function parsePickedPerson(raw, label) {
+  const userId = parseEventUserId(raw?.userId);
+  const name = cleanText(raw?.name ?? raw?.userName);
+  if (!userId || !name || name.length > NAME_MAX) {
+    return { error: `${label} is required.` };
+  }
+  const uplineLabel = cleanText(raw?.uplineLabel);
+  return {
+    person: {
+      userId,
+      name,
+      ...(uplineLabel ? { uplineLabel: uplineLabel.slice(0, 400) } : {}),
+    },
+  };
+}
+
+/**
+ * Normalize event interest / registration form payload.
+ * @param {unknown} raw
+ * @returns {{ ok: true, value: object } | { ok: false, errors: string[] }}
+ */
+export function normalizeEventRegistrationDraft(raw) {
+  const input = raw && typeof raw === 'object' ? raw : {};
+  const eventId = parseEventId(input.eventId);
+  const translation = cleanText(input.translation).toUpperCase();
+  const attendCity = cleanText(input.attendCity ?? input.pdAttendCity);
+  const rawFoodType = cleanText(input.foodType).toUpperCase().replace(/-/g, ' ').replace(/\s+/g, ' ');
+  const foodType = rawFoodType === 'VEGETARIAN'
+    ? 'VEG'
+    : (rawFoodType === 'NON VEGETARIAN' ? 'NON VEG' : rawFoodType);
+  const clubNo = cleanText(input.clubNo);
+  const zoomEmail = cleanText(input.zoomEmail).toLowerCase();
+  const name = cleanText(input.name ?? input.registrantName);
+  const idNo = cleanText(input.idNo);
+  const level = cleanText(input.level ?? input.levelName).toUpperCase();
+  const phoneNumber = cleanText(input.phoneNumber).replace(/\s+/g, '');
+  const ticketNo = cleanText(input.ticketNo);
+  const yourCity = cleanText(input.yourCity).toUpperCase();
+  const participantCount = Number(input.participantCount);
+  const uplinePresident = parsePickedPerson(input.uplinePresidentTeam, 'Upline President Team');
+  const uplineMill = parsePickedPerson(input.uplineMillTeam, 'Upline Mill Team');
+  const teamIncharge = parsePickedPerson(input.teamIncharge, 'Team Incharge');
+  const daicyTeamIncharge = parsePickedPerson(input.daicyTeamIncharge, 'Daicy Team Incharge');
+  const errors = [];
+
+  if (!eventId) errors.push('Event is required.');
+  if (!TRANSLATION_OPTIONS.includes(translation)) errors.push('Translation is required.');
+  if (!attendCity || attendCity.length > PLACE_MAX) errors.push('Attending City is required.');
+  if (!FOOD_TYPE_OPTIONS.includes(foodType)) errors.push('Food Type is required.');
+  if (uplinePresident.error) errors.push(uplinePresident.error);
+  if (uplineMill.error) errors.push(uplineMill.error);
+  if (!clubNo || clubNo.length > 80) errors.push('Club No is required.');
+  if (!zoomEmail || zoomEmail.length > 120 || !zoomEmail.includes('@')) {
+    errors.push('Zoom Email is required.');
+  }
+  if (!name || name.length > NAME_MAX) errors.push('Name is required.');
+  if (!idNo || idNo.length > 80) errors.push('ID No is required.');
+  if (!LEVEL_OPTIONS.includes(level)) errors.push('Community Position is required.');
+  if (!phoneNumber || phoneNumber.length > 20) errors.push('Phone Number is required.');
+  if (!Number.isInteger(participantCount) || participantCount < 1 || participantCount > 10) {
+    errors.push('No of Participant must be from 1 to 10.');
+  }
+  if (!ticketNo || ticketNo.length > 80) errors.push('Your Ticket Number is required.');
+  if (ticketNo && ticketNo.includes(':')) {
+    errors.push('Your Ticket Number cannot contain ":".');
+  }
+  if (!yourCity || yourCity.length > 120) errors.push('Your City is required.');
+  if (teamIncharge.error) errors.push(teamIncharge.error);
+  if (daicyTeamIncharge.error) errors.push(daicyTeamIncharge.error);
+
+  if (errors.length > 0) return { ok: false, errors };
+  return {
+    ok: true,
+    value: {
+      eventId,
+      translation,
+      attendCity,
+      foodType,
+      uplinePresidentTeam: uplinePresident.person,
+      uplineMillTeam: uplineMill.person,
+      clubNo,
+      zoomEmail,
+      name,
+      idNo,
+      level,
+      phoneNumber,
+      participantCount,
+      ticketNo,
+      yourCity,
+      teamIncharge: teamIncharge.person,
+      daicyTeamIncharge: daicyTeamIncharge.person,
+    },
+  };
+}
+
+/** Charge = ticket price × participants (rounded to 2 decimals). */
+export function computeRegistrationCharge(ticketPrice, participantCount) {
+  const price = Number(ticketPrice);
+  const count = Number(participantCount);
+  if (!Number.isFinite(price) || price < 0) return null;
+  if (!Number.isInteger(count) || count < 1) return null;
+  return Math.round(price * count * 100) / 100;
+}
+
+/**
+ * Legacy helper — new paid registrations use the guest's Ticket Number as EntryCode.
+ * Kept so older tests / tooling that still call it do not break.
+ */
+export function generateEntryCode(existingCodes = new Set()) {
+  const used = existingCodes instanceof Set ? existingCodes : new Set(existingCodes || []);
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const code = String(1000 + Math.floor(Math.random() * 9000));
+    if (!used.has(code)) return code;
+  }
+  for (let n = 1000; n <= 9999; n += 1) {
+    const code = String(n);
+    if (!used.has(code)) return code;
+  }
+  return null;
+}
+
+/**
+ * Entry / check-in identity. Accepts the guest ticket number (new) and legacy 4-digit codes.
+ * Colon is reserved as the QR payload separator.
+ */
+export function parseEntryCode(raw) {
+  const text = String(raw ?? '').trim();
+  if (!text || text.length > 80) return null;
+  if (text.includes(':')) return null;
+  return text;
+}
+
+/** QR payload: eventId:entryCode — unique per event (ticket number or legacy 4-digit). */
+export function buildRegistrationQrPayload(eventId, entryCode) {
+  const id = parseEventId(eventId);
+  const code = parseEntryCode(entryCode);
+  if (!id || !code) return null;
+  return `${id}:${code}`;
+}
+
+export function parseRegistrationQrPayload(raw) {
+  const text = String(raw ?? '').trim();
+  const match = /^(\d+):(.+)$/.exec(text);
+  if (!match) return null;
+  const eventId = parseEventId(match[1]);
+  const entryCode = parseEntryCode(match[2]);
+  if (!eventId || !entryCode) return null;
+  return { eventId, entryCode };
+}
+
+export function canScanEventRegistrations(event, scannerUserId) {
+  const uid = parseEventUserId(scannerUserId);
+  if (!event || !uid) return false;
+  if (Number(event.createdByUserId) === uid) return true;
+  const designated = Array.isArray(event.designatedPersons) ? event.designatedPersons : [];
+  return designated.some((person) => Number(person?.userId) === uid);
 }

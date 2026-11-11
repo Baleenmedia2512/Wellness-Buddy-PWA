@@ -9,7 +9,7 @@ import {
   REQUEST_STATUS_CANCELLED,
   REQUEST_STATUS_EXPIRED,
   REQUEST_STATUS_PENDING,
-  WALLET_OTP_MINUTES,
+  WALLET_OTP_NO_EXPIRY_AT,
 } from '../domain/wallet.rules.js';
 
 const CREATE_WALLETS_SQL = `CREATE TABLE IF NOT EXISTS wallets_table (
@@ -129,7 +129,7 @@ export async function findPendingByRequesterId(requesterId) {
   const rows = await getPrisma().$queryRawUnsafe(
     `SELECT Id, RequesterId, ApproverId, Amount, OtpHash, OtpExpiresAt, OtpSentAt,
             OtpAttempts, Status, RequestedAt, ProcessedAt,
-            (OtpExpiresAt <= UTC_TIMESTAMP()) AS IsExpired
+            0 AS IsExpired
      FROM wallet_cash_requests_table
      WHERE RequesterId = ? AND Status = ?
      ORDER BY Id DESC
@@ -169,23 +169,21 @@ export async function insertCashRequest({
   approverId,
   amount,
   otpHash,
-  expiresMinutes = WALLET_OTP_MINUTES,
 }) {
   await ensureTables();
   const prisma = getPrisma();
   const uid = Number(requesterId);
-  const minutes = Number.parseInt(String(expiresMinutes), 10);
-  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
-    throw new Error('Invalid wallet OTP expiry');
-  }
+  // OtpExpiresAt is NOT NULL on the table; store a far sentinel. Time expiry is off —
+  // pending ends only via Cancel, verify, or max attempts.
   await prisma.$executeRawUnsafe(
     `INSERT INTO wallet_cash_requests_table
       (RequesterId, ApproverId, Amount, OtpHash, OtpExpiresAt, OtpSentAt, OtpAttempts, Status, RequestedAt)
-     VALUES (?, ?, ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL ${minutes} MINUTE), NULL, 0, ?, UTC_TIMESTAMP())`,
+     VALUES (?, ?, ?, ?, ?, NULL, 0, ?, UTC_TIMESTAMP())`,
     uid,
     Number(approverId),
     Number(amount),
     String(otpHash),
+    WALLET_OTP_NO_EXPIRY_AT,
     REQUEST_STATUS_PENDING,
   );
   return findPendingByRequesterId(uid);
@@ -289,3 +287,145 @@ export async function approveAndCredit({ requestId, requesterId, amount }) {
     return { balance };
   });
 }
+
+const LEDGER_ENTRY_CASH_IN = 'cash_in';
+const LEDGER_ENTRY_EVENT_TICKET = 'event_ticket';
+
+let ledgerSpendEnsurePromise = null;
+
+async function ensureLedgerSupportsSpends() {
+  if (!ledgerSpendEnsurePromise) {
+    ledgerSpendEnsurePromise = (async () => {
+      await ensureTables();
+      const prisma = getPrisma();
+      const cols = await prisma.$queryRawUnsafe(
+        `SELECT COLUMN_NAME, IS_NULLABLE
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'wallet_ledger_table'
+           AND COLUMN_NAME IN ('RequestId', 'EntryType', 'ReferenceType', 'ReferenceId')`,
+      );
+      const byName = new Map(
+        (Array.isArray(cols) ? cols : []).map((row) => [String(row.COLUMN_NAME), row]),
+      );
+
+      if (!byName.has('EntryType')) {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE wallet_ledger_table
+           ADD COLUMN EntryType VARCHAR(32) NOT NULL DEFAULT 'cash_in' AFTER RequestId`,
+        );
+      }
+      if (!byName.has('ReferenceType')) {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE wallet_ledger_table
+           ADD COLUMN ReferenceType VARCHAR(32) NULL AFTER EntryType`,
+        );
+      }
+      if (!byName.has('ReferenceId')) {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE wallet_ledger_table
+           ADD COLUMN ReferenceId BIGINT NULL AFTER ReferenceType`,
+        );
+      }
+
+      const requestId = byName.get('RequestId');
+      if (requestId && String(requestId.IS_NULLABLE).toUpperCase() === 'NO') {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE wallet_ledger_table
+           MODIFY COLUMN RequestId BIGINT NULL`,
+        );
+      }
+    })().catch((error) => {
+      ledgerSpendEnsurePromise = null;
+      logger.warn('wallet ledger spend columns could not be prepared', {
+        message: error?.message || String(error),
+      });
+      throw error;
+    });
+  }
+  return ledgerSpendEnsurePromise;
+}
+
+/**
+ * Debit wallet for an event ticket. Does not change cash-in approveAndCredit.
+ * @returns {Promise<{ balance: number, ledgerId: number }>}
+ */
+export async function debitForEventTicket({
+  userId,
+  amount,
+  eventId,
+  registrationRef = null,
+}) {
+  await ensureLedgerSupportsSpends();
+  const prisma = getPrisma();
+  const uid = Number(userId);
+  const cash = Math.round(Number(amount) * 100) / 100;
+  if (!Number.isFinite(cash) || cash < 0) {
+    throw new Error('WALLET_INVALID_DEBIT_AMOUNT');
+  }
+
+  if (cash === 0) {
+    const wallet = await getOrCreateWallet(uid);
+    return { balance: wallet.Balance, ledgerId: null };
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(
+      `INSERT INTO wallets_table (UserId, Balance, CreatedAt, UpdatedAt)
+       VALUES (?, 0.00, UTC_TIMESTAMP(), UTC_TIMESTAMP())
+       ON DUPLICATE KEY UPDATE UserId = UserId`,
+      uid,
+    );
+
+    const wallets = await tx.$queryRawUnsafe(
+      `SELECT Balance FROM wallets_table WHERE UserId = ? LIMIT 1 FOR UPDATE`,
+      uid,
+    );
+    const current = toNumber(Array.isArray(wallets) ? wallets[0]?.Balance : 0);
+    if (current + 1e-9 < cash) {
+      throw new Error('WALLET_INSUFFICIENT_BALANCE');
+    }
+
+    await tx.$executeRawUnsafe(
+      `UPDATE wallets_table
+       SET Balance = ROUND(Balance - ?, 2), UpdatedAt = UTC_TIMESTAMP()
+       WHERE UserId = ?`,
+      cash,
+      uid,
+    );
+
+    const afterRows = await tx.$queryRawUnsafe(
+      `SELECT Balance FROM wallets_table WHERE UserId = ? LIMIT 1`,
+      uid,
+    );
+    const balance = toNumber(Array.isArray(afterRows) ? afterRows[0]?.Balance : 0);
+
+    await tx.$executeRawUnsafe(
+      `INSERT INTO wallet_ledger_table
+        (WalletUserId, RequestId, EntryType, ReferenceType, ReferenceId, Amount, BalanceAfter, CreatedAt)
+       VALUES (?, NULL, ?, 'event', ?, ?, ?, UTC_TIMESTAMP())`,
+      uid,
+      LEDGER_ENTRY_EVENT_TICKET,
+      Number(eventId) || null,
+      -cash,
+      balance,
+    );
+
+    const ledgerRows = await tx.$queryRawUnsafe(
+      `SELECT Id FROM wallet_ledger_table
+       WHERE WalletUserId = ? AND EntryType = ?
+       ORDER BY Id DESC LIMIT 1`,
+      uid,
+      LEDGER_ENTRY_EVENT_TICKET,
+    );
+    const ledgerId = toNumber(Array.isArray(ledgerRows) ? ledgerRows[0]?.Id : null, null);
+
+    return { balance, ledgerId, registrationRef };
+  });
+}
+
+export const WALLET_LEDGER_ENTRY = {
+  CASH_IN: LEDGER_ENTRY_CASH_IN,
+  EVENT_TICKET: LEDGER_ENTRY_EVENT_TICKET,
+};
+

@@ -3,6 +3,7 @@
  * needed for account removal.
  */
 import { getMysqlClient } from '../../utils/mysqlClient.js';
+import { getPrisma } from '../../shared/lib/prisma.js';
 import { nowUtc, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { buildCardPatchFromProfile } from '../body-parameters-card/domain/sync.rules.js';
 import { findLatestCardForProfileSync } from '../body-parameters-card/data/card.repo.js';
@@ -616,6 +617,122 @@ export async function markBcmProfileReviewedIfNeeded(userId, reviewedAt) {
   } catch (err) {
     const msg = String(err?.message || err || '');
     if (/BcmProfileReviewedAt|column/i.test(msg)) return false;
+    throw err;
+  }
+}
+
+/**
+ * Soft-load WorkingPhysicalCentreId (column may be missing pre-migration).
+ * Uses raw SQL so it works even before `prisma generate` picks up the column.
+ * @returns {Promise<number|null>}
+ */
+export async function getWorkingPhysicalCentrePreference(userId) {
+  try {
+    const prisma = getPrisma();
+    const rows = await prisma.$queryRawUnsafe(
+      'SELECT WorkingPhysicalCentreId FROM team_table WHERE UserId = ? LIMIT 1',
+      Number(userId),
+    );
+    const id = Number(rows?.[0]?.WorkingPhysicalCentreId);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/WorkingPhysicalCentreId|Unknown column|1054|column/i.test(msg)) return null;
+    throw err;
+  }
+}
+
+/**
+ * Save / clear Working Physical Centre preference. Soft no-op if column missing.
+ * Raw SQL — avoids table-client "Update payload is empty" when Prisma catalog
+ * has not been regenerated yet after the migration.
+ * @param {number|string} userId
+ * @param {number|null} centreId — null clears preference
+ * @returns {Promise<boolean>} true when write succeeded
+ */
+export async function setWorkingPhysicalCentrePreference(userId, centreId) {
+  try {
+    const next = centreId == null ? null : Number(centreId);
+    const value = (Number.isFinite(next) && next > 0) ? next : null;
+    const prisma = getPrisma();
+    await prisma.$executeRawUnsafe(
+      'UPDATE team_table SET WorkingPhysicalCentreId = ? WHERE UserId = ?',
+      value,
+      Number(userId),
+    );
+    return true;
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/WorkingPhysicalCentreId|Unknown column|1054|column|Update payload is empty/i.test(msg)) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Soft-load event registration prefs (Translation / Your City / Level).
+ * @returns {Promise<{ eventTranslation: string|null, eventYourCity: string|null, eventLevel: string|null }>}
+ */
+export async function getEventProfilePreferences(userId) {
+  const empty = { eventTranslation: null, eventYourCity: null, eventLevel: null };
+  try {
+    const prisma = getPrisma();
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT EventTranslation, EventYourCity, EventLevel
+       FROM team_table WHERE UserId = ? LIMIT 1`,
+      Number(userId),
+    );
+    const row = rows?.[0];
+    if (!row) return empty;
+    return {
+      eventTranslation: row.EventTranslation ? String(row.EventTranslation).trim() : null,
+      eventYourCity: row.EventYourCity ? String(row.EventYourCity).trim() : null,
+      eventLevel: row.EventLevel ? String(row.EventLevel).trim() : null,
+    };
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/EventTranslation|EventYourCity|EventLevel|Unknown column|1054|column/i.test(msg)) {
+      return empty;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Save event registration prefs. Soft no-op if columns missing.
+ * Only updates keys that are explicitly provided (undefined = leave unchanged).
+ * @returns {Promise<boolean>}
+ */
+export async function setEventProfilePreferences(userId, prefs = {}) {
+  const sets = [];
+  const values = [];
+  if (prefs.eventTranslation !== undefined) {
+    sets.push('EventTranslation = ?');
+    values.push(prefs.eventTranslation);
+  }
+  if (prefs.eventYourCity !== undefined) {
+    sets.push('EventYourCity = ?');
+    values.push(prefs.eventYourCity);
+  }
+  if (prefs.eventLevel !== undefined) {
+    sets.push('EventLevel = ?');
+    values.push(prefs.eventLevel);
+  }
+  if (sets.length === 0) return true;
+  try {
+    const prisma = getPrisma();
+    await prisma.$executeRawUnsafe(
+      `UPDATE team_table SET ${sets.join(', ')} WHERE UserId = ?`,
+      ...values,
+      Number(userId),
+    );
+    return true;
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/EventTranslation|EventYourCity|EventLevel|Unknown column|1054|column|Update payload is empty/i.test(msg)) {
+      return false;
+    }
     throw err;
   }
 }

@@ -1,20 +1,25 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { Pencil, Trash2, X } from 'lucide-react';
 import { getUserId } from '../../../shared/services/getUserId.js';
 import {
   createEvent,
   deleteEvent,
+  formatEventTimeRange,
+  getEventDatesList,
+  getEventPlacesList,
   listEvents,
   notifyEventsUpdated,
   updateEvent,
 } from '../services/events.api.js';
 import DesignatedPersonPicker from './DesignatedPersonPicker.jsx';
+import EventCheckInPanel from './EventCheckInPanel.jsx';
 import HostPersonPicker from './HostPersonPicker.jsx';
 
 const EMPTY_FORM = {
   eventName: '',
   hostName: '',
-  place: '',
-  eventDate: '',
+  places: [{ city: '', venue: '' }],
+  eventDates: [{ date: '', startTime: '', endTime: '' }],
   ticketPrice: '',
   seatCount: '',
   designatedPersons: [],
@@ -40,16 +45,21 @@ function formatPrice(amount) {
   return `₹${value.toFixed(2)}`;
 }
 
-export default function CreateEventPage({ user }) {
+export default function CreateEventPage({ user, initialTab = 'manage' }) {
   const [userId, setUserId] = useState(null);
   const [ready, setReady] = useState(false);
+  const [pageTab, setPageTab] = useState(initialTab === 'checkin' ? 'checkin' : 'manage');
   const [events, setEvents] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [pendingDeleteId, setPendingDeleteId] = useState(null);
+  const [actionModalEvent, setActionModalEvent] = useState(null);
+
+  useEffect(() => {
+    setPageTab(initialTab === 'checkin' ? 'checkin' : 'manage');
+  }, [initialTab]);
 
   useEffect(() => {
     let live = true;
@@ -89,6 +99,52 @@ export default function CreateEventPage({ user }) {
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
   };
 
+  const updateDateEntry = (index, field, value) => {
+    setForm((prev) => {
+      const nextDates = [...prev.eventDates];
+      nextDates[index] = { ...nextDates[index], [field]: value };
+      return { ...prev, eventDates: nextDates };
+    });
+  };
+
+  const addDateEntry = () => {
+    setForm((prev) => ({
+      ...prev,
+      eventDates: [...prev.eventDates, { date: '', startTime: '', endTime: '' }],
+    }));
+  };
+
+  const removeDateEntry = (index) => {
+    setForm((prev) => {
+      if (prev.eventDates.length <= 1) return prev;
+      const nextDates = prev.eventDates.filter((_, i) => i !== index);
+      return { ...prev, eventDates: nextDates };
+    });
+  };
+
+  const updatePlaceEntry = (index, field, value) => {
+    setForm((prev) => {
+      const nextPlaces = [...prev.places];
+      nextPlaces[index] = { ...nextPlaces[index], [field]: value };
+      return { ...prev, places: nextPlaces };
+    });
+  };
+
+  const addPlaceEntry = () => {
+    setForm((prev) => ({
+      ...prev,
+      places: [...prev.places, { city: '', venue: '' }],
+    }));
+  };
+
+  const removePlaceEntry = (index) => {
+    setForm((prev) => {
+      if (prev.places.length <= 1) return prev;
+      const nextPlaces = prev.places.filter((_, i) => i !== index);
+      return { ...prev, places: nextPlaces };
+    });
+  };
+
   const resetForm = () => {
     setForm(EMPTY_FORM);
     setEditingId(null);
@@ -99,7 +155,17 @@ export default function CreateEventPage({ user }) {
     if (!userId) return;
     setSaving(true);
     setError('');
-    const payload = { userId, ...form };
+    const primaryDate = form.eventDates[0] || {};
+    const primaryPlace = form.places[0] || {};
+    const payload = {
+      userId,
+      ...form,
+      place: primaryPlace.city || '',
+      venue: primaryPlace.venue || '',
+      eventDate: primaryDate.date || '',
+      startTime: primaryDate.startTime || '',
+      endTime: primaryDate.endTime || '',
+    };
     try {
       if (editingId) {
         await updateEvent({ ...payload, id: editingId });
@@ -118,12 +184,33 @@ export default function CreateEventPage({ user }) {
 
   const onEdit = (item) => {
     setEditingId(item.id);
-    setPendingDeleteId(null);
+    const existingDates = Array.isArray(item.eventDates) && item.eventDates.length > 0
+      ? item.eventDates.map((d) => ({
+          date: d.date || d.eventDate || '',
+          startTime: d.startTime || '',
+          endTime: d.endTime || '',
+        }))
+      : [{
+          date: item.eventDate || '',
+          startTime: item.startTime || '',
+          endTime: item.endTime || '',
+        }];
+
+    const existingPlaces = Array.isArray(item.places) && item.places.length > 0
+      ? item.places.map((p) => ({
+          city: p.city || p.place || '',
+          venue: p.venue || '',
+        }))
+      : [{
+          city: item.place || item.city || '',
+          venue: item.venue || '',
+        }];
+
     setForm({
       eventName: item.eventName || '',
       hostName: item.hostName || '',
-      place: item.place || '',
-      eventDate: item.eventDate || '',
+      places: existingPlaces,
+      eventDates: existingDates,
       ticketPrice: item.ticketPrice ?? '',
       seatCount: String(item.seatCount ?? ''),
       designatedPersons: Array.isArray(item.designatedPersons) ? item.designatedPersons : [],
@@ -153,7 +240,6 @@ export default function CreateEventPage({ user }) {
       await deleteEvent({ userId, id: item.id });
       notifyEventsUpdated();
       if (editingId === item.id) resetForm();
-      setPendingDeleteId(null);
       await loadEvents(userId);
     } catch (err) {
       setError(err?.message || 'Could not delete the event.');
@@ -161,6 +247,17 @@ export default function CreateEventPage({ user }) {
       setSaving(false);
     }
   };
+
+  if (pageTab === 'checkin') {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-4 pb-10">
+        <h1 className="text-xl font-extrabold text-green-800">Check-in</h1>
+        <div className="mt-4">
+          <EventCheckInPanel user={user} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-lg mx-auto px-4 py-4 pb-10">
@@ -188,14 +285,131 @@ export default function CreateEventPage({ user }) {
               value={form.hostName}
               onChange={(hostName) => setForm((prev) => ({ ...prev, hostName }))}
             />
-            <label className="block text-sm font-medium text-gray-700">
-              Place
-              <input value={form.place} onChange={onChange('place')} maxLength={300} required className={inputClass} />
-            </label>
-            <label className="block text-sm font-medium text-gray-700">
-              Date
-              <input type="date" value={form.eventDate} onChange={onChange('eventDate')} required className={inputClass} />
-            </label>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="block text-sm font-medium text-gray-700">
+                  Places & Venues
+                </span>
+                <button
+                  type="button"
+                  onClick={addPlaceEntry}
+                  className="rounded-lg border border-dashed border-green-600 bg-green-50 px-2.5 py-1 text-xs font-bold text-green-800 hover:bg-green-100"
+                >
+                  + Add place
+                </button>
+              </div>
+
+              {form.places.map((entry, index) => (
+                <div
+                  key={index}
+                  className="space-y-2 rounded-xl border border-gray-200 bg-gray-50/70 p-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-700">
+                      Place {form.places.length > 1 ? `#${index + 1}` : ''}
+                    </span>
+                    {form.places.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removePlaceEntry(index)}
+                        className="text-xs font-semibold text-rose-600 hover:text-rose-800"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <label className="block text-xs font-medium text-gray-600">
+                    City / Place *
+                    <input
+                      type="text"
+                      placeholder="e.g. Madurai, Chennai"
+                      value={entry.city}
+                      onChange={(e) => updatePlaceEntry(index, 'city', e.target.value)}
+                      maxLength={300}
+                      required
+                      className={inputClass}
+                    />
+                  </label>
+                  <label className="block text-xs font-medium text-gray-600">
+                    Venue (Optional — can add later)
+                    <input
+                      type="text"
+                      placeholder="e.g. Hall name, Address (optional)"
+                      value={entry.venue}
+                      onChange={(e) => updatePlaceEntry(index, 'venue', e.target.value)}
+                      maxLength={300}
+                      className={inputClass}
+                    />
+                  </label>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="block text-sm font-medium text-gray-700">
+                  Dates & Timing
+                </span>
+                <button
+                  type="button"
+                  onClick={addDateEntry}
+                  className="rounded-lg border border-dashed border-green-600 bg-green-50 px-2.5 py-1 text-xs font-bold text-green-800 hover:bg-green-100"
+                >
+                  + Add date
+                </button>
+              </div>
+
+              {form.eventDates.map((entry, index) => (
+                <div
+                  key={index}
+                  className="space-y-2 rounded-xl border border-gray-200 bg-gray-50/70 p-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-700">
+                      Date {form.eventDates.length > 1 ? `#${index + 1}` : ''}
+                    </span>
+                    {form.eventDates.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeDateEntry(index)}
+                        className="text-xs font-semibold text-rose-600 hover:text-rose-800"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <label className="block text-xs font-medium text-gray-600">
+                    Date
+                    <input
+                      type="date"
+                      value={entry.date}
+                      onChange={(e) => updateDateEntry(index, 'date', e.target.value)}
+                      required
+                      className={inputClass}
+                    />
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="block text-xs font-medium text-gray-600">
+                      Start time
+                      <input
+                        type="time"
+                        value={entry.startTime}
+                        onChange={(e) => updateDateEntry(index, 'startTime', e.target.value)}
+                        className={inputClass}
+                      />
+                    </label>
+                    <label className="block text-xs font-medium text-gray-600">
+                      End time
+                      <input
+                        type="time"
+                        value={entry.endTime}
+                        onChange={(e) => updateDateEntry(index, 'endTime', e.target.value)}
+                        className={inputClass}
+                      />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
             <label className="block text-sm font-medium text-gray-700">
               Ticket price
               <input value={form.ticketPrice} onChange={onChange('ticketPrice')} inputMode="decimal" min={0} required className={inputClass} />
@@ -240,8 +454,44 @@ export default function CreateEventPage({ user }) {
                     <div>
                       <p className="font-bold text-gray-900">{item.eventName}</p>
                       <p className="text-sm text-gray-600">Host: {item.hostName}</p>
-                      <p className="text-sm text-gray-600">{item.place}</p>
-                      <p className="text-sm text-gray-600">{item.eventDate}</p>
+                      <div className="text-sm text-gray-600">
+                        {getEventPlacesList(item).length > 1 ? (
+                          <div className="space-y-0.5">
+                            <span className="font-semibold text-gray-700">Places ({getEventPlacesList(item).length}):</span>
+                            {getEventPlacesList(item).map((p, pIdx) => (
+                              <p key={pIdx} className="text-xs text-gray-600">
+                                • {p.city}{p.venue ? ` · ${p.venue}` : ''}
+                              </p>
+                            ))}
+                          </div>
+                        ) : (
+                          <p>
+                            {[item.place || item.city, item.venue].filter(Boolean).join(' · ') || '—'}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-600">
+                        {getEventDatesList(item).length > 1 ? (
+                          <div className="space-y-0.5">
+                            <span className="font-semibold text-gray-700">Dates ({getEventDatesList(item).length}):</span>
+                            {getEventDatesList(item).map((d, dIdx) => (
+                              <p key={dIdx} className="text-xs text-gray-600">
+                                • {d.date}
+                                {formatEventTimeRange(d.startTime, d.endTime)
+                                  ? ` · ${formatEventTimeRange(d.startTime, d.endTime)}`
+                                  : ''}
+                              </p>
+                            ))}
+                          </div>
+                        ) : (
+                          <p>
+                            {item.eventDate}
+                            {formatEventTimeRange(item.startTime, item.endTime)
+                              ? ` · ${formatEventTimeRange(item.startTime, item.endTime)}`
+                              : ''}
+                          </p>
+                        )}
+                      </div>
                       <p className="text-sm text-gray-600">{formatPrice(item.ticketPrice)} · {item.seatCount} seats</p>
                       <p className="text-sm text-gray-600">
                         {(item.designatedPersons || []).map((person) => person.name).join(', ')}
@@ -251,31 +501,105 @@ export default function CreateEventPage({ user }) {
                       {STATUS_LABEL[item.status] || item.status}
                     </span>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button type="button" onClick={() => onEdit(item)} className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-800">Edit</button>
-                    {item.status !== 'postponed' ? (
-                      <button type="button" disabled={saving} onClick={() => onStatus(item, 'postponed')} className="rounded-lg bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-900">Postpone</button>
-                    ) : null}
-                    {item.status !== 'cancelled' ? (
-                      <button type="button" disabled={saving} onClick={() => onStatus(item, 'cancelled')} className="rounded-lg bg-rose-100 px-3 py-1.5 text-xs font-semibold text-rose-800">Cancel</button>
-                    ) : null}
-                    {item.status !== 'scheduled' ? (
-                      <button type="button" disabled={saving} onClick={() => onStatus(item, 'scheduled')} className="rounded-lg bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-800">Scheduled</button>
-                    ) : null}
-                    {pendingDeleteId === item.id ? (
-                      <>
-                        <button type="button" disabled={saving} onClick={() => onDelete(item)} className="rounded-lg bg-rose-700 px-3 py-1.5 text-xs font-semibold text-white">Confirm delete</button>
-                        <button type="button" onClick={() => setPendingDeleteId(null)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700">Keep</button>
-                      </>
-                    ) : (
-                      <button type="button" onClick={() => setPendingDeleteId(item.id)} className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700">Delete</button>
-                    )}
+                  <div className="mt-3 flex items-center justify-end gap-2 border-t border-gray-100 pt-2.5">
+                    <button
+                      type="button"
+                      onClick={() => onEdit(item)}
+                      aria-label="Edit event"
+                      title="Edit event"
+                      className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-green-800 focus:outline-none focus:ring-2 focus:ring-green-600"
+                    >
+                      <Pencil className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActionModalEvent(item)}
+                      aria-label="Delete or cancel event"
+                      title="Delete or cancel event"
+                      className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-white p-2 text-rose-600 shadow-sm transition hover:bg-rose-50 hover:text-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-600"
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </button>
                   </div>
                 </li>
               ))}
             </ul>
           </section>
         </>
+      )}
+
+      {actionModalEvent && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !saving) setActionModalEvent(null);
+          }}
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="text-base font-bold text-gray-900">
+                Cancel or Delete Event
+              </h3>
+              <button
+                type="button"
+                onClick={() => setActionModalEvent(null)}
+                disabled={saving}
+                className="rounded-full bg-gray-100 p-1.5 text-gray-750 transition hover:bg-gray-200 hover:text-gray-950 focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5 stroke-[2.25]" />
+              </button>
+            </div>
+
+            <p className="mt-2 text-sm text-gray-600">
+              What would you like to do with{' '}
+              <span className="font-semibold text-gray-900">
+                &ldquo;{actionModalEvent.eventName}&rdquo;
+              </span>
+              ?
+            </p>
+
+            {error ? (
+              <p className="mt-2 text-xs text-rose-600">{error}</p>
+            ) : null}
+
+            <div className="mt-5 space-y-2">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={async () => {
+                  try {
+                    await onStatus(actionModalEvent, 'cancelled');
+                    setActionModalEvent(null);
+                  } catch {
+                    // error handled in onStatus
+                  }
+                }}
+                className="w-full rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-center text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+              >
+                {saving ? 'Processing…' : 'Cancel Event'}
+              </button>
+
+              <button
+                type="button"
+                disabled={saving}
+                onClick={async () => {
+                  try {
+                    await onDelete(actionModalEvent);
+                    setActionModalEvent(null);
+                  } catch {
+                    // error handled in onDelete
+                  }
+                }}
+                className="w-full rounded-xl bg-rose-600 px-4 py-2.5 text-center text-sm font-bold text-white hover:bg-rose-700 disabled:opacity-60"
+              >
+                {saving ? 'Processing…' : 'Delete Event'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

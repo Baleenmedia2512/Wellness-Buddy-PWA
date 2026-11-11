@@ -18,6 +18,7 @@ const Header = ({
   onSignOut,
   onShowBackgroundHistory,
   onShowHome,
+  onShowEvents,
   onShowWellnessEnrollment,
   onShowWellnessCounselling,
   onShowNutritionCentersMap,
@@ -26,6 +27,7 @@ const Header = ({
   onShowBroadcast,
   onShowCreateEvent,
   onShowPaidFeatures,
+  onShowEventCheckIn,
   onShowReports,
   onShowWellnessScoreSetup,
   wellnessScoreSetupEnabled = false,
@@ -169,6 +171,7 @@ const Header = ({
         <AppNavTabs
           activePage={activePage}
           onShowHome={onShowHome}
+          onShowEvents={onShowEvents}
           onShowBackgroundHistory={onShowBackgroundHistory}
           onShowActivityReport={onShowActivityReport}
           onShowWellnessEnrollment={onShowWellnessEnrollment}
@@ -178,6 +181,7 @@ const Header = ({
           onShowBroadcast={onShowBroadcast}
           onShowCreateEvent={onShowCreateEvent}
           onShowPaidFeatures={onShowPaidFeatures}
+          onShowEventCheckIn={onShowEventCheckIn}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}
           allowedPages={allowedPages}
@@ -251,6 +255,7 @@ const Header = ({
         <AppNavTabs
           activePage={activePage}
           onShowHome={onShowHome}
+          onShowEvents={onShowEvents}
           onShowBackgroundHistory={onShowBackgroundHistory}
           onShowActivityReport={onShowActivityReport}
           onShowWellnessEnrollment={onShowWellnessEnrollment}
@@ -260,6 +265,7 @@ const Header = ({
           onShowBroadcast={onShowBroadcast}
           onShowCreateEvent={onShowCreateEvent}
           onShowPaidFeatures={onShowPaidFeatures}
+          onShowEventCheckIn={onShowEventCheckIn}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}
           allowedPages={allowedPages}
