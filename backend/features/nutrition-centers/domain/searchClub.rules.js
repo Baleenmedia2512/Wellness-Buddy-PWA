@@ -81,6 +81,45 @@ export function resolveWorkingPhysicalCentre(userId, centers, coachByUser) {
   };
 }
 
+/**
+ * Prefer a saved Profile selection when it is still a valid centre.
+ * Keeps chain options; inserts the preferred club into options when missing.
+ * @param {{ id: number|null, name: string|null, options: Array<{ id: number, name: string }> }} resolved
+ * @param {number|string|null|undefined} preferredCentreId
+ * @param {{ id?: number, center_name?: string, name?: string }|null} preferredCentreRow
+ */
+export function applyPreferredWorkingPhysicalCentre(resolved, preferredCentreId, preferredCentreRow = null) {
+  const base = resolved && typeof resolved === 'object'
+    ? resolved
+    : { id: null, name: null, options: [] };
+  const options = Array.isArray(base.options) ? [...base.options] : [];
+  const preferredId = Number(preferredCentreId);
+  if (!Number.isFinite(preferredId) || preferredId <= 0) {
+    return { id: base.id ?? null, name: base.name ?? null, options };
+  }
+
+  const inOptions = options.find((opt) => Number(opt.id) === preferredId);
+  if (inOptions) {
+    return { id: inOptions.id, name: inOptions.name, options };
+  }
+
+  const name = String(
+    preferredCentreRow?.center_name
+    || preferredCentreRow?.name
+    || '',
+  ).trim();
+  if (!name) {
+    return { id: base.id ?? null, name: base.name ?? null, options };
+  }
+
+  const preferred = { id: preferredId, name };
+  return {
+    id: preferred.id,
+    name: preferred.name,
+    options: [preferred, ...options],
+  };
+}
+
 export function coachIdByUser(users) {
   const map = new Map();
   for (const user of users || []) {

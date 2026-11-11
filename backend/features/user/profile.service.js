@@ -68,6 +68,7 @@ import {
   shouldDeferHeightChangeToOtp,
 } from './domain/heightChange.rules.js';
 import { getWorkingPhysicalCentre } from '../nutrition-centers/workingPhysicalCentre.service.js';
+import { normalizeEventProfilePrefs } from './domain/eventProfilePrefs.rules.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
@@ -261,9 +262,24 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
 
   let workingPhysicalCentre = { id: null, name: null, options: [] };
   try {
-    workingPhysicalCentre = await getWorkingPhysicalCentre(user.UserId);
+    const preferredCentreId = await repo.getWorkingPhysicalCentrePreference(user.UserId);
+    workingPhysicalCentre = await getWorkingPhysicalCentre(user.UserId, preferredCentreId);
   } catch (err) {
     logger.warn('[profile] working physical centre lookup failed', {
+      userId: user.UserId,
+      message: err?.message,
+    });
+  }
+
+  let eventProfilePrefs = {
+    eventTranslation: null,
+    eventYourCity: null,
+    eventLevel: null,
+  };
+  try {
+    eventProfilePrefs = await repo.getEventProfilePreferences(user.UserId);
+  } catch (err) {
+    logger.warn('[profile] event profile prefs lookup failed', {
       userId: user.UserId,
       message: err?.message,
     });
@@ -343,6 +359,9 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
         physicalActivityLevel,
         communityId: user.CommunityId ?? null,
         workingPhysicalCentre,
+        eventTranslation: eventProfilePrefs.eventTranslation,
+        eventYourCity: eventProfilePrefs.eventYourCity,
+        eventLevel: eventProfilePrefs.eventLevel,
         communityIdRequest: communityIdRequest || null,
         communityIdPair: communityIdPair || null,
         timezone: profileTimezone,
@@ -476,7 +495,12 @@ export async function updateProfile(input) {
   const {
     email, userId: inputUserId, name, height, bmr, dietType, profileImage, phoneNumber, gender,
     weightGoalMode, physicalActivityLevel, communityId, timezoneIana, bodyFat,
-    currentWeight, transformationPhotos, bcmProfileReviewed = undefined, appVersion = null,
+    currentWeight, transformationPhotos, bcmProfileReviewed = undefined,
+    workingPhysicalCentreId = undefined,
+    eventTranslation = undefined,
+    eventYourCity = undefined,
+    eventLevel = undefined,
+    appVersion = null,
   } = input;
   const deferCommunityId = shouldDeferCommunityIdToOtpFlow({
     flagEnabled: isEnabled(COMMUNITY_ID_OTP_FLAG),
@@ -589,6 +613,63 @@ export async function updateProfile(input) {
   } else if (avatarDataUri) {
     await persistAvatarKey(userId, avatarDataUri, { clearProfileImage: skipProfileImageBase64 });
     try { cache.delete(cacheKeys.userAvatar(userId)); } catch { /* non-fatal */ }
+  }
+
+  // Optional Working Physical Centre preference — old clients omit → leave unchanged.
+  if (workingPhysicalCentreId !== undefined) {
+    if (workingPhysicalCentreId != null) {
+      const { findCenterById } = await import('../nutrition-centers/centers.repository.js');
+      const { data: centreRow, error: centreErr } = await findCenterById(workingPhysicalCentreId);
+      if (centreErr || !centreRow) {
+        throw new Error('Invalid Working Physical Centre. Please choose a valid club.');
+      }
+    }
+    const savedPref = await repo.setWorkingPhysicalCentrePreference(userId, workingPhysicalCentreId);
+    if (!savedPref) {
+      logger.warn('[profile/update] WorkingPhysicalCentreId column missing; preference not saved', {
+        userId,
+        workingPhysicalCentreId,
+      });
+    }
+  }
+
+  // Optional event registration prefs — old clients omit → leave unchanged.
+  if (
+    eventTranslation !== undefined
+    || eventYourCity !== undefined
+    || eventLevel !== undefined
+  ) {
+    const normalized = normalizeEventProfilePrefs({
+      eventTranslation,
+      eventYourCity,
+      eventLevel,
+    });
+    const toSave = {};
+    if (eventTranslation !== undefined) {
+      if (eventTranslation != null && String(eventTranslation).trim() !== '' && normalized.eventTranslation == null) {
+        throw new Error('Invalid Translation. Choose a listed language.');
+      }
+      toSave.eventTranslation = normalized.eventTranslation;
+    }
+    if (eventYourCity !== undefined) {
+      if (eventYourCity != null && String(eventYourCity).trim() !== '' && normalized.eventYourCity == null) {
+        throw new Error('Invalid Your City. Choose a listed city.');
+      }
+      toSave.eventYourCity = normalized.eventYourCity;
+    }
+    if (eventLevel !== undefined) {
+      if (eventLevel != null && String(eventLevel).trim() !== '' && normalized.eventLevel == null) {
+        throw new Error('Invalid Community Position. Choose a listed option.');
+      }
+      toSave.eventLevel = normalized.eventLevel;
+    }
+    const savedEventPrefs = await repo.setEventProfilePreferences(userId, toSave);
+    if (!savedEventPrefs) {
+      logger.warn('[profile/update] event profile pref columns missing; not saved', {
+        userId,
+        keys: Object.keys(toSave),
+      });
+    }
   }
 
   if (hasTransformPhotoIncoming) {

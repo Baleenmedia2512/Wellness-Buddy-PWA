@@ -44,6 +44,12 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           latestWeightBodyFat: data.latestWeightBodyFat ?? null,
           email: data.email || user?.email || '',
           communityId: data.communityId != null ? String(data.communityId) : '',
+          workingPhysicalCentreId: data?.workingPhysicalCentre?.id != null
+            ? String(data.workingPhysicalCentre.id)
+            : '',
+          eventTranslation: data.eventTranslation || '',
+          eventYourCity: data.eventYourCity || '',
+          eventLevel: data.eventLevel || '',
           bodyMetrics: data.bodyMetrics || null,
         });
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);

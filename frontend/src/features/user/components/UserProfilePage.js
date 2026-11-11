@@ -31,6 +31,7 @@ import UserProfileFields from './profile/UserProfileFields';
 import ProfileEmailKycSection from './profile/ProfileEmailKycSection';
 import CommunityIdField from './profile/CommunityIdField';
 import WorkingPhysicalCentreField from './profile/WorkingPhysicalCentreField';
+import EventProfilePrefsFields from './profile/EventProfilePrefsFields';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
@@ -186,6 +187,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           if (data?.teamId) return String(data.teamId).trim();
           return '';
         })(),
+        workingPhysicalCentreId: data?.workingPhysicalCentre?.id != null
+          ? String(data.workingPhysicalCentre.id)
+          : '',
+        eventTranslation: data?.eventTranslation || '',
+        eventYourCity: data?.eventYourCity || '',
+        eventLevel: data?.eventLevel || '',
         bodyMetrics: data?.bodyMetrics || null,
         recoveredHealthIssues: Array.isArray(data?.recoveredHealthIssues)
           ? data.recoveredHealthIssues
@@ -870,6 +877,14 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   userId={resolvedUserId}
                   value={form.workingPhysicalCentreId}
                   onChange={form.setWorkingPhysicalCentreId}
+                />
+                <EventProfilePrefsFields
+                  eventTranslation={form.eventTranslation}
+                  setEventTranslation={form.setEventTranslation}
+                  eventYourCity={form.eventYourCity}
+                  setEventYourCity={form.setEventYourCity}
+                  eventLevel={form.eventLevel}
+                  setEventLevel={form.setEventLevel}
                 />
                 <IdealWeightCards
                   height={form.height}

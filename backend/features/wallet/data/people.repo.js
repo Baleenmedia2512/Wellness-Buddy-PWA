@@ -13,7 +13,7 @@ export async function findActivePersonByUserId(userId) {
   const db = getMysqlClient();
   const { data, error } = await db
     .from(TEAM)
-    .select('UserId, UserName, Email, Status')
+    .select('UserId, UserName, Email, Status, PhoneNumber')
     .eq('UserId', uid)
     .limit(1);
   if (error) throw error;
@@ -24,6 +24,7 @@ export async function findActivePersonByUserId(userId) {
     UserName: row.UserName ? String(row.UserName).trim() : '',
     Email: wellnessValleyEmail(row.Email),
     Status: row.Status ? String(row.Status) : '',
+    PhoneNumber: row.PhoneNumber ? String(row.PhoneNumber).trim() : '',
   };
 }
 

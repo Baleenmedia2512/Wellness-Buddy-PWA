@@ -64,12 +64,14 @@ describe('wallet OTP', () => {
     assert.equal(isValidWalletOtp('abcd'), false);
   });
 
-  it('expires after the configured minutes', () => {
+  it('does not time-expire (pending until Cancel, verify, or max attempts)', () => {
     const now = new Date('2026-10-30T10:00:00.000Z');
     const expires = walletOtpExpiresAt(now);
     assert.equal(expires.getTime() - now.getTime(), WALLET_OTP_MINUTES * 60 * 1000);
     assert.equal(isWalletOtpExpired(expires, now), false);
-    assert.equal(isWalletOtpExpired(expires, new Date(expires.getTime() + 1)), true);
+    assert.equal(isWalletOtpExpired(expires, new Date(expires.getTime() + 1)), false);
+    assert.equal(isWalletOtpExpired(null, now), false);
+    assert.equal(isWalletOtpExpired('1999-01-01T00:00:00.000Z', now), false);
   });
 
   it('stops attempts after the max', () => {
