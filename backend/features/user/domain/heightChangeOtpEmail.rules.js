@@ -3,6 +3,11 @@
  * Pure — no I/O.
  */
 
+import {
+  buildWhatsAppShareUrl,
+  buildWhatsAppShareButtonHtml,
+} from '../../../shared/lib/whatsapp-share.rules.js';
+
 function escapeHtml(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')
@@ -30,6 +35,7 @@ function cleanName(value, fallback) {
  * @param {{
  *   otp: string,
  *   memberName?: string,
+ *   memberPhone?: string,
  *   currentHeightCm?: number|null,
  *   newHeightCm?: number|null,
  *   expiresHours?: number,
@@ -38,6 +44,7 @@ function cleanName(value, fallback) {
 export function buildHeightChangeOtpEmail({
   otp,
   memberName = '',
+  memberPhone = '',
   currentHeightCm = null,
   newHeightCm = null,
   expiresHours = 24,
@@ -57,12 +64,21 @@ export function buildHeightChangeOtpEmail({
   }
 
   const subject = `${who} - height change approval`;
+  const waUrl = buildWhatsAppShareUrl({
+    phone: memberPhone,
+    text: `Hi ${who}, your Wellness Valley height change approval code is ${code}.`,
+  });
+  const whatsappButtonHtml = buildWhatsAppShareButtonHtml({
+    shareUrl: waUrl,
+    label: 'Share code on WhatsApp',
+  });
   const text = [
     'Wellness Valley',
     '',
     requestLine,
     `Share this approval code with them. It expires in ${expiresHours} hours.`,
     `Approval code: ${code}`,
+    ...(waUrl ? ['', `Share on WhatsApp: ${waUrl}`] : []),
     '',
     'If you were not expecting this, you can ignore this message.',
   ].join('\n');
@@ -81,7 +97,8 @@ export function buildHeightChangeOtpEmail({
     + `<p>${requestHtml}</p>`
     + `<p>Share this approval code with them. It expires in ${expiresHours} hours.</p>`
     + `<p>Approval code: <strong>${escapeHtml(code)}</strong></p>`
-    + `<p>If you were not expecting this, you can ignore this message.</p>`,
+    + whatsappButtonHtml
+    + `<p style="margin-top:16px">If you were not expecting this, you can ignore this message.</p>`,
   );
-  return { subject, text, html };
+  return { subject, text, html, whatsappUrl: waUrl };
 }

@@ -264,10 +264,15 @@ export async function findPublishedBySlug(slug) {
 }
 
 /** True when another submission row already owns this public slug. */
-export async function slugTakenByOther(publicSlug, { userId, centerId, submissionId } = {}) {
+export async function slugTakenByOther(publicSlug, optsOrUserId = {}) {
   await ensureSchema();
   const needle = String(publicSlug || '').trim().toLowerCase();
   if (!needle) return false;
+  const opts = typeof optsOrUserId === 'object' && optsOrUserId !== null
+    ? optsOrUserId
+    : { userId: optsOrUserId };
+  const { userId, centerId, submissionId } = opts;
+
   if (submissionId != null) {
     const rows = await getPrisma().$queryRawUnsafe(
       `SELECT Id AS id FROM coach_portfolio_submissions_table
@@ -352,7 +357,7 @@ export async function displayNameTakenByOther(displayName, userId, { centerId } 
  * @param {{ skip?: string[] }} [opts]  Slugs that just hit MySQL 1062 — never reuse them.
  * @returns {Promise<string>}
  */
-async function resolveUniquePublicSlug(desired, userId, { skip = [] } = {}) {
+async function resolveUniquePublicSlug(desired, userId, { skip = [], centerId, submissionId } = {}) {
   const skipped = new Set(
     (Array.isArray(skip) ? skip : [])
       .map((s) => String(s || '').trim().toLowerCase())
@@ -361,7 +366,7 @@ async function resolveUniquePublicSlug(desired, userId, { skip = [] } = {}) {
   let candidate = String(desired || '').slice(0, 160);
   for (let attempt = 0; attempt < 16; attempt += 1) {
     const key = candidate.trim().toLowerCase();
-    const blocked = skipped.has(key) || (await slugTakenByOther(candidate, userId));
+    const blocked = skipped.has(key) || (await slugTakenByOther(candidate, { userId, centerId, submissionId }));
     if (!blocked) return candidate;
     // Always suffix from the original desired base so -userId does not collapse into itself.
     candidate = suffixPublicSlugForUser(desired, userId, attempt);
@@ -425,36 +430,6 @@ export async function assignPublicSlug(userId, {
     userId,
   }).publicSlug;
 
-  if (await slugTakenByOther(publicSlug, {
-    userId,
-    centerId: row.centerId,
-    submissionId: row.id,
-  })) {
-    const parsed = publicSlug.split('/');
-    const city = parsed[0] || 'india';
-    const area = parsed[1] || 'center';
-    const leaf = `${parsed[2] || 'coach'}-${userId}-${row.centerId || row.id}`.slice(0, 48);
-    publicSlug = `${city}/${area}/${leaf}`.slice(0, 160);
-  }
-
-  if (markPublished || row.isPublished) {
-    await getPrisma().$executeRawUnsafe(
-      `UPDATE coach_portfolio_submissions_table
-       SET PublicSlug = ?, IsPublished = 1
-       WHERE Id = ?`,
-      publicSlug,
-      Number(row.id),
-    );
-  } else {
-    await getPrisma().$executeRawUnsafe(
-      `UPDATE coach_portfolio_submissions_table
-       SET PublicSlug = ?
-       WHERE Id = ?`,
-      publicSlug,
-      Number(row.id),
-    );
-  }
-  return findSubmissionById(row.id);
   const publish = markPublished || row.isPublished === true;
   const skip = [];
   let lastDuplicate = null;
@@ -462,7 +437,11 @@ export async function assignPublicSlug(userId, {
   for (let retry = 0; retry < 12; retry += 1) {
     const publicSlug = retry >= 3
       ? timestampPublicSlug(desired, userId)
-      : await resolveUniquePublicSlug(desired, userId, { skip });
+      : await resolveUniquePublicSlug(desired, userId, {
+        skip,
+        centerId: row.centerId,
+        submissionId: row.id,
+      });
 
     if (
       row.publicSlug
@@ -474,7 +453,7 @@ export async function assignPublicSlug(userId, {
 
     try {
       await writePublicSlug(row.id, userId, publicSlug, { markPublished: publish });
-      return findSubmissionByUserId(userId);
+      return findSubmissionById(row.id);
     } catch (error) {
       if (!isDuplicatePublicSlugError(error)) throw error;
       // Race / missed pre-check: remember the colliding slug and try the next suffix.

@@ -3,6 +3,11 @@
  * Pure — no I/O.
  */
 
+import {
+  buildWhatsAppShareUrl,
+  buildWhatsAppShareButtonHtml,
+} from '../../../shared/lib/whatsapp-share.rules.js';
+
 function escapeHtml(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')
@@ -28,11 +33,12 @@ function cleanName(value, fallback) {
 
 /**
  * Create-Community-ID OTP (new code, requester becomes Sponsor).
- * @param {{ otp: string, memberName?: string, communityId?: string, expiresHours?: number }} input
+ * @param {{ otp: string, memberName?: string, memberPhone?: string, communityId?: string, expiresHours?: number }} input
  */
 export function buildCreateCommunityIdOtpEmail({
   otp,
   memberName = '',
+  memberPhone = '',
   communityId = '',
   expiresHours = 24,
 } = {}) {
@@ -40,12 +46,21 @@ export function buildCreateCommunityIdOtpEmail({
   const who = cleanName(memberName, 'A member');
   const teamCode = cleanName(communityId, 'a Community ID');
   const subject = `${who} - Community ID approval`;
+  const waUrl = buildWhatsAppShareUrl({
+    phone: memberPhone,
+    text: `Hi ${who}, your Wellness Valley Community ID approval code is ${code}.`,
+  });
+  const whatsappButtonHtml = buildWhatsAppShareButtonHtml({
+    shareUrl: waUrl,
+    label: 'Share code on WhatsApp',
+  });
   const text = [
     'Wellness Valley',
     '',
     `${who} wants to create Community ID ${teamCode}.`,
     `Share this approval code with them. It expires in ${expiresHours} hours.`,
     `Approval code: ${code}`,
+    ...(waUrl ? ['', `Share on WhatsApp: ${waUrl}`] : []),
     '',
     'If you were not expecting this, you can ignore this message.',
   ].join('\n');
@@ -54,18 +69,20 @@ export function buildCreateCommunityIdOtpEmail({
     + `<p>${escapeHtml(who)} wants to create Community ID <strong>${escapeHtml(teamCode)}</strong>.</p>`
     + `<p>Share this approval code with them. It expires in ${expiresHours} hours.</p>`
     + `<p>Approval code: <strong>${escapeHtml(code)}</strong></p>`
-    + `<p>If you were not expecting this, you can ignore this message.</p>`,
+    + whatsappButtonHtml
+    + `<p style="margin-top:16px">If you were not expecting this, you can ignore this message.</p>`,
   );
-  return { subject, text, html };
+  return { subject, text, html, whatsappUrl: waUrl };
 }
 
 /**
  * Co-sponsor join OTP — names the main sponsor of the existing Community ID.
- * @param {{ otp: string, memberName?: string, communityId?: string, mainSponsorName?: string, expiresHours?: number }} input
+ * @param {{ otp: string, memberName?: string, memberPhone?: string, communityId?: string, mainSponsorName?: string, expiresHours?: number }} input
  */
 export function buildCoSponsorCommunityIdOtpEmail({
   otp,
   memberName = '',
+  memberPhone = '',
   communityId = '',
   mainSponsorName = '',
   expiresHours = 24,
@@ -75,12 +92,21 @@ export function buildCoSponsorCommunityIdOtpEmail({
   const teamCode = cleanName(communityId, 'a Community ID');
   const sponsor = cleanName(mainSponsorName, 'the main sponsor');
   const subject = `${who} - Co-Sponsor request`;
+  const waUrl = buildWhatsAppShareUrl({
+    phone: memberPhone,
+    text: `Hi ${who}, your Wellness Valley Co-Sponsor approval code is ${code}.`,
+  });
+  const whatsappButtonHtml = buildWhatsAppShareButtonHtml({
+    shareUrl: waUrl,
+    label: 'Share code on WhatsApp',
+  });
   const text = [
     'Wellness Valley',
     '',
     `${who} is requesting to become co-sponsor with ${sponsor} for Community ID ${teamCode}.`,
     `Share this approval code with them. It expires in ${expiresHours} hours.`,
     `Approval code: ${code}`,
+    ...(waUrl ? ['', `Share on WhatsApp: ${waUrl}`] : []),
     '',
     'If you were not expecting this, you can ignore this message.',
   ].join('\n');
@@ -90,7 +116,8 @@ export function buildCoSponsorCommunityIdOtpEmail({
     + ` for Community ID <strong>${escapeHtml(teamCode)}</strong>.</p>`
     + `<p>Share this approval code with them. It expires in ${expiresHours} hours.</p>`
     + `<p>Approval code: <strong>${escapeHtml(code)}</strong></p>`
-    + `<p>If you were not expecting this, you can ignore this message.</p>`,
+    + whatsappButtonHtml
+    + `<p style="margin-top:16px">If you were not expecting this, you can ignore this message.</p>`,
   );
-  return { subject, text, html };
+  return { subject, text, html, whatsappUrl: waUrl };
 }

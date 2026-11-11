@@ -2,6 +2,10 @@
  * Member email copy for upline website display consent OTP.
  */
 import { WEBSITE_DISPLAY_OTP_HOURS } from './websiteDisplayConsent.rules.js';
+import {
+  buildWhatsAppShareUrl,
+  buildWhatsAppShareButtonHtml,
+} from '../../../shared/lib/whatsapp-share.rules.js';
 
 function escapeHtml(value) {
   return String(value || '')
@@ -27,6 +31,13 @@ export function buildWebsiteDisplayConsentEmail({
   const name = String(memberName || 'Member').trim() || 'Member';
   const code = String(otp || '').trim();
   const subject = 'Confirm: show your Transformation on upline websites';
+  const waUrl = buildWhatsAppShareUrl({
+    text: `Your Wellness Valley website display confirmation code is ${code}.`,
+  });
+  const whatsappButtonHtml = buildWhatsAppShareButtonHtml({
+    shareUrl: waUrl,
+    label: 'Share code on WhatsApp',
+  });
   const text = [
     `Hi ${name},`,
     '',
@@ -36,6 +47,7 @@ export function buildWebsiteDisplayConsentEmail({
     code,
     '',
     `This code expires in ${hours} hour(s).`,
+    ...(waUrl ? ['', `Share on WhatsApp: ${waUrl}`] : []),
     '',
     'If you did not request this, ignore this email — nothing will be shown on websites.',
     '',
@@ -47,9 +59,10 @@ export function buildWebsiteDisplayConsentEmail({
   <p>You agreed to display your Transformation on websites for <strong>all your Uplines</strong>.</p>
   <p>Enter this code in the app to confirm:</p>
   <p style="font-size:28px;font-weight:700;letter-spacing:0.35em;margin:16px 0">${escapeHtml(code)}</p>
+  ${whatsappButtonHtml}
   <p style="color:#64748b;font-size:13px">Expires in ${hours} hour(s). If you did not request this, ignore this email.</p>
   <p style="color:#94a3b8;font-size:12px">— Wellness Valley</p>
 </body></html>`;
 
-  return { subject, text, html };
+  return { subject, text, html, whatsappUrl: waUrl };
 }

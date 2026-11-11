@@ -549,6 +549,7 @@ export async function requestPublishOtp({
     form,
     userId,
     userName: person.UserName,
+    memberPhone: person.PhoneNumber,
     expiresHours: PUBLISH_OTP_HOURS,
     forCoachApproval: true,
     coachName: coach.name,

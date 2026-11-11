@@ -130,6 +130,7 @@ async function resolveVerificationRecipient(userId) {
   }
   return {
     userName: userInfo.userName ?? null,
+    phoneNumber: userInfo.phoneNumber ?? null,
     coachId: recipientId,
     coachInfo: coachInfo ?? null,
     source,
@@ -446,6 +447,7 @@ async function sendHealthIssueOtpEmail({
     scheduleDeferredCoachDelivery('health-issue photo OTP email', () => sendCoachEmail({
       coachEmail:      coachInfo.email,
       memberName:      userInfo.userName,
+      memberPhone:     userInfo.phoneNumber,
       goalType:        existing.goal_type,
       beforeWeight:    existing.before_weight_kg,
       afterWeight:     existing.after_weight_kg,
@@ -471,6 +473,7 @@ async function sendHealthIssueOtpEmail({
   scheduleDeferredCoachDelivery('health-issue video OTP email', () => sendVideoCoachEmail({
     coachEmail:        coachInfo.email,
     memberName:        userInfo.userName,
+    memberPhone:       userInfo.phoneNumber,
     otp,
     healthVideoPath:   existing.health_video_path   ?? null,
     businessVideoPath: existing.business_video_path ?? null,
@@ -552,6 +555,7 @@ async function enrichTestimonialForDisplay(testimonial, opts = {}) {
 async function sendCoachEmail({
   coachEmail,
   memberName,
+  memberPhone = null,
   goalType,
   beforeWeight,
   afterWeight,
@@ -567,6 +571,7 @@ async function sendCoachEmail({
 
   const emailParams = {
     memberName,
+    memberPhone,
     goalType,
     beforeWeight,
     afterWeight,
@@ -610,7 +615,7 @@ export async function submitTestimonial(rawBody) {
     await resolveVerificationRecipient(payload.userId),
     'User has no coach or co-coach assigned. Cannot submit testimonial.',
   );
-  const userInfo = { coachId: recipient.coachId, userName: recipient.userName };
+  const userInfo = { coachId: recipient.coachId, userName: recipient.userName, phoneNumber: recipient.phoneNumber };
 
   const ts = Date.now();
   const beforePath = storagePath(payload.userId, 'before', ts);
@@ -699,6 +704,7 @@ export async function submitTestimonial(rawBody) {
           coachEmail:    coachInfo.email,
           coachName:     coachInfo.name,
           memberName:    userInfo.userName,
+          memberPhone:   userInfo.phoneNumber,
           goalType:      payload.goalType,
           beforeWeight:  payload.beforeWeightKg,
           afterWeight:   payload.afterWeightKg,
@@ -788,7 +794,7 @@ export async function editTestimonial(rawBody) {
 
   const recipient = await resolveVerificationRecipient(payload.userId);
   const userInfo  = recipient
-    ? { coachId: recipient.coachId, userName: recipient.userName }
+    ? { coachId: recipient.coachId, userName: recipient.userName, phoneNumber: recipient.phoneNumber }
     : null;
   const coachInfo = recipient?.coachInfo ?? null;
 
@@ -957,6 +963,7 @@ export async function editTestimonial(rawBody) {
           coachEmail:    coachInfo.email,
           coachName:     coachInfo.name,
           memberName:    userInfo.userName,
+          memberPhone:   userInfo.phoneNumber,
           goalType:      updates.goalType    ?? existing.goal_type,
           beforeWeight:  updates.beforeWeightKg ?? existing.before_weight_kg,
           afterWeight:   afterWeightNow,
@@ -1241,7 +1248,15 @@ function sanitizeUser(user) {
 
 // ─── Video email helper ───────────────────────────────────────────────────────
 
-async function sendVideoCoachEmail({ coachEmail, memberName, otp, healthVideoPath, businessVideoPath, recoveredHealthIssues }) {
+async function sendVideoCoachEmail({
+  coachEmail,
+  memberName,
+  memberPhone = null,
+  otp,
+  healthVideoPath,
+  businessVideoPath,
+  recoveredHealthIssues,
+}) {
   // Generate 7-day signed URLs so coach can watch the videos directly from their email client
   const [healthVideoUrl, businessVideoUrl] = await Promise.all([
     repo.getEmailSignedUrl(healthVideoPath   ?? null),
@@ -1250,6 +1265,7 @@ async function sendVideoCoachEmail({ coachEmail, memberName, otp, healthVideoPat
 
   const emailParams = {
     memberName,
+    memberPhone,
     otp,
     healthVideoUrl,
     businessVideoUrl,
@@ -1273,7 +1289,7 @@ async function assertVideoUploadEligible(userId) {
     await resolveVerificationRecipient(userId),
     'User has no coach or co-coach assigned. Cannot submit video testimonial.',
   );
-  const userInfo = { coachId: recipient.coachId, userName: recipient.userName };
+  const userInfo = { coachId: recipient.coachId, userName: recipient.userName, phoneNumber: recipient.phoneNumber };
 
   let existing = await repo.findByUserId(userId);
   if (!existing) {
@@ -1462,6 +1478,7 @@ export async function submitVideo(rawBody) {
     scheduleDeferredCoachDelivery('video OTP email', () => sendVideoCoachEmail({
       coachEmail:        coachInfo.email,
       memberName:        userInfo.userName,
+      memberPhone:       userInfo.phoneNumber,
       otp,
       healthVideoPath:   uploads.healthVideoPath   ?? existing.health_video_path   ?? null,
       businessVideoPath: uploads.businessVideoPath ?? existing.business_video_path ?? null,
@@ -1615,6 +1632,7 @@ export async function getTeamTestimonialReport(rawQuery) {
 async function sendUnifiedCoachEmail({
   coachEmail,
   memberName,
+  memberPhone = null,
   otp,
   changedSlots,
   goalType,
@@ -1782,6 +1800,7 @@ async function sendUnifiedCoachEmail({
 
   const emailParams = {
     memberName,
+    memberPhone,
     otp,
     changedSlots,
     goalType,
@@ -1845,7 +1864,7 @@ export async function submitAllEdits(rawBody) {
     await resolveVerificationRecipient(payload.userId),
     'User has no coach or co-coach assigned. Cannot submit for approval.',
   );
-  const userInfo = { coachId: recipient.coachId, userName: recipient.userName };
+  const userInfo = { coachId: recipient.coachId, userName: recipient.userName, phoneNumber: recipient.phoneNumber };
 
   const slots       = new Set(payload.dirtySlots);
   const hasPhotoDirty = slots.has('before') || slots.has('after')
@@ -2158,6 +2177,7 @@ export async function submitAllEdits(rawBody) {
       await sendUnifiedCoachEmail({
         coachEmail:             coachInfo.email,
         memberName:             userInfo.userName,
+        memberPhone:            userInfo.phoneNumber,
         otp,
         changedSlots:           emailChangedSlots,
         goalType:               photoUpdates.goalType    ?? existing.goal_type,
@@ -2311,7 +2331,7 @@ export async function resendUnifiedOtp(rawBody) {
   if (!recipient?.coachId) {
     throw new ValidationError(422, 'You do not have a sponsor or co-coach assigned yet.');
   }
-  const userInfo = { coachId: recipient.coachId, userName: recipient.userName };
+  const userInfo = { coachId: recipient.coachId, userName: recipient.userName, phoneNumber: recipient.phoneNumber };
   const coachInfo = recipient.coachInfo;
   if (!coachInfo?.email) {
     throw new ValidationError(422, 'Sponsor email is not available. Please contact support.');
@@ -2366,6 +2386,7 @@ export async function resendUnifiedOtp(rawBody) {
   await sendUnifiedCoachEmail({
     coachEmail: coachInfo.email,
     memberName: userInfo.userName,
+    memberPhone: userInfo.phoneNumber,
     otp,
     changedSlots: [],
     goalType: row.goal_type,

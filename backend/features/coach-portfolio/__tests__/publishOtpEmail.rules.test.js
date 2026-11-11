@@ -59,6 +59,8 @@ describe('coach-portfolio publishOtpEmail.rules', () => {
     assert.match(mail.html, /\/coach\/chennai\/kodambakkam\/system/);
     assert.match(mail.html, /5 6 5 0/);
     assert.match(mail.html, /Valid for 24 hours/);
+    assert.match(mail.html, /Share code on WhatsApp/);
+    assert.ok(mail.whatsappUrl.includes('api.whatsapp.com') || mail.whatsappUrl.includes('wa.me'));
     assert.match(mail.html, /System Nitheesh/);
     assert.match(mail.text, /Verification OTP: 5 6 5 0/);
     assert.doesNotMatch(mail.html, /<script/i);
@@ -80,6 +82,19 @@ describe('coach-portfolio publishOtpEmail.rules', () => {
     assert.match(mail.html, /Share the OTP with/);
     assert.match(mail.html, /Kodambakkam Center/);
     assert.match(mail.text, /Share the OTP with System Nitheesh if approved/);
+
+    const mailWithMemberPhone = buildPublishOtpEmail({
+      otp: '5650',
+      form,
+      userId: 1,
+      userName: 'System Nitheesh',
+      forCoachApproval: true,
+      coachName: 'Coach Priya',
+      memberName: 'System Nitheesh',
+      memberPhone: '7695834209',
+      centerName: 'Kodambakkam Center',
+    });
+    assert.match(mailWithMemberPhone.whatsappUrl, /^https:\/\/wa\.me\/917695834209\?text=/);
   });
 
   it('escapes HTML in coach-provided fields', () => {

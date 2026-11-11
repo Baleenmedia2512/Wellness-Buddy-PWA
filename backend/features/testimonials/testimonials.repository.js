@@ -651,12 +651,16 @@ export async function findCoachIdForUser(userId) {
   const db = getMysqlClient();
   const { data, error } = await db
     .from('team_table')
-    .select('"CoachId", "UserName"')
+    .select('"CoachId", "UserName", "PhoneNumber"')
     .eq('"UserId"', userId)
     .limit(1);
   if (error) throw error;
   if (!Array.isArray(data) || data.length === 0) return null;
-  return { coachId: data[0].CoachId, userName: data[0].UserName };
+  return {
+    coachId: data[0].CoachId,
+    userName: data[0].UserName,
+    phoneNumber: data[0].PhoneNumber || null,
+  };
 }
 
 /**

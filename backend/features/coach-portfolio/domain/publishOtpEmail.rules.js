@@ -6,6 +6,10 @@
 import { escapeHtml } from './html-escape.js';
 import { buildCoachPortfolioPath } from './slug.rules.js';
 import { PUBLISH_OTP_HOURS } from './publishOtp.rules.js';
+import {
+  buildWhatsAppShareUrl,
+  buildWhatsAppShareButtonHtml,
+} from '../../../shared/lib/whatsapp-share.rules.js';
 
 function cleanLine(value, fallback = '') {
   const text = String(value || '').replace(/[\r\n]+/g, ' ').trim();
@@ -148,6 +152,7 @@ export function buildPublishOtpEmail({
   forCoachApproval = false,
   coachName = '',
   memberName = '',
+  memberPhone = '',
   centerName = '',
 } = {}) {
   const summary = buildPublishEmailSummary(form, { userId, userName });
@@ -158,6 +163,22 @@ export function buildPublishOtpEmail({
   const safePath = escapeHtml(summary.publicPath);
   const safeCenter = escapeHtml(summary.centerName || 'their center');
   const hours = Number(expiresHours) > 0 ? Number(expiresHours) : PUBLISH_OTP_HOURS;
+
+  const rawOtp = String(otp || '').trim();
+  const waText = forCoachApproval
+    ? `Hi ${member}, your Wellness Valley website publish verification code is ${rawOtp}.`
+    : `Your Wellness Valley website publish verification code is ${rawOtp}.`;
+  const targetPhone = forCoachApproval
+    ? (memberPhone || summary.whatsapp || summary.businessPhone)
+    : (summary.whatsapp || summary.businessPhone);
+  const whatsappUrl = buildWhatsAppShareUrl({
+    phone: targetPhone,
+    text: waText,
+  });
+  const whatsappButtonHtml = buildWhatsAppShareButtonHtml({
+    shareUrl: whatsappUrl,
+    label: 'Share code on WhatsApp',
+  });
 
   const subject = forCoachApproval
     ? `${member} - website publish verification`
@@ -219,6 +240,7 @@ export function buildPublishOtpEmail({
     '',
     `Verification OTP: ${spacedOtp(otp)}`,
     `Valid for ${hours} hours`,
+    whatsappUrl ? `Share on WhatsApp: ${whatsappUrl}` : null,
     '',
     'Verification instructions:',
     ...instructionsText,
@@ -288,6 +310,7 @@ export function buildPublishOtpEmail({
                     <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:Arial,Helvetica,sans-serif;">Verification OTP</p>
                     <p style="margin:8px 0 0;color:#047857;font-size:32px;font-weight:700;letter-spacing:6px;font-family:'Courier New',Courier,monospace;line-height:1.1;">${safeOtp}</p>
                     <p style="margin:6px 0 0;color:#9ca3af;font-size:12px;font-family:Arial,Helvetica,sans-serif;">Valid for ${hours} hours</p>
+                    ${whatsappButtonHtml}
                   </td>
                 </tr>
               </table>
@@ -322,5 +345,5 @@ export function buildPublishOtpEmail({
 </body>
 </html>`;
 
-  return { subject, text, html, summary };
+  return { subject, text, html, summary, whatsappUrl };
 }
