@@ -8,6 +8,7 @@ import {
   MAX_BODY_FAT_PCT,
 } from '../domain/profileCompleteness';
 import { normalizeCommunityId, validateCommunityId, COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
+import { COMMUNITY_POSITION_OTP_FLAG } from '../domain/communityPosition';
 import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked } from '../domain/heightChange';
 import { isFlagEnabled } from '../../../config/featureFlags';
 
@@ -176,9 +177,11 @@ export default function useProfileForm(initial = {}) {
     body.eventYourCity = eventYourCity && String(eventYourCity).trim() !== ''
       ? String(eventYourCity).trim()
       : null;
-    body.eventLevel = eventLevel && String(eventLevel).trim() !== ''
-      ? String(eventLevel).trim()
-      : null;
+    if (!isFlagEnabled(COMMUNITY_POSITION_OTP_FLAG)) {
+      body.eventLevel = eventLevel && String(eventLevel).trim() !== ''
+        ? String(eventLevel).trim()
+        : null;
+    }
 
     if (fatPercentValid) {
       body.bodyFat = parseFloat(bodyMetrics.fatPercent);

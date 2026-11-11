@@ -1,3 +1,11 @@
+import { writePoolMetricsLine } from './dbPoolMetricsLog.js';
+import {
+  createPoolMetricsStore,
+  isDbPoolMetricsEnabled,
+  poolMetricsSummary,
+  runWithPoolMetrics,
+} from './prisma.js';
+
 /**
  * Allowed development frontend origin. Production keeps the existing `*`
  * rule (set in next.config.js headers) so cross-origin production traffic is
@@ -28,8 +36,23 @@ export function methodNotAllowed(res) {
 /**
  * Wrap a service call. Catches ValidationError → status/message. Catches all
  * other errors → 500.
+ * When DB_POOL_METRICS=1, each call gets its own request store and one summary
+ * line. The summary records the pathname only, never the query string.
  */
 export async function runService(res, fn) {
+  if (!isDbPoolMetricsEnabled()) return executeService(res, fn);
+  const store = createPoolMetricsStore(res?.req);
+  try {
+    return await runWithPoolMetrics(store, () => executeService(res, fn));
+  } finally {
+    writePoolMetricsLine({
+      message: 'db pool metrics',
+      ...poolMetricsSummary(store, res?.statusCode ?? null),
+    });
+  }
+}
+
+async function executeService(res, fn) {
   try {
     const { httpStatus, body, headers } = await fn();
     if (headers) {

@@ -1,7 +1,7 @@
 # `claude.md` — Wellness Valley PWA · Business Constitution
 
 > **Status:** MANDATORY · **Scope:** ALL contributors (humans + AI) · **Owner:** CTO / Principal Engineer
-> **Version:** 3.1.10 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
+> **Version:** 3.1.11 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
 >
 > **Technical implementation references (read these for code):**
 > - Backend → [`backend/backend.md`](backend/backend.md)
@@ -153,6 +153,7 @@ All work-in-progress is gated behind a feature flag. No exception.
 | `ff.r2-captures` | ON | @principal-eng | 2027-03-05 | ADR-0012 — capture photos once in R2; food/weight/education/good-habit pointer to the same key. Kill switch if env missing. Diary capture image 302s; JSON format still returns Base64. |
 | `ff.r2-transformation-photos` | ON | @principal-eng | 2027-03-22 | Dual-write Left/Centre/Right `transformation_photos` to R2 keys; keep base64 in JSONB for live ≤3.5.0. GET profile returns R2 URLs for app ≥3.5.1; missing version → legacy base64. |
 | `ff.community-id-otp` | ON | @principal-eng | 2027-03-18 | ADR-0013 — Profile Community ID create/co-sponsor via 24h sponsor OTP. Live 3.4.9 still saves Community ID on profile POST; 3.5.0+ uses OTP. |
+| `ff.community-position-otp` | ON | @principal-eng | 2027-05-11 | ADR-0015 — Profile Community Position is a catalog role. Coach OTP on select. Apps below 3.5.6, and requests with no version, still save the legacy list on profile POST. |
 | `ff.height-change-otp` | ON | @principal-eng | 2027-03-25 | Profile height: first save free; later changes need email/phone OTP. Apps below 3.5.0 still change height on profile POST; 3.5.0+ uses OTP. |
 | `ff.broadcast` | ON | @principal-eng | 2027-03-29 | BroadCast paid screen: how-to video and payment entry. Upload and Burst stay locked until recharge is connected. |
 | `ff.go-premium` | ON | @principal-eng | 2027-04-28 | Profile Go Premium opens Cashfree checkout. Kill switch hides the row and the create-order API. |

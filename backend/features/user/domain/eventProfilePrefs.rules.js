@@ -1,7 +1,9 @@
 /**
  * Event registration preferences stored once on the profile.
- * Pure — same option lists as event registration validation.
+ * Community Position codes for legacy profile save come from the role catalog
+ * seed (apps below 3.5.6). New roles are not added to this list.
  */
+import { LEGACY_COMMUNITY_POSITION_CODES } from './communityPosition.rules.js';
 
 export const EVENT_TRANSLATION_OPTIONS = Object.freeze([
   'TAMIL',
@@ -12,17 +14,7 @@ export const EVENT_TRANSLATION_OPTIONS = Object.freeze([
   'KANNADA',
 ]);
 
-export const EVENT_LEVEL_OPTIONS = Object.freeze([
-  'PC',
-  'ASSOCIATE',
-  'SV',
-  'WT',
-  'AWT',
-  'GET TEAM',
-  '2500 GET TEAM',
-  'MILL TEAM',
-  'PT',
-]);
+export const EVENT_LEVEL_OPTIONS = LEGACY_COMMUNITY_POSITION_CODES;
 
 export const EVENT_YOUR_CITY_OPTIONS = Object.freeze([
   'OTHER COUNTRY',
