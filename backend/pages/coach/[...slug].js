@@ -24,6 +24,8 @@ import { isEnabled } from '../../shared/lib/feature-flags.js';
 import { getPrisma } from '../../shared/lib/prisma.js';
 import * as submissionRepo from '../../features/coach-portfolio/data/submission.repo.js';
 import {
+  buildCoachPageJsonLd,
+  buildCoachPageSeo,
   canShowPublicPortfolio,
   toPublicPortfolioPage,
 } from '../../features/coach-portfolio/domain/public-page.rules.js';
@@ -236,6 +238,19 @@ export async function getServerSideProps({ params, req }) {
     page.address = '';
     page.mapsLink = '';
   }
+
+  // Refresh SEO after live club place resolve (city/area may change from GPS).
+  const seo = buildCoachPageSeo({
+    displayName: page.displayName,
+    title: page.title,
+    city: page.city,
+    locality: page.locality,
+    centerName: page.centerName,
+    offerings: page.offerings,
+  });
+  page.seoTitle = seo.seoTitle;
+  page.seoDescription = seo.seoDescription;
+  page.seoKeywords = seo.seoKeywords;
 
   return {
     props: {
@@ -838,25 +853,8 @@ export default function CoachPortfolioPage({
     };
   }, [menuOpen, lightboxIndex, lightboxItems.length, videoSrc, galleryOpen, bookOpen]);
 
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Person',
-    name: page.fullName,
-    jobTitle: page.title,
-    description: page.seoDescription,
-    url: pageUrl,
-    image: ogImage || undefined,
-    telephone: page.phone || undefined,
-    email: page.email || undefined,
-    address: page.city ? {
-      '@type': 'PostalAddress',
-      addressLocality: page.city,
-      addressRegion: page.state || undefined,
-      postalCode: page.pincode || undefined,
-      streetAddress: page.address || undefined,
-      addressCountry: 'IN',
-    } : undefined,
-  };
+  const jsonLd = buildCoachPageJsonLd(page, { pageUrl, imageUrl: ogImage });
+  const keywords = Array.isArray(page.seoKeywords) ? page.seoKeywords.join(', ') : '';
 
   return (
     <>
@@ -864,7 +862,10 @@ export default function CoachPortfolioPage({
         <title>{page.seoTitle}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="description" content={page.seoDescription} />
+        {keywords ? <meta name="keywords" content={keywords} /> : null}
         <meta name="robots" content="index,follow" />
+        <meta name="geo.region" content="IN" />
+        {page.city ? <meta name="geo.placename" content={[page.locality, page.city].filter(Boolean).join(', ')} /> : null}
         <link rel="canonical" href={pageUrl} />
         <meta property="og:type" content="profile" />
         <meta property="og:site_name" content="Wellness Valley" />
@@ -873,6 +874,9 @@ export default function CoachPortfolioPage({
         <meta property="og:url" content={pageUrl} />
         {ogImage ? <meta property="og:image" content={ogImage} /> : null}
         <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={page.seoTitle} />
+        <meta name="twitter:description" content={page.seoDescription} />
+        {ogImage ? <meta name="twitter:image" content={ogImage} /> : null}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link

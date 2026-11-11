@@ -95,6 +95,8 @@ import {
   subscribeAvatarDisplayVersion,
 } from '../../user/services/avatarDisplayVersion.js';
 import { seedMineTestimonialFromProfileSlots } from '../../user/domain/transformationBeforeAfter';
+import WebsiteDisplayConsentCard from './WebsiteDisplayConsentCard.jsx';
+import { isFlagEnabled } from '../../../config/featureFlags.js';
 
 // â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -2239,6 +2241,21 @@ function MemberCard({
             </p>
           )}
 
+          {/* Upline website consent — directly under Result Video / Videos verified */}
+          {editable
+            && isFlagEnabled('ff.testimonial-upline-display-consent')
+            && testimonial
+            && (testimonial.status === 'verified' || testimonial.videoStatus === 'verified') ? (
+            <WebsiteDisplayConsentCard
+              userId={userId}
+              testimonial={testimonial}
+              onChanged={() => {
+                if (typeof onMineRefresh === 'function') void onMineRefresh();
+                else if (typeof onOtpVerified === 'function') onOtpVerified();
+              }}
+            />
+          ) : null}
+
           {editable && !showUnifiedOtp && !unifiedOtpDismissed && testimonial?.videoStatus === 'pending' && testimonial?.id && (
             <div className="bg-white rounded-2xl border border-amber-200 shadow-sm px-4 py-4 space-y-1 mt-1">
               <p className="text-xs font-bold text-amber-700 uppercase tracking-wide flex items-center gap-1.5">
@@ -2581,23 +2598,39 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setListReloadKey((key) => key + 1);
     try {
       // First page only (limit 10) — never hydrate the full team on open.
-      const [directResult, mine] = await Promise.all([
+      // Mine must still load if team list fails (e.g. pending DB migration).
+      const [directOutcome, mineOutcome] = await Promise.allSettled([
         listForCoach(coachId, { scope: 'direct', page: 1, limit: 10 }),
         buildMineRow(),
       ]);
       if (generation !== loadGenerationRef.current) return;
 
-      const direct = Array.isArray(directResult?.data) ? directResult.data : [];
-      setDirectRows(direct);
-      setDirectPagination(directResult?.pagination || { page: 1, hasMore: false, total: direct.length });
-      setDirectUploadCounts(directResult?.uploadCounts || {
-        fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
-      });
-      setMineRow(mine);
-      const total = directResult?.pagination?.total ?? direct.length;
-      setDirectTeamMemberCount(total);
-      setHasDownline(total > 0);
-      if (total === 0) setTeamScope(TEAM_SCOPES.MINE);
+      if (mineOutcome.status === 'fulfilled') {
+        setMineRow(mineOutcome.value);
+      }
+
+      if (directOutcome.status === 'fulfilled') {
+        const directResult = directOutcome.value;
+        const direct = Array.isArray(directResult?.data) ? directResult.data : [];
+        setDirectRows(direct);
+        setDirectPagination(directResult?.pagination || { page: 1, hasMore: false, total: direct.length });
+        setDirectUploadCounts(directResult?.uploadCounts || {
+          fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
+        });
+        const total = directResult?.pagination?.total ?? direct.length;
+        setDirectTeamMemberCount(total);
+        setHasDownline(total > 0);
+        if (total === 0) setTeamScope(TEAM_SCOPES.MINE);
+      } else {
+        setDirectRows([]);
+        setDirectPagination({ page: 1, hasMore: false, total: 0 });
+        setDirectTeamMemberCount(0);
+        setHasDownline(false);
+        setTeamScope(TEAM_SCOPES.MINE);
+        if (isFirstLoad && mineOutcome.status !== 'fulfilled') {
+          setError(directOutcome.reason?.message || 'Failed to load testimonials');
+        }
+      }
     } catch (err) {
       if (generation !== loadGenerationRef.current) return;
       if (isFirstLoad) setError(err.message || 'Failed to load testimonials');

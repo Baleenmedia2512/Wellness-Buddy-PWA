@@ -12,6 +12,7 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     return runService(res, () => checkDisplayNameAvailability({
       userId: req.query?.userId,
+      centerId: req.query?.centerId,
       name: req.query?.name,
     }));
   }

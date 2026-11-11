@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { getApiBaseUrl } from '../../../config/api.config.js';
@@ -16,8 +16,8 @@ import {
 import {
   checkPortfolioDisplayName,
   fetchMyPortfolioSubmission,
+  requestPortfolioPublishOtp,
   savePortfolioDraft,
-  submitPortfolioForm,
   uploadPortfolioIntroVideo,
   uploadPortfolioMedia,
 } from '../services/portfolioApi';
@@ -29,9 +29,13 @@ import {
   SelectInput,
   TextArea,
   TextInput,
+  ValueSelectInput,
   VideoUploadField,
   YesNo,
 } from './formFields';
+import { publicWebsiteUrl } from '../domain/publicWebsiteUrl';
+import PublishOtpModal from './PublishOtpModal';
+import { buildPublicPathPreview } from '../domain/publicPathPreview';
 
 async function uploadFormPhoto(userId, slot, file) {
   const data = await uploadPortfolioMedia({ userId, slot, file });
@@ -89,7 +93,14 @@ function Progress({ stepIndex, steps }) {
 /**
  * Coach website CMS form. Paid coaches can edit anytime (photos, copy, hours).
  */
-export default function CoachPortfolioForm({ userId, onClose }) {
+export default function CoachPortfolioForm({
+  userId,
+  centerId,
+  centerName = '',
+  createMode = false,
+  availableCenters = [],
+  onClose,
+}) {
   const [stepIndex, setStepIndex] = useState(0);
   const [form, setForm] = useState(emptyPortfolioForm);
   const [submissionStatus, setSubmissionStatus] = useState('draft');
@@ -100,15 +111,92 @@ export default function CoachPortfolioForm({ userId, onClose }) {
   const [publicPath, setPublicPath] = useState(null);
   const [isPublished, setIsPublished] = useState(false);
   const [hasClub, setHasClub] = useState(false);
+  const [resolvedCenterId, setResolvedCenterId] = useState(centerId ?? null);
+  const [resolvedCenterName, setResolvedCenterName] = useState(centerName || '');
   const [displayNameStatus, setDisplayNameStatus] = useState(''); // '', checking, available, taken, error
+  const [otpOpen, setOtpOpen] = useState(false);
+  const [maskedEmail, setMaskedEmail] = useState('');
+  const [coachName, setCoachName] = useState('');
+  const [pathPreview, setPathPreview] = useState('');
+  const [otpResending, setOtpResending] = useState(false);
+  const [otpKey, setOtpKey] = useState(null);
 
-  const steps = getFormSteps({ hasClub });
+  const centers = useMemo(
+    () => (Array.isArray(availableCenters) ? availableCenters : []),
+    [availableCenters],
+  );
+
+  /** Create New: only centers without a website yet. Edit: all centers. */
+  const selectableCenters = useMemo(() => {
+    if (createMode) return centers.filter((c) => c.centerId != null && !c.hasWebsite);
+    return centers.filter((c) => c.centerId != null);
+  }, [centers, createMode]);
+
+  const centerOptions = useMemo(() => (
+    selectableCenters.map((c) => ({
+      value: String(c.centerId),
+      label: [c.centerName, c.city, c.locality].filter(Boolean).join(' · '),
+    }))
+  ), [selectableCenters]);
+
+  const steps = getFormSteps({ hasClub: hasClub || Boolean(resolvedCenterId) });
   const step = steps[Math.min(stepIndex, steps.length - 1)] || steps[0];
   const canEdit = true;
-  const isFirstSubmit = submissionStatus === 'draft' || submissionStatus === 'information_required';
-  const placeFromClub = hasClub && Boolean(
-    String(form.center.city || '').trim() || String(form.center.locality || '').trim(),
-  );
+  /** Not live yet → Publish sends OTP. Already live → Save updates CMS without OTP. */
+  const needsPublish = !isPublished;
+
+  const loadCenterForm = async (nextCenterId, { fresh = false } = {}) => {
+    if (nextCenterId == null) {
+      setForm(emptyPortfolioForm());
+      setSubmissionStatus('draft');
+      setAdminNote(null);
+      setPublicPath(null);
+      setIsPublished(false);
+      setHasClub(false);
+      setResolvedCenterId(null);
+      setResolvedCenterName('');
+      return;
+    }
+    const data = await fetchMyPortfolioSubmission(userId, nextCenterId);
+    setForm(fresh ? emptyPortfolioForm() : mergePortfolioForm(data?.form));
+    // Even in fresh create, hydrate place/contact from the selected center via a second merge of empty+server hydrate fields.
+    if (fresh) {
+      const hydrated = mergePortfolioForm(emptyPortfolioForm(), {
+        personal: {
+          fullName: data?.form?.personal?.fullName || '',
+          profilePhoto: data?.form?.personal?.profilePhoto || null,
+          professionalTitle: data?.form?.personal?.professionalTitle || 'Wellness Coach',
+        },
+        center: {
+          centerName: data?.form?.center?.centerName || '',
+          city: data?.form?.center?.city || '',
+          locality: data?.form?.center?.locality || '',
+          businessPhone: data?.form?.center?.businessPhone || '',
+          whatsapp: data?.form?.center?.whatsapp || '',
+          businessEmail: data?.form?.center?.businessEmail || '',
+          mapsLink: data?.form?.center?.mapsLink || '',
+          address: data?.form?.center?.address || '',
+        },
+        mediaBrand: {
+          websiteDisplayName: '',
+        },
+        services: data?.form?.services || undefined,
+      });
+      setForm(hydrated);
+      setSubmissionStatus('draft');
+      setAdminNote(null);
+      setPublicPath(null);
+      setIsPublished(false);
+    } else {
+      setSubmissionStatus(data?.status || 'draft');
+      setAdminNote(data?.adminNote || null);
+      setPublicPath(data?.publicPath || null);
+      setIsPublished(data?.isPublished === true);
+    }
+    setHasClub(data?.hasClub === true);
+    setResolvedCenterId(data?.centerId != null ? data.centerId : nextCenterId);
+    setResolvedCenterName(data?.centerName || '');
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -116,16 +204,40 @@ export default function CoachPortfolioForm({ userId, onClose }) {
       setLoading(true);
       setMessage('');
       try {
-        const data = await fetchMyPortfolioSubmission(userId);
-        if (cancelled) return;
-        setForm(mergePortfolioForm(data?.form));
-        setSubmissionStatus(data?.status || 'draft');
-        setAdminNote(data?.adminNote || null);
-        setPublicPath(data?.publicPath || null);
-        setIsPublished(data?.isPublished === true);
-        setHasClub(data?.hasClub === true);
-        setStepIndex(0);
-        setDisplayNameStatus('');
+        if (createMode && (centerId == null || String(centerId).trim() === '')) {
+          // Hydrate name / phone / photo from app; City & Area stay blank for freestyle.
+          const data = await fetchMyPortfolioSubmission(userId, null, { createNew: true });
+          if (cancelled) return;
+          setForm(mergePortfolioForm(data?.form || emptyPortfolioForm()));
+          setSubmissionStatus('draft');
+          setAdminNote(null);
+          setPublicPath(null);
+          setIsPublished(false);
+          setHasClub(false);
+          setResolvedCenterId(null);
+          setResolvedCenterName('');
+          setStepIndex(0);
+          setDisplayNameStatus('');
+        } else if (!createMode && (centerId == null || String(centerId).trim() === '')) {
+          // Legacy saved form (no CenterId yet) — load latest submission for this user.
+          const data = await fetchMyPortfolioSubmission(userId);
+          if (cancelled) return;
+          setForm(mergePortfolioForm(data?.form));
+          setSubmissionStatus(data?.status || 'draft');
+          setAdminNote(data?.adminNote || null);
+          setPublicPath(data?.publicPath || null);
+          setIsPublished(data?.isPublished === true);
+          setHasClub(data?.hasClub === true);
+          if (data?.centerId != null) setResolvedCenterId(data.centerId);
+          if (data?.centerName) setResolvedCenterName(data.centerName);
+          setStepIndex(0);
+          setDisplayNameStatus('');
+        } else {
+          await loadCenterForm(centerId, { fresh: false });
+          if (cancelled) return;
+          setStepIndex(0);
+          setDisplayNameStatus('');
+        }
       } catch (err) {
         if (!cancelled) setMessage(err?.message || 'Could not load form');
       } finally {
@@ -133,7 +245,72 @@ export default function CoachPortfolioForm({ userId, onClose }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [userId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial open only for given center/createMode
+  }, [userId, centerId, createMode]);
+
+  const onCenterChange = async (rawId) => {
+    if (!rawId) {
+      setResolvedCenterId(null);
+      setResolvedCenterName('');
+      setHasClub(false);
+      return;
+    }
+    const nextId = Number(rawId);
+    if (!Number.isFinite(nextId) || nextId <= 0) return;
+    const meta = selectableCenters.find((c) => Number(c.centerId) === nextId);
+    setBusy(true);
+    setMessage('');
+    try {
+      await loadCenterForm(nextId, { fresh: createMode });
+      setResolvedCenterName(meta?.centerName || '');
+      setMessage('Center loaded — City & Area filled from GPS (you can still edit)');
+    } catch (err) {
+      setMessage(err?.message || 'Could not load center');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Must be a render helper (not an inner component) so City/Area inputs keep focus while typing.
+  const renderPlaceFields = (title = 'City & area') => (
+    <div className="space-y-3 rounded-2xl border border-emerald-100 bg-emerald-50/40 px-3.5 py-3">
+      <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-800">{title}</p>
+      {selectableCenters.length > 0 ? (
+        <div>
+          <FieldLabel hint="Optional — only centers without a website yet">
+            Link a center (optional)
+          </FieldLabel>
+          <ValueSelectInput
+            options={centerOptions}
+            value={resolvedCenterId != null ? String(resolvedCenterId) : ''}
+            onChange={onCenterChange}
+            placeholder="No center — type City & Area below"
+            disabled={!canEdit || busy}
+          />
+        </div>
+      ) : null}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <FieldLabel required>City</FieldLabel>
+          <TextInput
+            value={form.center.city}
+            onChange={(v) => canEdit && setForm(setSection(form, 'center', { city: v }))}
+            placeholder="e.g. Chennai"
+            disabled={!canEdit || busy}
+          />
+        </div>
+        <div>
+          <FieldLabel required>Area</FieldLabel>
+          <TextInput
+            value={form.center.locality}
+            onChange={(v) => canEdit && setForm(setSection(form, 'center', { locality: v }))}
+            placeholder="e.g. Kodambakkam"
+            disabled={!canEdit || busy}
+          />
+        </div>
+      </div>
+    </div>
+  );
 
   useEffect(() => {
     setStepIndex((i) => Math.min(i, Math.max(0, steps.length - 1)));
@@ -149,7 +326,11 @@ export default function CoachPortfolioForm({ userId, onClose }) {
     setDisplayNameStatus('checking');
     const timer = setTimeout(async () => {
       try {
-        const result = await checkPortfolioDisplayName({ userId, name });
+        const result = await checkPortfolioDisplayName({
+          userId,
+          name,
+          centerId: resolvedCenterId,
+        });
         if (cancelled) return;
         setDisplayNameStatus(result?.available === true ? 'available' : 'taken');
       } catch {
@@ -160,9 +341,13 @@ export default function CoachPortfolioForm({ userId, onClose }) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [form.mediaBrand.websiteDisplayName, userId, loading]);
+  }, [form.mediaBrand.websiteDisplayName, userId, resolvedCenterId, loading]);
 
   const saveDraft = async () => {
+    if (!String(form.center.city || '').trim() || !String(form.center.locality || '').trim()) {
+      setMessage('Enter City and Area before saving');
+      return;
+    }
     if (displayNameStatus === 'taken') {
       setMessage('Website display name already exists — choose another');
       return;
@@ -170,10 +355,16 @@ export default function CoachPortfolioForm({ userId, onClose }) {
     setBusy(true);
     setMessage('');
     try {
-      const data = await savePortfolioDraft({ userId, form });
+      const data = await savePortfolioDraft({
+        userId,
+        centerId: resolvedCenterId,
+        form,
+        createNew: createMode && resolvedCenterId == null,
+      });
       setSubmissionStatus(data?.status || submissionStatus || 'draft');
       setPublicPath(data?.publicPath || publicPath);
       setIsPublished(data?.isPublished === true);
+      if (data?.centerId != null) setResolvedCenterId(data.centerId);
       setMessage(data?.publicPath
         ? `Saved — link ${data.publicPath}`
         : 'Saved — you can keep editing anytime');
@@ -185,6 +376,12 @@ export default function CoachPortfolioForm({ userId, onClose }) {
   };
 
   const goNext = () => {
+    if (step.id === 'hero') {
+      if (!String(form.center.city || '').trim() || !String(form.center.locality || '').trim()) {
+        setMessage('Enter City and Area first');
+        return;
+      }
+    }
     if (step.id === 'about') {
       const aboutErrors = validateAboutForm(form);
       if (aboutErrors.length) {
@@ -196,7 +393,50 @@ export default function CoachPortfolioForm({ userId, onClose }) {
     setStepIndex((i) => Math.min(steps.length - 1, i + 1));
   };
 
+  const sendPublishOtp = async () => {
+    if (!String(form.center.city || '').trim() || !String(form.center.locality || '').trim()) {
+      throw new Error('Enter City and Area before publishing');
+    }
+    const data = await requestPortfolioPublishOtp({
+      userId,
+      centerId: resolvedCenterId,
+      form,
+      createNew: createMode && resolvedCenterId == null,
+    });
+    setSubmissionStatus(data?.status || 'approved');
+    setMaskedEmail(data?.maskedEmail || '');
+    setCoachName(data?.coachName || '');
+    setOtpKey(data?.otpKey ?? data?.centerId ?? data?.id ?? null);
+    // Prefer the City/Area the user typed — never fall back to another site's old path.
+    const formPath = buildPublicPathPreview({
+      websiteDisplayName: form.mediaBrand?.websiteDisplayName,
+      fullName: form.personal?.fullName,
+      city: form.center?.city,
+      locality: form.center?.locality,
+      userId,
+    });
+    setPathPreview(data?.publicPathPreview || formPath);
+    if (data?.centerId != null) setResolvedCenterId(data.centerId);
+    if (data?.isPublished === true && data?.publicPath) {
+      setPublicPath(data.publicPath);
+      setIsPublished(true);
+    }
+    setOtpOpen(true);
+    setMessage(
+      data?.coachName
+        ? `OTP sent to your coach (${data.coachName}). Ask them for the code to publish.`
+        : data?.maskedEmail
+          ? `OTP sent to your coach at ${data.maskedEmail}. Ask them for the code to publish.`
+          : 'OTP sent to your coach. Ask them for the code to publish.',
+    );
+    return data;
+  };
+
   const onSubmit = async () => {
+    if (!String(form.center.city || '').trim() || !String(form.center.locality || '').trim()) {
+      setMessage('Enter City and Area before publishing');
+      return;
+    }
     if (displayNameStatus === 'taken') {
       setMessage('Website display name already exists — choose another');
       return;
@@ -217,17 +457,33 @@ export default function CoachPortfolioForm({ userId, onClose }) {
     setBusy(true);
     setMessage('');
     try {
-      const data = await submitPortfolioForm({ userId, form });
-      setSubmissionStatus(data?.status || 'approved');
-      setPublicPath(data?.publicPath || publicPath);
-      setIsPublished(data?.isPublished === true || Boolean(data?.publicPath));
-      setMessage(data?.publicPath
-        ? `Published — ${data.publicPath}`
-        : 'Published — you can keep editing anytime');
+      await sendPublishOtp();
     } catch (err) {
-      setMessage(err?.message || 'Submit failed');
+      setMessage(err?.message || 'Could not send publish OTP');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const onOtpVerified = (data) => {
+    setOtpOpen(false);
+    setSubmissionStatus(data?.status || 'approved');
+    setPublicPath(data?.publicPath || pathPreview || publicPath);
+    setIsPublished(data?.isPublished === true || Boolean(data?.publicPath));
+    setMessage(data?.publicPath
+      ? `Published — ${data.publicPath}`
+      : 'Published — you can keep editing anytime');
+  };
+
+  const onResendOtp = async () => {
+    setOtpResending(true);
+    setMessage('');
+    try {
+      await sendPublishOtp();
+    } catch (err) {
+      setMessage(err?.message || 'Could not resend OTP');
+    } finally {
+      setOtpResending(false);
     }
   };
 
@@ -245,7 +501,7 @@ export default function CoachPortfolioForm({ userId, onClose }) {
             </TouchFeedbackButton>
             <div className="min-w-0 flex-1">
               <h1 className="text-[15px] font-bold tracking-tight text-slate-900">
-                My website
+                {resolvedCenterName ? `Website · ${resolvedCenterName}` : 'My website'}
               </h1>
               <p className="text-xs text-slate-500">{step.description}</p>
             </div>
@@ -306,35 +562,7 @@ export default function CoachPortfolioForm({ userId, onClose }) {
                 />
               </div>
             ) : null}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <FieldLabel hint={placeFromClub ? 'From your club location' : 'Used in your public website URL'}>
-                  City
-                </FieldLabel>
-                <TextInput
-                  value={form.center.city}
-                  disabled={placeFromClub || !canEdit}
-                  onChange={(v) => canEdit && !placeFromClub && setForm(setSection(form, 'center', { city: v }))}
-                  placeholder={hasClub ? 'Fetched from club GPS' : 'e.g. Coimbatore'}
-                />
-              </div>
-              <div>
-                <FieldLabel hint={placeFromClub ? 'Short area from club GPS (e.g. Adyar)' : 'Short area name only'}>
-                  Area
-                </FieldLabel>
-                <TextInput
-                  value={form.center.locality}
-                  disabled={placeFromClub || !canEdit}
-                  onChange={(v) => canEdit && !placeFromClub && setForm(setSection(form, 'center', { locality: v }))}
-                  placeholder={hasClub ? 'e.g. Adyar' : 'e.g. Vadapalani'}
-                />
-              </div>
-            </div>
-            {hasClub && !placeFromClub ? (
-              <p className="text-[11px] text-amber-700">
-                Club found, but city/area could not be resolved from GPS yet. Save again later or check club location.
-              </p>
-            ) : null}
+            {renderPlaceFields('City & area')}
           </FormCard>
         ) : null}
 
@@ -373,7 +601,7 @@ export default function CoachPortfolioForm({ userId, onClose }) {
               />
             </div>
             <div>
-              <FieldLabel required hint="Checklist line under About">
+              <FieldLabel hint="Checklist line under About">
                 Qualifications
               </FieldLabel>
               <TextInput
@@ -479,6 +707,7 @@ export default function CoachPortfolioForm({ userId, onClose }) {
             subtitle={hasClub ? 'Edit anytime — photos, hours, copy' : 'Edit anytime — photos and copy'}
           >
             <div className="space-y-3 text-sm text-slate-800">
+              {renderPlaceFields('Confirm city & area')}
               <div className="rounded-2xl bg-slate-50 px-3.5 py-3 space-y-3">
                 <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">From your app</p>
                 {displayMediaUrl(form.personal.profilePhoto) ? (
@@ -522,7 +751,7 @@ export default function CoachPortfolioForm({ userId, onClose }) {
               </div>
               {publicPath ? (
                 <a
-                  href={isPublished ? publicPath : undefined}
+                  href={isPublished ? publicWebsiteUrl(publicPath) : undefined}
                   target={isPublished ? '_blank' : undefined}
                   rel={isPublished ? 'noreferrer' : undefined}
                   className="block rounded-2xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-sm font-semibold text-emerald-800"
@@ -531,7 +760,7 @@ export default function CoachPortfolioForm({ userId, onClose }) {
                   {isPublished ? 'Live page: ' : 'Your link: '}{publicPath}
                 </a>
               ) : null}
-              {isFirstSubmit ? (
+              {needsPublish ? (
                 <>
                   <label className="flex items-start gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/80 px-3.5 py-3 text-sm text-slate-800">
                     <input
@@ -546,6 +775,9 @@ export default function CoachPortfolioForm({ userId, onClose }) {
                     <FieldLabel required>Authorize use of photos and content for publication?</FieldLabel>
                     <YesNo value={form.goalsConsent.publishAuthorized} onChange={(v) => canEdit && setForm(setSection(form, 'goalsConsent', { publishAuthorized: v }))} />
                   </div>
+                  <p className="text-xs text-slate-500">
+                    Publish emails a verification OTP to your coach. Ask them for the code, then enter it here to go live.
+                  </p>
                 </>
               ) : (
                 <p className="text-xs text-slate-500">
@@ -589,15 +821,30 @@ export default function CoachPortfolioForm({ userId, onClose }) {
             </TouchFeedbackButton>
           ) : (
             <TouchFeedbackButton
-              onClick={isFirstSubmit ? onSubmit : saveDraft}
+              onClick={needsPublish ? onSubmit : saveDraft}
               disabled={busy || loading}
               className="ml-auto flex-1 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm shadow-emerald-600/20 disabled:opacity-40"
             >
-              {isFirstSubmit ? 'Publish website' : 'Save changes'}
+              {needsPublish ? 'Publish website' : 'Save changes'}
             </TouchFeedbackButton>
           )}
         </div>
       </div>
+
+      {otpOpen ? (
+        <PublishOtpModal
+          userId={userId}
+          centerId={resolvedCenterId}
+          otpKey={otpKey}
+          maskedEmail={maskedEmail}
+          coachName={coachName}
+          publicPathPreview={pathPreview}
+          resending={otpResending}
+          onVerified={onOtpVerified}
+          onResend={onResendOtp}
+          onClose={() => setOtpOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

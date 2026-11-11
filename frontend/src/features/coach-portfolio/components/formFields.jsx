@@ -79,6 +79,31 @@ export function SelectInput({ value, onChange, options, placeholder = 'Select', 
   );
 }
 
+/** Dropdown with separate value/label (e.g. centerId → center name). */
+export function ValueSelectInput({
+  value,
+  onChange,
+  options = [],
+  placeholder = 'Select',
+  disabled = false,
+}) {
+  return (
+    <select
+      value={value == null || value === '' ? '' : String(value)}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      className={`${controlClass} appearance-none`}
+    >
+      <option value="">{placeholder}</option>
+      {options.map((opt) => (
+        <option key={String(opt.value)} value={String(opt.value)}>
+          {opt.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export function MultiCheck({ options, value = [], onChange, disabled = false }) {
   const selected = Array.isArray(value) ? value : [];
   const toggle = (opt) => {

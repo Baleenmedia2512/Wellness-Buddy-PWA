@@ -533,6 +533,10 @@ async function enrichTestimonialForDisplay(testimonial, opts = {}) {
     videoStatus:            testimonial.video_status        ?? 'none',
     videoVerifiedAt:        testimonial.video_verified_at   ?? null,
     recoveredHealthIssues:  testimonial.recovered_health_issues ?? [],
+    websiteDisplayAgreed:   testimonial.website_display_agreed === true
+      || testimonial.website_display_agreed === 1,
+    websiteDisplayConsentAt: testimonial.website_display_consent_at ?? null,
+    websiteDisplayConsentRevokedAt: testimonial.website_display_consent_revoked_at ?? null,
     // OTP metadata for member UI (never expose hash).
     otpExpiresAt:           testimonial.otp_expires_at ?? null,
     otpExpired:             testimonial.otp_hash
@@ -649,6 +653,8 @@ export async function submitTestimonial(rawBody) {
     otpExpiresAt:           otpExpiry,
     verifiedAt:             null,
     recoveredHealthIssues:  payload.recoveredHealthIssues ?? [],
+    // Checkbox intent only — consent_at is set after member email OTP.
+    websiteDisplayAgreed:   payload.websiteDisplayAgreed === true,
     ...(afterPath ? { afterImagePath: afterPath, afterWeightKg: payload.afterWeightKg } : {}),
   };
 
@@ -755,6 +761,14 @@ export async function verifyOtp(rawBody) {
     bustPortfolioTeamMediaCache(row.coach_id);
   } catch {
     /* non-fatal — public site cache refresh */
+  }
+
+  try {
+    const { maybeAutoSendDisplayConsentOtp } = await import('./websiteDisplayConsent.service.js');
+    const latest = await repo.findById(testimonialId);
+    await maybeAutoSendDisplayConsentOtp(latest || { ...row, status: 'verified' });
+  } catch {
+    /* non-fatal — member display-consent OTP */
   }
 
   return {
@@ -1505,6 +1519,16 @@ export async function verifyVideoOtp(rawBody) {
     /* non-fatal — public site cache refresh */
   }
 
+  try {
+    const { maybeAutoSendDisplayConsentOtp } = await import('./websiteDisplayConsent.service.js');
+    const latest = await repo.findById(testimonialId);
+    await maybeAutoSendDisplayConsentOtp(
+      latest || { ...row, video_status: 'verified' },
+    );
+  } catch {
+    /* non-fatal — member display-consent OTP */
+  }
+
   return {
     httpStatus: 200,
     body: { success: true, message: 'Video testimonial verified successfully.' },
@@ -2233,6 +2257,14 @@ export async function verifyUnifiedOtp(rawBody) {
   }
 
   await repo.clearBaselineSnapshot(userId);
+
+  try {
+    const { maybeAutoSendDisplayConsentOtp } = await import('./websiteDisplayConsent.service.js');
+    const latest = await repo.findByUserId(userId);
+    await maybeAutoSendDisplayConsentOtp(latest);
+  } catch {
+    /* non-fatal — member display-consent OTP */
+  }
 
   const verifiedItems = [
     photoPending   && 'photos',

@@ -415,3 +415,12 @@ registerFlag({
   description:    'Coach Website portfolio: paid gate (admin mark paid for testing; Cashfree later) + form entry. Kill switch hides Profile rows and portfolio APIs.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.testimonial-upline-display-consent',
+  owner:          '@testimonials-team',
+  createdAt:      '2026-11-09',
+  removeBy:       '2027-05-09',
+  description:    'Gate coach-website What We Say / What We Do on member checkbox + member email OTP after coach content verify. When OFF: legacy verified + direct downline only.',
+  defaultEnabled: true,
+});

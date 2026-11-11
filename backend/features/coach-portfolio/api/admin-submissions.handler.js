@@ -61,11 +61,17 @@ export async function listAdminSubmissions({
 export async function getAdminSubmission({
   requesterUserId,
   targetUserId: rawTargetId,
+  centerId: rawCenterId = null,
 }) {
   if (!isEnabled(PORTFOLIO_FLAG)) featureDisabled();
   await assertAdminRequester(requesterUserId);
   const targetUserId = validateUserId(rawTargetId);
-  const row = await submissionRepo.findSubmissionByUserId(targetUserId);
+  const centerId = rawCenterId != null && String(rawCenterId).trim() !== ''
+    ? Number(rawCenterId)
+    : null;
+  const row = Number.isFinite(centerId) && centerId > 0
+    ? await submissionRepo.findSubmissionByUserAndCenter(targetUserId, centerId)
+    : await submissionRepo.findSubmissionByUserId(targetUserId);
   if (!row) throw new ValidationError(404, 'Submission not found');
   return {
     httpStatus: 200,
@@ -87,8 +93,10 @@ export async function updateAdminSubmissionStatus({
   }
   const existing = await submissionRepo.findSubmissionByUserId(targetUserId);
   if (!existing) throw new ValidationError(404, 'Submission not found');
+  const centerId = existing.centerId;
   let row = await submissionRepo.updateSubmissionStatus({
     userId: targetUserId,
+    centerId,
     status: String(status),
     adminNote,
     reviewedBy: Number(requester.UserId),
@@ -96,13 +104,13 @@ export async function updateAdminSubmissionStatus({
 
   // Approving / completing auto-publishes the public /coach/<slug> page.
   if (PUBLIC_VISIBLE_STATUSES.has(String(status))) {
-    row = await submissionRepo.publishSubmission(targetUserId) || row;
+    row = await submissionRepo.publishSubmission(targetUserId, { centerId }) || row;
   } else if (
     String(status) === SUBMISSION_STATUS.INFORMATION_REQUIRED
     || String(status) === SUBMISSION_STATUS.NEW
     || String(status) === SUBMISSION_STATUS.UNDER_REVIEW
   ) {
-    row = await submissionRepo.unpublishSubmission(targetUserId) || row;
+    row = await submissionRepo.unpublishSubmission(targetUserId, { centerId }) || row;
   }
 
   return {
@@ -120,16 +128,18 @@ export async function publishAdminSubmission({
   const targetUserId = validateUserId(rawTargetId);
   const existing = await submissionRepo.findSubmissionByUserId(targetUserId);
   if (!existing) throw new ValidationError(404, 'Submission not found');
+  const centerId = existing.centerId;
   if (!PUBLIC_VISIBLE_STATUSES.has(existing.status)) {
     // Move to approved then publish.
     await submissionRepo.updateSubmissionStatus({
       userId: targetUserId,
+      centerId,
       status: SUBMISSION_STATUS.APPROVED,
       adminNote: existing.adminNote,
       reviewedBy: validateUserId(requesterUserId),
     });
   }
-  const row = await submissionRepo.publishSubmission(targetUserId);
+  const row = await submissionRepo.publishSubmission(targetUserId, { centerId });
   return {
     httpStatus: 200,
     body: { ok: true, data: toPublicSubmission(row) },

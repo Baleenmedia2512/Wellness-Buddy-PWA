@@ -6,7 +6,9 @@
  * host) because JPEG/video bytes live on that server disk in local-dev setups.
  */
 import cache, { cacheKeys } from '../../../utils/cache.js';
+import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import * as testimonialsRepo from '../../testimonials/testimonials.repository.js';
+import { WEBSITE_DISPLAY_CONSENT_FLAG } from '../../testimonials/domain/websiteDisplayConsent.rules.js';
 import {
   emptyPublicTeamMedia,
   selectPublicTeamMediaCandidates,
@@ -95,8 +97,12 @@ export async function getPublicTeamMediaForCoach(coachUserId) {
   if (hit && typeof hit === 'object') return hit;
 
   try {
-    const rows = await testimonialsRepo.listForCoach(id, 'direct');
-    const candidates = selectPublicTeamMediaCandidates(rows);
+    const consentOn = isEnabled(WEBSITE_DISPLAY_CONSENT_FLAG);
+    // Consent ON → full hierarchy + consent gate. Flag OFF → legacy direct + verified only.
+    const rows = await testimonialsRepo.listForCoach(id, consentOn ? 'full' : 'direct');
+    const candidates = selectPublicTeamMediaCandidates(rows, {
+      requireDisplayConsent: consentOn,
+    });
     const signed = await signPublicTeamMedia(candidates, {
       // 7-day signed URLs for public site (same helper as coach email).
       // Uses TESTIMONIAL_FILE_BASE_URL so local SSR points at live file host.
