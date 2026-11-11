@@ -5,10 +5,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildCoachPortfolioPath,
+  isDuplicatePublicSlugError,
   isValidCoachPublicSlug,
   isValidCoachSlug,
   parseCoachPublicSlug,
   slugifyPart,
+  suffixPublicSlugForUser,
 } from '../domain/slug.rules.js';
 
 describe('coach-portfolio slug.rules', () => {
@@ -59,5 +61,31 @@ describe('coach-portfolio slug.rules', () => {
       pageSlug: 'demo-rs-puram',
       format: 'v1',
     });
+  });
+
+  it('suffixes city/area/name slugs with userId for uniqueness', () => {
+    assert.equal(
+      suffixPublicSlugForUser('chennai/kodambakkam/avinash', 1065),
+      'chennai/kodambakkam/avinash-1065',
+    );
+    assert.equal(
+      suffixPublicSlugForUser('chennai/kodambakkam/avinash', 1065, 1),
+      'chennai/kodambakkam/avinash-1065-2',
+    );
+    assert.equal(
+      suffixPublicSlugForUser('chennai/kodambakkam/avinash-1065', 1065, 0),
+      'chennai/kodambakkam/avinash-1065',
+    );
+  });
+
+  it('detects MySQL duplicate PublicSlug errors', () => {
+    assert.equal(
+      isDuplicatePublicSlugError({
+        message: "Duplicate entry 'chennai/kodambakkam/avinash' for key 'uq_coach_portfolio_slug'",
+      }),
+      true,
+    );
+    assert.equal(isDuplicatePublicSlugError({ code: 'P2002', message: 'Unique' }), true);
+    assert.equal(isDuplicatePublicSlugError({ message: 'connection lost' }), false);
   });
 });

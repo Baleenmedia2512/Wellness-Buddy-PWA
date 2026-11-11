@@ -33,6 +33,7 @@ import {
   VideoUploadField,
   YesNo,
 } from './formFields';
+import { openPublicCoachUrl, resolvePublicCoachUrl } from '../utils/publicCoachUrl';
 import { publicWebsiteUrl } from '../domain/publicWebsiteUrl';
 import PublishOtpModal from './PublishOtpModal';
 import { buildPublicPathPreview } from '../domain/publicPathPreview';
@@ -751,11 +752,13 @@ export default function CoachPortfolioForm({
               </div>
               {publicPath ? (
                 <a
-                  href={isPublished ? publicWebsiteUrl(publicPath) : undefined}
+                  href={isPublished ? (resolvePublicCoachUrl(publicPath) || publicWebsiteUrl(publicPath)) : undefined}
                   target={isPublished ? '_blank' : undefined}
                   rel={isPublished ? 'noreferrer' : undefined}
                   className="block rounded-2xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-sm font-semibold text-emerald-800"
-                  onClick={isPublished ? undefined : (e) => e.preventDefault()}
+                  onClick={isPublished
+                    ? (e) => openPublicCoachUrl(publicPath, e)
+                    : (e) => e.preventDefault()}
                 >
                   {isPublished ? 'Live page: ' : 'Your link: '}{publicPath}
                 </a>

@@ -115,6 +115,35 @@ export function buildCoachPortfolioPath({
 }
 
 /**
+ * Make a city/area/name slug unique for this coach (append -userId, then -2, -3…).
+ * @param {string} publicSlug
+ * @param {number|string} userId
+ * @param {number} [attempt] 0 = -userId, 1 = -userId-2, …
+ * @returns {string}
+ */
+export function suffixPublicSlugForUser(publicSlug, userId, attempt = 0) {
+  const parsed = String(publicSlug || '').split('/').filter(Boolean);
+  const city = parsed[0] || 'india';
+  const area = parsed[1] || 'center';
+  const baseLeaf = (parsed[2] || 'coach').replace(new RegExp(`-${userId}(?:-\\d+)?$`), '');
+  const n = Number(attempt) || 0;
+  const leaf = n <= 0
+    ? `${baseLeaf || 'coach'}-${userId}`.slice(0, 48)
+    : `${baseLeaf || 'coach'}-${userId}-${n + 1}`.slice(0, 48);
+  return `${city}/${area}/${leaf}`.slice(0, 160);
+}
+
+/** True when MySQL / Prisma reports unique PublicSlug collision (1062 / P2002). */
+export function isDuplicatePublicSlugError(error) {
+  const msg = error?.message || String(error || '');
+  const code = error?.code != null ? String(error.code) : '';
+  return code === 'P2002'
+    || /1062/.test(msg)
+    || /Duplicate entry/i.test(msg)
+    || /uq_coach_portfolio_slug/i.test(msg);
+}
+
+/**
  * @deprecated Prefer buildCoachPortfolioPath — kept for older call sites.
  * Returns the stored public slug (city/area/name).
  */

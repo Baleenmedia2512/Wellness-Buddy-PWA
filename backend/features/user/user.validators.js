@@ -224,6 +224,49 @@ export function validateUpdateProfile(body) {
     bcmProfileReviewed = raw === true || raw === 'true' || raw === 1 || raw === '1';
   }
 
+  // Working Physical Centre preference — optional; old clients omit it (leave unchanged).
+  let workingPhysicalCentreId;
+  if (
+    'workingPhysicalCentreId' in body
+    || 'WorkingPhysicalCentreId' in body
+    || 'working_physical_centre_id' in body
+  ) {
+    const raw = body.workingPhysicalCentreId !== undefined
+      ? body.workingPhysicalCentreId
+      : (body.WorkingPhysicalCentreId !== undefined
+        ? body.WorkingPhysicalCentreId
+        : body.working_physical_centre_id);
+    if (raw == null || raw === '') {
+      workingPhysicalCentreId = null;
+    } else {
+      const id = Number(raw);
+      if (!Number.isFinite(id) || id <= 0 || !Number.isInteger(id)) {
+        throw new ValidationError(400, 'Invalid workingPhysicalCentreId.');
+      }
+      workingPhysicalCentreId = id;
+    }
+  }
+
+  // Event registration prefs — optional; old clients omit (leave unchanged).
+  let eventTranslation;
+  let eventYourCity;
+  let eventLevel;
+  if ('eventTranslation' in body || 'EventTranslation' in body) {
+    eventTranslation = body.eventTranslation !== undefined
+      ? body.eventTranslation
+      : body.EventTranslation;
+  }
+  if ('eventYourCity' in body || 'EventYourCity' in body) {
+    eventYourCity = body.eventYourCity !== undefined
+      ? body.eventYourCity
+      : body.EventYourCity;
+  }
+  if ('eventLevel' in body || 'EventLevel' in body) {
+    eventLevel = body.eventLevel !== undefined
+      ? body.eventLevel
+      : body.EventLevel;
+  }
+
   return {
     email,
     userId: resolvedUserId,
@@ -249,6 +292,10 @@ export function validateUpdateProfile(body) {
     recoveredHealthIssues,
     transformationPhotos,
     bcmProfileReviewed,
+    workingPhysicalCentreId,
+    eventTranslation,
+    eventYourCity,
+    eventLevel,
   };
 }
 

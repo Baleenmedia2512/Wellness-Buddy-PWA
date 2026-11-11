@@ -6,7 +6,10 @@
  */
 
 export const WALLET_FLAG = 'ff.wallet';
+/** Kept for older call sites; wallet OTP does not time-expire. */
 export const WALLET_OTP_MINUTES = 30;
+/** Sentinel stored in OtpExpiresAt — time-based expiry is disabled. */
+export const WALLET_OTP_NO_EXPIRY_AT = '2099-12-31 23:59:59';
 export const WALLET_OTP_MAX_ATTEMPTS = 5;
 export const WALLET_OTP_LOCKED_CODE = 'WALLET_OTP_LOCKED';
 export const WALLET_OTP_LOCKED_MESSAGE = '5 attempts used. Send a new request.';
@@ -58,13 +61,18 @@ export function parseWalletAmount(raw) {
 }
 
 /**
+ * Display-only: whole rupees in Indian grouping (no decimals).
+ * Does not change stored/API numeric amounts.
  * @param {unknown} amount
  * @returns {string}
  */
 export function formatWalletAmount(amount) {
   const n = Number(amount);
-  if (!Number.isFinite(n)) return '0.00';
-  return n.toFixed(2);
+  if (!Number.isFinite(n)) return '0';
+  return new Intl.NumberFormat('en-IN', {
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+  }).format(Math.round(n));
 }
 
 /**
@@ -76,15 +84,14 @@ export function isValidWalletOtp(otp) {
 }
 
 /**
- * @param {unknown} expiresAt
- * @param {Date} [now]
+ * Wallet OTP does not expire by clock time.
+ * Pending stays until Cancel, successful verify, or max failed attempts.
+ * @param {unknown} [_expiresAt]
+ * @param {Date} [_now]
  * @returns {boolean}
  */
-export function isWalletOtpExpired(expiresAt, now = new Date()) {
-  if (!expiresAt) return true;
-  const exp = new Date(expiresAt);
-  if (Number.isNaN(exp.getTime())) return true;
-  return now.getTime() > exp.getTime();
+export function isWalletOtpExpired(_expiresAt, _now = new Date()) {
+  return false;
 }
 
 /**

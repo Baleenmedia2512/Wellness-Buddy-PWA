@@ -9,10 +9,17 @@ function toPerson(row) {
   const userId = Number(row?.UserId);
   const name = String(row?.UserName || '').trim();
   if (!Number.isInteger(userId) || userId <= 0 || !name) return null;
+  const coachName = String(row?.CoachName || '').trim();
+  const coCoachName = String(row?.CoCoachName || '').trim();
+  const uplineParts = [coachName, coCoachName].filter(Boolean);
   return {
     userId,
     name,
     email: String(row?.Email || '').trim(),
+    // Additive only — existing clients ignore these fields.
+    coachName: coachName || undefined,
+    coCoachName: coCoachName || undefined,
+    uplineLabel: uplineParts.length > 0 ? uplineParts.join(' / ') : undefined,
   };
 }
 
@@ -21,7 +28,7 @@ export async function searchActivePeople(rawQuery) {
   const db = getMysqlClient();
   let request = db
     .from('team_table')
-    .select('UserId, UserName, Email')
+    .select('UserId, UserName, Email, CoachName, CoCoachName')
     .eq('Status', 'Active');
 
   if (q.length >= 2) {

@@ -7,8 +7,10 @@ import logger from '../../../shared/lib/logger.js';
 import { SUBMISSION_STATUS, normalizeFormJson } from '../domain/submission.rules.js';
 import {
   buildCoachPortfolioPath,
+  isDuplicatePublicSlugError,
   isValidCoachPublicSlug,
   isValidCoachSlug,
+  suffixPublicSlugForUser,
 } from '../domain/slug.rules.js';
 
 const CREATE_TABLE_SQL = `CREATE TABLE IF NOT EXISTS coach_portfolio_submissions_table (
@@ -46,7 +48,10 @@ async function runIgnoreDuplicate(sql) {
     await getPrisma().$executeRawUnsafe(sql);
   } catch (error) {
     const msg = error?.message || String(error);
-    if (!/duplicate|exists|1060|1061|1091|check that.+exists/i.test(msg)) throw error;
+    // Only ignore "already exists" DDL — never swallow row unique violations (1062).
+    if (!/1060|1061|Duplicate column|Duplicate key name|already exists|1091|check that.+exists/i.test(msg)) {
+      throw error;
+    }
   }
 }
 
@@ -261,6 +266,8 @@ export async function findPublishedBySlug(slug) {
 /** True when another submission row already owns this public slug. */
 export async function slugTakenByOther(publicSlug, { userId, centerId, submissionId } = {}) {
   await ensureSchema();
+  const needle = String(publicSlug || '').trim().toLowerCase();
+  if (!needle) return false;
   if (submissionId != null) {
     const rows = await getPrisma().$queryRawUnsafe(
       `SELECT Id AS id FROM coach_portfolio_submissions_table
@@ -284,12 +291,28 @@ export async function slugTakenByOther(publicSlug, { userId, centerId, submissio
   }
   const rows = await getPrisma().$queryRawUnsafe(
     `SELECT UserId AS userId FROM coach_portfolio_submissions_table
-     WHERE PublicSlug = ? AND UserId <> ?
+     WHERE PublicSlug IS NOT NULL
+       AND LOWER(TRIM(PublicSlug)) = ?
+       AND UserId <> ?
      LIMIT 1`,
-    String(publicSlug),
+    needle,
     Number(userId),
   );
   return Array.isArray(rows) && rows.length > 0;
+}
+
+/** Guaranteed-unique leaf when the normal -userId/-2… ladder is exhausted or races. */
+function timestampPublicSlug(desired, userId) {
+  const parsed = String(desired || '').split('/').filter(Boolean);
+  const city = parsed[0] || 'india';
+  const area = parsed[1] || 'center';
+  const leaf = `u${Number(userId)}-${Date.now()}`.slice(0, 48);
+  return `${city}/${area}/${leaf}`.slice(0, 160);
+}
+
+function duplicateEntryFromError(error) {
+  const m = String(error?.message || '').match(/Duplicate entry '([^']+)'/i);
+  return m ? m[1] : null;
 }
 
 /**
@@ -323,6 +346,53 @@ export async function displayNameTakenByOther(displayName, userId, { centerId } 
 }
 
 /**
+ * Pick a PublicSlug not owned by another coach (base path, then -userId, -userId-2…).
+ * @param {string} desired
+ * @param {number} userId
+ * @param {{ skip?: string[] }} [opts]  Slugs that just hit MySQL 1062 — never reuse them.
+ * @returns {Promise<string>}
+ */
+async function resolveUniquePublicSlug(desired, userId, { skip = [] } = {}) {
+  const skipped = new Set(
+    (Array.isArray(skip) ? skip : [])
+      .map((s) => String(s || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  let candidate = String(desired || '').slice(0, 160);
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    const key = candidate.trim().toLowerCase();
+    const blocked = skipped.has(key) || (await slugTakenByOther(candidate, userId));
+    if (!blocked) return candidate;
+    // Always suffix from the original desired base so -userId does not collapse into itself.
+    candidate = suffixPublicSlugForUser(desired, userId, attempt);
+  }
+  return timestampPublicSlug(desired, userId);
+}
+
+async function writePublicSlug(rowId, userId, publicSlug, { markPublished = false } = {}) {
+  // Update by primary key so a corrupted double-row UserId cannot 1062 itself.
+  if (markPublished) {
+    await getPrisma().$executeRawUnsafe(
+      `UPDATE coach_portfolio_submissions_table
+       SET PublicSlug = ?, IsPublished = 1
+       WHERE Id = ? AND UserId = ?`,
+      publicSlug,
+      Number(rowId),
+      Number(userId),
+    );
+    return;
+  }
+  await getPrisma().$executeRawUnsafe(
+    `UPDATE coach_portfolio_submissions_table
+     SET PublicSlug = ?
+     WHERE Id = ? AND UserId = ?`,
+    publicSlug,
+    Number(rowId),
+    Number(userId),
+  );
+}
+
+/**
  * Rebuild PublicSlug from FormJson for one submission row.
  * Prefer submissionId for freestyle (CenterId NULL) so we never rewrite another site.
  */
@@ -347,7 +417,7 @@ export async function assignPublicSlug(userId, {
   if (!row) return null;
 
   const form = row.formJson || {};
-  let publicSlug = buildCoachPortfolioPath({
+  const desired = buildCoachPortfolioPath({
     websiteDisplayName: form.mediaBrand?.websiteDisplayName,
     fullName: form.personal?.fullName || row.userName,
     city: form.center?.city,
@@ -385,6 +455,43 @@ export async function assignPublicSlug(userId, {
     );
   }
   return findSubmissionById(row.id);
+  const publish = markPublished || row.isPublished === true;
+  const skip = [];
+  let lastDuplicate = null;
+
+  for (let retry = 0; retry < 12; retry += 1) {
+    const publicSlug = retry >= 3
+      ? timestampPublicSlug(desired, userId)
+      : await resolveUniquePublicSlug(desired, userId, { skip });
+
+    if (
+      row.publicSlug
+      && String(row.publicSlug).toLowerCase() === String(publicSlug).toLowerCase()
+      && (!publish || row.isPublished)
+    ) {
+      return row;
+    }
+
+    try {
+      await writePublicSlug(row.id, userId, publicSlug, { markPublished: publish });
+      return findSubmissionByUserId(userId);
+    } catch (error) {
+      if (!isDuplicatePublicSlugError(error)) throw error;
+      // Race / missed pre-check: remember the colliding slug and try the next suffix.
+      lastDuplicate = error;
+      skip.push(publicSlug);
+      const fromMysql = duplicateEntryFromError(error);
+      if (fromMysql) skip.push(fromMysql);
+      logger.warn('coach-portfolio PublicSlug collision; retrying', {
+        userId: Number(userId),
+        publicSlug,
+        fromMysql,
+        attempt: retry + 1,
+      });
+    }
+  }
+
+  throw lastDuplicate;
 }
 
 export async function publishSubmission(userId, { centerId, submissionId = null } = {}) {

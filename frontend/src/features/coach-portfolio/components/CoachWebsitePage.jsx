@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Globe2, ExternalLink, MapPin, Plus } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { fetchMyWebsites } from '../services/portfolioApi';
+import { openPublicCoachUrl, resolvePublicCoachUrl } from '../utils/publicCoachUrl';
 import { publicWebsiteUrl } from '../domain/publicWebsiteUrl';
 import CoachPortfolioForm from './CoachPortfolioForm';
 
