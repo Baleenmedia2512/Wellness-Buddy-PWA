@@ -11,18 +11,6 @@ export const EVENT_TRANSLATION_OPTIONS = Object.freeze([
   'KANNADA',
 ]);
 
-export const EVENT_LEVEL_OPTIONS = Object.freeze([
-  'PC',
-  'ASSOCIATE',
-  'SV',
-  'WT',
-  'AWT',
-  'GET TEAM',
-  '2500 GET TEAM',
-  'MILL TEAM',
-  'PT',
-]);
-
 export const EVENT_YOUR_CITY_OPTIONS = Object.freeze([
   'OTHER COUNTRY',
   'OTHER CITY',
@@ -66,9 +54,12 @@ export function pickEventProfilePrefs(data = {}) {
       data.eventYourCity ?? data.EventYourCity,
       EVENT_YOUR_CITY_OPTIONS,
     ),
-    eventLevel: normalizeEventPrefOption(
-      data.eventLevel ?? data.EventLevel,
-      EVENT_LEVEL_OPTIONS,
-    ),
+    eventLevel: normalizeStoredCommunityPosition(data.eventLevel ?? data.EventLevel),
   };
+}
+
+/** Confirmed profile role. Any catalog code is kept — the list is not hard-coded. */
+export function normalizeStoredCommunityPosition(value) {
+  if (value == null || String(value).trim() === '') return '';
+  return String(value).trim().replace(/\s+/g, ' ').toUpperCase();
 }

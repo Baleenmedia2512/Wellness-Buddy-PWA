@@ -228,6 +228,37 @@ model community_id_requests_table {
   ProcessedAt     DateTime?
 }
 
+model community_position_requests_table {
+  Id           BigInt    @id @default(autoincrement())
+  RequesterId  BigInt
+  ApproverId   BigInt
+  PositionCode String    @db.VarChar(40)
+  OtpHash      String    @db.VarChar(255)
+  OtpExpiresAt DateTime
+  OtpSentAt    DateTime?
+  OtpAttempts  Int       @default(0)
+  Status       String    @default("pending") @db.VarChar(16)
+  RequestedAt  DateTime
+  ProcessedAt  DateTime?
+
+  @@index([RequesterId, Status], map: "idx_community_position_requests_requester_status")
+}
+
+model community_positions_table {
+  Id         BigInt   @id @default(autoincrement())
+  Code       String   @db.VarChar(40)
+  Label      String   @db.VarChar(40)
+  FeatureKey String   @db.VarChar(40)
+  UsageNote  String   @db.VarChar(240)
+  SortOrder  Int      @default(0)
+  IsActive   Boolean  @default(true)
+  CreatedAt  DateTime @default(now())
+
+  @@unique([Code], map: "uq_community_positions_code")
+  @@unique([FeatureKey], map: "uq_community_positions_feature_key")
+  @@index([IsActive, SortOrder], map: "idx_community_positions_active_sort")
+}
+
 model daily_step_activity {
   Id             BigInt          @id @default(autoincrement())
   UserId         BigInt
@@ -708,6 +739,9 @@ model team_table {
   IdealWeightReachedNotifiedAt                                                                DateTime?
   BcmProfileReviewedAt                                                                        DateTime?
   WorkingPhysicalCentreId                                                                     Int?
+  EventTranslation                                                                            String?                                 @db.VarChar(40)
+  EventYourCity                                                                               String?                                 @db.VarChar(40)
+  EventLevel                                                                                  String?                                 @db.VarChar(40)
   ai_analysis_jobs_table                                                                      ai_analysis_jobs_table[]
   nutrition_centers_table                                                                     nutrition_centers_table[]
   team_table_team_table_CoachIdToteam_table                                                   team_table?                             @relation("team_table_CoachIdToteam_table", fields: [CoachId], references: [UserId], onUpdate: NoAction, map: "fk_coach_id")

@@ -69,6 +69,14 @@ import {
 } from './domain/heightChange.rules.js';
 import { getWorkingPhysicalCentre } from '../nutrition-centers/workingPhysicalCentre.service.js';
 import { normalizeEventProfilePrefs } from './domain/eventProfilePrefs.rules.js';
+import {
+  COMMUNITY_POSITION_OTP_FLAG,
+  shouldDeferCommunityPositionToOtp,
+} from './domain/communityPosition.rules.js';
+import {
+  describeCommunityPosition,
+  getPublicPendingCommunityPositionRequest,
+} from './communityPosition.service.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
@@ -285,6 +293,25 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
     });
   }
 
+  let communityPosition = null;
+  let communityPositionRequest = null;
+  try {
+    communityPosition = await describeCommunityPosition(eventProfilePrefs.eventLevel);
+  } catch (err) {
+    logger.warn('[profile] community position lookup failed', {
+      userId: user.UserId,
+      message: err?.message,
+    });
+  }
+  try {
+    communityPositionRequest = await getPublicPendingCommunityPositionRequest(user.UserId);
+  } catch (err) {
+    logger.warn('[profile] pending community position lookup failed', {
+      userId: user.UserId,
+      message: err?.message,
+    });
+  }
+
   // Onboarding identity uses team_table.UserName only. A BCM card name must
   // not skip the name gate for users who still have a placeholder login name.
   const persistedUserName = user.UserName;
@@ -362,6 +389,8 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
         eventTranslation: eventProfilePrefs.eventTranslation,
         eventYourCity: eventProfilePrefs.eventYourCity,
         eventLevel: eventProfilePrefs.eventLevel,
+        communityPosition: communityPosition || null,
+        communityPositionRequest: communityPositionRequest || null,
         communityIdRequest: communityIdRequest || null,
         communityIdPair: communityIdPair || null,
         timezone: profileTimezone,
@@ -507,12 +536,18 @@ export async function updateProfile(input) {
     appVersion,
   });
   const appliedCommunityId = deferCommunityId ? undefined : communityId;
+  const deferCommunityPosition = shouldDeferCommunityPositionToOtp({
+    flagEnabled: isEnabled(COMMUNITY_POSITION_OTP_FLAG),
+    appVersion,
+  });
+  const appliedEventLevel = deferCommunityPosition ? undefined : eventLevel;
 
   logger.info('[profile/update] incoming request', {
     email: email || null,
     userId: inputUserId || null,
     receivedCommunityId: communityId !== undefined,
     deferredCommunityIdOtp: deferCommunityId,
+    deferredCommunityPositionOtp: deferCommunityPosition,
     receivedBodyFat: bodyFat !== undefined,
     receivedCurrentWeight: currentWeight !== undefined,
   });
@@ -637,12 +672,12 @@ export async function updateProfile(input) {
   if (
     eventTranslation !== undefined
     || eventYourCity !== undefined
-    || eventLevel !== undefined
+    || appliedEventLevel !== undefined
   ) {
     const normalized = normalizeEventProfilePrefs({
       eventTranslation,
       eventYourCity,
-      eventLevel,
+      eventLevel: appliedEventLevel,
     });
     const toSave = {};
     if (eventTranslation !== undefined) {
@@ -657,8 +692,8 @@ export async function updateProfile(input) {
       }
       toSave.eventYourCity = normalized.eventYourCity;
     }
-    if (eventLevel !== undefined) {
-      if (eventLevel != null && String(eventLevel).trim() !== '' && normalized.eventLevel == null) {
+    if (appliedEventLevel !== undefined) {
+      if (appliedEventLevel != null && String(appliedEventLevel).trim() !== '' && normalized.eventLevel == null) {
         throw new Error('Invalid Community Position. Choose a listed option.');
       }
       toSave.eventLevel = normalized.eventLevel;
