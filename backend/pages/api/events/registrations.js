@@ -33,7 +33,10 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    return runService(res, () => createEventRegistration(validateCreateEventRegistration(req.body)));
+    return runService(res, async () => {
+      const input = await validateCreateEventRegistration(req.body);
+      return createEventRegistration(input);
+    });
   }
   if (req.method === 'GET') {
     if (req.query?.id != null && String(req.query.id).trim() !== '') {

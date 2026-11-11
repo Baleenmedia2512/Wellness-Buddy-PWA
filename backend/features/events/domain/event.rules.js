@@ -291,6 +291,10 @@ const FOOD_TYPE_OPTIONS = Object.freeze([
   'VEG & NON VEG',
 ]);
 
+/**
+ * Fallback when community_positions_table cannot be loaded.
+ * New roles are added in that catalog, not in this list.
+ */
 const LEVEL_OPTIONS = Object.freeze([
   'PC',
   'ASSOCIATE',
@@ -333,7 +337,7 @@ function parsePickedPerson(raw, label) {
  * @param {unknown} raw
  * @returns {{ ok: true, value: object } | { ok: false, errors: string[] }}
  */
-export function normalizeEventRegistrationDraft(raw) {
+export function normalizeEventRegistrationDraft(raw, options = {}) {
   const input = raw && typeof raw === 'object' ? raw : {};
   const eventId = parseEventId(input.eventId);
   const translation = cleanText(input.translation).toUpperCase();
@@ -369,7 +373,10 @@ export function normalizeEventRegistrationDraft(raw) {
   }
   if (!name || name.length > NAME_MAX) errors.push('Name is required.');
   if (!idNo || idNo.length > 80) errors.push('ID No is required.');
-  if (!LEVEL_OPTIONS.includes(level)) errors.push('Community Position is required.');
+  const allowedLevels = Array.isArray(options.levelOptions) && options.levelOptions.length
+    ? options.levelOptions.map((code) => cleanText(code).toUpperCase())
+    : LEVEL_OPTIONS;
+  if (!allowedLevels.includes(level)) errors.push('Community Position is required.');
   if (!phoneNumber || phoneNumber.length > 20) errors.push('Phone Number is required.');
   if (!Number.isInteger(participantCount) || participantCount < 1 || participantCount > 10) {
     errors.push('No of Participant must be from 1 to 10.');

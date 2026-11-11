@@ -30,6 +30,7 @@ import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/
 import UserProfileFields from './profile/UserProfileFields';
 import ProfileEmailKycSection from './profile/ProfileEmailKycSection';
 import CommunityIdField from './profile/CommunityIdField';
+import CommunityPositionField from './profile/CommunityPositionField';
 import WorkingPhysicalCentreField from './profile/WorkingPhysicalCentreField';
 import EventProfilePrefsFields from './profile/EventProfilePrefsFields';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
@@ -52,6 +53,7 @@ import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardin
 import { hasValidProfileName } from '../domain/profileCompleteness';
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
+import { COMMUNITY_POSITION_OTP_FLAG } from '../domain/communityPosition';
 import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked, validateHeightCm } from '../domain/heightChange';
 import { looksLikeEmail } from '../domain/onboardingEmail';
 import GoPremiumButton from '../../payments/components/GoPremiumButton';
@@ -103,6 +105,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [idealCoachName, setIdealCoachName] = useState('');
   const [teamSeat, setTeamSeat] = useState(null);
   const [communityIdRequest, setCommunityIdRequest] = useState(null);
+  const [communityPositionRequest, setCommunityPositionRequest] = useState(null);
   const [communityIdPair, setCommunityIdPair] = useState(null);
   const [communityIdBusy, setCommunityIdBusy] = useState(false);
   const [communityIdError, setCommunityIdError] = useState('');
@@ -238,6 +241,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setIdealCoachName(data?.idealCoachName ? String(data.idealCoachName).trim() : '');
       setTeamSeat(data?.teamSeat || null);
       setCommunityIdRequest(data?.communityIdRequest || null);
+      setCommunityPositionRequest(data?.communityPositionRequest || null);
       setCommunityIdPair(data?.communityIdPair || null);
       setCommunityIdError('');
       transformationPhotos.loadFromProfile(data?.transformationPhotos);
@@ -873,6 +877,15 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   sponsorName={coachName}
                   sponsorEmail={sponsorEmail}
                 />
+                <CommunityPositionField
+                  userId={resolvedUserId}
+                  email={accountEmail}
+                  confirmedCode={form.eventLevel}
+                  pendingRequest={communityPositionRequest}
+                  otpEnabled={isFlagEnabled(COMMUNITY_POSITION_OTP_FLAG)}
+                  onChange={form.setEventLevel}
+                  onSettled={() => loadProfile({ cacheBust: true })}
+                />
                 <WorkingPhysicalCentreField
                   userId={resolvedUserId}
                   value={form.workingPhysicalCentreId}
@@ -883,8 +896,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   setEventTranslation={form.setEventTranslation}
                   eventYourCity={form.eventYourCity}
                   setEventYourCity={form.setEventYourCity}
-                  eventLevel={form.eventLevel}
-                  setEventLevel={form.setEventLevel}
                 />
                 <IdealWeightCards
                   height={form.height}

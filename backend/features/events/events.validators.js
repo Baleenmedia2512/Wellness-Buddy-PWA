@@ -80,9 +80,17 @@ export function validateSearchEventPeople(query) {
   };
 }
 
-export function validateCreateEventRegistration(body) {
+export async function validateCreateEventRegistration(body) {
   const userId = requireOwner(body);
-  const draft = normalizeEventRegistrationDraft(body);
+  let levelOptions;
+  try {
+    const { listActivePositionCodes } = await import('../user/communityPosition.service.js');
+    const codes = await listActivePositionCodes();
+    if (Array.isArray(codes) && codes.length) levelOptions = codes;
+  } catch {
+    levelOptions = undefined;
+  }
+  const draft = normalizeEventRegistrationDraft(body, { levelOptions });
   if (!draft.ok) throw new ValidationError(400, draft.errors.join(' '));
   const confirmPayment = body?.confirmPayment === true
     || body?.confirmPayment === 1

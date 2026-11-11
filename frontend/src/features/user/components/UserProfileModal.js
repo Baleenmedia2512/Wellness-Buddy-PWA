@@ -23,6 +23,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [hasSaved, setHasSaved] = useState(false);
+  const [communityPositionRequest, setCommunityPositionRequest] = useState(null);
 
   const loadProfile = useCallback(async () => {
     setIsLoading(true); setError('');
@@ -52,6 +53,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           eventLevel: data.eventLevel || '',
           bodyMetrics: data.bodyMetrics || null,
         });
+        setCommunityPositionRequest(data.communityPositionRequest || null);
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);
         setInitialWeight(data.initialWeight != null ? parseFloat(data.initialWeight) : null);
         setInitialWeightDate(data.initialWeightDate || null);
@@ -135,11 +137,13 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           onClose={handleCancel}
           isSaving={isSaving}
         />
-        <UserProfileBody isLoading={isLoading} form={form} email={form.email}
+        <UserProfileBody isLoading={isLoading} form={form} email={user?.email || form.email}
           latestWeight={latestWeight} initialWeight={initialWeight}
           initialWeightDate={initialWeightDate}
           marathonWeightComparison={marathonWeightComparison}
           userId={user?.id || user?.UserId || user?.userId || null}
+          communityPositionRequest={communityPositionRequest}
+          onCommunityPositionSettled={loadProfile}
           error={error} successMessage={successMessage}
         />
         {!isLoading && (
