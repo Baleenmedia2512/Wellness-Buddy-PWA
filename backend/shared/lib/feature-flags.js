@@ -406,3 +406,21 @@ registerFlag({
   description:    'Unique per-user wallet. Cash-in after OTP emailed to a selected Wellness Valley person. Kill switch hides the Profile row and wallet APIs.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.coach-portfolio',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-03',
+  removeBy:       '2027-05-03',
+  description:    'Coach Website portfolio: paid gate (admin mark paid for testing; Cashfree later) + form entry. Kill switch hides Profile rows and portfolio APIs.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.report-trial',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-05',
+  removeBy:       '2027-05-05',
+  description:    'Reports stay open. Unpaid detail is hidden until a 14-day trial or Premium. Kill switch. Version routing: app 3.5.5+ is gated; older or missing versions keep the full report.',
+  defaultEnabled: true,
+});

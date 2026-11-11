@@ -15,11 +15,15 @@
  */
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import { getDownlineWeightStatus } from '../../../features/reports/reports.service.js';
+import { shouldHideReportDetails } from '../../../features/payments/api/report-access.handler.js';
 
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET, OPTIONS')) return;
   if (req.method !== 'GET') return methodNotAllowed(res);
   // Encourage intermediaries / clients to keep short-lived copies (15–30s).
   res.setHeader('Cache-Control', 'private, max-age=15, stale-while-revalidate=15');
-  return runService(res, () => getDownlineWeightStatus(req.query));
+  return runService(res, async () => {
+    const hideDetails = await shouldHideReportDetails(req, req.query?.coachId);
+    return getDownlineWeightStatus(req.query, { hideDetails });
+  });
 }

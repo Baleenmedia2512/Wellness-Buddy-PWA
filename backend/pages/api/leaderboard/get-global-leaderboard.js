@@ -17,6 +17,8 @@ import {
 } from '../../../utils/reportingHierarchyService.js';
 import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
 import { resolveLeaderboardViewerId } from '../../../utils/leaderboardViewer.js';
+import { cashfreeCheckoutMode } from '../../../features/payments/domain/premium.rules.js';
+import { attachPremiumFlags } from '../../../features/payments/data/premium.repository.js';
 
 /** Server-side TTL — hierarchy-scoped; cache key includes viewerUserId. */
 const LEADERBOARD_CACHE_TTL_MS = 60 * 1000;
@@ -86,7 +88,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const cacheKey = `lb:hierarchy:weight:v2:${viewerUserId}:${topN}`;
+    const cacheKey = `lb:hierarchy:weight:v3:${viewerUserId}:${topN}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       res.setHeader("X-Cache", "HIT");
@@ -263,9 +265,13 @@ export default async function handler(req, res) {
       `🏆 [LEADERBOARD] Top ${withSponsors.length} weight losers calculated total=${Date.now() - startedAt}ms`,
     );
 
+    const withPremium = await attachPremiumFlags(withSponsors, {
+      mode: cashfreeCheckoutMode(process.env.CASHFREE_ENV || 'sandbox'),
+    });
+
     const payload = {
       success: true,
-      data: withSponsors,
+      data: withPremium,
       topN,
       totalEligible: leaderboardData.length,
       calculatedAt: nowUtc(),

@@ -7,6 +7,7 @@ import {
   timestampToCalendarYmd,
   parseClientTimestampToUtc,
   normalizeStoredTimestampToUtcIso,
+  normalizeActivityCreatedAt,
   utcInstantToLegacyIstWallStorage,
   IANA_IST,
 } from '../../shared/lib/datetime/index.js';
@@ -60,7 +61,7 @@ function formatRow(row) {
   try {
     return {
       ...row,
-      CreatedAt: normalizeStoredTimestampToUtcIso(row.CreatedAt),
+      CreatedAt: normalizeActivityCreatedAt(row.CreatedAt),
     };
   } catch {
     return row;

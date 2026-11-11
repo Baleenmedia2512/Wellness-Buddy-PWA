@@ -12,6 +12,7 @@ import {
   FileBarChart,
   Megaphone,
   CalendarPlus,
+  Sparkles,
 } from 'lucide-react';
 import NavTabButton from './NavTabButton';
 import { isFlagEnabled } from '../../config/featureFlags';
@@ -28,6 +29,7 @@ export default function AppNavTabs({
   onShowTestimonials,
   onShowBroadcast,
   onShowCreateEvent,
+  onShowPaidFeatures,
   onShowReports,
   reportsEnabled = false,
   /** null = fail-open (all tabs); object = role page map from DB */
@@ -36,6 +38,7 @@ export default function AppNavTabs({
   const allow = (pageKey) => canAccessNavPage(allowedPages, pageKey);
   const broadcastEnabled = isFlagEnabled('ff.broadcast');
   const createEventEnabled = isFlagEnabled('ff.create-event');
+  const paidFeaturesEnabled = isFlagEnabled('ff.coach-portfolio');
 
   return (
     <div
@@ -176,6 +179,21 @@ export default function AppNavTabs({
           labelClass="text-emerald-800"
           label="Create Event"
           ariaLabel="Create Event"
+        />
+      )}
+      {paidFeaturesEnabled && allow('paid-features') && (
+        <NavTabButton
+          onClick={onShowPaidFeatures ?? (() => {})}
+          active={activePage === 'paid-features'}
+          activeBg="bg-emerald-100"
+          hoverBg="hover:bg-emerald-50"
+          icon={Sparkles}
+          iconActiveClass="text-emerald-800"
+          iconClass="text-emerald-700"
+          labelActiveClass="text-emerald-900"
+          labelClass="text-emerald-800"
+          label="Paid Features"
+          ariaLabel="Paid Features"
         />
       )}
     </div>

@@ -226,6 +226,24 @@ const REGISTRY = Object.freeze({
     defaultEnabled: true,
     description:    'Profile Wallet: unique balance and OTP-approved cash-in.',
   },
+
+  // Coach Website portfolio — paid gate + form entry (Cashfree later).
+  // Default ON. Set REACT_APP_FF_COACH_PORTFOLIO=false or
+  // localStorage 'ff.coach-portfolio'='false' to hide.
+  'ff.coach-portfolio': {
+    envKey:         'REACT_APP_FF_COACH_PORTFOLIO',
+    storageKey:     'ff.coach-portfolio',
+    defaultEnabled: true,
+    description:    'Coach Website: paid unlock and portfolio form entry.',
+  },
+
+  // Reports detail trial. Kill switch shows the full report again.
+  'ff.report-trial': {
+    envKey:         'REACT_APP_FF_REPORT_TRIAL',
+    storageKey:     'ff.report-trial',
+    defaultEnabled: true,
+    description:    'Unpaid report details stay hidden until a 14-day trial or Premium.',
+  },
 });
 
 function readStorage(key) {

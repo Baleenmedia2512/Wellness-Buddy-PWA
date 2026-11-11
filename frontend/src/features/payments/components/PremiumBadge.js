@@ -14,28 +14,35 @@ export default function PremiumBadge() {
   );
 }
 
-/** Crown + "Premium" in the free space beside the Home header avatar. Hidden on very narrow phones. */
-export function PremiumHeaderTag() {
+/**
+ * Blue-to-purple ring around a paid member's profile photo.
+ * Pass enabled={false} to render the photo with no ring.
+ */
+export function PremiumAvatarRing({ enabled = true, children }) {
+  if (!enabled) return children;
   return (
     <span
-      className="hidden min-[340px]:inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-amber-100 border border-amber-300 px-2 py-1 text-xs font-bold leading-none text-amber-900"
-      data-testid="premium-header-tag"
+      className="inline-flex aspect-square shrink-0 items-center justify-center rounded-full bg-[conic-gradient(from_210deg,#2563eb,#38bdf8,#c084fc,#7c3aed,#2563eb)] p-[3px] leading-none"
+      data-testid="premium-avatar-ring"
     >
-      <Crown className="w-3 h-3" aria-hidden />
-      Premium
+      <span className="flex aspect-square h-full w-full items-center justify-center overflow-hidden rounded-full bg-white p-[2px] leading-none">
+        {children}
+      </span>
     </span>
   );
 }
 
-/** Small crown on the avatar corner. Only for very narrow phones with no room for the tag. */
-export function PremiumCrownMark() {
+/** Gold crown on the bottom-right of a Premium member's profile photo. */
+export function PremiumCrownMark({ size = 'sm' }) {
+  const box = size === 'lg' ? 'h-7 w-7' : 'h-5 w-5';
+  const icon = size === 'lg' ? 'h-4 w-4' : 'h-3 w-3';
   return (
     <span
-      className="min-[340px]:hidden absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 border border-white shadow-sm pointer-events-none"
+      className={`absolute -bottom-0.5 -right-0.5 flex ${box} items-center justify-center rounded-full bg-amber-400 border-2 border-white shadow-sm pointer-events-none`}
       data-testid="premium-crown"
       aria-hidden
     >
-      <Crown className="w-2.5 h-2.5 text-amber-900" aria-hidden />
+      <Crown className={`${icon} text-amber-950`} aria-hidden />
     </span>
   );
 }
