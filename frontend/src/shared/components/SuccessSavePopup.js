@@ -252,7 +252,7 @@ const SuccessSavePopup = ({
           </div>
           {weightData.bmi && (
             <div className="bg-white p-3 text-center">
-              <p className="text-xs text-blue-500 mb-1">BMI</p>
+              <p className="text-xs text-blue-500 mb-1">Indian BMI</p>
               <p className="font-bold text-lg">{weightData.bmi}</p>
             </div>
           )}
@@ -568,7 +568,7 @@ const SuccessSavePopup = ({
                   {isWeight ? (
                     <div className="flex flex-wrap gap-x-1 gap-y-0.5">
                       <span className="font-semibold text-gray-600">{weightData.weightValue} {weightData.unit}</span>
-                      {weightData.bmi && <span>· BMI: {weightData.bmi}</span>}
+                      {weightData.bmi && <span>· Indian BMI: {weightData.bmi}</span>}
                       {weightData.bodyFat && <span>· Body Fat: {weightData.bodyFat}%</span>}
                     </div>
                   ) : (

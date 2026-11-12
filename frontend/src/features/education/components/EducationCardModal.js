@@ -9,6 +9,7 @@ import EducationImagePreview from './EducationImagePreview';
 import { DeleteEducationButton } from './EducationActionButtons';
 import { useEducationDetailImage } from '../hooks/useEducationDetailImage';
 import { captureAndShare } from '../../../shared/utils/shareUtils';
+import { isBusinessToday } from '../../../shared/utils/datetimeUtils';
 import {
   formatLogDate, formatLogTime,
   isCaloriesBurnedTopic, extractCaloriesValue,
@@ -22,6 +23,8 @@ const EducationCardModal = ({
   const cardRef = useRef(null);
   const [isSharing, setIsSharing] = useState(false);
   if (!log) return null;
+
+  const isToday = isBusinessToday(log?.CreatedAt || log?.Timestamp, timezoneIana);
 
   const handleShare = async () => {
     if (isSharing || !cardRef.current) return;
@@ -90,9 +93,11 @@ const EducationCardModal = ({
             {isSharing ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Share2 className="w-4 h-4" />}
             {isSharing ? 'Sharing…' : 'Share'}
           </button>
-          <div className="flex-1">
-            <DeleteEducationButton onDelete={() => onDelete(log)} isDeleting={isDeleting} />
-          </div>
+          {isToday && (
+            <div className="flex-1">
+              <DeleteEducationButton onDelete={() => onDelete(log)} isDeleting={isDeleting} />
+            </div>
+          )}
         </div>
       </div>
     </div>

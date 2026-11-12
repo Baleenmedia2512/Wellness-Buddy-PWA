@@ -30,7 +30,6 @@ describe('profileBodyMetrics.rules', () => {
       const empty = emptyProfileBodyMetrics();
       assert.equal(empty.age, null);
       assert.equal(empty.fatPercent, null);
-      assert.equal(empty.visceralFat, null);
       assert.equal(empty.bmi, null);
       assert.equal(empty.bodyAge, null);
       assert.equal(empty.chestCm, null);
@@ -46,7 +45,6 @@ describe('profileBodyMetrics.rules', () => {
         age: 32,
         gender: 'Male',
         fat_percent: 18.5,
-        visceral_fat: null,
         bmi: 24.1,
         body_age: 30,
         chest_cm: 95,
@@ -58,7 +56,6 @@ describe('profileBodyMetrics.rules', () => {
         age: 32,
         gender: 'Male',
         fatPercent: 18.5,
-        visceralFat: null,
         bmi: 24.1,
         bodyAge: 30,
         chestCm: 95,
@@ -76,7 +73,6 @@ describe('profileBodyMetrics.rules', () => {
     it('maps PascalCase team_table columns', () => {
       const mapped = mapTeamRowToProfileBodyMetrics({
         Age: 28,
-        VisceralFat: 7,
         BodyAge: 26,
         ChestCm: 90,
         WaistCm: 75,
@@ -84,7 +80,6 @@ describe('profileBodyMetrics.rules', () => {
         Gender: 'Female',
       });
       assert.equal(mapped.age, 28);
-      assert.equal(mapped.visceralFat, 7);
       assert.equal(mapped.bodyAge, 26);
       assert.equal(mapped.chestCm, 90);
       assert.equal(mapped.waistCm, 75);
@@ -106,11 +101,10 @@ describe('profileBodyMetrics.rules', () => {
 
     it('prefers BCM card values over team_table', () => {
       const merged = mergeProfileBodyMetrics({
-        cardMetrics: { ...emptyProfileBodyMetrics(), age: 40, visceralFat: 9 },
-        teamMetrics: { ...emptyProfileBodyMetrics(), age: 28, visceralFat: 5, chestCm: 92 },
+        cardMetrics: { ...emptyProfileBodyMetrics(), age: 40 },
+        teamMetrics: { ...emptyProfileBodyMetrics(), age: 28, chestCm: 92 },
       });
       assert.equal(merged.age, 40);
-      assert.equal(merged.visceralFat, 9);
       assert.equal(merged.chestCm, 92);
     });
 

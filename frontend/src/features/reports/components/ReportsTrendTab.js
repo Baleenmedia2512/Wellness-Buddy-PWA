@@ -39,7 +39,6 @@ import ReportsWeightTrendChart, {
 const METRIC_ICONS = {
   weight: BathroomScaleIcon,
   fatPercent: Percent,
-  visceralFat: Activity,
   bmr: Flame,
   bmi: Activity,
   bodyAge: Calendar,

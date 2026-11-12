@@ -9,6 +9,7 @@ import * as captures from '../captures/captures.service.js';
 import { IMAGE_TYPE_EDUCATION } from '../captures/domain/image-types.js';
 import { mergeLocationWithCapture } from '../captures/domain/location.fields.js';
 import logger from '../../shared/lib/logger.js';
+import { assertDiaryPostEditableOrDeletable } from '../../shared/lib/diaryPostLock.rules.js';
 import { confirmPersisted } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 import {
   nowUtc,
@@ -264,6 +265,17 @@ export async function getSummary({ userId }) {
 
 // ─── delete ──────────────────────────────────────────────────────────────────
 export async function deleteLog({ userId, logId }) {
+  const existing = await repo.findLogById(logId, userId);
+  if (!existing || existing.IsDeleted) {
+    return {
+      httpStatus: 404,
+      body: { success: false, message: 'Education log not found or already deleted' },
+    };
+  }
+  const lockCheck = await assertDiaryPostEditableOrDeletable(existing.CreatedAt, userId, 'delete');
+  if (!lockCheck.allowed) {
+    return lockCheck.errorResponse;
+  }
   const data = await repo.softDeleteLog(logId, userId);
   if (data.length === 0) {
     return {
@@ -288,6 +300,13 @@ export async function undoDelete({ id, userId }) {
         httpStatus: 403,
         body: { success: false, message: 'You do not have permission to restore this item.' },
       };
+    }
+    const existing = await repo.findLogById(id, userId);
+    if (existing) {
+      const lockCheck = await assertDiaryPostEditableOrDeletable(existing.CreatedAt, userId, 'delete');
+      if (!lockCheck.allowed) {
+        return lockCheck.errorResponse;
+      }
     }
   }
   const data = await repo.restoreLog(id);

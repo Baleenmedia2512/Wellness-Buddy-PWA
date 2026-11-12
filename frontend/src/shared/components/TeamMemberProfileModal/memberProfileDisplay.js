@@ -12,8 +12,7 @@ export const TRANSFORMATION_SLOTS = Object.freeze([
 export const BODY_METRIC_FIELDS = Object.freeze([
   { key: 'age', label: 'Age' },
   { key: 'fatPercent', label: 'Fat %' },
-  { key: 'visceralFat', label: 'V-Fat' },
-  { key: 'bmi', label: 'BMI' },
+  { key: 'bmi', label: 'Indian BMI' },
   { key: 'bodyAge', label: 'Body Age' },
   { key: 'chestCm', label: 'Chest' },
   { key: 'waistCm', label: 'Waist' },
