@@ -301,10 +301,15 @@ const LEVEL_OPTIONS = Object.freeze([
   'SV',
   'WT',
   'AWT',
+  'GET',
+  'GET 2500',
+  'MILL',
+  'MILL 7500',
+  'PT',
+  // Legacy renamed codes (still accepted if catalog is unavailable)
   'GET TEAM',
   '2500 GET TEAM',
   'MILL TEAM',
-  'PT',
 ]);
 
 /** Empty query lists people; 2+ characters filters the full directory. */

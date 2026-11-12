@@ -4,6 +4,7 @@ import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton'
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { openPremiumCheckout } from '../openPremiumCheckout';
 import { memberCheckoutErrorMessage } from '../domain/nativePremiumCheckout.rules';
+import { fetchPremiumQuote } from '../services/premiumApi';
 import PremiumPlanPage from './PremiumPlanPage';
 
 const CONFIRM_ATTEMPTS_AFTER_PAYMENT = 4;
@@ -20,6 +21,8 @@ export default function GoPremiumButton({ userId, isPremium = false, onPremiumCh
   const [showPlan, setShowPlan] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [quote, setQuote] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
 
   if (!isFlagEnabled('ff.go-premium')) return null;
   if (isPremium) return null;
@@ -37,18 +40,24 @@ export default function GoPremiumButton({ userId, isPremium = false, onPremiumCh
     return false;
   };
 
-  const onOpenPlan = () => {
+  const onOpenPlan = async () => {
     if (busy) return;
     if (userId == null || String(userId).trim() === '') {
       setMessage('Sign in again before paying');
       return;
     }
     setMessage('');
+    setQuote(null);
     setShowPlan(true);
+    setQuoteLoading(true);
+    const result = await fetchPremiumQuote(userId);
+    setQuote(result.quote);
+    if (!result.quote && result.message) setMessage(result.message);
+    setQuoteLoading(false);
   };
 
   const onPayNow = async () => {
-    if (busy) return;
+    if (busy || !quote) return;
     setBusy(true);
     setMessage('');
     try {
@@ -86,10 +95,14 @@ export default function GoPremiumButton({ userId, isPremium = false, onPremiumCh
         <PremiumPlanPage
           busy={busy}
           message={message}
+          quote={quote}
+          quoteLoading={quoteLoading}
           onClose={() => {
             if (busy) return;
             setShowPlan(false);
             setMessage('');
+            setQuote(null);
+            setQuoteLoading(false);
           }}
           onPayNow={onPayNow}
         />

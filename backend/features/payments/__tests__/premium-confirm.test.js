@@ -12,7 +12,7 @@ import { confirmPremiumOrder, getPremiumStatus } from '../api/confirm-order.hand
 const paidOrder = (overrides = {}) => ({
   order_id: 'premium_42_abc123',
   order_status: 'PAID',
-  order_amount: 199,
+  order_amount: 234.82,
   customer_details: { customer_id: 'user_42' },
   ...overrides,
 });
@@ -31,18 +31,19 @@ describe('parsePremiumOrderUserId', () => {
 });
 
 describe('isPremiumOrderPaid', () => {
-  const expected = { userId: 42, amount: 199 };
-  it('accepts a PAID order for this member at the Premium price', () => {
+  const expected = { userId: 42, allowedAmounts: [234.82, 352.82, 1178.82] };
+  it('accepts a PAID order for this member at an allowed level total', () => {
     assert.equal(isPremiumOrderPaid(paidOrder(), expected), true);
   });
   it('rejects orders that are not PAID', () => {
     assert.equal(isPremiumOrderPaid(paidOrder({ order_status: 'ACTIVE' }), expected), false);
     assert.equal(isPremiumOrderPaid(paidOrder({ order_status: 'EXPIRED' }), expected), false);
   });
-  it('rejects another member or a short payment', () => {
+  it('rejects another member or a non-catalog payment', () => {
     assert.equal(isPremiumOrderPaid(paidOrder({ customer_details: { customer_id: 'user_7' } }), expected), false);
     assert.equal(isPremiumOrderPaid(paidOrder({ order_id: 'premium_7_abc123' }), expected), false);
     assert.equal(isPremiumOrderPaid(paidOrder({ order_amount: 1 }), expected), false);
+    assert.equal(isPremiumOrderPaid(paidOrder({ order_amount: 199 }), expected), false);
   });
 });
 
@@ -51,7 +52,6 @@ describe('confirmPremiumOrder', () => {
     process.env.CASHFREE_CLIENT_ID = 'TEST_ID';
     process.env.CASHFREE_CLIENT_SECRET = 'test_secret';
     process.env.CASHFREE_ENV = 'sandbox';
-    process.env.CASHFREE_ORDER_AMOUNT = '199';
   });
 
   it('saves a confirmed payment and says premium', async () => {
@@ -61,7 +61,7 @@ describe('confirmPremiumOrder', () => {
       { fetchOrder: async () => paidOrder(), record: async (row) => { saved.push(row); } },
     );
     assert.equal(result.body.data.premium, true);
-    assert.deepEqual(saved, [{ orderId: 'premium_42_abc123', userId: 42, amount: 199, mode: 'sandbox' }]);
+    assert.deepEqual(saved, [{ orderId: 'premium_42_abc123', userId: 42, amount: 234.82, mode: 'sandbox' }]);
   });
 
   it('does not save an order that is still unpaid', async () => {

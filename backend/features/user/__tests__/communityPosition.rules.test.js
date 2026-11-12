@@ -48,17 +48,17 @@ describe('shouldDeferCommunityPositionToOtp', () => {
 });
 
 describe('classifyCommunityPositionRequest', () => {
-  const activeCodes = ['PC', 'ASSOCIATE', 'MILL TEAM'];
+  const activeCodes = ['PC', 'ASSOCIATE', 'MILL'];
 
   it('asks the coach when the role is in the catalog and not already held', () => {
     const result = classifyCommunityPositionRequest({
-      requestedCode: 'mill team',
+      requestedCode: 'mill',
       confirmedCode: 'PC',
       activeCodes,
     });
     assert.equal(result.ok, true);
     assert.equal(result.status, POSITION_REQUEST);
-    assert.equal(result.code, 'MILL TEAM');
+    assert.equal(result.code, 'MILL');
   });
 
   it('does not send another code when the member already holds the role', () => {
@@ -131,8 +131,10 @@ describe('OTP window', () => {
 });
 
 describe('legacy codes', () => {
-  it('keeps the roles already shipped on profile save', () => {
-    assert.ok(LEGACY_COMMUNITY_POSITION_CODES.includes('2500 GET TEAM'));
-    assert.equal(normalizeFeatureKey('2500 GET TEAM'), '2500-get-team');
+  it('ships current catalog codes and still accepts renamed legacy codes', () => {
+    assert.ok(LEGACY_COMMUNITY_POSITION_CODES.includes('GET 2500'));
+    assert.ok(LEGACY_COMMUNITY_POSITION_CODES.includes('MILL 7500'));
+    assert.ok(!LEGACY_COMMUNITY_POSITION_CODES.includes('2500 GET TEAM'));
+    assert.equal(normalizeFeatureKey('GET 2500'), 'get-2500');
   });
 });

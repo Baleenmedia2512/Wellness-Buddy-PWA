@@ -17,6 +17,10 @@ import {
   cashfreeOrderStatus,
   isPremiumOrderPaid,
 } from '../domain/premium-confirm.rules.js';
+import {
+  getPremiumPricingConfig,
+  listPremiumPayableTotals,
+} from '../domain/premiumPricing.rules.js';
 
 function parseUserId(raw) {
   const userId = Number.parseInt(String(raw ?? ''), 10);
@@ -43,13 +47,13 @@ export async function confirmPremiumOrder(input, deps = {}) {
 
   const clientId = String(process.env.CASHFREE_CLIENT_ID || '').trim();
   const clientSecret = String(process.env.CASHFREE_CLIENT_SECRET || '').trim();
-  const amount = parsePremiumAmount(process.env.CASHFREE_ORDER_AMOUNT || '99');
-  if (!clientId || !clientSecret || amount == null) {
+  if (!clientId || !clientSecret) {
     throw new ValidationError(500, 'Payment is not configured');
   }
 
   const envName = process.env.CASHFREE_ENV || 'sandbox';
   const mode = cashfreeCheckoutMode(envName);
+  const allowedAmounts = listPremiumPayableTotals(getPremiumPricingConfig());
 
   const order = await fetchOrder({
     apiBase: cashfreeApiBase(envName),
@@ -59,12 +63,17 @@ export async function confirmPremiumOrder(input, deps = {}) {
   });
   const status = cashfreeOrderStatus(order);
 
-  if (!isPremiumOrderPaid(order, { userId, amount })) {
+  if (!isPremiumOrderPaid(order, { userId, allowedAmounts })) {
+    return { httpStatus: 200, body: { ok: true, data: { premium: false, status } } };
+  }
+
+  const amount = parsePremiumAmount(order.order_amount);
+  if (amount == null) {
     return { httpStatus: 200, body: { ok: true, data: { premium: false, status } } };
   }
 
   await record({ orderId, userId, amount, mode });
-  logger.info('Premium payment confirmed', { userId, orderId, mode });
+  logger.info('Premium payment confirmed', { userId, orderId, mode, amount });
 
   return { httpStatus: 200, body: { ok: true, data: { premium: true, status } } };
 }

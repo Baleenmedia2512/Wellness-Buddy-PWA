@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { ArrowLeft, Check, Crown } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import {
-  PREMIUM_PLAN_AMOUNT,
   PREMIUM_PLAN_NAME,
   formatPremiumPlanAmount,
 } from '../domain/premiumPlan';
@@ -16,10 +15,13 @@ const PLAN_POINTS = [
 
 /**
  * Plan page shown after Go Premium. Pay Now opens existing Cashfree checkout.
+ * Price comes from the server quote (Community Position + GST).
  */
 export default function PremiumPlanPage({
   busy,
   message,
+  quote = null,
+  quoteLoading = false,
   onClose,
   onPayNow,
 }) {
@@ -31,7 +33,12 @@ export default function PremiumPlanPage({
     return () => window.removeEventListener('keydown', onKey);
   }, [busy, onClose]);
 
-  const amountLabel = formatPremiumPlanAmount(PREMIUM_PLAN_AMOUNT);
+  const amountLabel = quote ? formatPremiumPlanAmount(quote.amount) : '';
+  const baseLabel = quote ? formatPremiumPlanAmount(quote.baseAmount) : '';
+  const gstLabel = quote ? formatPremiumPlanAmount(quote.gstAmount) : '';
+  const gstPct = quote ? Math.round(Number(quote.gstRate) * 100) : 18;
+  const canPay = Boolean(quote) && !quoteLoading && !busy;
+
   const page = (
     <div
       className="fixed inset-0 z-[70] bg-gray-50 flex flex-col"
@@ -54,7 +61,7 @@ export default function PremiumPlanPage({
           </h1>
         </div>
         <p className="mt-3 ml-1 text-green-50 text-sm">
-          Choose Premium and continue to payment.
+          Price is based on your Community Position, plus GST.
         </p>
       </div>
 
@@ -70,10 +77,23 @@ export default function PremiumPlanPage({
               </span>
             </div>
             <p className="mt-4 text-sm font-semibold text-gray-500">{PREMIUM_PLAN_NAME}</p>
-            <p className="mt-1 flex items-baseline gap-1">
-              <span className="text-4xl font-bold text-gray-900">₹{amountLabel}</span>
-              <span className="text-sm text-gray-400">one-time</span>
-            </p>
+            {quoteLoading ? (
+              <p className="mt-1 text-sm text-gray-500">Loading your price…</p>
+            ) : quote ? (
+              <>
+                <p className="mt-1 flex items-baseline gap-1">
+                  <span className="text-4xl font-bold text-gray-900">₹{amountLabel}</span>
+                  <span className="text-sm text-gray-400">incl. GST</span>
+                </p>
+                <p className="mt-2 text-sm text-gray-600">
+                  {quote.positionCode}: ₹{baseLabel} + {gstPct}% GST (₹{gstLabel})
+                </p>
+              </>
+            ) : (
+              <p className="mt-1 text-sm text-gray-600">
+                Set Community Position on your profile to see your price.
+              </p>
+            )}
           </div>
 
           <ul className="px-5 py-4 space-y-3">
@@ -100,11 +120,17 @@ export default function PremiumPlanPage({
       <div className="p-4 bg-white border-t border-gray-100">
         <TouchFeedbackButton
           onClick={onPayNow}
-          disabled={busy}
+          disabled={!canPay}
           ariaLabel="Pay Now"
           className="w-full rounded-xl bg-gradient-to-r from-green-600 to-green-700 text-white py-3.5 text-sm font-semibold shadow-md disabled:opacity-60"
         >
-          {busy ? 'Opening payment...' : `Pay Now · ₹${amountLabel}`}
+          {busy
+            ? 'Opening payment...'
+            : quoteLoading
+              ? 'Loading price...'
+              : amountLabel
+                ? `Pay Now · ₹${amountLabel}`
+                : 'Set Community Position to pay'}
         </TouchFeedbackButton>
       </div>
     </div>

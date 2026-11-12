@@ -3,6 +3,7 @@ import {
   parsePendingPremiumOrder,
   shouldKeepPendingPremiumOrder,
 } from '../domain/pendingPremiumOrder.js';
+import { normalizePremiumQuote } from '../domain/premiumPlan.js';
 
 const PENDING_KEY = 'wv.pendingPremiumOrder';
 
@@ -73,6 +74,34 @@ export async function confirmPendingPremiumOrder(userId) {
 /** True while this device has a started payment that is not confirmed yet. */
 export function hasPendingPremiumOrder(userId) {
   return readPendingPremiumOrder(userId) != null;
+}
+
+/**
+ * Premium price for this member's Community Position (base + GST).
+ * @param {string|number} userId
+ * @returns {Promise<{ quote: object|null, message: string }>}
+ */
+export async function fetchPremiumQuote(userId) {
+  try {
+    const response = await apiFetch(
+      `/api/payments/premium-quote?userId=${encodeURIComponent(userId)}`,
+      { method: 'GET', cache: 'no-store' },
+    );
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        quote: null,
+        message: body?.message || body?.error?.message || 'Could not load Premium price',
+      };
+    }
+    const quote = normalizePremiumQuote(body?.data);
+    if (!quote) {
+      return { quote: null, message: 'Could not load Premium price' };
+    }
+    return { quote, message: '' };
+  } catch {
+    return { quote: null, message: 'Could not load Premium price' };
+  }
 }
 
 /**
