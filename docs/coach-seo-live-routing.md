@@ -9,7 +9,8 @@ Coach pages and the sitemap run on the **Node** app (`wellness-api` / `test-well
 | `/api/*` | Node (already) |
 | `/coach/*` | Same Node app |
 | `/_next/*` | Same Node app (CSS/JS for coach pages) |
-| `/coach-sitemap.xml` | Same Node app |
+| `/coach/sitemap.xml` | Same as `/coach/*` (preferred on MilesWeb) |
+| `/coach-sitemap.xml` | SPA `.htaccess` rewrites → `/coach/sitemap.xml` |
 | `/share/*` | Same Node app (existing shares) |
 
 SPA (folder `wellnessvalley` / test site root) serves everything else.
@@ -28,9 +29,9 @@ Remove any rule that 302s `/coach` to Vercel.
 
 ## 2) cPanel / Node connect (hosting)
 
-In **Setup Node.js App** for `wellness-api` (live) or `test-wellness-api` (test), ensure the domain routes **`/coach`**, **`/_next`**, and **`/coach-sitemap.xml`** to that app — same as `/api`.
+If `/coach/<slug>` already returns Next.js HTML with only App URI `/api`, do **not** create extra Node apps for `/coach`. Put the sitemap under **`/coach/sitemap.xml`** and rewrite `/coach-sitemap.xml` in the SPA `.htaccess` (see `frontend/public/.htaccess`).
 
-`.htaccess` alone is not enough if LiteSpeed never hands those URLs to Passenger/Node.
+Only add a separate App URI if `/coach/...` itself never reaches Node.
 
 ## 3) Backend deploy
 
@@ -41,7 +42,8 @@ Deploy current backend (including `pages/coach/[...slug].js` and `pages/coach-si
 | Check | Pass |
 |---|---|
 | `https://wellnessvalley.in/coach/<city>/<area>/<name>` | HTML + response header `X-Powered-By: Next.js` |
-| `https://wellnessvalley.in/coach-sitemap.xml` | `Content-Type: application/xml` + `<urlset>` |
+| `https://wellnessvalley.in/coach/sitemap.xml` | `Content-Type: application/xml` + `<urlset>` |
+| `https://wellnessvalley.in/coach-sitemap.xml` | Same XML (via `.htaccess` rewrite) |
 | `https://wellnessvalley.in/robots.txt` | `Allow: /` + `Sitemap: …/coach-sitemap.xml` (not `Disallow: /`) |
 
 Fail signs:

@@ -6,8 +6,11 @@
   RewriteEngine On
   RewriteBase /
 
+  # Pretty sitemap URL → under /coach (same path that already hits Next).
+  RewriteRule ^coach-sitemap\.xml$ /coach/sitemap.xml [L]
+
   # Leave Node / Passenger paths alone (no SPA fallback).
-  RewriteRule ^(api|coach|_next|share|coach-sitemap\.xml)(/|$) - [L]
+  RewriteRule ^(api|coach|_next|share)(/|$) - [L]
 
   RewriteRule ^index\.html$ - [L]
   RewriteCond %{REQUEST_FILENAME} !-f
