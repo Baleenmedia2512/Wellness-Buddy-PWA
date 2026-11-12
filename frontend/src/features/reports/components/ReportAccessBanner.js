@@ -9,7 +9,7 @@ function daysLeftLabel(daysLeft) {
 }
 
 /**
- * Trial and Go Premium for the Reports header.
+ * Trial and Go Premium banner (Reports / Events host tools).
  * Paid members render nothing.
  */
 export default function ReportAccessBanner({
@@ -22,6 +22,7 @@ export default function ReportAccessBanner({
   userId,
   onPremiumCheck,
   centered = false,
+  trialLengthDays = 14,
 }) {
   const row = centered
     ? 'flex flex-col items-center justify-center gap-4 text-center'
@@ -65,9 +66,12 @@ export default function ReportAccessBanner({
     );
   }
 
+  const days = Number(trialLengthDays);
+  const lengthLabel = Number.isFinite(days) && days > 0 ? days : 14;
+
   return (
     <div className={`${row} ${centered ? '' : 'rounded-xl border border-teal-200 bg-teal-50 px-3 py-2'}`}>
-      <p className="text-sm font-semibold text-teal-950">Free trial for 14 days</p>
+      <p className="text-sm font-semibold text-teal-950">Free trial for {lengthLabel} days</p>
       <TouchFeedbackButton
         onClick={onStartTrial}
         disabled={starting}

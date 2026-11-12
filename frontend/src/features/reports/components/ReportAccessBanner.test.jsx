@@ -32,6 +32,17 @@ describe('ReportAccessBanner', () => {
     view.unmount();
   });
 
+  it('accepts a shorter trial length for Events host tools', () => {
+    const view = renderBanner({
+      access: 'none',
+      trialLengthDays: 7,
+      onStartTrial: () => {},
+    });
+    expect(view.container.textContent).toMatch(/7 days/);
+    expect(view.container.textContent).not.toMatch(/14 days/);
+    view.unmount();
+  });
+
   it('shows the days left during the trial', () => {
     const view = renderBanner({ access: 'trial', daysLeft: 14 });
     expect(view.container.textContent).toMatch(/14 days left/);
