@@ -26,7 +26,9 @@ import * as submissionRepo from '../../features/coach-portfolio/data/submission.
 import {
   buildCoachPageJsonLd,
   buildCoachPageSeo,
+  buildGoogleMapsSearchUrl,
   canShowPublicPortfolio,
+  mapsEmbedSrcFromLink,
   toPublicPortfolioPage,
 } from '../../features/coach-portfolio/domain/public-page.rules.js';
 import { isValidCoachSlug } from '../../features/coach-portfolio/domain/slug.rules.js';
@@ -156,8 +158,7 @@ export async function getServerSideProps({ params, req }) {
     /* keep FormJson photo if profile lookup fails */
   }
 
-  // Map / address / directions / place label = coach's own club only
-  // (never FormJson locality/city — that is portfolio SEO, not club GPS).
+  // Map: club GPS when owned center exists; else City/Area Google Maps search (freestyle).
   let hasClub = false;
   try {
     const club = await getAppWorkingClubForPortfolio(row.userId);
@@ -186,14 +187,25 @@ export async function getServerSideProps({ params, req }) {
       }
     } else {
       page.centerName = '';
-      page.address = '';
-      page.mapsLink = '';
+      // Keep FormJson city/area (SEO + freestyle place); map searches that query.
+      const placeLabel = [page.locality, page.city].filter(Boolean).join(', ');
+      page.address = placeLabel || '';
+      page.mapsLink = buildGoogleMapsSearchUrl({
+        locality: page.locality,
+        city: page.city,
+        address: page.address,
+      });
     }
   } catch {
     hasClub = false;
     page.centerName = '';
-    page.address = '';
-    page.mapsLink = '';
+    const placeLabel = [page.locality, page.city].filter(Boolean).join(', ');
+    page.address = placeLabel || '';
+    page.mapsLink = buildGoogleMapsSearchUrl({
+      locality: page.locality,
+      city: page.city,
+      address: page.address,
+    });
   }
 
   // Refresh SEO after live club place resolve (city/area may change from GPS).
@@ -510,23 +522,11 @@ export default function CoachPortfolioPage({
   ].filter(Boolean).slice(0, 3);
 
   const social = page.social || {};
-  // Own club with GPS only — map pins the club lat/lng, nothing else.
+  // Club → GPS mapsLink; freestyle → City/Area search mapsLink (set in getServerSideProps).
   const hasClub = Boolean(hasClubProp);
-  const clubMapQuery = (() => {
-    if (!hasClub) return null;
-    const link = String(page.mapsLink || '').trim();
-    if (!link) return null;
-    try {
-      const q = new URL(link).searchParams.get('q');
-      return q ? String(q).trim() : null;
-    } catch {
-      return null;
-    }
-  })();
-  const mapsEmbedSrc = clubMapQuery
-    ? `https://maps.google.com/maps?q=${encodeURIComponent(clubMapQuery)}&z=15&output=embed`
-    : null;
-  const showClubMap = Boolean(hasClub && mapsEmbedSrc);
+  const mapsLink = String(page.mapsLink || '').trim();
+  const mapsEmbedSrc = mapsEmbedSrcFromLink(mapsLink);
+  const showMap = Boolean(mapsEmbedSrc);
   const heroSupport = page.highlight
     || [
       'Get personalized wellness guidance from',
@@ -839,7 +839,7 @@ export default function CoachPortfolioPage({
           <div className="shell header-row">
             <a className="brand" href="#top" aria-label="Wellness Valley home" onClick={closeMenu}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/wellness-valley-logo.png" alt="Wellness Valley" className="brand-logo" width={48} height={48} />
+              <img src="/wellness-valley-logo.png" alt="Wellness Valley" className="brand-logo" width={72} height={72} />
             </a>
             <nav className="desk-nav" aria-label="Primary">
               {navItems.map((item) => (
@@ -1148,7 +1148,7 @@ export default function CoachPortfolioPage({
           ) : null}
 
           <section id="faq" className="section faq-contact-section">
-            <div className={`shell faq-contact-grid${showClubMap ? '' : ' no-map'}`}>
+            <div className={`shell faq-contact-grid${showMap ? '' : ' no-map'}`}>
               <div className="faq-panel">
                 <p className="section-kicker">Questions</p>
                 <h2>FAQ</h2>
@@ -1196,6 +1196,15 @@ export default function CoachPortfolioPage({
                       </div>
                     </li>
                   ) : null}
+                  {!hasClub && (page.locality || page.city) ? (
+                    <li>
+                      <span className="contact-ico" aria-hidden="true">📍</span>
+                      <div>
+                        <span className="contact-label">Location</span>
+                        <p>{[page.locality, page.city].filter(Boolean).join(', ')}</p>
+                      </div>
+                    </li>
+                  ) : null}
                   {hasClub && (page.openingTime || page.closingTime) ? (
                     <li>
                       <span className="contact-ico" aria-hidden="true">🕒</span>
@@ -1208,12 +1217,17 @@ export default function CoachPortfolioPage({
                 </ul>
               </div>
 
-              {showClubMap ? (
+              {showMap ? (
                 <div className="map-panel">
                   <div className="map-frame">
-                    <iframe title="Club location" src={mapsEmbedSrc} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
+                    <iframe
+                      title={hasClub ? 'Club location' : 'Location'}
+                      src={mapsEmbedSrc}
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                    />
                   </div>
-                  <a className="btn btn-primary map-directions" href={page.mapsLink} target="_blank" rel="noreferrer">
+                  <a className="btn btn-primary map-directions" href={mapsLink} target="_blank" rel="noreferrer">
                     Get Directions
                   </a>
                 </div>
@@ -1234,16 +1248,24 @@ export default function CoachPortfolioPage({
               <p className="footer-label">Follow Us</p>
               <div className="footer-social">
                 {social.facebook ? (
-                  <a href={social.facebook} target="_blank" rel="noreferrer" aria-label="Facebook" className="social-ico">f</a>
+                  <a href={social.facebook} target="_blank" rel="noreferrer" aria-label="Facebook" className="social-ico" title="Facebook">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M14 8h3V5h-3c-2.2 0-4 1.8-4 4v2H8v3h2v7h3v-7h2.6l.4-3H13V9c0-.6.4-1 1-1z" /></svg>
+                  </a>
                 ) : null}
                 {social.instagram ? (
-                  <a href={social.instagram} target="_blank" rel="noreferrer" aria-label="Instagram" className="social-ico">ig</a>
+                  <a href={social.instagram} target="_blank" rel="noreferrer" aria-label="Instagram" className="social-ico" title="Instagram">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5zm0 2a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3H7zm11 1.5a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4zM12 7.5A4.5 4.5 0 1 1 12 16.5 4.5 4.5 0 0 1 12 7.5zm0 2A2.5 2.5 0 1 0 12 14.5 2.5 2.5 0 0 0 12 9.5z" /></svg>
+                  </a>
                 ) : null}
                 {social.youtube ? (
-                  <a href={social.youtube} target="_blank" rel="noreferrer" aria-label="YouTube" className="social-ico">yt</a>
+                  <a href={social.youtube} target="_blank" rel="noreferrer" aria-label="YouTube" className="social-ico" title="YouTube">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M23 12.2s0-3.2-.4-4.7c-.2-.9-.9-1.6-1.8-1.8C19.3 5.3 12 5.3 12 5.3s-7.3 0-8.8.4c-.9.2-1.6.9-1.8 1.8C1 9 1 12.2 1 12.2s0 3.2.4 4.7c.2.9.9 1.6 1.8 1.8 1.5.4 8.8.4 8.8.4s7.3 0 8.8-.4c.9-.2 1.6-.9 1.8-1.8.4-1.5.4-4.7.4-4.7zM9.8 15.5v-6.6l6.2 3.3-6.2 3.3z" /></svg>
+                  </a>
                 ) : null}
                 {social.linkedin ? (
-                  <a href={social.linkedin} target="_blank" rel="noreferrer" aria-label="LinkedIn" className="social-ico">in</a>
+                  <a href={social.linkedin} target="_blank" rel="noreferrer" aria-label="LinkedIn" className="social-ico" title="LinkedIn">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M6.5 8.5H3.7V21h2.8V8.5zM5.1 3A1.6 1.6 0 1 0 5.1 6.2 1.6 1.6 0 0 0 5.1 3zM20.3 21h-2.8v-6.1c0-1.7-.7-2.3-1.7-2.3s-1.9.8-1.9 2.4V21H11V8.5h2.7v1.5c.5-.9 1.7-1.8 3.5-1.8 2.4 0 3.1 1.4 3.1 4.1V21z" /></svg>
+                  </a>
                 ) : null}
                 {!social.instagram && !social.facebook && !social.youtube && !social.linkedin ? (
                   <span className="footer-muted">Coming soon</span>
@@ -1574,8 +1596,8 @@ img { max-width: 100%; }
   flex: 0 0 auto;
 }
 .brand-logo {
-  width: 48px;
-  height: 48px;
+  width: 72px;
+  height: 72px;
   object-fit: contain;
   display: block;
 }
@@ -2812,11 +2834,9 @@ img { max-width: 100%; }
   border: 1px solid rgba(255,255,255,0.16);
   display: grid; place-items: center;
   text-decoration: none;
-  font-size: 12px;
-  font-weight: 800;
-  text-transform: uppercase;
   color: #fff;
 }
+.social-ico svg { display: block; }
 .footer-muted { opacity: 0.7; font-size: 14px; }
 
 .float-wa {
@@ -3159,9 +3179,9 @@ img { max-width: 100%; }
 
 @media (max-width: 719px) {
   .shell { width: min(1140px, calc(100% - 28px)); }
-  :root { --header-h: 64px; }
+  :root { --header-h: 76px; }
   .header-row { gap: 12px; }
-  .brand-logo { width: 40px; height: 40px; }
+  .brand-logo { width: 60px; height: 60px; }
   .section { padding: 36px 0; }
   .section-head.center { margin-bottom: 20px; }
   .section-head h2,

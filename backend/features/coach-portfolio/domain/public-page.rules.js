@@ -32,6 +32,43 @@ function pickOther(list, otherText) {
   return items;
 }
 
+/**
+ * Freestyle (no club GPS) maps link from City / Area typed on the form.
+ * Club GPS links stay as `https://maps.google.com/?q=lat,lng`.
+ *
+ * @param {{ locality?: string, city?: string, address?: string }} [place]
+ * @returns {string} empty when nowhere to search
+ */
+export function buildGoogleMapsSearchUrl({ locality = '', city = '', address = '' } = {}) {
+  const area = String(locality || '').trim();
+  const cityLabel = String(city || '').trim();
+  const parts = [];
+  if (area) parts.push(area);
+  if (cityLabel && cityLabel.toLowerCase() !== area.toLowerCase()) parts.push(cityLabel);
+  let query = parts.join(', ');
+  if (!query) query = String(address || '').trim();
+  if (!query) return '';
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+/**
+ * Embed + directions share the same query (GPS lat,lng or place name).
+ * @param {string|null|undefined} mapsLink
+ * @returns {string|null}
+ */
+export function mapsEmbedSrcFromLink(mapsLink) {
+  const link = String(mapsLink || '').trim();
+  if (!link) return null;
+  try {
+    const u = new URL(link);
+    const q = u.searchParams.get('q') || u.searchParams.get('query');
+    if (!q || !String(q).trim()) return null;
+    return `https://maps.google.com/maps?q=${encodeURIComponent(String(q).trim())}&z=15&output=embed`;
+  } catch {
+    return null;
+  }
+}
+
 /** Shared wellness phrases — woven into meta, not dumped as spam. */
 export const COACH_SEO_CORE_PHRASES = Object.freeze([
   'Wellness Coach',

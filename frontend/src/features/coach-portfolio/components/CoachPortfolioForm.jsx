@@ -56,6 +56,15 @@ function setSection(form, section, patch) {
   return { ...form, [section]: { ...form[section], ...patch } };
 }
 
+function setSocialLink(form, key, value) {
+  return setSection(form, 'mediaBrand', {
+    social: {
+      ...(form.mediaBrand?.social || {}),
+      [key]: value,
+    },
+  });
+}
+
 function Progress({ stepIndex, steps }) {
   const total = steps.length || 1;
   const pct = Math.round(((stepIndex + 1) / total) * 100);
@@ -641,6 +650,30 @@ export default function CoachPortfolioForm({
               </div>
             ) : null}
             {renderPlaceFields('City & area')}
+            <div>
+              <FieldLabel hint="Shown on your public website footer">Instagram</FieldLabel>
+              <TextInput
+                value={form.mediaBrand.social?.instagram || ''}
+                onChange={(v) => canEdit && setForm(setSocialLink(form, 'instagram', v))}
+                placeholder="https://instagram.com/your-handle"
+              />
+            </div>
+            <div>
+              <FieldLabel hint="Shown on your public website footer">YouTube</FieldLabel>
+              <TextInput
+                value={form.mediaBrand.social?.youtube || ''}
+                onChange={(v) => canEdit && setForm(setSocialLink(form, 'youtube', v))}
+                placeholder="https://youtube.com/@your-channel"
+              />
+            </div>
+            <div>
+              <FieldLabel hint="Shown on your public website footer">LinkedIn</FieldLabel>
+              <TextInput
+                value={form.mediaBrand.social?.linkedin || ''}
+                onChange={(v) => canEdit && setForm(setSocialLink(form, 'linkedin', v))}
+                placeholder="https://linkedin.com/in/your-profile"
+              />
+            </div>
           </FormCard>
         ) : null}
 

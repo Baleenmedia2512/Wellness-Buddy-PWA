@@ -77,6 +77,7 @@ export function emptyPortfolioForm() {
         instagram: '',
         facebook: '',
         youtube: '',
+        linkedin: '',
         existingWebsite: '',
       },
     },

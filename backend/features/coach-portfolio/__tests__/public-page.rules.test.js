@@ -6,13 +6,37 @@ import assert from 'node:assert/strict';
 import {
   buildCoachPageJsonLd,
   buildCoachPageSeo,
+  buildGoogleMapsSearchUrl,
   canShowPublicPortfolio,
+  mapsEmbedSrcFromLink,
   toPublicPortfolioPage,
 } from '../domain/public-page.rules.js';
 import { DEFAULT_PORTFOLIO_OFFERINGS } from '../domain/default-offerings.rules.js';
 import { SUBMISSION_STATUS } from '../domain/submission.rules.js';
 
 describe('coach-portfolio public-page.rules', () => {
+  it('builds freestyle Google Maps search URL from City / Area', () => {
+    const url = buildGoogleMapsSearchUrl({
+      locality: 'Vadapalani',
+      city: 'Chennai',
+    });
+    assert.match(url, /^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=/);
+    assert.match(url, /Vadapalani/);
+    assert.match(url, /Chennai/);
+    assert.equal(buildGoogleMapsSearchUrl({}), '');
+    const embed = mapsEmbedSrcFromLink(url);
+    assert.match(embed, /maps\.google\.com\/maps\?q=/);
+    assert.match(embed, /output=embed/);
+  });
+
+  it('embeds club GPS maps links from q=lat,lng', () => {
+    const embed = mapsEmbedSrcFromLink('https://maps.google.com/?q=13.05,80.21');
+    assert.equal(
+      embed,
+      'https://maps.google.com/maps?q=13.05%2C80.21&z=15&output=embed',
+    );
+  });
+
   it('builds local SEO title, description, and keywords from place', () => {
     const seo = buildCoachPageSeo({
       displayName: 'Avinash',
