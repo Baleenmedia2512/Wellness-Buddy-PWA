@@ -71,49 +71,6 @@ function nameInitials(displayName) {
   return `${a}${b}`.toUpperCase();
 }
 
-/** @param {unknown} raw @returns {number} */
-function reviewRating(raw) {
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return 5;
-  return Math.min(5, Math.max(1, Math.round(n)));
-}
-
-/** Filled ★ + empty ☆ for 1–5. */
-function starGlyphs(raw) {
-  const r = reviewRating(raw);
-  return `${'★'.repeat(r)}${'☆'.repeat(5 - r)}`;
-}
-
-/** 5 stars with fractional fill (e.g. 4.7 → four full + partial fifth). */
-function FractionalStars({ value }) {
-  const v = Math.min(5, Math.max(0, Number(value) || 0));
-  return (
-    <span className="biz-stars" aria-hidden="true">
-      {[0, 1, 2, 3, 4].map((i) => {
-        const fill = Math.min(1, Math.max(0, v - i));
-        return (
-          <span key={i} className="biz-star">
-            <svg className="biz-star-base" viewBox="0 0 24 24" width="15" height="15">
-              <path
-                fill="currentColor"
-                d="M12 2.8l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 16.7 6.6 19.6l1-6.1-4.4-4.3 6.1-.9L12 2.8z"
-              />
-            </svg>
-            <span className="biz-star-clip" style={{ width: `${fill * 100}%` }}>
-              <svg className="biz-star-fill" viewBox="0 0 24 24" width="15" height="15">
-                <path
-                  fill="currentColor"
-                  d="M12 2.8l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 16.7 6.6 19.6l1-6.1-4.4-4.3 6.1-.9L12 2.8z"
-                />
-              </svg>
-            </span>
-          </span>
-        );
-      })}
-    </span>
-  );
-}
-
 export async function getServerSideProps({ params, req }) {
   const parts = Array.isArray(params?.slug)
     ? params.slug.map((p) => String(p || '').trim().toLowerCase()).filter(Boolean)
@@ -428,7 +385,6 @@ export default function CoachPortfolioPage({
   const [bookPhone, setBookPhone] = useState('');
   const [bookNote, setBookNote] = useState('');
   const mediaPageSize = useCarouselPageSize(1, 2);
-  const reviewPageSize = useCarouselPageSize(1, 3);
   const touchStartX = useRef(null);
   const photo = absoluteUrl(baseUrl, page.profilePhoto);
   const aboutPhoto = photo
@@ -437,9 +393,6 @@ export default function CoachPortfolioPage({
   const logo = absoluteUrl(baseUrl, page.logo);
   const ogImage = photo || logo || (baseUrl ? `${baseUrl}/wellness-valley-icon.png` : null);
   const wa = whatsappHref(page.whatsapp);
-  const reviewWa = wa
-    ? `${wa}?text=${encodeURIComponent(`Hi ${firstName(page.displayName || page.fullName || 'Coach')}, I'd like to leave a review for your wellness coaching.`)}`
-    : null;
   const call = telHref(page.phone);
   const heroName = firstName(page.displayName);
   const placeShort = [page.locality, page.city].filter(Boolean).join(', ');
@@ -466,14 +419,6 @@ export default function CoachPortfolioPage({
   const whatWeDo = Array.isArray(teamMedia?.whatWeDo) ? teamMedia.whatWeDo : [];
   const hasWhatWeSay = whatWeSay.length > 0;
   const hasWhatWeDo = whatWeDo.length > 0;
-  const reviews = Array.isArray(page.testimonials) ? page.testimonials : [];
-  const hasReviews = reviews.length > 0;
-  const reviewAvg = hasReviews
-    ? reviews.reduce((sum, item) => sum + reviewRating(item.rating), 0) / reviews.length
-    : 0;
-  const reviewAvgLabel = hasReviews
-    ? (Math.round(reviewAvg * 10) / 10).toFixed(1).replace(/\.0$/, '')
-    : null;
   const bizTitle = String(page.centerName || '').trim()
     || String(page.displayName || page.fullName || heroName || '').trim();
   const introVideoSrcs = uniqueMediaUrls(
@@ -515,7 +460,6 @@ export default function CoachPortfolioPage({
     hasAbout ? { href: '#about', label: 'About' } : null,
     (page.offeringCards || []).length ? { href: '#services', label: 'Services' } : null,
     hasMedia ? { href: '#gallery', label: 'Gallery' } : null,
-    (hasReviews || reviewWa) ? { href: '#reviews', label: 'Reviews' } : null,
     { href: '#faq', label: 'FAQ' },
     { href: '#contact', label: 'Contact' },
   ].filter(Boolean);
@@ -946,19 +890,10 @@ export default function CoachPortfolioPage({
           <div className="hero-wave" aria-hidden="true" />
           <div className="shell hero-grid">
             <div className="hero-copy">
-              {hasClub && (bizTitle || (hasReviews && reviewAvgLabel) || heroPlace) ? (
+              {hasClub && (bizTitle || heroPlace) ? (
                 <div className="biz-listing" aria-label="Center listing">
                   {bizTitle ? (
                     <h2 className="biz-listing-name">{bizTitle}</h2>
-                  ) : null}
-                  {hasReviews && reviewAvgLabel ? (
-                    <p className="biz-listing-review" aria-label={`Rated ${reviewAvgLabel} out of 5`}>
-                      <FractionalStars value={reviewAvg} />
-                      <span className="biz-listing-score">{reviewAvgLabel}</span>
-                      <span className="biz-listing-count">
-                        ({reviews.length} review{reviews.length === 1 ? '' : 's'})
-                      </span>
-                    </p>
                   ) : null}
                   {heroPlace ? (
                     <p className="biz-listing-place" title={basedIn || heroPlace}>
@@ -1208,64 +1143,6 @@ export default function CoachPortfolioPage({
                     </article>
                   )}
                 />
-              </div>
-            </section>
-          ) : null}
-
-          {(hasReviews || reviewWa) ? (
-            <section id="reviews" className="section ratings-section">
-              <div className="shell">
-                <div className="section-head center">
-                  <p className="ratings-kicker">Community voice</p>
-                  <h2>Ratings &amp; Reviews</h2>
-                  <p className="panel-sub ratings-sub">What members say about coaching</p>
-                </div>
-
-                {hasReviews ? (
-                  <div className="rating-summary">
-                    <p className="rating-score">{reviewAvgLabel}</p>
-                    <p className="rating-stars" aria-label={`${reviewAvgLabel} out of 5 stars`}>
-                      {starGlyphs(Math.round(reviewAvg))}
-                    </p>
-                    <p className="rating-count">
-                      based on {reviews.length} review{reviews.length === 1 ? '' : 's'}
-                    </p>
-                  </div>
-                ) : (
-                  <p className="ratings-empty">Be the first to share your experience.</p>
-                )}
-
-                {hasReviews ? (
-                  <MediaCarousel
-                    items={reviews}
-                    pageSize={reviewPageSize}
-                    tone="light"
-                    label="reviews"
-                    renderItem={(item, idx) => (
-                      <article
-                        key={`review-${item.name}-${idx}`}
-                        className="rating-card"
-                      >
-                        <p className="rating-card-stars" aria-hidden="true">
-                          {starGlyphs(item.rating)}
-                        </p>
-                        <p className="rating-card-quote">“{item.quote}”</p>
-                        <p className="rating-card-name">{item.name}</p>
-                      </article>
-                    )}
-                  />
-                ) : null}
-
-                {reviewWa ? (
-                  <div className="ratings-cta">
-                    <a className="btn btn-primary" href={reviewWa} target="_blank" rel="noreferrer">
-                      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                        <path fill="currentColor" d="M20.5 3.5A11 11 0 0 0 3.2 17.7L2 22l4.4-1.2A11 11 0 1 0 20.5 3.5zm-8.6 17a9.1 9.1 0 0 1-4.6-1.3l-.3-.2-2.7.7.7-2.6-.2-.3a9.1 9.1 0 1 1 7.1 3.7zm5-6.8c-.3-.1-1.6-.8-1.8-.9s-.4-.1-.6.1-.7.9-.8 1-.3.2-.6.1a7.4 7.4 0 0 1-2.2-1.4 8.2 8.2 0 0 1-1.5-1.9c-.2-.3 0-.4.1-.6l.4-.5.1-.3a.5.5 0 0 0 0-.5l-.6-1.5c-.2-.4-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 2.9 2.9 0 0 0-.9 2.2 5 5 0 0 0 1.1 2.7 11.5 11.5 0 0 0 4.4 3.9 15 15 0 0 0 1.5.5 3.6 3.6 0 0 0 1.6.1 2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .2-1.2c-.1-.1-.3-.2-.6-.3z" />
-                      </svg>
-                      Leave a Review
-                    </a>
-                  </div>
-                ) : null}
               </div>
             </section>
           ) : null}

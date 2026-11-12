@@ -111,6 +111,7 @@ export default function CoachPortfolioForm({
   const [message, setMessage] = useState('');
   const [publicPath, setPublicPath] = useState(null);
   const [isPublished, setIsPublished] = useState(false);
+  const [hasUnpublishedChanges, setHasUnpublishedChanges] = useState(false);
   const [hasClub, setHasClub] = useState(false);
   const [resolvedCenterId, setResolvedCenterId] = useState(centerId ?? null);
   const [resolvedCenterName, setResolvedCenterName] = useState(centerName || '');
@@ -143,10 +144,10 @@ export default function CoachPortfolioForm({
   const steps = getFormSteps({ hasClub: hasClub || Boolean(resolvedCenterId) });
   const step = steps[Math.min(stepIndex, steps.length - 1)] || steps[0];
   const canEdit = true;
-  /** Not live yet → Publish sends OTP. Already live → Save updates CMS without OTP. */
-  const needsPublish = !isPublished;
+  /** Save is always draft. Publish (first or changes) always requires coach OTP. */
+  const publishButtonLabel = isPublished ? 'Publish changes' : 'Publish website';
 
-  const loadCenterForm = async (nextCenterId, { fresh = false } = {}) => {
+  const loadCenterForm = async (nextCenterId, { fresh = false, placeFallback = null } = {}) => {
     if (nextCenterId == null) {
       setForm(emptyPortfolioForm());
       setSubmissionStatus('draft');
@@ -159,7 +160,9 @@ export default function CoachPortfolioForm({
       return;
     }
     const data = await fetchMyPortfolioSubmission(userId, nextCenterId);
-    setForm(fresh ? emptyPortfolioForm() : mergePortfolioForm(data?.form));
+    const fallbackCity = String(placeFallback?.city || '').trim();
+    const fallbackLocality = String(placeFallback?.locality || '').trim();
+    const fallbackName = String(placeFallback?.centerName || '').trim();
     // Even in fresh create, hydrate place/contact from the selected center via a second merge of empty+server hydrate fields.
     if (fresh) {
       const hydrated = mergePortfolioForm(emptyPortfolioForm(), {
@@ -169,9 +172,10 @@ export default function CoachPortfolioForm({
           professionalTitle: data?.form?.personal?.professionalTitle || 'Wellness Coach',
         },
         center: {
-          centerName: data?.form?.center?.centerName || '',
-          city: data?.form?.center?.city || '',
-          locality: data?.form?.center?.locality || '',
+          centerName: data?.form?.center?.centerName || fallbackName || '',
+          // Server GPS hydrate can fail; fall back to My Websites list city/area (already on the option label).
+          city: data?.form?.center?.city || fallbackCity || '',
+          locality: data?.form?.center?.locality || fallbackLocality || '',
           businessPhone: data?.form?.center?.businessPhone || '',
           whatsapp: data?.form?.center?.whatsapp || '',
           businessEmail: data?.form?.center?.businessEmail || '',
@@ -188,15 +192,28 @@ export default function CoachPortfolioForm({
       setAdminNote(null);
       setPublicPath(null);
       setIsPublished(false);
+      setHasUnpublishedChanges(false);
     } else {
+      const merged = mergePortfolioForm(data?.form);
+      if (!String(merged.center?.city || '').trim() && fallbackCity) {
+        merged.center.city = fallbackCity;
+      }
+      if (!String(merged.center?.locality || '').trim() && fallbackLocality) {
+        merged.center.locality = fallbackLocality;
+      }
+      if (!String(merged.center?.centerName || '').trim() && fallbackName) {
+        merged.center.centerName = fallbackName;
+      }
+      setForm(merged);
       setSubmissionStatus(data?.status || 'draft');
       setAdminNote(data?.adminNote || null);
       setPublicPath(data?.publicPath || null);
       setIsPublished(data?.isPublished === true);
+      setHasUnpublishedChanges(data?.hasUnpublishedChanges === true);
     }
     setHasClub(data?.hasClub === true);
     setResolvedCenterId(data?.centerId != null ? data.centerId : nextCenterId);
-    setResolvedCenterName(data?.centerName || '');
+    setResolvedCenterName(data?.centerName || fallbackName || '');
   };
 
   useEffect(() => {
@@ -214,6 +231,7 @@ export default function CoachPortfolioForm({
           setAdminNote(null);
           setPublicPath(null);
           setIsPublished(false);
+          setHasUnpublishedChanges(false);
           setHasClub(false);
           setResolvedCenterId(null);
           setResolvedCenterName('');
@@ -228,6 +246,7 @@ export default function CoachPortfolioForm({
           setAdminNote(data?.adminNote || null);
           setPublicPath(data?.publicPath || null);
           setIsPublished(data?.isPublished === true);
+          setHasUnpublishedChanges(data?.hasUnpublishedChanges === true);
           setHasClub(data?.hasClub === true);
           if (data?.centerId != null) setResolvedCenterId(data.centerId);
           if (data?.centerName) setResolvedCenterName(data.centerName);
@@ -249,22 +268,58 @@ export default function CoachPortfolioForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initial open only for given center/createMode
   }, [userId, centerId, createMode]);
 
+  const placeFromCenterOption = (meta, optionLabel) => {
+    let city = String(meta?.city || '').trim();
+    let locality = String(meta?.locality || '').trim();
+    let centerName = String(meta?.centerName || '').trim();
+    // Label format: "Demo Centre · Chennai · Kodambakkam"
+    if ((!city || !locality) && optionLabel) {
+      const parts = String(optionLabel).split('·').map((p) => p.trim()).filter(Boolean);
+      if (parts.length >= 3) {
+        if (!centerName) centerName = parts[0];
+        if (!city) city = parts[1];
+        if (!locality) locality = parts[2];
+      } else if (parts.length === 2) {
+        if (!city) city = parts[0];
+        if (!locality) locality = parts[1];
+      }
+    }
+    return { city, locality, centerName };
+  };
+
   const onCenterChange = async (rawId) => {
     if (!rawId) {
+      // Optional: clear link only — keep any City/Area the user already typed.
       setResolvedCenterId(null);
       setResolvedCenterName('');
       setHasClub(false);
+      setMessage('Center unlinked — type City & Area below, or pick another center');
       return;
     }
     const nextId = Number(rawId);
     if (!Number.isFinite(nextId) || nextId <= 0) return;
     const meta = selectableCenters.find((c) => Number(c.centerId) === nextId);
+    const optionLabel = centerOptions.find((o) => Number(o.value) === nextId)?.label || '';
+    const place = placeFromCenterOption(meta, optionLabel);
     setBusy(true);
     setMessage('');
     try {
-      await loadCenterForm(nextId, { fresh: createMode });
-      setResolvedCenterName(meta?.centerName || '');
-      setMessage('Center loaded — City & Area filled from GPS (you can still edit)');
+      await loadCenterForm(nextId, {
+        fresh: createMode,
+        placeFallback: place,
+      });
+      // Guarantee City/Area show even if a later merge left them blank.
+      setForm((prev) => setSection(prev, 'center', {
+        city: String(prev?.center?.city || '').trim() || place.city,
+        locality: String(prev?.center?.locality || '').trim() || place.locality,
+        centerName: String(prev?.center?.centerName || '').trim() || place.centerName,
+      }));
+      setResolvedCenterName(place.centerName || meta?.centerName || '');
+      setMessage(
+        place.city || place.locality
+          ? 'Center loaded — City & Area filled (you can still edit)'
+          : 'Center linked — type City & Area below if empty',
+      );
     } catch (err) {
       setMessage(err?.message || 'Could not load center');
     } finally {
@@ -278,7 +333,7 @@ export default function CoachPortfolioForm({
       <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-800">{title}</p>
       {selectableCenters.length > 0 ? (
         <div>
-          <FieldLabel hint="Optional — only centers without a website yet">
+          <FieldLabel hint="Optional. Skip to type City & Area. Each center can link to only one website.">
             Link a center (optional)
           </FieldLabel>
           <ValueSelectInput
@@ -365,10 +420,18 @@ export default function CoachPortfolioForm({
       setSubmissionStatus(data?.status || submissionStatus || 'draft');
       setPublicPath(data?.publicPath || publicPath);
       setIsPublished(data?.isPublished === true);
+      setHasUnpublishedChanges(
+        data?.hasUnpublishedChanges === true
+        || data?.isPublished === true,
+      );
       if (data?.centerId != null) setResolvedCenterId(data.centerId);
-      setMessage(data?.publicPath
-        ? `Saved — link ${data.publicPath}`
-        : 'Saved — you can keep editing anytime');
+      setMessage(
+        data?.isPublished
+          ? 'Draft saved — live page unchanged until you Publish changes (coach OTP)'
+          : (data?.publicPath
+            ? `Draft saved — ${data.publicPath}`
+            : 'Draft saved — publish when ready'),
+      );
     } catch (err) {
       setMessage(err?.message || 'Save failed');
     } finally {
@@ -471,9 +534,20 @@ export default function CoachPortfolioForm({
     setSubmissionStatus(data?.status || 'approved');
     setPublicPath(data?.publicPath || pathPreview || publicPath);
     setIsPublished(data?.isPublished === true || Boolean(data?.publicPath));
+    setHasUnpublishedChanges(false);
+    // After coach OTP verify, return to My Websites hub (live card + Edit).
+    if (typeof onClose === 'function') {
+      onClose({
+        published: true,
+        message: data?.publicPath
+          ? `Published — ${data.publicPath}`
+          : 'Published — live page updated',
+      });
+      return;
+    }
     setMessage(data?.publicPath
       ? `Published — ${data.publicPath}`
-      : 'Published — you can keep editing anytime');
+      : 'Published — live page updated');
   };
 
   const onResendOtp = async () => {
@@ -524,13 +598,16 @@ export default function CoachPortfolioForm({
         {!loading && step.id === 'hero' ? (
           <FormCard title="Hero" subtitle="Name, title, and place shown on your website">
             <div>
-              <FieldLabel required hint="Must be unique — checked against other coach websites">
+              <FieldLabel
+                required
+                hint="Your public link: wellnessvalley.in/coach/city/area/your-name — must be unique"
+              >
                 Website Display Name
               </FieldLabel>
               <TextInput
                 value={form.mediaBrand.websiteDisplayName}
                 onChange={(v) => canEdit && setForm(setSection(form, 'mediaBrand', { websiteDisplayName: v }))}
-                placeholder="Shown as the big name on the site"
+                placeholder="e.g. coach-your-name"
               />
               {displayNameStatus === 'checking' ? (
                 <p className="mt-1 text-[11px] text-slate-500">Checking name…</p>
@@ -744,12 +821,6 @@ export default function CoachPortfolioForm({
                   {form.personal.background || form.personal.uniqueApproach || 'No About copy yet'}
                 </p>
               </div>
-              <div className="rounded-2xl bg-slate-50 px-3.5 py-3">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Programs</p>
-                <p className="mt-1 text-slate-600">
-                  {(form.services.offerings || []).length} default program(s)
-                </p>
-              </div>
               {publicPath ? (
                 <a
                   href={isPublished ? (resolvePublicCoachUrl(publicPath) || publicWebsiteUrl(publicPath)) : undefined}
@@ -763,30 +834,27 @@ export default function CoachPortfolioForm({
                   {isPublished ? 'Live page: ' : 'Your link: '}{publicPath}
                 </a>
               ) : null}
-              {needsPublish ? (
-                <>
-                  <label className="flex items-start gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/80 px-3.5 py-3 text-sm text-slate-800">
-                    <input
-                      type="checkbox"
-                      checked={form.goalsConsent.accuracyConfirmed === true}
-                      onChange={(e) => canEdit && setForm(setSection(form, 'goalsConsent', { accuracyConfirmed: e.target.checked }))}
-                      className="mt-0.5"
-                    />
-                    <span>I confirm that the information provided is accurate. *</span>
-                  </label>
-                  <div>
-                    <FieldLabel required>Authorize use of photos and content for publication?</FieldLabel>
-                    <YesNo value={form.goalsConsent.publishAuthorized} onChange={(v) => canEdit && setForm(setSection(form, 'goalsConsent', { publishAuthorized: v }))} />
-                  </div>
-                  <p className="text-xs text-slate-500">
-                    Publish emails a verification OTP to your coach. Ask them for the code, then enter it here to go live.
-                  </p>
-                </>
-              ) : (
-                <p className="text-xs text-slate-500">
-                  Live already. Save updates your public page anytime — no admin needed.
+              {isPublished && hasUnpublishedChanges ? (
+                <p className="rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs font-medium text-amber-900">
+                  Unpublished changes — live page still shows the last published version until you Publish changes.
                 </p>
-              )}
+              ) : null}
+              <label className="flex items-start gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/80 px-3.5 py-3 text-sm text-slate-800">
+                <input
+                  type="checkbox"
+                  checked={form.goalsConsent.accuracyConfirmed === true}
+                  onChange={(e) => canEdit && setForm(setSection(form, 'goalsConsent', { accuracyConfirmed: e.target.checked }))}
+                  className="mt-0.5"
+                />
+                <span>I confirm that the information provided is accurate. *</span>
+              </label>
+              <div>
+                <FieldLabel required>Authorize use of photos and content for publication?</FieldLabel>
+                <YesNo value={form.goalsConsent.publishAuthorized} onChange={(v) => canEdit && setForm(setSection(form, 'goalsConsent', { publishAuthorized: v }))} />
+              </div>
+              <p className="text-xs text-slate-500">
+                Save keeps a draft only. Publish emails a verification OTP to your coach — the live page updates after the code is verified.
+              </p>
             </div>
           </FormCard>
         ) : null}
@@ -824,11 +892,11 @@ export default function CoachPortfolioForm({
             </TouchFeedbackButton>
           ) : (
             <TouchFeedbackButton
-              onClick={needsPublish ? onSubmit : saveDraft}
+              onClick={onSubmit}
               disabled={busy || loading}
               className="ml-auto flex-1 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm shadow-emerald-600/20 disabled:opacity-40"
             >
-              {needsPublish ? 'Publish website' : 'Save changes'}
+              {publishButtonLabel}
             </TouchFeedbackButton>
           )}
         </div>

@@ -346,10 +346,39 @@ export function validateAboutStep(form) {
   return errors;
 }
 
+/**
+ * True when draft FormJson differs from the live PublishedFormJson snapshot.
+ * First publish (no snapshot yet) counts as unpublished changes when a draft exists.
+ */
+export function hasUnpublishedFormChanges(row) {
+  if (!row) return false;
+  const isPublished = row.isPublished === true || Number(row.isPublished) === 1;
+  if (!isPublished) return false;
+  const draft = normalizeFormJson(row.formJson);
+  const published = row.publishedFormJson != null
+    ? normalizeFormJson(row.publishedFormJson)
+    : null;
+  // Live site with no snapshot yet (pre-migration) — treat draft as pending until next publish.
+  if (!published) return true;
+  try {
+    return JSON.stringify(draft) !== JSON.stringify(published);
+  } catch {
+    return true;
+  }
+}
+
+/** Form used to render the public /coach page (live snapshot, legacy fallback). */
+export function resolveLiveFormJson(row) {
+  if (!row) return normalizeFormJson({});
+  if (row.publishedFormJson != null) return normalizeFormJson(row.publishedFormJson);
+  return normalizeFormJson(row.formJson);
+}
+
 export function toPublicSubmission(row, { includeForm = true } = {}) {
   if (!row) return null;
   const form = includeForm ? normalizeFormJson(row.formJson) : undefined;
   const publicSlug = row.publicSlug ? String(row.publicSlug) : null;
+  const isPublished = row.isPublished === true || Number(row.isPublished) === 1;
   return {
     id: row.id != null ? Number(row.id) : null,
     userId: Number(row.userId),
@@ -358,7 +387,8 @@ export function toPublicSubmission(row, { includeForm = true } = {}) {
     status: String(row.status || SUBMISSION_STATUS.DRAFT),
     adminNote: row.adminNote != null ? String(row.adminNote) : null,
     publicSlug,
-    isPublished: row.isPublished === true || Number(row.isPublished) === 1,
+    isPublished,
+    hasUnpublishedChanges: hasUnpublishedFormChanges(row),
     publicPath: publicSlug ? `/coach/${publicSlug}` : null,
     submittedAt: row.submittedAt ? String(row.submittedAt) : null,
     reviewedAt: row.reviewedAt ? String(row.reviewedAt) : null,

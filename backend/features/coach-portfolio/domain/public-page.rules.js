@@ -9,6 +9,7 @@ import {
   formatClockTimeLabel,
   normalizeFormJson,
   normalizeReviewRating,
+  resolveLiveFormJson,
   SUBMISSION_STATUS,
 } from './submission.rules.js';
 
@@ -158,10 +159,11 @@ export function buildCoachPageJsonLd(page, { pageUrl, imageUrl = null } = {}) {
 }
 
 /**
- * @param {{ formJson: object, userName?: string|null, publicSlug: string }} row
+ * @param {{ formJson: object, publishedFormJson?: object|null, userName?: string|null, publicSlug: string }} row
  */
 export function toPublicPortfolioPage(row) {
-  const form = normalizeFormJson(row.formJson);
+  // Live site uses PublishedFormJson; FormJson is the editor draft until Publish+OTP.
+  const form = resolveLiveFormJson(row);
   // Live app UserName wins — same identity as the mobile app profile.
   const appName = String(row.userName || '').trim();
   const fullName = String(appName || form.personal.fullName || 'Wellness Coach').trim();

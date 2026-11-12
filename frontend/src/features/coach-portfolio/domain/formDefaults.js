@@ -123,21 +123,38 @@ function normalizeClockTime(raw) {
   return `${match[1]}:${match[2]}`;
 }
 
-export function mergePortfolioForm(raw) {
+/**
+ * @param {object|null|undefined} raw
+ * @param {object|null|undefined} [patch] optional deep section overrides (2nd arg was previously ignored — bug)
+ */
+export function mergePortfolioForm(raw, patch = null) {
   const base = emptyPortfolioForm();
-  if (!raw || typeof raw !== 'object') return base;
-  const mergedServices = { ...base.services, ...(raw.services || {}) };
-  const rawOfferings = Array.isArray(raw.services?.offerings)
-    ? raw.services.offerings.filter((x) => String(x || '').trim())
-    : [];
+  const primary = raw && typeof raw === 'object' ? raw : {};
+  const overlay = patch && typeof patch === 'object' ? patch : {};
+  const mergedServices = {
+    ...base.services,
+    ...(primary.services || {}),
+    ...(overlay.services || {}),
+  };
+  const rawOfferings = Array.isArray(overlay.services?.offerings)
+    ? overlay.services.offerings.filter((x) => String(x || '').trim())
+    : Array.isArray(primary.services?.offerings)
+      ? primary.services.offerings.filter((x) => String(x || '').trim())
+      : [];
   mergedServices.offerings = rawOfferings.length
     ? rawOfferings
     : [...DEFAULT_PORTFOLIO_OFFERINGS];
-  const timingsIn = { ...base.timings, ...(raw.timings || {}) };
+  const timingsIn = {
+    ...base.timings,
+    ...(primary.timings || {}),
+    ...(overlay.timings || {}),
+  };
+  const mediaPrimary = primary.mediaBrand || {};
+  const mediaOverlay = overlay.mediaBrand || {};
 
   return {
-    personal: { ...base.personal, ...(raw.personal || {}) },
-    center: { ...base.center, ...(raw.center || {}) },
+    personal: { ...base.personal, ...(primary.personal || {}), ...(overlay.personal || {}) },
+    center: { ...base.center, ...(primary.center || {}), ...(overlay.center || {}) },
     timings: {
       ...timingsIn,
       openingTime: normalizeClockTime(timingsIn.openingTime),
@@ -146,46 +163,73 @@ export function mergePortfolioForm(raw) {
     services: mergedServices,
     mediaBrand: {
       ...base.mediaBrand,
-      ...(raw.mediaBrand || {}),
-      interiorPhotos: Array.isArray(raw.mediaBrand?.interiorPhotos)
-        ? raw.mediaBrand.interiorPhotos.filter(Boolean)
-        : [],
-      activityPhotos: Array.isArray(raw.mediaBrand?.activityPhotos)
-        ? raw.mediaBrand.activityPhotos.filter(Boolean)
-        : [],
+      ...mediaPrimary,
+      ...mediaOverlay,
+      interiorPhotos: Array.isArray(mediaOverlay.interiorPhotos)
+        ? mediaOverlay.interiorPhotos.filter(Boolean)
+        : Array.isArray(mediaPrimary.interiorPhotos)
+          ? mediaPrimary.interiorPhotos.filter(Boolean)
+          : [],
+      activityPhotos: Array.isArray(mediaOverlay.activityPhotos)
+        ? mediaOverlay.activityPhotos.filter(Boolean)
+        : Array.isArray(mediaPrimary.activityPhotos)
+          ? mediaPrimary.activityPhotos.filter(Boolean)
+          : [],
       introVideos: (() => {
-        const listed = Array.isArray(raw.mediaBrand?.introVideos)
-          ? raw.mediaBrand.introVideos.filter(Boolean).map((u) => String(u))
-          : [];
+        const listed = Array.isArray(mediaOverlay.introVideos)
+          ? mediaOverlay.introVideos.filter(Boolean).map((u) => String(u))
+          : Array.isArray(mediaPrimary.introVideos)
+            ? mediaPrimary.introVideos.filter(Boolean).map((u) => String(u))
+            : [];
         if (listed.length) return listed;
         const legacy = String(
-          raw.mediaBrand?.introVideoUrl || raw.mediaBrand?.introVideoLink || '',
+          mediaOverlay.introVideoUrl
+          || mediaOverlay.introVideoLink
+          || mediaPrimary.introVideoUrl
+          || mediaPrimary.introVideoLink
+          || '',
         ).trim();
         return legacy ? [legacy] : [];
       })(),
       introVideoUrl: (() => {
-        const listed = Array.isArray(raw.mediaBrand?.introVideos)
-          ? raw.mediaBrand.introVideos.filter(Boolean).map((u) => String(u))
-          : [];
+        const listed = Array.isArray(mediaOverlay.introVideos)
+          ? mediaOverlay.introVideos.filter(Boolean).map((u) => String(u))
+          : Array.isArray(mediaPrimary.introVideos)
+            ? mediaPrimary.introVideos.filter(Boolean).map((u) => String(u))
+            : [];
         if (listed.length) return listed[0];
-        return raw.mediaBrand?.introVideoUrl || null;
+        return mediaOverlay.introVideoUrl || mediaPrimary.introVideoUrl || null;
       })(),
       introVideoLink: (() => {
-        const listed = Array.isArray(raw.mediaBrand?.introVideos)
-          ? raw.mediaBrand.introVideos.filter(Boolean).map((u) => String(u))
-          : [];
+        const listed = Array.isArray(mediaOverlay.introVideos)
+          ? mediaOverlay.introVideos.filter(Boolean).map((u) => String(u))
+          : Array.isArray(mediaPrimary.introVideos)
+            ? mediaPrimary.introVideos.filter(Boolean).map((u) => String(u))
+            : [];
         if (listed.length) return listed[0];
-        return String(raw.mediaBrand?.introVideoLink || raw.mediaBrand?.introVideoUrl || '').trim();
+        return String(
+          mediaOverlay.introVideoLink
+          || mediaOverlay.introVideoUrl
+          || mediaPrimary.introVideoLink
+          || mediaPrimary.introVideoUrl
+          || '',
+        ).trim();
       })(),
-      transformations: Array.isArray(raw.mediaBrand?.transformations)
-        ? raw.mediaBrand.transformations.slice(0, 6).map((t) => ({
+      transformations: Array.isArray(mediaOverlay.transformations)
+        ? mediaOverlay.transformations.slice(0, 6).map((t) => ({
           label: String(t?.label || t?.name || ''),
           beforePhotoUrl: t?.beforePhotoUrl ?? null,
           afterPhotoUrl: t?.afterPhotoUrl ?? null,
         }))
-        : [],
-      testimonials: Array.isArray(raw.mediaBrand?.testimonials)
-        ? raw.mediaBrand.testimonials.slice(0, 6).map((t) => {
+        : Array.isArray(mediaPrimary.transformations)
+          ? mediaPrimary.transformations.slice(0, 6).map((t) => ({
+            label: String(t?.label || t?.name || ''),
+            beforePhotoUrl: t?.beforePhotoUrl ?? null,
+            afterPhotoUrl: t?.afterPhotoUrl ?? null,
+          }))
+          : [],
+      testimonials: Array.isArray(mediaOverlay.testimonials)
+        ? mediaOverlay.testimonials.slice(0, 6).map((t) => {
           const n = Number(t?.rating);
           const rating = Number.isFinite(n) ? Math.min(5, Math.max(1, Math.round(n))) : 5;
           return {
@@ -194,12 +238,27 @@ export function mergePortfolioForm(raw) {
             rating,
           };
         })
-        : [],
+        : Array.isArray(mediaPrimary.testimonials)
+          ? mediaPrimary.testimonials.slice(0, 6).map((t) => {
+            const n = Number(t?.rating);
+            const rating = Number.isFinite(n) ? Math.min(5, Math.max(1, Math.round(n))) : 5;
+            return {
+              name: String(t?.name || ''),
+              quote: String(t?.quote || ''),
+              rating,
+            };
+          })
+          : [],
       social: {
         ...base.mediaBrand.social,
-        ...(raw.mediaBrand?.social || {}),
+        ...(mediaPrimary.social || {}),
+        ...(mediaOverlay.social || {}),
       },
     },
-    goalsConsent: { ...base.goalsConsent, ...(raw.goalsConsent || {}) },
+    goalsConsent: {
+      ...base.goalsConsent,
+      ...(primary.goalsConsent || {}),
+      ...(overlay.goalsConsent || {}),
+    },
   };
 }

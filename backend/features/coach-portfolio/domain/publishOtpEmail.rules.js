@@ -7,6 +7,11 @@ import { escapeHtml } from './html-escape.js';
 import { buildCoachPortfolioPath } from './slug.rules.js';
 import { PUBLISH_OTP_HOURS } from './publishOtp.rules.js';
 import {
+  buildPublishFormDiff,
+  formatPublishDiffHtml,
+  formatPublishDiffText,
+} from './publishFormDiff.rules.js';
+import {
   buildWhatsAppShareUrl,
   buildWhatsAppShareButtonHtml,
 } from '../../../shared/lib/whatsapp-share.rules.js';
@@ -36,7 +41,6 @@ export function buildPublishEmailSummary(form = {}, { userId, userName } = {}) {
   const personal = form.personal || {};
   const center = form.center || {};
   const timings = form.timings || {};
-  const services = form.services || {};
   const media = form.mediaBrand || {};
 
   const path = buildCoachPortfolioPath({
@@ -46,12 +50,6 @@ export function buildPublishEmailSummary(form = {}, { userId, userName } = {}) {
     locality: center.locality,
     userId,
   });
-
-  const offerings = Array.isArray(services.offerings)
-    ? services.offerings.map((o) => cleanLine(typeof o === 'string' ? o : o?.label || o?.name)).filter(Boolean)
-    : [];
-  const offeringExtra = cleanLine(services.offeringsOther);
-  if (offeringExtra) offerings.push(offeringExtra);
 
   const days = Array.isArray(timings.workingDays) ? timings.workingDays.filter(Boolean) : [];
   const hours = [
@@ -77,7 +75,6 @@ export function buildPublishEmailSummary(form = {}, { userId, userName } = {}) {
     whatsapp: cleanLine(center.whatsapp),
     businessEmail: cleanLine(center.businessEmail),
     hours,
-    offerings: offerings.slice(0, 12),
     media: {
       profilePhoto: hasMedia(personal.profilePhoto),
       entrancePhoto: hasMedia(media.entrancePhoto),
@@ -114,7 +111,6 @@ function detailRowsHtml(summary) {
     ['WhatsApp', summary.whatsapp],
     ['Business email', summary.businessEmail],
     ['Hours', summary.hours],
-    ['Offerings', summary.offerings.join(', ')],
     ['Media', mediaBits],
   ].filter(([, v]) => Boolean(String(v || '').trim()));
 
@@ -141,6 +137,7 @@ function spacedOtp(otp) {
  *   coachName?: string,
  *   memberName?: string,
  *   centerName?: string,
+ *   previousForm?: object|null,
  * }} input
  */
 export function buildPublishOtpEmail({
@@ -154,9 +151,13 @@ export function buildPublishOtpEmail({
   memberName = '',
   memberPhone = '',
   centerName = '',
+  previousForm = null,
 } = {}) {
   const summary = buildPublishEmailSummary(form, { userId, userName });
   if (centerName) summary.centerName = cleanLine(centerName, summary.centerName);
+  const changesDiff = buildPublishFormDiff(previousForm, form);
+  const changesTextLines = formatPublishDiffText(changesDiff);
+  const changesHtml = formatPublishDiffHtml(changesDiff, escapeHtml);
   const safeOtp = escapeHtml(spacedOtp(otp));
   const member = cleanLine(memberName || summary.fullName || userName, 'A member');
   const safeMember = escapeHtml(member);
@@ -225,6 +226,8 @@ export function buildPublishOtpEmail({
     '',
     `Website link: ${summary.publicPath}`,
     '',
+    ...changesTextLines,
+    '',
     'Website details:',
     `Display name: ${summary.displayName}`,
     `Full name: ${summary.fullName}`,
@@ -236,7 +239,6 @@ export function buildPublishOtpEmail({
     summary.businessPhone ? `Phone: ${summary.businessPhone}` : null,
     summary.whatsapp ? `WhatsApp: ${summary.whatsapp}` : null,
     summary.hours ? `Hours: ${summary.hours}` : null,
-    summary.offerings.length ? `Offerings: ${summary.offerings.join(', ')}` : null,
     '',
     `Verification OTP: ${spacedOtp(otp)}`,
     `Valid for ${hours} hours`,
@@ -295,6 +297,15 @@ export function buildPublishOtpEmail({
 
               <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 12px 0;">
                 <tr>
+                  <td style="background-color:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:10px 12px;">
+                    <p style="margin:0 0 8px;color:#9a3412;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:Arial,Helvetica,sans-serif;">${changesDiff.isFirstPublish ? 'What is new' : 'What changed'}</p>
+                    ${changesHtml}
+                  </td>
+                </tr>
+              </table>
+
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 12px 0;">
+                <tr>
                   <td style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;">
                     <p style="margin:0 0 8px;color:#047857;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:Arial,Helvetica,sans-serif;">Website details</p>
                     <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
@@ -345,5 +356,5 @@ export function buildPublishOtpEmail({
 </body>
 </html>`;
 
-  return { subject, text, html, summary, whatsappUrl };
+  return { subject, text, html, summary, whatsappUrl, changesDiff };
 }

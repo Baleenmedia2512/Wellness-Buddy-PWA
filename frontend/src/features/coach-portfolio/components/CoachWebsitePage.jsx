@@ -40,11 +40,12 @@ export default function CoachWebsitePage({
     load();
   }, [load]);
 
-  const closeForm = () => {
+  const closeForm = (opts = {}) => {
     setFormOpen(false);
     setCreateMode(false);
     setActiveCenterId(null);
     setActiveCenterName('');
+    setMessage(typeof opts?.message === 'string' ? opts.message : '');
     load();
   };
 

@@ -334,11 +334,14 @@ export async function getMySubmission({
     form,
     markSubmitted: false,
   });
-  latest = await submissionRepo.assignPublicSlug(userId, {
-    centerId,
-    submissionId: latest?.id,
-    markPublished: latest?.isPublished === true,
-  }) || latest;
+  // Never rewrite live PublicSlug from draft on GET — only unpublished drafts may preview a slug.
+  if (latest && latest.isPublished !== true) {
+    latest = await submissionRepo.assignPublicSlug(userId, {
+      centerId,
+      submissionId: latest?.id,
+      markPublished: false,
+    }) || latest;
+  }
 
   const path = buildCoachPortfolioPath({
     websiteDisplayName: form.mediaBrand?.websiteDisplayName,
@@ -456,11 +459,15 @@ export async function saveMySubmissionDraft({
     markSubmitted: false,
     createNew: createNew === true && centerId == null,
   });
-  row = await submissionRepo.assignPublicSlug(userId, {
-    centerId: row?.centerId ?? centerId,
-    submissionId: row?.id,
-    markPublished: row?.isPublished === true,
-  }) || row;
+  // Save is draft-only: never promote PublishedFormJson / live PublicSlug.
+  // Unpublished drafts may still get a path preview; already-live sites keep their live slug.
+  if (row && row.isPublished !== true) {
+    row = await submissionRepo.assignPublicSlug(userId, {
+      centerId: row?.centerId ?? centerId,
+      submissionId: row?.id,
+      markPublished: false,
+    }) || row;
+  }
   return {
     httpStatus: 200,
     body: { ok: true, data: toPublicSubmission(row) },
@@ -484,9 +491,13 @@ export async function requestPublishOtp({
   const club = centerId != null ? await assertOwnedCenter(userId, centerId) : null;
   const coach = await resolveMemberCoachApprover(person);
 
-  const existing = centerId != null
+  let existing = centerId != null
     ? await submissionRepo.findSubmissionByUserAndCenter(userId, centerId)
     : null;
+  if (!existing && createNew !== true) {
+    // Freestyle edit / republish: load null-center row for diff + edit checks.
+    existing = await submissionRepo.findLatestNullCenterSubmission(userId);
+  }
   if (existing && !coachCanEditSubmission(existing.status)) {
     throw new ValidationError(409, 'This submission cannot be edited');
   }
@@ -507,6 +518,10 @@ export async function requestPublishOtp({
   }
   await assertDisplayNameAvailable(userId, centerId, form);
 
+  // Capture live snapshot before draft upsert (for change-diff email).
+  const previousPublishedForm = existing?.publishedFormJson
+    ?? null;
+
   let row = await submissionRepo.upsertSubmission({
     userId,
     centerId,
@@ -516,11 +531,14 @@ export async function requestPublishOtp({
     clearReview: true,
     createNew: createNew === true && centerId == null,
   });
-  row = await submissionRepo.assignPublicSlug(userId, {
-    centerId: row?.centerId ?? centerId,
-    submissionId: row?.id,
-    markPublished: false,
-  }) || row;
+  // Do not rewrite live PublicSlug until OTP verify. Draft-only sites may preview a slug.
+  if (row && row.isPublished !== true) {
+    row = await submissionRepo.assignPublicSlug(userId, {
+      centerId: row?.centerId ?? centerId,
+      submissionId: row?.id,
+      markPublished: false,
+    }) || row;
+  }
 
   const pathPreview = buildCoachPortfolioPath({
     websiteDisplayName: form.mediaBrand?.websiteDisplayName,
@@ -547,6 +565,7 @@ export async function requestPublishOtp({
   const mail = buildPublishOtpEmail({
     otp,
     form,
+    previousForm: previousPublishedForm,
     userId,
     userName: person.UserName,
     memberPhone: person.PhoneNumber,
