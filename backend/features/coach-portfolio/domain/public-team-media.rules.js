@@ -2,7 +2,11 @@
  * Map coach downline testimonials → public website media sections.
  * What We Say  = verified health videos
  * What We Do   = verified before/after photos
+ *
+ * When requireDisplayConsent is true, rows also need website_display_consent_at.
  */
+
+import { hasWebsiteDisplayConsent } from '../../testimonials/domain/websiteDisplayConsent.rules.js';
 
 export const PUBLIC_TEAM_MEDIA_LIMITS = Object.freeze({
   whatWeSay: 8,
@@ -24,9 +28,10 @@ function isVideoOnlyPlaceholder(path) {
 
 /**
  * @param {Array<{ user?: object, testimonial?: object|null }>} rows
+ * @param {{ requireDisplayConsent?: boolean }} [opts]
  * @returns {{ sayCandidates: object[], doCandidates: object[] }}
  */
-export function selectPublicTeamMediaCandidates(rows) {
+export function selectPublicTeamMediaCandidates(rows, { requireDisplayConsent = false } = {}) {
   const sayCandidates = [];
   const doCandidates = [];
 
@@ -34,6 +39,7 @@ export function selectPublicTeamMediaCandidates(rows) {
     const user = row?.user || {};
     const t = row?.testimonial || row?.testimonialRaw || null;
     if (!t) continue;
+    if (requireDisplayConsent && !hasWebsiteDisplayConsent(t)) continue;
 
     const userId = Number(user.UserId || user.userId || t.user_id || t.userId) || null;
     const userName = String(user.UserName || user.userName || 'Member').trim() || 'Member';

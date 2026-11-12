@@ -433,3 +433,12 @@ registerFlag({
   description:    'Reports stay open. Unpaid detail is hidden until a 14-day trial or Premium. Kill switch. Version routing: app 3.5.5+ is gated; older or missing versions keep the full report.',
   defaultEnabled: true,
 });
+
+registerFlag({
+  name:           'ff.testimonial-upline-display-consent',
+  owner:          '@testimonials-team',
+  createdAt:      '2026-11-09',
+  removeBy:       '2027-05-09',
+  description:    'Gate coach-website What We Say / What We Do on member checkbox + member email OTP after coach content verify. When OFF: legacy verified + direct downline only.',
+  defaultEnabled: true,
+});

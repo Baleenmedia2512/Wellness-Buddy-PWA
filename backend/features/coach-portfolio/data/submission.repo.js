@@ -1,5 +1,6 @@
 /**
- * Coach portfolio form submissions. Ensured on first use (same pattern as access table).
+ * Coach portfolio form submissions — one row per (UserId, CenterId).
+ * CenterId = nutrition_centers_table.id.
  */
 import { getPrisma } from '../../../shared/lib/prisma.js';
 import logger from '../../../shared/lib/logger.js';
@@ -15,6 +16,7 @@ import {
 const CREATE_TABLE_SQL = `CREATE TABLE IF NOT EXISTS coach_portfolio_submissions_table (
   Id            BIGINT       NOT NULL AUTO_INCREMENT,
   UserId        BIGINT       NOT NULL,
+  CenterId      BIGINT       NULL,
   Status        VARCHAR(32)  NOT NULL DEFAULT 'draft',
   FormJson      LONGTEXT     NOT NULL,
   AdminNote     TEXT         NULL,
@@ -26,13 +28,14 @@ const CREATE_TABLE_SQL = `CREATE TABLE IF NOT EXISTS coach_portfolio_submissions
   CreatedAt     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UpdatedAt     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (Id),
-  UNIQUE KEY uq_coach_portfolio_submission_user (UserId),
+  UNIQUE KEY uq_coach_portfolio_user_center (UserId, CenterId),
   UNIQUE KEY uq_coach_portfolio_slug (PublicSlug),
   KEY idx_coach_portfolio_submission_status (Status),
-  KEY idx_coach_portfolio_submission_updated (UpdatedAt)
+  KEY idx_coach_portfolio_submission_updated (UpdatedAt),
+  KEY idx_coach_portfolio_center (CenterId)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`;
 
-const SELECT_COLS = `s.Id AS id, s.UserId AS userId, s.Status AS status, s.FormJson AS formJson,
+const SELECT_COLS = `s.Id AS id, s.UserId AS userId, s.CenterId AS centerId, s.Status AS status, s.FormJson AS formJson,
             s.AdminNote AS adminNote, s.PublicSlug AS publicSlug, s.IsPublished AS isPublished,
             s.SubmittedAt AS submittedAt, s.ReviewedAt AS reviewedAt,
             s.ReviewedBy AS reviewedBy, s.UpdatedAt AS updatedAt,
@@ -46,7 +49,7 @@ async function runIgnoreDuplicate(sql) {
   } catch (error) {
     const msg = error?.message || String(error);
     // Only ignore "already exists" DDL — never swallow row unique violations (1062).
-    if (!/1060|1061|Duplicate column|Duplicate key name|already exists/i.test(msg)) {
+    if (!/1060|1061|Duplicate column|Duplicate key name|already exists|1091|check that.+exists/i.test(msg)) {
       throw error;
     }
   }
@@ -63,7 +66,19 @@ async function ensureSchema() {
         'ALTER TABLE coach_portfolio_submissions_table ADD COLUMN IsPublished TINYINT(1) NOT NULL DEFAULT 0',
       );
       await runIgnoreDuplicate(
+        'ALTER TABLE coach_portfolio_submissions_table ADD COLUMN CenterId BIGINT NULL AFTER UserId',
+      );
+      await runIgnoreDuplicate(
+        'ALTER TABLE coach_portfolio_submissions_table DROP INDEX uq_coach_portfolio_submission_user',
+      );
+      await runIgnoreDuplicate(
+        'ALTER TABLE coach_portfolio_submissions_table ADD UNIQUE KEY uq_coach_portfolio_user_center (UserId, CenterId)',
+      );
+      await runIgnoreDuplicate(
         'ALTER TABLE coach_portfolio_submissions_table ADD UNIQUE KEY uq_coach_portfolio_slug (PublicSlug)',
+      );
+      await runIgnoreDuplicate(
+        'ALTER TABLE coach_portfolio_submissions_table ADD KEY idx_coach_portfolio_center (CenterId)',
       );
     })().catch((error) => {
       ensurePromise = null;
@@ -89,6 +104,7 @@ function mapRow(row) {
   return {
     id: Number(row.id),
     userId: Number(row.userId),
+    centerId: row.centerId != null ? Number(row.centerId) : null,
     userName: row.userName != null ? String(row.userName) : null,
     status: String(row.status || SUBMISSION_STATUS.DRAFT),
     formJson: normalizeFormJson(formJson),
@@ -102,6 +118,28 @@ function mapRow(row) {
   };
 }
 
+/**
+ * One website for this user + nutrition center.
+ */
+export async function findSubmissionByUserAndCenter(userId, centerId) {
+  await ensureSchema();
+  const rows = await getPrisma().$queryRawUnsafe(
+    `SELECT ${SELECT_COLS}
+     FROM coach_portfolio_submissions_table s
+     LEFT JOIN team_table t ON t.UserId = s.UserId
+     WHERE s.UserId = ? AND s.CenterId = ?
+     LIMIT 1`,
+    Number(userId),
+    Number(centerId),
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return mapRow(rows[0]);
+}
+
+/**
+ * Legacy / admin helper: newest row for this user (any center).
+ * Prefer findSubmissionByUserAndCenter.
+ */
 export async function findSubmissionByUserId(userId) {
   await ensureSchema();
   const rows = await getPrisma().$queryRawUnsafe(
@@ -109,8 +147,49 @@ export async function findSubmissionByUserId(userId) {
      FROM coach_portfolio_submissions_table s
      LEFT JOIN team_table t ON t.UserId = s.UserId
      WHERE s.UserId = ?
+     ORDER BY s.UpdatedAt DESC, s.Id DESC
      LIMIT 1`,
     Number(userId),
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return mapRow(rows[0]);
+}
+
+export async function listSubmissionsByUserId(userId) {
+  await ensureSchema();
+  const rows = await getPrisma().$queryRawUnsafe(
+    `SELECT ${SELECT_COLS}
+     FROM coach_portfolio_submissions_table s
+     LEFT JOIN team_table t ON t.UserId = s.UserId
+     WHERE s.UserId = ?
+     ORDER BY s.UpdatedAt DESC, s.Id DESC`,
+    Number(userId),
+  );
+  return (Array.isArray(rows) ? rows : []).map(mapRow);
+}
+
+/** Attach a nutrition center to a legacy row that has CenterId NULL. */
+export async function attachCenterIdToSubmission(submissionId, centerId) {
+  await ensureSchema();
+  const id = Number(submissionId);
+  const cid = Number(centerId);
+  if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(cid) || cid <= 0) {
+    throw new Error('submissionId and centerId are required');
+  }
+  await getPrisma().$executeRawUnsafe(
+    `UPDATE coach_portfolio_submissions_table
+     SET CenterId = ?
+     WHERE Id = ? AND CenterId IS NULL`,
+    cid,
+    id,
+  );
+  const rows = await getPrisma().$queryRawUnsafe(
+    `SELECT ${SELECT_COLS}
+     FROM coach_portfolio_submissions_table s
+     LEFT JOIN team_table t ON t.UserId = s.UserId
+     WHERE s.Id = ?
+     LIMIT 1`,
+    id,
   );
   if (!Array.isArray(rows) || rows.length === 0) return null;
   return mapRow(rows[0]);
@@ -130,8 +209,6 @@ export async function findPublishedBySlugParts(segments) {
 }
 
 /**
- * @param {string} citySlug
- * @param {string} pageSlug  legacy name-area segment
  * @deprecated Prefer findPublishedBySlugParts
  */
 export async function findPublishedByCityAndSlug(citySlug, pageSlug) {
@@ -153,6 +230,31 @@ export async function findPublishedByPublicSlug(publicSlug) {
   return mapRow(rows[0]);
 }
 
+/**
+ * Published coach public paths for sitemap.xml (newest first).
+ * @param {{ limit?: number }} [opts]
+ * @returns {Promise<Array<{ publicSlug: string, updatedAt: string|null }>>}
+ */
+export async function listPublishedPublicSlugs({ limit = 5000 } = {}) {
+  await ensureSchema();
+  const cap = Math.min(Math.max(Number(limit) || 5000, 1), 10000);
+  const rows = await getPrisma().$queryRawUnsafe(
+    `SELECT PublicSlug AS publicSlug, UpdatedAt AS updatedAt
+     FROM coach_portfolio_submissions_table
+     WHERE IsPublished = 1
+       AND PublicSlug IS NOT NULL
+       AND TRIM(PublicSlug) <> ''
+     ORDER BY UpdatedAt DESC
+     LIMIT ${cap}`,
+  );
+  return (Array.isArray(rows) ? rows : [])
+    .map((r) => ({
+      publicSlug: String(r.publicSlug || '').trim().toLowerCase(),
+      updatedAt: r.updatedAt ?? null,
+    }))
+    .filter((r) => r.publicSlug && isValidCoachPublicSlug(r.publicSlug));
+}
+
 /** @deprecated use findPublishedByCityAndSlug */
 export async function findPublishedBySlug(slug) {
   if (String(slug || '').includes('/')) {
@@ -161,10 +263,37 @@ export async function findPublishedBySlug(slug) {
   return null;
 }
 
-export async function slugTakenByOther(publicSlug, userId) {
+/** True when another submission row already owns this public slug. */
+export async function slugTakenByOther(publicSlug, optsOrUserId = {}) {
   await ensureSchema();
   const needle = String(publicSlug || '').trim().toLowerCase();
   if (!needle) return false;
+  const opts = typeof optsOrUserId === 'object' && optsOrUserId !== null
+    ? optsOrUserId
+    : { userId: optsOrUserId };
+  const { userId, centerId, submissionId } = opts;
+
+  if (submissionId != null) {
+    const rows = await getPrisma().$queryRawUnsafe(
+      `SELECT Id AS id FROM coach_portfolio_submissions_table
+       WHERE PublicSlug = ? AND Id <> ?
+       LIMIT 1`,
+      String(publicSlug),
+      Number(submissionId),
+    );
+    return Array.isArray(rows) && rows.length > 0;
+  }
+  if (centerId != null) {
+    const rows = await getPrisma().$queryRawUnsafe(
+      `SELECT Id AS id FROM coach_portfolio_submissions_table
+       WHERE PublicSlug = ? AND NOT (UserId = ? AND CenterId = ?)
+       LIMIT 1`,
+      String(publicSlug),
+      Number(userId),
+      Number(centerId),
+    );
+    return Array.isArray(rows) && rows.length > 0;
+  }
   const rows = await getPrisma().$queryRawUnsafe(
     `SELECT UserId AS userId FROM coach_portfolio_submissions_table
      WHERE PublicSlug IS NOT NULL
@@ -192,15 +321,24 @@ function duplicateEntryFromError(error) {
 }
 
 /**
- * True when another coach already uses this website display name (case-insensitive).
- * @param {string} displayName
- * @param {number} userId
- * @returns {Promise<boolean>}
+ * True when another submission already uses this website display name (case-insensitive).
  */
-export async function displayNameTakenByOther(displayName, userId) {
+export async function displayNameTakenByOther(displayName, userId, { centerId } = {}) {
   await ensureSchema();
   const name = String(displayName || '').trim().toLowerCase();
   if (!name) return false;
+  if (centerId != null) {
+    const rows = await getPrisma().$queryRawUnsafe(
+      `SELECT UserId AS userId FROM coach_portfolio_submissions_table
+       WHERE NOT (UserId = ? AND CenterId = ?)
+         AND LOWER(TRIM(JSON_UNQUOTE(JSON_EXTRACT(FormJson, '$.mediaBrand.websiteDisplayName')))) = ?
+       LIMIT 1`,
+      Number(userId),
+      Number(centerId),
+      name,
+    );
+    return Array.isArray(rows) && rows.length > 0;
+  }
   const rows = await getPrisma().$queryRawUnsafe(
     `SELECT UserId AS userId FROM coach_portfolio_submissions_table
      WHERE UserId <> ?
@@ -219,7 +357,7 @@ export async function displayNameTakenByOther(displayName, userId) {
  * @param {{ skip?: string[] }} [opts]  Slugs that just hit MySQL 1062 — never reuse them.
  * @returns {Promise<string>}
  */
-async function resolveUniquePublicSlug(desired, userId, { skip = [] } = {}) {
+async function resolveUniquePublicSlug(desired, userId, { skip = [], centerId, submissionId } = {}) {
   const skipped = new Set(
     (Array.isArray(skip) ? skip : [])
       .map((s) => String(s || '').trim().toLowerCase())
@@ -228,7 +366,7 @@ async function resolveUniquePublicSlug(desired, userId, { skip = [] } = {}) {
   let candidate = String(desired || '').slice(0, 160);
   for (let attempt = 0; attempt < 16; attempt += 1) {
     const key = candidate.trim().toLowerCase();
-    const blocked = skipped.has(key) || (await slugTakenByOther(candidate, userId));
+    const blocked = skipped.has(key) || (await slugTakenByOther(candidate, { userId, centerId, submissionId }));
     if (!blocked) return candidate;
     // Always suffix from the original desired base so -userId does not collapse into itself.
     candidate = suffixPublicSlugForUser(desired, userId, attempt);
@@ -260,14 +398,27 @@ async function writePublicSlug(rowId, userId, publicSlug, { markPublished = fals
 }
 
 /**
- * Rebuild PublicSlug from FormJson:
- *   /coach/<city>/<area>/<website-display-name>
- * @param {number} userId
- * @param {{ markPublished?: boolean }} [opts]
+ * Rebuild PublicSlug from FormJson for one submission row.
+ * Prefer submissionId for freestyle (CenterId NULL) so we never rewrite another site.
  */
-export async function assignPublicSlug(userId, { markPublished = false } = {}) {
+export async function assignPublicSlug(userId, {
+  centerId,
+  submissionId = null,
+  markPublished = false,
+} = {}) {
   await ensureSchema();
-  const row = await findSubmissionByUserId(userId);
+  let row = null;
+  if (submissionId != null) {
+    row = await findSubmissionById(submissionId);
+    if (row && Number(row.userId) !== Number(userId)) row = null;
+  }
+  if (!row && centerId != null) {
+    row = await findSubmissionByUserAndCenter(userId, centerId);
+  }
+  if (!row) {
+    row = await findLatestNullCenterSubmission(userId)
+      || await findSubmissionByUserId(userId);
+  }
   if (!row) return null;
 
   const form = row.formJson || {};
@@ -286,7 +437,11 @@ export async function assignPublicSlug(userId, { markPublished = false } = {}) {
   for (let retry = 0; retry < 12; retry += 1) {
     const publicSlug = retry >= 3
       ? timestampPublicSlug(desired, userId)
-      : await resolveUniquePublicSlug(desired, userId, { skip });
+      : await resolveUniquePublicSlug(desired, userId, {
+        skip,
+        centerId: row.centerId,
+        submissionId: row.id,
+      });
 
     if (
       row.publicSlug
@@ -298,7 +453,7 @@ export async function assignPublicSlug(userId, { markPublished = false } = {}) {
 
     try {
       await writePublicSlug(row.id, userId, publicSlug, { markPublished: publish });
-      return findSubmissionByUserId(userId);
+      return findSubmissionById(row.id);
     } catch (error) {
       if (!isDuplicatePublicSlugError(error)) throw error;
       // Race / missed pre-check: remember the colliding slug and try the next suffix.
@@ -318,16 +473,22 @@ export async function assignPublicSlug(userId, { markPublished = false } = {}) {
   throw lastDuplicate;
 }
 
-/**
- * Assign a unique /coach/<city>/<area>/<website-display-name> slug and mark published.
- * Always rebuilds from current FormJson so city / area / display name stay in sync.
- */
-export async function publishSubmission(userId) {
-  return assignPublicSlug(userId, { markPublished: true });
+export async function publishSubmission(userId, { centerId, submissionId = null } = {}) {
+  return assignPublicSlug(userId, { centerId, submissionId, markPublished: true });
 }
 
-export async function unpublishSubmission(userId) {
+export async function unpublishSubmission(userId, { centerId } = {}) {
   await ensureSchema();
+  if (centerId != null) {
+    await getPrisma().$executeRawUnsafe(
+      `UPDATE coach_portfolio_submissions_table
+       SET IsPublished = 0
+       WHERE UserId = ? AND CenterId = ?`,
+      Number(userId),
+      Number(centerId),
+    );
+    return findSubmissionByUserAndCenter(userId, centerId);
+  }
   await getPrisma().$executeRawUnsafe(
     `UPDATE coach_portfolio_submissions_table
      SET IsPublished = 0
@@ -337,57 +498,156 @@ export async function unpublishSubmission(userId) {
   return findSubmissionByUserId(userId);
 }
 
+async function findLatestNullCenterSubmission(userId) {
+  await ensureSchema();
+  const rows = await getPrisma().$queryRawUnsafe(
+    `SELECT ${SELECT_COLS}
+     FROM coach_portfolio_submissions_table s
+     LEFT JOIN team_table t ON t.UserId = s.UserId
+     WHERE s.UserId = ? AND s.CenterId IS NULL
+     ORDER BY s.UpdatedAt DESC, s.Id DESC
+     LIMIT 1`,
+    Number(userId),
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return mapRow(rows[0]);
+}
+
+export async function findSubmissionById(submissionId) {
+  await ensureSchema();
+  const rows = await getPrisma().$queryRawUnsafe(
+    `SELECT ${SELECT_COLS}
+     FROM coach_portfolio_submissions_table s
+     LEFT JOIN team_table t ON t.UserId = s.UserId
+     WHERE s.Id = ?
+     LIMIT 1`,
+    Number(submissionId),
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return mapRow(rows[0]);
+}
+
+/**
+ * Upsert one website row.
+ * - With centerId: one row per (UserId, CenterId)
+ * - Without centerId: freestyle site (City/Area typed manually). createNew inserts a new NULL-center row.
+ */
 export async function upsertSubmission({
   userId,
+  centerId = null,
   status,
   form,
   markSubmitted = false,
   clearReview = false,
+  createNew = false,
+  submissionId = null,
 }) {
   await ensureSchema();
   const formJson = JSON.stringify(normalizeFormJson(form));
-  const existing = await findSubmissionByUserId(userId);
+  const cid = centerId != null && String(centerId).trim() !== ''
+    ? Number(centerId)
+    : null;
+  const hasCenter = Number.isFinite(cid) && cid > 0;
 
-  if (!existing) {
+  if (hasCenter) {
+    const existing = await findSubmissionByUserAndCenter(userId, cid);
+    if (!existing) {
+      await getPrisma().$executeRawUnsafe(
+        `INSERT INTO coach_portfolio_submissions_table
+           (UserId, CenterId, Status, FormJson, SubmittedAt)
+         VALUES (?, ?, ?, ?, ${markSubmitted ? 'UTC_TIMESTAMP()' : 'NULL'})`,
+        Number(userId),
+        cid,
+        String(status),
+        formJson,
+      );
+    } else if (markSubmitted) {
+      await getPrisma().$executeRawUnsafe(
+        `UPDATE coach_portfolio_submissions_table
+         SET Status = ?, FormJson = ?, SubmittedAt = UTC_TIMESTAMP(),
+             ReviewedAt = NULL, ReviewedBy = NULL
+         WHERE UserId = ? AND CenterId = ?`,
+        String(status),
+        formJson,
+        Number(userId),
+        cid,
+      );
+    } else if (clearReview) {
+      await getPrisma().$executeRawUnsafe(
+        `UPDATE coach_portfolio_submissions_table
+         SET Status = ?, FormJson = ?, ReviewedAt = NULL, ReviewedBy = NULL
+         WHERE UserId = ? AND CenterId = ?`,
+        String(status),
+        formJson,
+        Number(userId),
+        cid,
+      );
+    } else {
+      await getPrisma().$executeRawUnsafe(
+        `UPDATE coach_portfolio_submissions_table
+         SET Status = ?, FormJson = ?
+         WHERE UserId = ? AND CenterId = ?`,
+        String(status),
+        formJson,
+        Number(userId),
+        cid,
+      );
+    }
+    return findSubmissionByUserAndCenter(userId, cid);
+  }
+
+  // Freestyle (no nutrition center): City/Area come from the form.
+  let existing = null;
+  if (submissionId != null) {
+    existing = await findSubmissionById(submissionId);
+    if (existing && Number(existing.userId) !== Number(userId)) existing = null;
+  }
+  if (!existing && !createNew) {
+    existing = await findLatestNullCenterSubmission(userId);
+  }
+
+  if (!existing || createNew) {
     await getPrisma().$executeRawUnsafe(
       `INSERT INTO coach_portfolio_submissions_table
-         (UserId, Status, FormJson, SubmittedAt)
-       VALUES (?, ?, ?, ${markSubmitted ? 'UTC_TIMESTAMP()' : 'NULL'})`,
+         (UserId, CenterId, Status, FormJson, SubmittedAt)
+       VALUES (?, NULL, ?, ?, ${markSubmitted ? 'UTC_TIMESTAMP()' : 'NULL'})`,
       Number(userId),
       String(status),
       formJson,
     );
-  } else if (markSubmitted) {
+    return findLatestNullCenterSubmission(userId);
+  }
+
+  if (markSubmitted) {
     await getPrisma().$executeRawUnsafe(
       `UPDATE coach_portfolio_submissions_table
        SET Status = ?, FormJson = ?, SubmittedAt = UTC_TIMESTAMP(),
            ReviewedAt = NULL, ReviewedBy = NULL
-       WHERE UserId = ?`,
+       WHERE Id = ?`,
       String(status),
       formJson,
-      Number(userId),
+      Number(existing.id),
     );
   } else if (clearReview) {
     await getPrisma().$executeRawUnsafe(
       `UPDATE coach_portfolio_submissions_table
        SET Status = ?, FormJson = ?, ReviewedAt = NULL, ReviewedBy = NULL
-       WHERE UserId = ?`,
+       WHERE Id = ?`,
       String(status),
       formJson,
-      Number(userId),
+      Number(existing.id),
     );
   } else {
     await getPrisma().$executeRawUnsafe(
       `UPDATE coach_portfolio_submissions_table
        SET Status = ?, FormJson = ?
-       WHERE UserId = ?`,
+       WHERE Id = ?`,
       String(status),
       formJson,
-      Number(userId),
+      Number(existing.id),
     );
   }
-
-  return findSubmissionByUserId(userId);
+  return findSubmissionById(existing.id);
 }
 
 export async function listSubmissions({ status = null, limit = 100 } = {}) {
@@ -418,11 +678,28 @@ export async function listSubmissions({ status = null, limit = 100 } = {}) {
 
 export async function updateSubmissionStatus({
   userId,
+  centerId,
   status,
   adminNote = null,
   reviewedBy,
 }) {
   await ensureSchema();
+  if (centerId != null) {
+    await getPrisma().$executeRawUnsafe(
+      `UPDATE coach_portfolio_submissions_table
+       SET Status = ?,
+           AdminNote = ?,
+           ReviewedAt = UTC_TIMESTAMP(),
+           ReviewedBy = ?
+       WHERE UserId = ? AND CenterId = ?`,
+      String(status),
+      adminNote != null ? String(adminNote) : null,
+      Number(reviewedBy),
+      Number(userId),
+      Number(centerId),
+    );
+    return findSubmissionByUserAndCenter(userId, centerId);
+  }
   await getPrisma().$executeRawUnsafe(
     `UPDATE coach_portfolio_submissions_table
      SET Status = ?,

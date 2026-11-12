@@ -103,7 +103,6 @@ export function validateAboutForm(form) {
   if (!String(personal.uniqueApproach || '').trim()) {
     errors.push('What do you believe in is required');
   }
-  if (!String(personal.qualifications || '').trim()) errors.push('Qualifications is required');
   if (!Array.isArray(personal.languages) || personal.languages.length === 0) {
     errors.push('Languages is required');
   } else if (

@@ -6,7 +6,7 @@ import { PORTFOLIO_FLAG } from '../domain/portfolio.rules';
 import CoachWebsitePage from './CoachWebsitePage';
 
 /**
- * Hub for paid add-ons. Website is coach self-serve (edit + publish, no admin).
+ * Hub for paid add-ons. Website is self-serve per owned center (coach OTP to publish).
  */
 export default function PaidFeaturesPage({ userId }) {
   const [openWebsite, setOpenWebsite] = useState(false);
@@ -15,9 +15,6 @@ export default function PaidFeaturesPage({ userId }) {
   if (openWebsite && userId != null) {
     return (
       <CoachWebsitePage
-        selfServe
-        paid
-        loading={false}
         userId={userId}
         onClose={() => setOpenWebsite(false)}
       />
@@ -32,14 +29,14 @@ export default function PaidFeaturesPage({ userId }) {
         </div>
         <h2 className="text-lg font-semibold text-gray-900">Paid Features</h2>
         <p className="mt-1.5 text-sm leading-relaxed text-gray-600">
-          Tools you control yourself — update anytime, no admin wait.
+          Tools you control yourself — update anytime. Payment options come later.
         </p>
       </div>
 
       {websiteOn ? (
         <TouchFeedbackButton
           onClick={() => setOpenWebsite(true)}
-          ariaLabel="Open Website"
+          ariaLabel="Open My Websites"
           className="w-full rounded-2xl border border-emerald-100 bg-white p-4 text-left shadow-sm hover:bg-emerald-50/60"
         >
           <div className="flex items-start gap-3">
@@ -47,9 +44,9 @@ export default function PaidFeaturesPage({ userId }) {
               <Globe2 className="h-5 w-5 text-emerald-700" aria-hidden />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-gray-900">Website</p>
+              <p className="text-sm font-semibold text-gray-900">My Websites</p>
               <p className="mt-0.5 text-xs leading-relaxed text-gray-500">
-                Build and publish your coach page. Add photos, reviews, hours — go live when you submit.
+                One website per center. Publish after your coach shares the email OTP.
               </p>
             </div>
           </div>

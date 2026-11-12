@@ -12,6 +12,10 @@ import {
   shareCardResultPillLabel,
   transformationWeightVerb,
 } from './domain/transformationWeightDirection.js';
+import {
+  buildWhatsAppShareUrl,
+  buildWhatsAppShareButtonHtml,
+} from '../../shared/lib/whatsapp-share.rules.js';
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -473,6 +477,7 @@ export function buildTransformationCardEmailBlock({
  */
 export function buildTestimonialCoachEmailHtml({
   memberName,
+  memberPhone = null,
   goalType,
   beforeWeight,
   afterWeight,
@@ -485,6 +490,10 @@ export function buildTestimonialCoachEmailHtml({
 }) {
   const safeMember = escapeHtml(memberName);
   const safeOtp = formatOtpDisplay(otp);
+  const rawOtp = String(otp ?? '').trim();
+  const waText = `Hi ${memberName || 'Member'}, your Wellness Valley transformation verification code is ${rawOtp}.`;
+  const whatsappUrl = buildWhatsAppShareUrl({ phone: memberPhone, text: waText });
+  const whatsappButtonHtml = buildWhatsAppShareButtonHtml({ shareUrl: whatsappUrl, label: 'Share code on WhatsApp' });
   const goalLabel = goalType === 'loss' ? 'Weight Loss' : 'Weight Gain';
   // Prefer HTML card from real Before/After URLs (left/right) — never a stale client bitmap.
   const transformationCard = buildTransformationCardEmailBlock({
@@ -565,6 +574,7 @@ export function buildTestimonialCoachEmailHtml({
                     <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:Arial,Helvetica,sans-serif;">Verification OTP</p>
                     <p style="margin:8px 0 0;color:#047857;font-size:32px;font-weight:700;letter-spacing:6px;font-family:'Courier New',Courier,monospace;line-height:1.1;">${safeOtp}</p>
                     <p style="margin:6px 0 0;color:#9ca3af;font-size:12px;font-family:Arial,Helvetica,sans-serif;">Valid for 24 hours</p>
+                    ${whatsappButtonHtml}
                   </td>
                 </tr>
               </table>
@@ -608,6 +618,7 @@ export function buildTestimonialCoachEmailHtml({
  */
 export function buildTestimonialCoachEmailText({
   memberName,
+  memberPhone = null,
   goalType,
   beforeWeight,
   afterWeight,
@@ -618,6 +629,11 @@ export function buildTestimonialCoachEmailText({
   const goalLabel = goalType === 'loss' ? 'Weight Loss' : 'Weight Gain';
   const progress = buildProgressSentencePlain(memberName, goalType, beforeWeight, afterWeight, durationText);
   const issuesPlain = formatHealthIssuesPlain(recoveredHealthIssues);
+  const rawOtp = String(otp ?? '').trim();
+  const waUrl = buildWhatsAppShareUrl({
+    phone: memberPhone,
+    text: `Hi ${memberName || 'Member'}, your Wellness Valley transformation verification code is ${rawOtp}.`,
+  });
 
   return [
     'Wellness Valley - Member Testimonial Verification',
@@ -630,6 +646,7 @@ export function buildTestimonialCoachEmailText({
     '',
     `Verification OTP: ${String(otp ?? '').split('').join(' ')}`,
     'Valid for 24 hours',
+    ...(waUrl ? ['', `Share on WhatsApp: ${waUrl}`] : []),
     '',
     'Verification instructions:',
     '1. Review the before and after photos and recovered health issues.',
@@ -692,9 +709,13 @@ function buildVideoButton(label, url, accent) {
  * @param {string|null} params.businessVideoUrl  - 7-day signed URL or null
  * @returns {string}
  */
-export function buildVideoCoachEmailHtml({ memberName, otp, healthVideoUrl, businessVideoUrl, recoveredHealthIssues }) {
+export function buildVideoCoachEmailHtml({ memberName, memberPhone = null, otp, healthVideoUrl, businessVideoUrl, recoveredHealthIssues }) {
   const safeMember = escapeHtml(memberName);
   const safeOtp    = formatOtpDisplay(otp);
+  const rawOtp = String(otp ?? '').trim();
+  const waText = `Hi ${memberName || 'Member'}, your Wellness Valley video verification code is ${rawOtp}.`;
+  const whatsappUrl = buildWhatsAppShareUrl({ phone: memberPhone, text: waText });
+  const whatsappButtonHtml = buildWhatsAppShareButtonHtml({ shareUrl: whatsappUrl, label: 'Share code on WhatsApp' });
 
   const videoButtons = [
     healthVideoUrl   ? buildVideoButton('Health Results Video (up to 1 min)',   healthVideoUrl,   '#059669') : '',
@@ -741,6 +762,7 @@ export function buildVideoCoachEmailHtml({ memberName, otp, healthVideoUrl, busi
                     <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:Arial,Helvetica,sans-serif;">Video Verification OTP</p>
                     <p style="margin:8px 0 0;color:#047857;font-size:32px;font-weight:700;letter-spacing:6px;font-family:'Courier New',Courier,monospace;line-height:1.1;">${safeOtp}</p>
                     <p style="margin:6px 0 0;color:#9ca3af;font-size:12px;font-family:Arial,Helvetica,sans-serif;">Valid for 24 hours</p>
+                    ${whatsappButtonHtml}
                   </td>
                 </tr>
               </table>
@@ -782,7 +804,7 @@ export function buildVideoCoachEmailHtml({ memberName, otp, healthVideoUrl, busi
 /**
  * Plain-text fallback for the video coach email.
  */
-export function buildVideoCoachEmailText({ memberName, otp, healthVideoUrl, businessVideoUrl, recoveredHealthIssues }) {
+export function buildVideoCoachEmailText({ memberName, memberPhone = null, otp, healthVideoUrl, businessVideoUrl, recoveredHealthIssues }) {
   const issuesPlain = formatHealthIssuesPlain(recoveredHealthIssues);
   const lines = [
     'Wellness Valley - Video Testimonial Verification',
@@ -793,9 +815,15 @@ export function buildVideoCoachEmailText({ memberName, otp, healthVideoUrl, busi
   if (healthVideoUrl)   lines.push(`Watch Health Results Video:`, healthVideoUrl, '');
   if (businessVideoUrl) lines.push(`Watch Business Results Video:`, businessVideoUrl, '');
   if (issuesPlain)      lines.push(`Recovered Health Issues: ${issuesPlain}`, '');
+  const rawOtp = String(otp ?? '').trim();
+  const waUrl = buildWhatsAppShareUrl({
+    phone: memberPhone,
+    text: `Hi ${memberName || 'Member'}, your Wellness Valley video verification code is ${rawOtp}.`,
+  });
   lines.push(
     `Video Verification OTP: ${String(otp ?? '').split('').join(' ')}`,
     'Valid for 24 hours',
+    ...(waUrl ? ['', `Share on WhatsApp: ${waUrl}`] : []),
     '',
     'Verification instructions:',
     '1. Watch the video(s) using the link(s) above.',
@@ -988,6 +1016,7 @@ function buildVideoUpdatedRow(label, url, accent) {
  */
 export function buildUnifiedSubmitEmailHtml({
   memberName,
+  memberPhone = null,
   otp,
   changedSlots,
   goalType,
@@ -1015,6 +1044,10 @@ export function buildUnifiedSubmitEmailHtml({
 }) {
   const safeMember = escapeHtml(memberName);
   const safeOtp    = formatOtpDisplay(otp);
+  const rawOtp = String(otp ?? '').trim();
+  const waText = `Hi ${memberName || 'Member'}, your Wellness Valley transformation verification code is ${rawOtp}.`;
+  const whatsappUrl = buildWhatsAppShareUrl({ phone: memberPhone, text: waText });
+  const whatsappButtonHtml = buildWhatsAppShareButtonHtml({ shareUrl: whatsappUrl, label: 'Share code on WhatsApp' });
   const slots      = new Set(changedSlots || []);
 
   const goalLabel  = (goalType === 'loss') ? 'Weight Loss' : 'Weight Gain';
@@ -1154,6 +1187,7 @@ export function buildUnifiedSubmitEmailHtml({
                     <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;font-family:Arial,Helvetica,sans-serif;">Verification OTP</p>
                     <p style="margin:8px 0 0;color:#047857;font-size:32px;font-weight:700;letter-spacing:6px;font-family:'Courier New',Courier,monospace;line-height:1.1;">${safeOtp}</p>
                     <p style="margin:6px 0 0;color:#9ca3af;font-size:12px;font-family:Arial,Helvetica,sans-serif;">Valid for 24 hours</p>
+                    ${whatsappButtonHtml}
                   </td>
                 </tr>
               </table>
@@ -1197,6 +1231,7 @@ export function buildUnifiedSubmitEmailHtml({
  */
 export function buildUnifiedSubmitEmailText({
   memberName,
+  memberPhone = null,
   otp,
   changedSlots,
   goalType,
@@ -1247,9 +1282,15 @@ export function buildUnifiedSubmitEmailText({
   if (slots.has('business') && businessVideoUrl) lines.push('Business Results Video (new):', businessVideoUrl, '');
   if (issuesPlain)                               lines.push(`Recovered Health Issues: ${issuesPlain}`, '');
 
+  const rawOtp = String(otp ?? '').trim();
+  const waUrl = buildWhatsAppShareUrl({
+    phone: memberPhone,
+    text: `Hi ${memberName || 'Member'}, your Wellness Valley transformation verification code is ${rawOtp}.`,
+  });
   lines.push(
     `Verification OTP: ${String(otp ?? '').split('').join(' ')}`,
     'Valid for 24 hours',
+    ...(waUrl ? ['', `Share on WhatsApp: ${waUrl}`] : []),
     '',
     'Verification instructions:',
     '1. Review all the changes listed above.',
