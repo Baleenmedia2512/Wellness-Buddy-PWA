@@ -647,13 +647,13 @@ export default function CoachPortfolioForm({
         {!loading && step.id === 'about' ? (
           <FormCard title="About" subtitle="All fields required — shown on your public website">
             <div>
-              <FieldLabel required hint="Shown exactly as typed under About (example: 8+ years coaching)">
+              <FieldLabel required hint="Shown exactly as typed under About (example: 8+ years of coaching)">
                 Years of experience
               </FieldLabel>
               <TextInput
                 value={form.personal.yearsExperience}
                 onChange={(v) => canEdit && setForm(setSection(form, 'personal', { yearsExperience: v }))}
-                placeholder="8+ years coaching"
+                placeholder="8+ years of coaching"
               />
             </div>
             <div>
