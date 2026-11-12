@@ -201,6 +201,7 @@ import { UserProfileModal } from "./features/user";
 import { UserProfilePage, ProfilePageErrorBoundary } from "./features/user";
 import PremiumSuccessHost from "./features/payments/components/PremiumSuccessHost";
 import { CompleteProfilePage } from "./features/user";
+import { FieldCollectionHost } from "./features/field-collection";
 import { OnboardingIdentityPage } from "./features/user";
 import { OnboardingTransformationPhotosPage } from "./features/user";
 import { MandatoryProfilePictureModal } from "./features/user";
@@ -983,6 +984,18 @@ function WellnessValleyApp() {
   const [identityResolved, setIdentityResolved] = useState(false);
   const [showCompleteProfile, setShowCompleteProfile] = useState(false);
   const [showOnboardingTransformationPhotos, setShowOnboardingTransformationPhotos] = useState(false);
+  const [fieldCollectionLive, setFieldCollectionLive] = useState(true);
+  const [fieldCollectionNonce, setFieldCollectionNonce] = useState(0);
+  const [fieldCollectionBlocking, setFieldCollectionBlocking] = useState(false);
+  const fieldCollectionLiveRef = useRef(true);
+  const [sponsorReady, setSponsorReady] = useState(
+    () => Session.isCoachOtpVerified() || Session.isSetupSkipped(),
+  );
+  const sponsorReadyRef = useRef(Session.isCoachOtpVerified() || Session.isSetupSkipped());
+  const markSponsorReady = useCallback((ready) => {
+    sponsorReadyRef.current = ready;
+    setSponsorReady(ready);
+  }, []);
   // Survives async checkProfileCompletion after Complete Profile save — without this,
   // status:"complete" immediately clears the Transformation Photos step on mobile.
   const transformationPhotosGateRef = useRef(false);
@@ -1034,6 +1047,7 @@ function WellnessValleyApp() {
       showCompleteProfile ||
       showOnboardingTransformationPhotos ||
       showPhysicalActivitySetup ||
+      fieldCollectionBlocking ||
       showSetupWizard ||
       (showValidateOTP && !isInactiveReactivationFlow) ||
       profileChecking
@@ -1630,6 +1644,11 @@ function WellnessValleyApp() {
 
   // Physical activity gate: after remaining profile fields (post sponsor OTP).
   useEffect(() => {
+    if (isFlagEnabled('ff.field-collection') && fieldCollectionLiveRef.current) {
+      setShowPhysicalActivitySetup(false);
+      setPhysicalActivityResolved(true);
+      return undefined;
+    }
     if (!user || !isOtpVerified) {
       setPhysicalActivityResolved(false);
       physicalActivityConfirmedRef.current = false;
@@ -1716,6 +1735,7 @@ function WellnessValleyApp() {
     showSetupWizard,
     showValidateOTP,
     isInactiveReactivationFlow,
+    fieldCollectionLive,
   ]);
 
   // Tracks whether CompleteProfilePage is currently mounted. Used by the
@@ -3597,6 +3617,20 @@ function WellnessValleyApp() {
         setShowConsentGate(true);
       }
 
+      const handOffToFieldCollection = () => {
+        setIdentityResolved(true);
+        setShowOnboardingIdentity(false);
+        setShowCompleteProfile(false);
+        setShowOnboardingTransformationPhotos(false);
+        transformationPhotosGateRef.current = false;
+        setShowPhysicalActivitySetup(false);
+        profileCompletedRef.current = true;
+        setFieldCollectionNonce((n) => n + 1);
+        if (!silent) setProfileChecking(false);
+      };
+      const fieldCollectionOwnsFlow = isFlagEnabled('ff.field-collection')
+        && fieldCollectionLiveRef.current;
+
       if (result.status === "complete") {
         const uid =
           userObj?.id
@@ -3618,6 +3652,25 @@ function WellnessValleyApp() {
           isBcmLead: result.data?.isBcmLead === true,
           bcmProfileReviewed: bcmReviewedOnServer || bcmReviewedLocally,
         });
+        if (fieldCollectionOwnsFlow) {
+          const sponsorDone = allowRemainingProfile
+            || sponsorReadyRef.current
+            || Session.isSetupSkipped()
+            || Session.isCoachOtpVerified();
+          if (sponsorDone) {
+            handOffToFieldCollection();
+            return;
+          }
+          // Coach search and coach OTP come before Community Position.
+          setIdentityResolved(true);
+          setShowOnboardingIdentity(false);
+          setShowCompleteProfile(false);
+          setShowOnboardingTransformationPhotos(false);
+          transformationPhotosGateRef.current = false;
+          setShowPhysicalActivitySetup(false);
+          if (!silent) setProfileChecking(false);
+          return;
+        }
         if (forceBcmReview && uid && !transformationPhotosGateRef.current) {
           debugLog("📋 [Profile] BCM lead — showing Complete Profile for review");
           setIdentityResolved(true);
@@ -3676,6 +3729,14 @@ function WellnessValleyApp() {
 
         setShowOnboardingIdentity(false);
 
+        if (
+          fieldCollectionOwnsFlow
+          && (allowRemainingProfile || Session.isSetupSkipped())
+        ) {
+          handOffToFieldCollection();
+          return;
+        }
+
         // Remaining profile only after sponsor setup is done (or caller opts in).
         // While Transformation Photos is the active next step, never steal the
         // screen back to Complete Profile (async re-checks after save/setUser).
@@ -3712,6 +3773,19 @@ function WellnessValleyApp() {
     [apiBaseUrl],
   );
   // -------------------------------------------------------------------------
+
+  // Server kill switch: field-collection API inactive → previous onboarding screens.
+  useEffect(() => {
+    if (fieldCollectionLive) return undefined;
+    if (!user || !isOtpVerified) return undefined;
+    const email = (user.email && user.email.trim()) || Session.getUserEmail();
+    checkProfileCompletion(email, user, {
+      silent: true,
+      allowRemainingProfile: Session.isSetupSkipped(),
+    });
+    return undefined;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- restore legacy gates once
+  }, [fieldCollectionLive]);
 
   // Email users: run profile completeness as the first gate (before activity / coach).
   useEffect(() => {
@@ -4411,6 +4485,7 @@ function WellnessValleyApp() {
 
     if (Session.isSetupSkipped() && !demoPhoneNeedsCoach) {
       Session.markSetupSkipped();
+      markSponsorReady(true);
       await openRemaining();
       return;
     }
@@ -4432,10 +4507,12 @@ function WellnessValleyApp() {
         // Stale Cashfree skip in DB: force coach UI only until a coach is linked.
         if (demoPhoneNeedsCoach && !status.raw?.hasUpline) {
           Session.clearSetupSkipped();
+          markSponsorReady(false);
           setShowValidateOTP(false);
           setShowSetupWizard(true);
         } else {
           Session.markSetupSkipped();
+          markSponsorReady(true);
           setShowSetupWizard(false);
           setShowValidateOTP(false);
           await openRemaining();
@@ -4443,24 +4520,29 @@ function WellnessValleyApp() {
       } else if (status.result === "pendingOtp") {
         if (email.toLowerCase() === DEMO_EMAIL) {
           await silentlyCompleteDemoSetup(email);
+          markSponsorReady(true);
           setShowSetupWizard(false);
           setShowValidateOTP(false);
           await openRemaining();
         } else if (!isInactiveReactivationFlowRef.current) {
+          markSponsorReady(false);
           setShowSetupWizard(false);
           setShowValidateOTP(true);
         }
       } else if (status.result === "incomplete") {
         if (email.toLowerCase() === DEMO_EMAIL) {
           await silentlyCompleteDemoSetup(email);
+          markSponsorReady(true);
           setShowSetupWizard(false);
           setShowValidateOTP(false);
           await openRemaining();
         } else {
+          markSponsorReady(false);
           setShowValidateOTP(false);
           setShowSetupWizard(true);
         }
       } else if (status.result === "complete") {
+        markSponsorReady(true);
         setShowSetupWizard(false);
         setShowValidateOTP(false);
         await openRemaining();
@@ -4468,7 +4550,7 @@ function WellnessValleyApp() {
     } catch (setupError) {
       console.warn("?? [Setup Check] Failed to check setup status:", setupError);
     }
-  }, [apiBaseUrl, checkProfileCompletion, user]);
+  }, [apiBaseUrl, checkProfileCompletion, user, markSponsorReady]);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return undefined;
@@ -4514,7 +4596,7 @@ function WellnessValleyApp() {
     if (
       showOnboardingTransformationPhotos
       || transformationPhotosGateRef.current
-      || showPhysicalActivitySetup
+      ||       showPhysicalActivitySetup
       || showCompleteProfile
     ) {
       setCoachSetupResolved(true);
@@ -9972,6 +10054,19 @@ function WellnessValleyApp() {
           />
         )}
 
+        {isFlagEnabled('ff.field-collection') && fieldCollectionLive && sponsorReady && user && isOtpVerified && !showOnboardingIdentity && !showSetupWizard && !showValidateOTP && (
+          <FieldCollectionHost
+            user={user}
+            apiBaseUrl={apiBaseUrl}
+            nonce={fieldCollectionNonce}
+            onBlockingChange={setFieldCollectionBlocking}
+            onInactive={() => {
+              fieldCollectionLiveRef.current = false;
+              setFieldCollectionLive(false);
+            }}
+          />
+        )}
+
         {/* -- Remaining profile fields (after sponsor OTP) ---------------------
            Gender, height, diet, metrics — then mandatory transformation photos.
       ------------------------------------------------------------------- */}
@@ -10232,6 +10327,7 @@ function WellnessValleyApp() {
                 }
                 setShowValidateOTP(false);
                 Session.markCoachOtpVerified();
+                markSponsorReady(true);
                 const email =
                   user?.email || user?.Email || Session.getUserEmail() || "";
                 // Bust profile cache after sponsor OTP so needsName cannot

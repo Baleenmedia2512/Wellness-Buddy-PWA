@@ -343,6 +343,26 @@ model education_logs_table {
   @@index([UserId], map: "idx_education_user_id")
 }
 
+model field_collection_policy_table {
+  id                 BigInt   @id @default(autoincrement())
+  fields             Json
+  updated_at         DateTime @default(now())
+  updated_by_user_id BigInt?
+}
+
+model field_collection_prompt_state_table {
+  id               BigInt    @id @default(autoincrement())
+  user_id          BigInt
+  field_key        String    @db.VarChar(64)
+  skip_count       Int       @default(0)
+  cycle_started_at DateTime?
+  last_filled_at   DateTime?
+  last_skipped_at  DateTime?
+
+  @@unique([user_id, field_key], map: "uq_field_collection_user_field")
+  @@index([user_id], map: "idx_field_collection_prompt_state_user")
+}
+
 model food_corrections_table {
   Id                Int       @id @default(autoincrement())
   UserId            String    @db.VarChar(255)

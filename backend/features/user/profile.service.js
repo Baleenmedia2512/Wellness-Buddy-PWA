@@ -108,16 +108,18 @@ function clearProfileCaches({ email, userId } = {}) {
   }
 }
 
-export async function getProfile({ email, userId = null, appVersion = null }) {
+export async function getProfile({ email, userId = null, appVersion = null, bypassCache = false }) {
   const preferTransformR2 = shouldPreferTransformationR2Urls({ appVersion });
   const cacheKeyBase = email
     ? cacheKeys.userProfile(String(email || '').toLowerCase())
     : cacheKeys.userProfile(`id:${userId}`);
   const cacheKey = `${cacheKeyBase}:tp-${preferTransformR2 ? 'r2' : 'legacy'}`;
-  try {
-    const cached = cache.get(cacheKey);
-    if (cached) return cached;
-  } catch { /* non-fatal */ }
+  if (!bypassCache) {
+    try {
+      const cached = cache.get(cacheKey);
+      if (cached) return cached;
+    } catch { /* non-fatal */ }
+  }
 
   const user = userId
     ? await repo.getProfileByUserId(userId)
@@ -714,6 +716,9 @@ export async function updateProfile(input) {
         userId,
         keys: Object.keys(toSave),
       });
+      if (toSave.eventLevel !== undefined) {
+        throw new Error('Community Position could not be saved. Add EventLevel on the profile table and try again.');
+      }
     }
   }
 

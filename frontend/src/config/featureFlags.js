@@ -267,6 +267,14 @@ const REGISTRY = Object.freeze({
     description:    'Coach Website: paid unlock and portfolio form entry.',
   },
 
+  // Profile field collection. Kill switch returns to the previous onboarding screens.
+  'ff.field-collection': {
+    envKey:         'REACT_APP_FF_FIELD_COLLECTION',
+    storageKey:     'ff.field-collection',
+    defaultEnabled: true,
+    description:    'Community Position first, then admin-configured entry and later fields.',
+  },
+
   // Reports detail trial. Kill switch shows the full report again.
   'ff.report-trial': {
     envKey:         'REACT_APP_FF_REPORT_TRIAL',

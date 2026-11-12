@@ -158,6 +158,7 @@ All work-in-progress is gated behind a feature flag. No exception.
 | `ff.broadcast` | ON | @principal-eng | 2027-03-29 | BroadCast paid screen: how-to video and payment entry. Upload and Burst stay locked until recharge is connected. |
 | `ff.go-premium` | ON | @principal-eng | 2027-04-28 | Profile Go Premium opens Cashfree checkout. Kill switch hides the row and the create-order API. |
 | `ff.report-trial` | ON | @principal-eng | 2027-05-05 | Reports stay open. Unpaid detail hides until a 14-day trial or Premium. Apps below 3.5.5, and requests with no version, keep the full report. |
+| `ff.field-collection` | ON | @principal-eng | 2027-05-12 | Admin field rules: Community Position first, then entry or later fields by member/coach and community position. Kill switch. Released app bundles keep the previous onboarding screens. |
 
 **Frontend-only UI flags (`frontend/src/config/featureFlags.js`, no backend mirror):** `ff.shake-calculator` (OFF), `ff.contact-picker` (OFF).
 
