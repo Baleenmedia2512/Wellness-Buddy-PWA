@@ -115,6 +115,7 @@ const UserProfileBodyMetrics = ({
   hideReadOnly = false,
   heightCm = null,
   weightKg = null,
+  requireFat = true,
 }) => {
   const metrics = bodyMetrics || {};
   const derivedBmi = useMemo(
@@ -133,7 +134,10 @@ const UserProfileBodyMetrics = ({
     [displayMetrics],
   );
 
-  const visibleFields = hideReadOnly ? FIELDS.filter((field) => !field.readOnly) : FIELDS;
+  const visibleFields = (hideReadOnly ? FIELDS.filter((field) => !field.readOnly) : FIELDS)
+    .map((field) => (
+      field.key === 'fatPercent' ? { ...field, required: requireFat === true } : field
+    ));
   const hasAnyReference = visibleFields.some(({ key }) => references[key]);
 
   return (

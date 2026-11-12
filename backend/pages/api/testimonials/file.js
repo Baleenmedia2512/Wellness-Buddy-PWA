@@ -3,6 +3,7 @@
  * Serves a testimonial photo or video saved on this machine.
  */
 import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 import {
   readTestimonialFile,
   verifyTestimonialFileRequest,
@@ -29,6 +30,8 @@ export default async function handler(req, res) {
   if (!verifyTestimonialFileRequest(filePath, expiresAtMs, signature)) {
     return res.status(404).end();
   }
+  const ownerId = filePath.split('/')[0];
+  if (await rejectIfMandatoryProfileBlocks(req, res, { actorUserId: ownerId })) return;
 
   const bytes = await readTestimonialFile(filePath);
   if (!bytes) return res.status(404).end();

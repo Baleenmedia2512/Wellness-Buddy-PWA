@@ -1,4 +1,5 @@
 ﻿import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 import {
   listAdminTimeWindows,
   updateAdminTimeWindow,
@@ -10,6 +11,7 @@ import {
  * POST: Update time window with versioning (admin/developer)
  */
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   if (applyCors(req, res, 'GET, POST, OPTIONS')) return;
 
   try {

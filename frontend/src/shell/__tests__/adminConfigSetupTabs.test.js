@@ -52,6 +52,14 @@ describe('resolveAdminConfigTab', () => {
       navPageAccessEnabled: false,
     })).toBe(ADMIN_CONFIG_TABS.ACTIVITY_TIME);
   });
+
+  it('always allows mandatory profile fields for an admin deep link', () => {
+    expect(resolveAdminConfigTab(ADMIN_CONFIG_TABS.MANDATORY_FIELDS, {
+      wellnessScoreEnabled: false,
+      aiCreditsEnabled: false,
+      navPageAccessEnabled: false,
+    })).toBe(ADMIN_CONFIG_TABS.MANDATORY_FIELDS);
+  });
 });
 
 describe('adminConfigTabFromNavigateTarget', () => {
@@ -61,6 +69,10 @@ describe('adminConfigTabFromNavigateTarget', () => {
 
   it('maps page-access-setup to page access tab', () => {
     expect(adminConfigTabFromNavigateTarget('page-access-setup')).toBe(ADMIN_CONFIG_TABS.PAGE_ACCESS);
+  });
+
+  it('maps mandatory profile fields to its admin tab', () => {
+    expect(adminConfigTabFromNavigateTarget('mandatory-fields-setup')).toBe(ADMIN_CONFIG_TABS.MANDATORY_FIELDS);
   });
 
   it('maps wellness setup to wellness tab', () => {

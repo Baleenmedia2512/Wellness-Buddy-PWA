@@ -12,8 +12,10 @@
 
 import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { userHasSponsorTeam } from '../../../utils/coachTeamSeats.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');

@@ -35,6 +35,7 @@
  */
 
 import logger from '../../../shared/lib/logger.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 import { drainQueue } from '../../../shared/lib/ai-orchestration/JobWorker.js';
 import { jobQueue } from '../../../shared/lib/ai-orchestration/JobQueue.js';
 import { getBreakerStates } from '../../../shared/lib/ai-orchestration/RetryPolicy.js';
@@ -87,6 +88,7 @@ function isAuthorised(req) {
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({
       ok: false,

@@ -11,6 +11,7 @@ import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import nodemailer from 'nodemailer';
 import logger from '../../../shared/lib/logger.js';
 import { applyCors } from '../../../shared/lib/handler.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 
 // ── Email helper (non-fatal — same pattern as enroll.js / upline/request.js) ─
 async function sendUpdateNotification({ coachEmail, coachName, memberName, memberEmail, programs }) {
@@ -56,6 +57,7 @@ async function sendUpdateNotification({ coachEmail, coachName, memberName, membe
 }
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   if (applyCors(req, res, 'POST, OPTIONS')) return;
 
   // Only allow POST requests

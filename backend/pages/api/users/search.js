@@ -10,6 +10,7 @@
  */
 
 import { getMysqlClient } from '../../../utils/mysqlClient.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 import { filterPublicAggregateUsers } from '../../../features/user/domain/aggregate-eligibility.rules.js';
 import {
   rankSponsorSearchUsers,
@@ -18,6 +19,7 @@ import {
 import { isEligibleSponsor } from '../../../features/user/domain/sponsorVisibility.rules.js';
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   // Prevent browser/service worker caching of dynamic data
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');

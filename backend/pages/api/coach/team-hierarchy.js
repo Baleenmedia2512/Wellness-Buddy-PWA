@@ -18,6 +18,7 @@ import {
   coachIdByUser,
 } from '../../../features/nutrition-centers/domain/searchClub.rules.js';
 import { slimSearchAllMembers } from '../../../utils/teamHierarchySearchPayload.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 
 /**
  * API: Get Hierarchical Team Structure
@@ -42,6 +43,7 @@ import { slimSearchAllMembers } from '../../../utils/teamHierarchySearchPayload.
  * BCM and Leadership Dashboard keep the default (full) purpose.
  */
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   // Prevent caching
   res.setHeader(
     "Cache-Control",

@@ -6,6 +6,7 @@
  * Videos need a correct Content-Type and Accept-Ranges / 206 for <video> playback.
  */
 import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 import { isAllowedUploadKey } from '../../../shared/lib/milesweb/objectKey.js';
 import { readMileswebObject } from '../../../shared/lib/milesweb/ftpStorage.js';
 
@@ -46,6 +47,7 @@ function parseRange(rangeHeader, size) {
 }
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   if (applyCors(req, res, 'GET, HEAD, OPTIONS')) return;
   if (req.method !== 'GET' && req.method !== 'HEAD') return methodNotAllowed(res);
 

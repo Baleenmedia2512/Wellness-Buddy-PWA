@@ -17,10 +17,12 @@ import {
   resolveMemberCoachTeamId,
 } from '../../../utils/coachTeamSeats.js';
 import { isValidEmailOtp } from '../../../features/auth/domain/otp-length.rules.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 
 const MAX_OTP_ATTEMPTS = 5;
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   // Handle CORS
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Origin", "*");

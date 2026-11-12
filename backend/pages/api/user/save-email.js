@@ -9,6 +9,7 @@
  * Body: { userId: number, name: string, email?: string }
  */
 import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import {
   hasValidProfileName,
@@ -25,6 +26,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TEAM = 'team_table';
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   if (applyCors(req, res, 'POST, OPTIONS')) return;
   if (req.method !== 'POST') return methodNotAllowed(res);
 

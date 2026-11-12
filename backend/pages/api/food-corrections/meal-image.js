@@ -1,4 +1,5 @@
 import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import { validateMealImageInput } from '../../../features/food-corrections/food-corrections.validators.js';
 import { getMealImage } from '../../../features/food-corrections/food-corrections.service.js';
@@ -10,6 +11,7 @@ import { sendStoredImage } from '../../../shared/lib/r2/sendImageRedirect.js';
  * ?format=json → { success, image } (weight/image-compatible).
  */
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   res.setHeader('Cache-Control', 'private, max-age=3600');
   if (applyCors(req, res, 'GET, OPTIONS')) return;
   if (req.method !== 'GET') return methodNotAllowed(res);

@@ -1,4 +1,5 @@
 import { getMysqlClient } from '../../../utils/mysqlClient.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import {
   resolveRequestedDateYmd,
@@ -45,6 +46,7 @@ const SCORE_LOOKUP_CHUNK = 150;
  * Missing `days` stays on today's board so already released apps are unchanged.
  */
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');

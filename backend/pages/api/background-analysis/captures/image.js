@@ -1,4 +1,5 @@
 import { applyCors, methodNotAllowed } from '../../../../shared/lib/handler.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../../features/mandatory-fields/api/enforce.handler.js';
 import { ValidationError } from '../../../../shared/lib/ValidationError.js';
 import { getCaptureImageForDiary } from '../../../../features/background-analysis/diary.service.js';
 
@@ -9,6 +10,7 @@ import { getCaptureImageForDiary } from '../../../../features/background-analysi
  * (or redirects to ImagePath) so list responses can omit Base64.
  */
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   res.setHeader('Cache-Control', 'private, max-age=3600');
   if (applyCors(req, res, 'GET, OPTIONS')) return;
   if (req.method !== 'GET') return methodNotAllowed(res);

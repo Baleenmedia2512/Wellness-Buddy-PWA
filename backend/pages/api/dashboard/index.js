@@ -1,6 +1,8 @@
 import { getDashboard } from "../../../services/dashboardService.js";
+import { rejectIfMandatoryProfileBlocks } from "../../../features/mandatory-fields/api/enforce.handler.js";
 
 export default async function handler(req, res) {
+    if (await rejectIfMandatoryProfileBlocks(req, res)) return;
     if (req.method !== "GET") {
         return res.status(405).json({
             message: "Method Not Allowed",

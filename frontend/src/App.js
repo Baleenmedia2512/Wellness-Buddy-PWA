@@ -115,7 +115,7 @@ import {
   initializeBackButton,
   cleanupBackButton,
 } from "./shared/utils/backButtonHandler";
-import { getVersionString } from "./config/version";
+import { getVersionString, APP_VERSION } from "./config/version";
 import { useAppVersionPolicy } from "./shared/hooks/useAppVersionPolicy";
 import { useMandatoryAppUpdate } from "./shared/hooks/useMandatoryAppUpdate";
 import AppVersionHardBlock from "./shared/components/AppVersionGate";
@@ -201,6 +201,9 @@ import { UserProfileModal } from "./features/user";
 import { UserProfilePage, ProfilePageErrorBoundary } from "./features/user";
 import PremiumSuccessHost from "./features/payments/components/PremiumSuccessHost";
 import { CompleteProfilePage } from "./features/user";
+import MandatoryProfileGate from "./features/mandatory-fields/components/MandatoryProfileGate";
+import { holdTransformationPhotos, shouldEnableMandatoryGate, completeProfileNeedsScreen } from "./features/mandatory-fields/domain/mandatoryPrompt.rules";
+import { fetchUserMandatoryFields } from "./features/mandatory-fields/services/mandatoryFields.api";
 import { OnboardingIdentityPage } from "./features/user";
 import { OnboardingTransformationPhotosPage } from "./features/user";
 import { MandatoryProfilePictureModal } from "./features/user";
@@ -1021,6 +1024,8 @@ function WellnessValleyApp() {
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [showValidateOTP, setShowValidateOTP] = useState(false);
   const coachSetupEpochRef = useRef(0);
+  const [mandatoryLocked, setMandatoryLocked] = useState(false);
+  const [mandatoryStatus, setMandatoryStatus] = useState('idle');
 
   // Hard = a full-screen onboarding UI is up (must block tabs).
   // Soft = background resolve flags still settling (must NOT swallow tab taps).
@@ -1036,7 +1041,8 @@ function WellnessValleyApp() {
       showPhysicalActivitySetup ||
       showSetupWizard ||
       (showValidateOTP && !isInactiveReactivationFlow) ||
-      profileChecking
+      profileChecking ||
+      mandatoryLocked
     );
   const onboardingSoftBlocking =
     !!user &&
@@ -1050,6 +1056,24 @@ function WellnessValleyApp() {
   // Full block for camera only while soft resolve flags may still flap.
   // Profile open/render uses hard blocking — soft flaps must not keep Home stuck.
   const onboardingBlocking = onboardingHardBlocking || onboardingSoftBlocking;
+  const mandatoryGateEnabled = shouldEnableMandatoryGate({
+    user,
+    isOtpVerified,
+    isUserActive,
+    showConsentGate,
+    showOnboardingIdentity,
+    showCompleteProfile,
+    showPhysicalActivitySetup,
+    showSetupWizard,
+    showValidateOTP,
+    isInactiveReactivationFlow,
+    profileChecking,
+  });
+  const photosHeldForMandatory = holdTransformationPhotos({
+    photosRequested: showOnboardingTransformationPhotos && !showOnboardingIdentity && !showCompleteProfile && !!user,
+    gateEnabled: mandatoryGateEnabled,
+    mandatoryStatus,
+  });
   const onboardingHardBlockingRef = useRef(false);
   onboardingHardBlockingRef.current = onboardingHardBlocking;
   const onboardingBlockingRef = useRef(false);
@@ -3066,6 +3090,12 @@ function WellnessValleyApp() {
           setShowAdminConfigSetup(true);
         }
         break;
+      case 'mandatory-fields-setup':
+        if (isAdminLikeRole(userRole)) {
+          setAdminConfigTab(ADMIN_CONFIG_TABS.MANDATORY_FIELDS);
+          setShowAdminConfigSetup(true);
+        }
+        break;
       case 'manual-entry':
         startTransition(() => setShowManualEntry(true));
         break;
@@ -3590,6 +3620,19 @@ function WellnessValleyApp() {
         missingFields: result.missingFields,
       });
 
+      const formScreenNeeded = async () => {
+        try {
+          const mandatory = await fetchUserMandatoryFields({
+            userId: uid,
+            email: userEmail || undefined,
+            apiBaseUrl,
+          });
+          return completeProfileNeedsScreen(mandatory.fields);
+        } catch {
+          return true;
+        }
+      };
+
       if (
         isFlagEnabled("ff.consent-gate") &&
         shouldOpenConsentGate(result.data?.consentRequired === true, userObj)
@@ -3618,7 +3661,7 @@ function WellnessValleyApp() {
           isBcmLead: result.data?.isBcmLead === true,
           bcmProfileReviewed: bcmReviewedOnServer || bcmReviewedLocally,
         });
-        if (forceBcmReview && uid && !transformationPhotosGateRef.current) {
+        if (forceBcmReview && uid && !transformationPhotosGateRef.current && await formScreenNeeded()) {
           debugLog("📋 [Profile] BCM lead — showing Complete Profile for review");
           setIdentityResolved(true);
           setShowOnboardingIdentity(false);
@@ -3688,10 +3731,24 @@ function WellnessValleyApp() {
           const setupAlreadyDone =
             allowRemainingProfile
             || Session.isSetupSkipped();
-          if (setupAlreadyDone) {
+          if (setupAlreadyDone && await formScreenNeeded()) {
             debugLog("?? [Profile] Remaining fields missing — showing CompleteProfilePage");
             setShowCompleteProfile(true);
             setShowOnboardingTransformationPhotos(false);
+          } else if (setupAlreadyDone) {
+            profileCompletedRef.current = true;
+            setShowCompleteProfile(false);
+            const photosDecision = resolveTransformationPhotosGate({
+              confirmedThisSession: transformationPhotosConfirmedRef.current,
+              profile: result.data,
+              fetchFailed: false,
+            });
+            if (transformationPhotosGateRef.current || photosDecision === "show") {
+              transformationPhotosGateRef.current = true;
+              setShowOnboardingTransformationPhotos(true);
+            } else {
+              setShowOnboardingTransformationPhotos(false);
+            }
           } else {
             setShowCompleteProfile(false);
             setShowOnboardingTransformationPhotos(false);
@@ -10049,7 +10106,13 @@ function WellnessValleyApp() {
         )}
 
         {/* -- Transformation photos (mandatory Left/Centre/Right) after Complete Profile */}
-        {showOnboardingTransformationPhotos && !showOnboardingIdentity && !showCompleteProfile && user && (
+        {photosHeldForMandatory && mandatoryStatus !== 'blocked' && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-gray-50">
+            <p className="text-sm text-gray-500">Checking required profile details…</p>
+          </div>
+        )}
+
+        {showOnboardingTransformationPhotos && !showOnboardingIdentity && !showCompleteProfile && user && !photosHeldForMandatory && (
           <OnboardingTransformationPhotosPage
             user={user}
             onComplete={async (savedData) => {
@@ -10531,6 +10594,14 @@ function WellnessValleyApp() {
       </div>
       <PremiumSuccessHost
         userId={user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null}
+      />
+      <MandatoryProfileGate
+        enabled={mandatoryGateEnabled}
+        user={user}
+        apiBaseUrl={apiBaseUrl}
+        appVersion={APP_VERSION.VERSION}
+        onLockChange={setMandatoryLocked}
+        onStatus={setMandatoryStatus}
       />
       {homeOverlay}
     </>

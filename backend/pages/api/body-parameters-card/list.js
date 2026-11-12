@@ -4,6 +4,7 @@
  */
 import { handleListCards } from '../../../features/body-parameters-card/api/list.handler.js';
 import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 
 export default async function handler(req, res) {
   // Prevent Vercel edge CDN and all intermediate caches from storing this
@@ -16,6 +17,7 @@ export default async function handler(req, res) {
   // Must allow X-App-Version* + Cache-Control — otherwise browser blocks preflight (CORS).
   if (applyCors(req, res, 'GET, OPTIONS')) return;
   if (req.method !== 'GET') return methodNotAllowed(res);
+  if (await rejectIfMandatoryProfileBlocks(req, res, { actorUserId: req.query?.coachId })) return;
 
   return handleListCards(req, res);
 }

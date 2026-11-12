@@ -6,6 +6,7 @@
  *   2. Activity Time Setup (always for admin)
  *   3. AI Configuration Setup (ff.ai-credits)
  *   4. Page Access (ff.nav-page-access)
+ *   5. Mandatory Profile Fields (always for admin)
  */
 import React, { useEffect, useState, startTransition } from 'react';
 import { ArrowLeft, Settings2 } from 'lucide-react';
@@ -16,6 +17,7 @@ import { useNutritionRefreshOptional } from '../../shared/context/NutritionRefre
 import { WellnessScoreSetup } from '../../features/wellness-score-sheet';
 import { AiCreditsSetup } from '../../features/ai-credits';
 import { NavPageAccessSetup } from '../../features/nav-page-access';
+import MandatoryFieldsSetup from '../../features/mandatory-fields/components/MandatoryFieldsSetup';
 import {
   ADMIN_CONFIG_TABS,
   ADMIN_CONFIG_TAB_LABELS,
@@ -69,6 +71,9 @@ export default function AdminConfigSetup({
   const [pageAccessMounted, setPageAccessMounted] = useState(
     () => resolveAdminConfigTab(initialTab, flagOpts) === ADMIN_CONFIG_TABS.PAGE_ACCESS,
   );
+  const [mandatoryMounted, setMandatoryMounted] = useState(
+    () => resolveAdminConfigTab(initialTab, flagOpts) === ADMIN_CONFIG_TABS.MANDATORY_FIELDS,
+  );
   const [resolvedUserId, setResolvedUserId] = useState(user?.id || null);
 
   useEffect(() => {
@@ -87,6 +92,7 @@ export default function AdminConfigSetup({
     if (next === ADMIN_CONFIG_TABS.ACTIVITY_TIME) setActivityMounted(true);
     if (next === ADMIN_CONFIG_TABS.AI_CONFIG) setAiMounted(true);
     if (next === ADMIN_CONFIG_TABS.PAGE_ACCESS) setPageAccessMounted(true);
+    if (next === ADMIN_CONFIG_TABS.MANDATORY_FIELDS) setMandatoryMounted(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTab, wellnessScoreEnabled, aiCreditsEnabled, navPageAccessEnabled]);
 
@@ -101,6 +107,7 @@ export default function AdminConfigSetup({
       if (tab === ADMIN_CONFIG_TABS.ACTIVITY_TIME) setActivityMounted(true);
       if (tab === ADMIN_CONFIG_TABS.AI_CONFIG) setAiMounted(true);
       if (tab === ADMIN_CONFIG_TABS.PAGE_ACCESS) setPageAccessMounted(true);
+      if (tab === ADMIN_CONFIG_TABS.MANDATORY_FIELDS) setMandatoryMounted(true);
       scrollAdminConfigToTop();
     });
   };
@@ -109,6 +116,7 @@ export default function AdminConfigSetup({
   const activityActive = activeTab === ADMIN_CONFIG_TABS.ACTIVITY_TIME;
   const aiActive = activeTab === ADMIN_CONFIG_TABS.AI_CONFIG;
   const pageAccessActive = activeTab === ADMIN_CONFIG_TABS.PAGE_ACCESS;
+  const mandatoryActive = activeTab === ADMIN_CONFIG_TABS.MANDATORY_FIELDS;
 
   const handleTimeWindowsUpdated = () => {
     nutritionRefresh?.triggerRefresh?.({
@@ -200,6 +208,18 @@ export default function AdminConfigSetup({
                 <span className="truncate">{ADMIN_CONFIG_TAB_LABELS[ADMIN_CONFIG_TABS.PAGE_ACCESS]}</span>
               </button>
             )}
+            <button
+              type="button"
+              role="tab"
+              id="admin-config-tab-mandatory-fields"
+              aria-controls="admin-config-panel-mandatory-fields"
+              aria-selected={mandatoryActive}
+              tabIndex={mandatoryActive ? 0 : -1}
+              onClick={() => selectTab(ADMIN_CONFIG_TABS.MANDATORY_FIELDS)}
+              className={TAB_BTN(mandatoryActive)}
+            >
+              <span className="truncate">{ADMIN_CONFIG_TAB_LABELS[ADMIN_CONFIG_TABS.MANDATORY_FIELDS]}</span>
+            </button>
           </div>
         </div>
       </header>
@@ -270,6 +290,18 @@ export default function AdminConfigSetup({
             embedded
             onSaved={onNavAccessSaved}
           />
+        </div>
+      )}
+
+      {mandatoryMounted && (
+        <div
+          id="admin-config-panel-mandatory-fields"
+          role="tabpanel"
+          aria-labelledby="admin-config-tab-mandatory-fields"
+          hidden={!mandatoryActive}
+          className={mandatoryActive ? '' : 'hidden'}
+        >
+          <MandatoryFieldsSetup user={user} apiBaseUrl={apiBaseUrl} />
         </div>
       )}
     </div>

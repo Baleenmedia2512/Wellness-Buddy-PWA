@@ -11,8 +11,10 @@ import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { getDualCoachingTeamHierarchy } from '../../../utils/disciplineCalculationsQuery.js';
 import { buildHierarchyWithMetricCounts } from '../../../utils/hierarchyHelpers.js';
 import logger from '../../../shared/lib/logger.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   // Prevent caching
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');

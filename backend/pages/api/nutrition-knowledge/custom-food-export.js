@@ -1,10 +1,12 @@
 import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 import {
   validateCustomFoodExport,
   exportCustomFoodSubmissions,
 } from '../../../features/nutrition-knowledge/index.js';
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   if (applyCors(req, res, 'GET, OPTIONS')) return;
   if (req.method !== 'GET') return methodNotAllowed(res);
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');

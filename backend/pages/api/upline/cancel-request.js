@@ -9,6 +9,7 @@
 import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { buildTeamTableClearOnCancelRequest } from '../../../utils/coachTeamSeats.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 
 async function findUserForCancel(db, { email, userId }) {
   const uid = userId != null && String(userId).trim() !== ''
@@ -39,6 +40,7 @@ async function findUserForCancel(db, { email, userId }) {
 }
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization, X-App-Version, X-App-Version-Code, X-App-Platform');

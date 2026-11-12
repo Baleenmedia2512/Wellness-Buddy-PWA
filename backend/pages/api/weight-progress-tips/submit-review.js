@@ -8,8 +8,10 @@
 import { submitReviewHandler } from '../../../features/weight-progress-tips/api/submit-review.handler.js';
 import { methodNotAllowed } from '../../../shared/lib/handler.js';
 import logger from '../../../shared/lib/logger.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   const origin = req.headers.origin || '*';
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');

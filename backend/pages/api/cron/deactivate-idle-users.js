@@ -12,12 +12,14 @@
 import { INACTIVITY_THRESHOLD_DAYS } from '../../../features/idle-cleanup/domain/inactivity-rules.js';
 import logger from '../../../shared/lib/logger.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 
 /**
  * @param {import('next').NextApiRequest} req
  * @param {import('next').NextApiResponse} res
  */
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   const correlationId = `cron-deactivate-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   const startTime = Date.now();
 

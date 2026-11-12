@@ -16,6 +16,7 @@
  * 302 — not a breaking change for existing <img src> clients.
  */
 import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 import { cache, cacheKeys } from '../../../utils/cache.js';
 import { parseDataUri } from '../../../shared/lib/images/dataUri.js';
 import { avatarRedirectUrl } from '../../../shared/lib/r2/s3.js';
@@ -94,6 +95,7 @@ function sendAvatar(res, url, cacheTag, inline) {
 }
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   if (applyCors(req, res, 'GET, OPTIONS')) return;
   if (req.method !== 'GET') return methodNotAllowed(res);
 

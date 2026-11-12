@@ -43,6 +43,7 @@ import logger from '../../../shared/lib/logger.js';
 import { withTempFileCleanup } from '../../../shared/lib/gemini/tempFileCleanup.js';
 import { analyse } from '../../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 import {
   assertReservationValid,
   assertAiFoodAnalysisAccess,
@@ -77,6 +78,7 @@ function sanitiseInt(val) {
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
 
   if (req.method !== 'POST') {
     return res.status(405).json({

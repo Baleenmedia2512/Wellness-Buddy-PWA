@@ -8,8 +8,10 @@
 import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { resolveActiveCoach } from '../../../utils/hierarchyHelpers.js';
 import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   if (applyCors(req, res, 'GET, OPTIONS')) return;
   
   if (req.method !== 'GET') {

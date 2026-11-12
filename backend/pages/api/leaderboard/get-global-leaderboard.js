@@ -19,6 +19,7 @@ import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
 import { resolveLeaderboardViewerId } from '../../../utils/leaderboardViewer.js';
 import { cashfreeCheckoutMode } from '../../../features/payments/domain/premium.rules.js';
 import { attachPremiumFlags } from '../../../features/payments/data/premium.repository.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 
 /** Server-side TTL — hierarchy-scoped; cache key includes viewerUserId. */
 const LEADERBOARD_CACHE_TTL_MS = 60 * 1000;
@@ -45,6 +46,7 @@ const LEADERBOARD_CACHE_TTL_MS = 60 * 1000;
 const MAX_TODAY_VS_YESTERDAY_LOSS_KG = 3;
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   // Set CORS headers for all requests
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");

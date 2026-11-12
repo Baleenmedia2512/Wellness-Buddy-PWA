@@ -28,6 +28,7 @@
  */
 
 import logger from '../../../shared/lib/logger.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 import { jobQueue } from '../../../shared/lib/ai-orchestration/JobQueue.js';
 
 // UUID format validation
@@ -56,6 +57,9 @@ export default async function handler(req, res) {
         ok: false,
         error: { code: 'JOB_NOT_FOUND', message: 'No job found with the given jobId' },
       });
+    }
+    if (job.userId && await rejectIfMandatoryProfileBlocks(req, res, { actorUserId: job.userId })) {
+      return;
     }
 
     // Never expose imageBase64 or internal fields to the client

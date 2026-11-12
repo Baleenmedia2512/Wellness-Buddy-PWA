@@ -1,7 +1,7 @@
 // CompleteProfilePage — post-sponsor onboarding: remaining profile fields
 // (gender, height, diet, weight, Fat %). Email + Community ID are Profile KYC.
 // BMI stays off this screen; it is calculated from height + weight.
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { User } from 'lucide-react';
 import { fetchProfile, saveProfile } from '../services/profileService';
 import useImageCropper from '../hooks/useImageCropper';
@@ -19,7 +19,6 @@ import CompleteRequiredFields, {
 } from './complete/CompleteRequiredFields';
 import CompletePictureSection from './complete/CompletePictureSection';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
-import HealthIssuesFilterSelect from '../../body-parameters-card/components/HealthIssuesFilterSelect';
 import {
   hasValidProfileName,
   hasValidProfileGender,
@@ -28,6 +27,11 @@ import {
   MIN_BODY_FAT_PCT,
   MAX_BODY_FAT_PCT,
 } from '../domain/profileCompleteness';
+import { fetchUserMandatoryFields } from '../../mandatory-fields/services/mandatoryFields.api';
+import {
+  profileFormRequiredMarks,
+  profileFormSubtitle,
+} from '../../mandatory-fields/domain/mandatoryPrompt.rules';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const API = process.env.REACT_APP_API_BASE_URL;
@@ -107,6 +111,9 @@ const CompleteProfilePage = ({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [ruleMarks, setRuleMarks] = useState(null);
+  const [rulesError, setRulesError] = useState('');
+  const [rulesAttempt, setRulesAttempt] = useState(0);
 
   const [profileImage, setProfileImage] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -117,6 +124,7 @@ const CompleteProfilePage = ({
     onError: setPicError,
     onCropped: (img) => { setProfileImage(img); setPreviewUrl(img); face.reset(); face.run(img, user?.id ?? null, 'PROFILE_IMAGE_SET'); },
   });
+  const skippedEmptyForm = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -251,41 +259,108 @@ const CompleteProfilePage = ({
     return () => { mounted = false; };
   }, [user]);
 
+  useEffect(() => {
+    let mounted = true;
+    const uid = user?.id || user?.UserId || user?.userId || null;
+    const loginEmail = loginEmailFromUser(user);
+    setRuleMarks(null);
+    setRulesError('');
+    (async () => {
+      try {
+        const result = await fetchUserMandatoryFields({
+          userId: uid,
+          email: loginEmail,
+          apiBaseUrl: apiBaseUrl || API,
+        });
+        if (!mounted) return;
+        setRuleMarks(profileFormRequiredMarks(result.fields));
+      } catch (e) {
+        if (!mounted) return;
+        setRuleMarks(null);
+        setRulesError(e?.message || 'Could not check which fields are required.');
+      }
+    })();
+    return () => { mounted = false; };
+  }, [user, apiBaseUrl, rulesAttempt]);
+
   const heightNum = parseFloat(height);
+  const marks = ruleMarks || {
+    name: false,
+    gender: false,
+    height: false,
+    diet: false,
+    bodyFat: false,
+  };
+  const rulesReady = ruleMarks !== null;
   const trimmedName = name.trim();
   const trimmedEmail = email.trim().toLowerCase();
   // Name already collected on Welcome — keep valid even after email is entered.
-  const nameValid = trimmedName.length >= 2
+  const nameLooksValid = trimmedName.length >= 2
     && hasValidProfileName(trimmedName, {
       phoneNumber: sessionPhoneFromUser(user),
     });
+  const nameValid = !marks.name || nameLooksValid;
   const emailValid = EMAIL_RE.test(trimmedEmail);
-  const genderValid = !showGender || hasValidProfileGender(gender, null);
-  const heightValid = !Number.isNaN(heightNum) && heightNum >= 50 && heightNum <= 250;
-  const dietValid = !!dietType;
-  const currentWeightValid = !showCurrentWeight || isValidCurrentWeight(currentWeight);
-  const fatPercentValid = hasValidBodyFatPercent(optionalMetrics.fatPercent);
+  const genderChosen = hasValidProfileGender(gender, null);
+  const genderValid = !showGender || (marks.gender ? genderChosen : (!gender || genderChosen));
+  const heightText = String(height ?? '').trim();
+  const heightInRange = heightText !== '' && !Number.isNaN(heightNum) && heightNum >= 50 && heightNum <= 250;
+  const heightValid = marks.height ? heightInRange : (heightText === '' || heightInRange);
+  const dietValid = marks.diet ? !!dietType : true;
+  const weightText = String(currentWeight ?? '').trim();
+  const currentWeightValid = !showCurrentWeight || weightText === '' || isValidCurrentWeight(currentWeight);
+  const fatText = String(optionalMetrics.fatPercent ?? '').trim();
+  const fatOk = hasValidBodyFatPercent(optionalMetrics.fatPercent);
+  const fatPercentValid = marks.bodyFat ? fatOk : (fatText === '' || fatOk);
   const pictureValid = !showPictureSection
     || hasExistingPhoto
     || !!profileImage;
   // Name already collected on Welcome; email is Profile KYC (not this step).
   const hideName = identityLocked;
   const hideEmail = true;
-  const formValid = nameValid && (hideEmail || emailValid) && genderValid && heightValid && dietValid
+  const showNameField = !hideName && marks.name;
+  const showGenderField = showGender && marks.gender;
+  const showHeightField = marks.height;
+  const showDietField = marks.diet;
+  const showFatField = marks.bodyFat;
+  const formFieldsRequired = showNameField || showGenderField || showHeightField || showDietField || showFatField;
+  const formValid = rulesReady && nameValid && (hideEmail || emailValid) && genderValid && heightValid && dietValid
     && currentWeightValid && fatPercentValid && pictureValid;
 
   const checks = [
-    ...(hideName ? [] : [{ label: 'Name', done: nameValid }]),
-    ...(hideEmail ? [] : [{ label: 'Email', done: emailValid }]),
-    ...(showGender ? [{ label: 'Gender', done: genderValid }] : []),
-    { label: 'Height', done: heightValid },
-    { label: 'Diet Preference', done: dietValid },
-    ...(showCurrentWeight ? [{ label: 'Current Weight', done: currentWeightValid }] : []),
-    { label: 'Fat %', done: fatPercentValid },
+    ...(!hideName && marks.name ? [{ label: 'Name', done: nameLooksValid, mark: true }] : []),
+    ...(showGender && marks.gender ? [{ label: 'Gender', done: genderValid, mark: true }] : []),
+    ...(marks.height ? [{ label: 'Height', done: heightValid, mark: true }] : []),
+    ...(marks.diet ? [{ label: 'Diet Preference', done: dietValid, mark: true }] : []),
+    ...(marks.bodyFat ? [{ label: 'Fat %', done: fatPercentValid, mark: true }] : []),
   ];
   if (showPictureSection) {
     checks.push({ label: 'Profile Picture', done: pictureValid });
   }
+
+  useEffect(() => {
+    if (!rulesReady || formFieldsRequired || showPictureSection || skippedEmptyForm.current) return;
+    skippedEmptyForm.current = true;
+    const uid = user?.id || user?.UserId || user?.userId || null;
+    const accountEmail = String(user?.email || user?.Email || loginEmailFromUser(user) || '').trim().toLowerCase();
+    const savedName = trimmedName;
+    (async () => {
+      try {
+        const payload = { bcmProfileReviewed: true };
+        if (uid) payload.userId = uid;
+        if (accountEmail) payload.email = accountEmail;
+        if (savedName) payload.name = savedName;
+        await saveProfile(payload);
+        onComplete({
+          email: accountEmail || undefined,
+          userName: savedName || undefined,
+        });
+      } catch (e) {
+        skippedEmptyForm.current = false;
+        setRulesError(e?.message || 'Could not continue.');
+      }
+    })();
+  }, [rulesReady, formFieldsRequired, showPictureSection, user, trimmedName, onComplete]);
 
   const handleRecrop = useCallback(() => {
     if (saving || cropper.isPreparingCrop) return;
@@ -307,12 +382,12 @@ const CompleteProfilePage = ({
   const handleSave = useCallback(async () => {
     setError('');
     if (!formValid) {
-      if (!nameValid) setError('Please enter your full name.');
+      if (marks.name && !nameValid) setError('Please enter your full name.');
       else if (!hideEmail && !emailValid) setError('Please enter a valid email address.');
-      else if (!genderValid) setError('Please select Male or Female.');
+      else if (marks.gender && !genderValid) setError('Please select Male or Female.');
       else if (!heightValid) setError('Please enter a valid height (50 - 250 cm).');
-      else if (!dietValid) setError('Please select a diet preference.');
-      else if (showCurrentWeight && !currentWeightValid) {
+      else if (marks.diet && !dietValid) setError('Please select a diet preference.');
+      else if (showCurrentWeight && weightText && !currentWeightValid) {
         setError(`Please enter current weight (${MIN_WEIGHT_KG}–${MAX_WEIGHT_KG} kg).`);
       }
       else if (!fatPercentValid) {
@@ -350,18 +425,19 @@ const CompleteProfilePage = ({
       }
 
       const payload = {
-        name: trimmedName,
-        height: heightNum,
-        dietType,
+        bcmProfileReviewed: true,
       };
+      if (trimmedName) payload.name = trimmedName;
       if (uid) payload.userId = uid;
       if (accountEmail) payload.email = accountEmail;
+      if (heightInRange) payload.height = heightNum;
+      if (dietType) payload.dietType = dietType;
       if (showGender && gender) payload.gender = gender;
       if (showPictureSection && profileImage) payload.profileImage = profileImage;
       if (showCurrentWeight && isValidCurrentWeight(currentWeight)) {
         payload.currentWeight = parseFloat(currentWeight);
       }
-      if (fatPercentValid) {
+      if (fatOk) {
         payload.bodyFat = parseFloat(optionalMetrics.fatPercent);
       }
 
@@ -380,22 +456,20 @@ const CompleteProfilePage = ({
       payload.recoveredHealthIssues = Array.isArray(recoveredHealthIssues)
         ? recoveredHealthIssues
         : [];
-      // Persist BCM/BPC review on the server (survives APK reinstall).
-      payload.bcmProfileReviewed = true;
 
       await saveProfile(payload);
 
       onComplete({
         email: accountEmail || undefined,
         userName: trimmedName,
-        height: heightNum,
-        dietType,
-        gender: showGender ? gender : undefined,
+        height: heightInRange ? heightNum : undefined,
+        dietType: dietType || undefined,
+        gender: showGender && gender ? gender : undefined,
         profileImage: profileImage || previewUrl || undefined,
         currentWeight: showCurrentWeight && isValidCurrentWeight(currentWeight)
           ? parseFloat(currentWeight)
           : undefined,
-        bodyFat: fatPercentValid ? parseFloat(optionalMetrics.fatPercent) : undefined,
+        bodyFat: fatOk ? parseFloat(optionalMetrics.fatPercent) : undefined,
       });
     } catch (e) {
       setError(e.message || 'Failed to save. Please try again.');
@@ -404,7 +478,7 @@ const CompleteProfilePage = ({
     }
   }, [
     formValid, nameValid, emailValid, hideEmail, genderValid, heightValid, dietValid,
-    currentWeightValid, fatPercentValid, pictureValid,
+    currentWeightValid, fatPercentValid, pictureValid, marks, weightText, heightInRange, fatOk,
     showPictureSection, profileImage, user, apiBaseUrl,
     trimmedName, heightNum, dietType, showGender, gender, previewUrl, onComplete,
     showCurrentWeight, currentWeight, optionalMetrics, recoveredHealthIssues,
@@ -426,11 +500,26 @@ const CompleteProfilePage = ({
           <h1 className="text-2xl font-bold text-white">Complete Your Profile</h1>
         </div>
         <p className="text-green-100 text-sm">
-          Gender, height, diet, and body metrics — then transformation photos.
+          {rulesReady && formFieldsRequired ? profileFormSubtitle(marks) : 'Checking which details are required…'}
         </p>
       </div>
       <div className="max-w-md mx-auto p-5 space-y-5">
-        <CompleteProfileChecklist loading={loading} checks={checks} />
+        {rulesError ? (
+          <div className="bg-white border border-red-200 rounded-2xl p-4 shadow-sm">
+            <p className="text-sm text-red-600">{rulesError}</p>
+            <button
+              type="button"
+              onClick={() => setRulesAttempt((n) => n + 1)}
+              className="mt-3 px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold"
+            >
+              Try again
+            </button>
+          </div>
+        ) : (
+          <CompleteProfileChecklist loading={loading || !rulesReady || !formFieldsRequired} checks={checks} />
+        )}
+        {rulesReady && (formFieldsRequired || showPictureSection) && (
+        <>
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-5 space-y-4">
           <CompleteRequiredFields
             name={name}
@@ -445,17 +534,25 @@ const CompleteProfilePage = ({
             hideEmail={hideEmail}
             gender={gender}
             setGender={setGender}
-            showGender={showGender}
+            showGender={showGenderField}
             height={height}
             setHeight={setHeight}
             heightValid={heightValid}
+            showHeight={showHeightField}
             dietType={dietType}
             setDietType={setDietType}
+            showDiet={showDietField}
             currentWeight={currentWeight}
             setCurrentWeight={setCurrentWeight}
-            showCurrentWeight={showCurrentWeight}
+            showCurrentWeight={false}
             currentWeightValid={currentWeightValid}
+            requireName={marks.name}
+            requireGender={marks.gender}
+            requireHeight={marks.height}
+            requireDiet={marks.diet}
+            requireWeight={false}
           />
+          {showFatField && (
           <div className="pt-2 border-t border-gray-100">
             <UserProfileBodyMetrics
               bodyMetrics={optionalMetrics}
@@ -463,18 +560,14 @@ const CompleteProfilePage = ({
               heightCm={height}
               weightKg={currentWeight}
               hideReadOnly
+              requireFat
               onChange={(key, value) => {
                 if (key === 'bmi') return;
                 setOptionalMetrics((prev) => ({ ...prev, [key]: value }));
               }}
             />
-            <div className="mt-3">
-              <HealthIssuesFilterSelect
-                value={recoveredHealthIssues}
-                onChange={setRecoveredHealthIssues}
-              />
-            </div>
           </div>
+          )}
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
               <p className="text-sm text-red-600">{error}</p>
@@ -496,11 +589,13 @@ const CompleteProfilePage = ({
         />
         <button
           onClick={handleSave}
-          disabled={!formValid || saving || loading}
+          disabled={!formValid || saving || loading || !rulesReady}
           className="w-full py-4 bg-gradient-to-r from-green-500 to-green-600 text-white font-bold rounded-xl shadow-lg disabled:opacity-50"
         >
           {saving ? 'Saving...' : 'Save & Continue'}
         </button>
+        </>
+        )}
       </div>
     </div>
   );

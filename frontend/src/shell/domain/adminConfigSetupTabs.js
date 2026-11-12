@@ -6,6 +6,7 @@ export const ADMIN_CONFIG_TABS = {
   ACTIVITY_TIME: 'activity-time',
   AI_CONFIG: 'ai-config',
   PAGE_ACCESS: 'page-access',
+  MANDATORY_FIELDS: 'mandatory-fields',
 };
 
 export const ADMIN_CONFIG_TAB_LABELS = {
@@ -13,6 +14,7 @@ export const ADMIN_CONFIG_TAB_LABELS = {
   [ADMIN_CONFIG_TABS.ACTIVITY_TIME]: 'Activity Time',
   [ADMIN_CONFIG_TABS.AI_CONFIG]: 'AI Config',
   [ADMIN_CONFIG_TABS.PAGE_ACCESS]: 'Page Access',
+  [ADMIN_CONFIG_TABS.MANDATORY_FIELDS]: 'Mandatory Fields',
 };
 
 /**
@@ -39,6 +41,9 @@ export function resolveAdminConfigTab(
   if (initialTab === ADMIN_CONFIG_TABS.ACTIVITY_TIME) {
     return ADMIN_CONFIG_TABS.ACTIVITY_TIME;
   }
+  if (initialTab === ADMIN_CONFIG_TABS.MANDATORY_FIELDS) {
+    return ADMIN_CONFIG_TABS.MANDATORY_FIELDS;
+  }
   if (wellnessScoreEnabled) return ADMIN_CONFIG_TABS.WELLNESS_SCORE;
   if (aiCreditsEnabled) return ADMIN_CONFIG_TABS.AI_CONFIG;
   if (navPageAccessEnabled) return ADMIN_CONFIG_TABS.PAGE_ACCESS;
@@ -49,6 +54,7 @@ export function resolveAdminConfigTab(
 export function adminConfigTabFromNavigateTarget(targetPage) {
   if (targetPage === 'ai-credits-setup') return ADMIN_CONFIG_TABS.AI_CONFIG;
   if (targetPage === 'page-access-setup') return ADMIN_CONFIG_TABS.PAGE_ACCESS;
+  if (targetPage === 'mandatory-fields-setup') return ADMIN_CONFIG_TABS.MANDATORY_FIELDS;
   if (targetPage === 'admin-config-setup') return null; // use default resolution
   return ADMIN_CONFIG_TABS.WELLNESS_SCORE;
 }

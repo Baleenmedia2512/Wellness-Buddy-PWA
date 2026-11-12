@@ -17,6 +17,7 @@ const CompleteProfileChecklist = ({ loading, checks }) => (
           <CheckCircle2 className={`w-4 h-4 flex-shrink-0 ${f.done ? 'text-green-500' : 'text-gray-300'}`} />
           <span className={`text-xs font-medium ${f.done ? 'text-green-700 line-through' : 'text-gray-500'}`}>
             {f.label}
+            {f.mark ? <span className="text-red-500"> *</span> : null}
           </span>
         </div>
       ))

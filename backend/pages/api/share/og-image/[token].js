@@ -14,11 +14,13 @@
  */
 
 import { findByShareIdentifier } from '../../../../features/captures/data/captures.repository.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../../features/mandatory-fields/api/enforce.handler.js';
 import { redirectUrlForImageKey } from '../../../../shared/lib/milesweb/storedImage.js';
 
 const SHARE_IDENTIFIER_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9]{6,10})$/i;
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   if (req.method !== 'GET') {
     return res.status(405).end();
   }

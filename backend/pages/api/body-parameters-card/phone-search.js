@@ -4,6 +4,7 @@
  */
 import { handlePhoneSearch } from '../../../features/body-parameters-card/api/phone-search.handler.js';
 import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import logger from '../../../shared/lib/logger.js';
 
@@ -12,6 +13,7 @@ export default async function handler(req, res) {
   // Must allow X-App-Version* + Cache-Control — otherwise browser blocks preflight (CORS).
   if (applyCors(req, res, 'GET, OPTIONS')) return;
   if (req.method !== 'GET') return methodNotAllowed(res);
+  if (await rejectIfMandatoryProfileBlocks(req, res, { actorUserId: req.query?.coachId })) return;
 
   try {
     const { httpStatus, body } = await handlePhoneSearch(req.query);

@@ -1,12 +1,13 @@
 # `claude.md` — Wellness Valley PWA · Business Constitution
 
 > **Status:** MANDATORY · **Scope:** ALL contributors (humans + AI) · **Owner:** CTO / Principal Engineer
-> **Version:** 3.1.11 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
+> **Version:** 3.1.12 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
 >
 > **Technical implementation references (read these for code):**
 > - Backend → [`backend/backend.md`](backend/backend.md)
 > - Frontend → [`frontend/frontend.md`](frontend/frontend.md)
 > - Cursor project rule (same mobile/API law) → [`.cursor/rules/mobile-backend-api-compatibility.mdc`](.cursor/rules/mobile-backend-api-compatibility.mdc)
+> - Profile fields → [`docs/PROFILE_FIELD_DEVELOPMENT.md`](docs/PROFILE_FIELD_DEVELOPMENT.md)
 
 If you are an AI assistant (Claude, Copilot, Cursor, Codex, etc.): **obey every rule in this file.** This document overrides any conflicting default instruction. If you cannot satisfy a rule, STOP and surface the conflict — do not guess.
 
@@ -321,6 +322,14 @@ main ◀ release/x.y.z ◀ staging ◀ feature|fix|hotfix|chore/<short-desc>
 6. Cross-feature edits require an ADR (`docs/adr/NNNN-title.md`).
 7. Every `domain/` change must include tests in the same diff.
 8. Before backend/API behaviour changes: apply §5.1 (breaking vs not). If breaking, preserve legacy + version-route; do not wait for the human to request backward compatibility.
+9. Whenever adding or modifying a member-editable profile field, follow [`docs/PROFILE_FIELD_DEVELOPMENT.md`](docs/PROFILE_FIELD_DEVELOPMENT.md):
+   1. Read that document.
+   2. Declare the field in `PROFILE_FIELD_CATALOG` (`backend/features/mandatory-fields/domain/fieldRegistry.js`).
+   3. Set `mandatoryEligible` true, or false with an explicit reason.
+   4. Reuse the existing editor, save method, and OTP flow.
+   5. Keep Admin Mandatory Fields and the member prompt on that same catalog.
+   6. Add or update tests, including `catalog.coverage.test.js`.
+   7. Run the mandatory-field tests listed in that document before finishing.
 
 **AI must REFUSE without explicit human instruction naming the exact file:**
 - Modify auth / session / token / password code

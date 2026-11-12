@@ -470,6 +470,44 @@ model good_habits_table {
   @@index([UserId, CreatedAt], map: "idx_good_habits_user_created")
 }
 
+/// Admin rules for registered profile fields. required defaults off.
+/// field_key must exist in the code registry. Check constraints: grace_type, audience, grace_limit.
+model mandatory_field_rules {
+  id                BigInt   @id @default(autoincrement())
+  field_key         String   @unique(map: "uq_mandatory_field_rules_field_key") @db.VarChar(64)
+  required          Boolean  @default(false)
+  grace_type        String   @default("days") @db.VarChar(16)
+  grace_limit       Int      @default(0)
+  audience          String   @default("both") @db.VarChar(16)
+  min_app_version   String   @db.VarChar(32)
+  notify_enabled     Boolean  @default(true)
+  remind_every_days  Int      @default(0)
+  position_scope     String   @default("all") @db.VarChar(16)
+  position_codes     Json?
+  required_since     DateTime? @db.DateTime(3)
+  updated_at         DateTime @default(now()) @updatedAt @db.DateTime(3)
+  updated_by_user_id Int?
+
+  @@map("mandatory_field_rules")
+}
+
+/// Per user and field. Skip never writes the profile column.
+/// Check constraint: skip_count >= 0.
+model user_field_grace {
+  id                BigInt    @id @default(autoincrement())
+  user_id           Int
+  field_key         String    @db.VarChar(64)
+  first_notified_at DateTime? @db.DateTime(3)
+  skip_count        Int       @default(0)
+  last_skipped_at   DateTime? @db.DateTime(3)
+  last_prompted_at  DateTime? @db.DateTime(3)
+  reminder_mask     Int       @default(0)
+
+  @@unique([user_id, field_key], map: "uq_user_field_grace_user_field")
+  @@index([user_id], map: "idx_user_field_grace_user")
+  @@map("user_field_grace")
+}
+
 model marathon_config {
   id                    BigInt         @id @default(autoincrement())
   marathon_id           BigInt         @unique(map: "marathon_config_marathon_unique")

@@ -16,6 +16,7 @@ import logger from '../../../shared/lib/logger.js';
 import { generateEmailOtp } from '../../../features/auth/domain/otp-length.rules.js';
 import { sendTransactionalMail } from '../../../shared/lib/smtp-mail.js';
 import { buildSponsorOtpEmail } from '../../../features/auth/domain/otp-email.rules.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 
 /** Resolve requester row by userId, email (case-insensitive), or phone. */
 async function findRequester(db, { userId, email, phone }) {
@@ -91,6 +92,7 @@ function generateOTP() {
 }
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   // Handle CORS
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Origin", "*");

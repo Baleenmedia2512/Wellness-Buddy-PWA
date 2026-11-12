@@ -3,6 +3,7 @@
  * Returns whether the phone belongs to an activated member (BCM blocked).
  */
 import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 import { handlePhoneStatus } from '../../../features/body-parameters-card/api/phone-status.handler.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import logger from '../../../shared/lib/logger.js';
@@ -12,6 +13,7 @@ export default async function handler(req, res) {
   // Must allow X-App-Version* (same as create) — otherwise browser reports CORS error on preflight.
   if (applyCors(req, res, 'GET, OPTIONS')) return;
   if (req.method !== 'GET') return methodNotAllowed(res);
+  if (await rejectIfMandatoryProfileBlocks(req, res, { actorUserId: req.query?.coachId })) return;
 
   try {
     const { httpStatus, body } = await handlePhoneStatus(req.query);

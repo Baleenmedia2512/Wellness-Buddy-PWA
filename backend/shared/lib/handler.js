@@ -54,6 +54,13 @@ export async function runService(res, fn) {
 
 async function executeService(res, fn) {
   try {
+    const req = res?.req;
+    if (req) {
+      const { rejectIfMandatoryProfileBlocks } = await import(
+        '../../features/mandatory-fields/api/enforce.handler.js'
+      );
+      if (await rejectIfMandatoryProfileBlocks(req, res)) return;
+    }
     const { httpStatus, body, headers } = await fn();
     if (headers) {
       Object.entries(headers).forEach(([k, v]) => res.setHeader(k, v));

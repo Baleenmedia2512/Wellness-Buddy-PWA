@@ -12,6 +12,7 @@
 
 import logger from '../../../shared/lib/logger.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 
 /**
  * Reactivates a user (Status → Active).
@@ -24,6 +25,7 @@ import { nowUtc } from '../../../shared/lib/datetime/index.js';
  * @param {import('next').NextApiResponse} res
  */
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   const correlationId = `reactivate-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   const startTime = Date.now();
 

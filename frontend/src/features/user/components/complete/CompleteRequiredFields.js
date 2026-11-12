@@ -20,15 +20,20 @@ const CompleteRequiredFields = ({
   hideName = false,
   hideEmail = false,
   gender, setGender, showGender,
-  height, setHeight, heightValid,
-  dietType, setDietType,
+  height, setHeight, heightValid, showHeight = true,
+  dietType, setDietType, showDiet = true,
   currentWeight, setCurrentWeight, showCurrentWeight, currentWeightValid,
+  requireName = true,
+  requireGender = true,
+  requireHeight = true,
+  requireDiet = true,
+  requireWeight = true,
 }) => (
   <>
     {!hideName && (
     <div>
       <label className="block text-sm font-semibold text-gray-700 mb-2">
-        Full Name <span className="text-red-500">*</span>
+        Full Name{requireName ? <span className="text-red-500"> *</span> : null}
       </label>
       <div className="relative">
         <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
@@ -79,12 +84,12 @@ const CompleteRequiredFields = ({
     {showGender && (
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-2">
-          Gender <span className="text-red-500">*</span>
+          Gender{requireGender ? <span className="text-red-500"> *</span> : null}
         </label>
         <select
           value={gender || ''}
           onChange={(e) => setGender(e.target.value)}
-          required
+          required={requireGender}
           className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none text-base bg-white appearance-none ${
             !gender
               ? 'border-gray-200 focus:border-green-400 text-gray-400'
@@ -104,9 +109,10 @@ const CompleteRequiredFields = ({
       </div>
     )}
 
+    {showHeight && (
     <div>
       <label className="block text-sm font-semibold text-gray-700 mb-2">
-        Height (cm) <span className="text-red-500">*</span>
+        Height (cm){requireHeight ? <span className="text-red-500"> *</span> : null}
       </label>
       <div className="relative">
         <Ruler className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
@@ -125,10 +131,12 @@ const CompleteRequiredFields = ({
       </div>
       <p className="text-xs text-gray-400 mt-1">Range: 50 - 250 cm</p>
     </div>
+    )}
 
+    {showDiet && (
     <div>
       <label className="block text-sm font-semibold text-gray-700 mb-2">
-        Diet Preference <span className="text-red-500">*</span>
+        Diet Preference{requireDiet ? <span className="text-red-500"> *</span> : null}
       </label>
       <div className="grid grid-cols-2 gap-2">
         {DIET_OPTIONS.map((opt) => (
@@ -148,11 +156,12 @@ const CompleteRequiredFields = ({
         ))}
       </div>
     </div>
+    )}
 
     {showCurrentWeight && (
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-2">
-          Current Weight (kg) <span className="text-red-500">*</span>
+          Current Weight (kg){requireWeight ? <span className="text-red-500"> *</span> : null}
         </label>
         <div className="relative">
           <Scale className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />

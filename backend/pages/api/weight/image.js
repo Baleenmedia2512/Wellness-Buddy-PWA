@@ -1,10 +1,12 @@
 import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
+import { rejectIfMandatoryProfileBlocks } from '../../../features/mandatory-fields/api/enforce.handler.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import { validateImageInput } from '../../../features/weight/weight.validators.js';
 import { getImage } from '../../../features/weight/weight.service.js';
 import { sendStoredImage } from '../../../shared/lib/r2/sendImageRedirect.js';
 
 export default async function handler(req, res) {
+  if (await rejectIfMandatoryProfileBlocks(req, res)) return;
   res.setHeader('Cache-Control', 'private, max-age=3600');
   if (applyCors(req, res, 'GET, OPTIONS')) return;
   if (req.method !== 'GET') return methodNotAllowed(res);
