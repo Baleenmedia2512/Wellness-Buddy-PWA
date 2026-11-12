@@ -212,16 +212,6 @@ const REGISTRY = Object.freeze({
     description:    'Profile height lock after first save; OTP to change.',
   },
 
-  // ADR-0015 — Community Position is a catalog role. Choosing one emails the coach.
-  // Default ON. Set REACT_APP_FF_COMMUNITY_POSITION_OTP=false or
-  // localStorage 'ff.community-position-otp'='false' to save the role with Profile.
-  'ff.community-position-otp': {
-    envKey:         'REACT_APP_FF_COMMUNITY_POSITION_OTP',
-    storageKey:     'ff.community-position-otp',
-    defaultEnabled: true,
-    description:    'Profile Community Position coach OTP. Roles come from the catalog.',
-  },
-
   // BroadCast — paid how-to + payment entry. Upload and Burst wait on recharge.
   // Default ON. Set REACT_APP_FF_BROADCAST=false or
   // localStorage 'ff.broadcast'='false' to hide the tab.

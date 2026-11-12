@@ -77,14 +77,6 @@ import {
   describeCommunityPosition,
   getPublicPendingCommunityPositionRequest,
 } from './communityPosition.service.js';
-import {
-  COMMUNITY_POSITION_OTP_FLAG,
-  shouldDeferCommunityPositionToOtp,
-} from './domain/communityPosition.rules.js';
-import {
-  describeCommunityPosition,
-  getPublicPendingCommunityPositionRequest,
-} from './communityPosition.service.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
@@ -544,11 +536,6 @@ export async function updateProfile(input) {
     appVersion,
   });
   const appliedEventLevel = deferCommunityPosition ? undefined : eventLevel;
-  const deferCommunityPosition = shouldDeferCommunityPositionToOtp({
-    flagEnabled: isEnabled(COMMUNITY_POSITION_OTP_FLAG),
-    appVersion,
-  });
-  const appliedEventLevel = deferCommunityPosition ? undefined : eventLevel;
 
   logger.info('[profile/update] incoming request', {
     email: email || null,
@@ -681,12 +668,10 @@ export async function updateProfile(input) {
     eventTranslation !== undefined
     || eventYourCity !== undefined
     || appliedEventLevel !== undefined
-    || appliedEventLevel !== undefined
   ) {
     const normalized = normalizeEventProfilePrefs({
       eventTranslation,
       eventYourCity,
-      eventLevel: appliedEventLevel,
       eventLevel: appliedEventLevel,
     });
     const toSave = {};
@@ -702,8 +687,6 @@ export async function updateProfile(input) {
       }
       toSave.eventYourCity = normalized.eventYourCity;
     }
-    if (appliedEventLevel !== undefined) {
-      if (appliedEventLevel != null && String(appliedEventLevel).trim() !== '' && normalized.eventLevel == null) {
     if (appliedEventLevel !== undefined) {
       if (appliedEventLevel != null && String(appliedEventLevel).trim() !== '' && normalized.eventLevel == null) {
         throw new Error('Invalid Community Position. Choose a listed option.');

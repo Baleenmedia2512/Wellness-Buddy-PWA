@@ -5,7 +5,6 @@
  * community_positions_table and are chosen under Community ID, not here.
  */
 import { LEGACY_COMMUNITY_POSITION_CODES } from './communityPosition.rules.js';
-import { LEGACY_COMMUNITY_POSITION_CODES } from './communityPosition.rules.js';
 
 export const EVENT_TRANSLATION_OPTIONS = Object.freeze([
   'TAMIL',
@@ -16,7 +15,6 @@ export const EVENT_TRANSLATION_OPTIONS = Object.freeze([
   'KANNADA',
 ]);
 
-export const EVENT_LEVEL_OPTIONS = LEGACY_COMMUNITY_POSITION_CODES;
 export const EVENT_LEVEL_OPTIONS = LEGACY_COMMUNITY_POSITION_CODES;
 
 export const EVENT_YOUR_CITY_OPTIONS = Object.freeze([

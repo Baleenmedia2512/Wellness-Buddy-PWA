@@ -538,23 +538,4 @@ export function validateHeightChangeVerify(body) {
   return { ...identity, height: check.value, otp };
 }
 
-export function validateCommunityPositionRequest(body) {
-  if (!body) throw new ValidationError(400, 'Request body is missing');
-  const identity = parseProfileIdentity(body);
-  const raw = body.positionCode !== undefined ? body.positionCode : body.position_code;
-  const positionCode = raw != null ? String(raw).trim() : '';
-  if (!positionCode) throw new ValidationError(400, 'Choose a community position.');
-  return { ...identity, positionCode };
-}
-
-export function validateCommunityPositionVerify(body) {
-  if (!body) throw new ValidationError(400, 'Request body is missing');
-  const identity = parseProfileIdentity(body);
-  const otp = body?.otp != null ? String(body.otp).trim() : '';
-  if (!otp || !/^\d{4}$/.test(otp)) {
-    throw new ValidationError(400, 'Enter the 4-digit approval code from your coach');
-  }
-  return { ...identity, otp };
-}
-
 export { VALID_DIETS, VALID_GENDERS };
