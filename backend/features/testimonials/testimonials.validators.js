@@ -144,6 +144,10 @@ export function validateSubmitTestimonial(body) {
     durationText:          normalizedDuration,
     hasAfter,
     recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues, { required: false }),
+    websiteDisplayAgreed: body.websiteDisplayAgreed === true
+      || body.websiteDisplayAgreed === 'true'
+      || body.websiteDisplayAgreed === 1
+      || body.websiteDisplayAgreed === '1',
     ...(shareCardImage !== undefined ? { shareCardImageBase64: shareCardImage } : {}),
   };
 }

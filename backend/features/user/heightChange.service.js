@@ -133,6 +133,7 @@ export async function requestHeightChangeOtp({ email = null, userId = null, heig
     memberUserId: user.UserId,
     coachEmail: coach.email,
     memberName: user.UserName,
+    memberPhone: user.PhoneNumber,
     currentHeightCm: parseHeightCm(user.Height),
     newHeightCm: check.value,
   });
@@ -171,6 +172,7 @@ async function deliverCoachHeightOtp({
   memberUserId,
   coachEmail,
   memberName,
+  memberPhone = null,
   currentHeightCm,
   newHeightCm,
 }) {
@@ -189,6 +191,7 @@ async function deliverCoachHeightOtp({
   const mail = buildHeightChangeOtpEmail({
     otp,
     memberName,
+    memberPhone,
     currentHeightCm,
     newHeightCm,
     expiresHours: HEIGHT_CHANGE_OTP_HOURS,

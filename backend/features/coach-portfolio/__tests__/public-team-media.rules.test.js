@@ -49,6 +49,37 @@ describe('public-team-media.rules', () => {
     assert.deepEqual(doCandidates.map((d) => d.memberName).sort(), ['Anitha', 'Priya']);
   });
 
+  it('when requireDisplayConsent, excludes verified rows without consent_at', () => {
+    const { sayCandidates, doCandidates } = selectPublicTeamMediaCandidates([
+      {
+        user: { UserId: 1, UserName: 'Priya' },
+        testimonial: {
+          status: 'verified',
+          video_status: 'verified',
+          before_image_path: '1/before.jpg',
+          after_image_path: '1/after.jpg',
+          health_video_path: '1/health.mp4',
+          website_display_consent_at: '2026-11-09T10:00:00Z',
+        },
+      },
+      {
+        user: { UserId: 3, UserName: 'Anitha' },
+        testimonial: {
+          status: 'verified',
+          video_status: 'none',
+          before_image_path: '3/before.jpg',
+          after_image_path: '3/after.jpg',
+          health_video_path: null,
+        },
+      },
+    ], { requireDisplayConsent: true });
+
+    assert.equal(sayCandidates.length, 1);
+    assert.equal(sayCandidates[0].memberName, 'Priya');
+    assert.equal(doCandidates.length, 1);
+    assert.equal(doCandidates[0].memberName, 'Priya');
+  });
+
   it('signs selected candidates into public media lists', async () => {
     const media = await signPublicTeamMedia({
       sayCandidates: [{ userId: 1, memberName: 'Priya', healthVideoPath: '1/health.mp4' }],

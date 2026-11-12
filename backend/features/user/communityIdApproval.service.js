@@ -340,6 +340,7 @@ export async function requestCommunityIdApproval({ email = null, userId = null, 
     ? buildCoSponsorCommunityIdOtpEmail({
       otp,
       memberName: requester.UserName,
+      memberPhone: requester.PhoneNumber,
       communityId: classified.code,
       mainSponsorName,
       expiresHours: COMMUNITY_ID_OTP_HOURS,
@@ -347,6 +348,7 @@ export async function requestCommunityIdApproval({ email = null, userId = null, 
     : buildCreateCommunityIdOtpEmail({
       otp,
       memberName: requester.UserName,
+      memberPhone: requester.PhoneNumber,
       communityId: classified.code,
       expiresHours: COMMUNITY_ID_OTP_HOURS,
     });

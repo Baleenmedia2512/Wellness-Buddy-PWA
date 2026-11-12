@@ -4,6 +4,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildCoachPageJsonLd,
+  buildCoachPageSeo,
   canShowPublicPortfolio,
   toPublicPortfolioPage,
 } from '../domain/public-page.rules.js';
@@ -11,6 +13,31 @@ import { DEFAULT_PORTFOLIO_OFFERINGS } from '../domain/default-offerings.rules.j
 import { SUBMISSION_STATUS } from '../domain/submission.rules.js';
 
 describe('coach-portfolio public-page.rules', () => {
+  it('builds local SEO title, description, and keywords from place', () => {
+    const seo = buildCoachPageSeo({
+      displayName: 'Avinash',
+      title: 'Wellness Coach',
+      city: 'Madurai',
+      locality: 'Avaniyapuram',
+      offerings: ['Family Healthy Breakfast Programme'],
+    });
+    assert.match(seo.seoTitle, /Avinash/);
+    assert.match(seo.seoTitle, /Madurai|Avaniyapuram/);
+    assert.ok(seo.seoDescription.length <= 160);
+    assert.ok(seo.seoKeywords.some((k) => /Madurai/i.test(k)));
+    const ld = buildCoachPageJsonLd({
+      fullName: 'Avinash',
+      title: 'Wellness Coach',
+      city: 'Madurai',
+      locality: 'Avaniyapuram',
+      seoDescription: seo.seoDescription,
+    }, { pageUrl: 'https://example.com/coach/madurai/avaniyapuram/avinash' });
+    assert.equal(ld['@context'], 'https://schema.org');
+    assert.equal(ld['@graph'].length, 2);
+    assert.equal(ld['@graph'][0]['@type'], 'Person');
+    assert.equal(ld['@graph'][1]['@type'], 'ProfessionalService');
+  });
+
   it('shows only published approved-or-later statuses', () => {
     assert.equal(canShowPublicPortfolio({
       isPublished: true,
@@ -76,8 +103,12 @@ describe('coach-portfolio public-page.rules', () => {
     assert.match(page.seoTitle, /Priya/);
     assert.match(page.seoTitle, /Coimbatore/);
     assert.ok(page.seoDescription.length <= 160);
+    assert.match(page.seoDescription, /wellness/i);
+    assert.ok(Array.isArray(page.seoKeywords));
+    assert.ok(page.seoKeywords.some((k) => /Coimbatore/i.test(k)));
     assert.deepEqual(page.testimonials, []);
   });
+
 
   it('maps transformations and real reviews separately', () => {
     const page = toPublicPortfolioPage({

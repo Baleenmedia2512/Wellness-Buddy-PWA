@@ -20,4 +20,11 @@ describe('pickEventProfilePrefs', () => {
       },
     );
   });
+
+  it('keeps a catalog role that was not in the old fixed list', () => {
+    assert.equal(
+      pickEventProfilePrefs({ eventLevel: 'world team' }).eventLevel,
+      'WORLD TEAM',
+    );
+  });
 });

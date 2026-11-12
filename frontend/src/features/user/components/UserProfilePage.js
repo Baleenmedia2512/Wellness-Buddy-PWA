@@ -31,6 +31,7 @@ import UserProfileFields from './profile/UserProfileFields';
 import ProfileEmailKycSection from './profile/ProfileEmailKycSection';
 import CommunityIdField from './profile/CommunityIdField';
 import CommunityPositionField from './profile/CommunityPositionField';
+import CommunityPositionField from './profile/CommunityPositionField';
 import WorkingPhysicalCentreField from './profile/WorkingPhysicalCentreField';
 import EventProfilePrefsFields from './profile/EventProfilePrefsFields';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
@@ -54,16 +55,14 @@ import { hasValidProfileName } from '../domain/profileCompleteness';
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
 import { COMMUNITY_POSITION_OTP_FLAG } from '../domain/communityPosition';
+import { COMMUNITY_POSITION_OTP_FLAG } from '../domain/communityPosition';
 import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked, validateHeightCm } from '../domain/heightChange';
 import { looksLikeEmail } from '../domain/onboardingEmail';
 import GoPremiumButton from '../../payments/components/GoPremiumButton';
 import { PremiumAvatarRing, PremiumCrownMark } from '../../payments/components/PremiumBadge';
 import usePremiumStatus from '../../payments/hooks/usePremiumStatus';
 import { WalletButton } from '../../wallet';
-import {
-  CoachWebsiteButton,
-  AdminPortfolioAccessButton,
-} from '../../coach-portfolio';
+import { CoachWebsiteButton } from '../../coach-portfolio';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -105,6 +104,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [idealCoachName, setIdealCoachName] = useState('');
   const [teamSeat, setTeamSeat] = useState(null);
   const [communityIdRequest, setCommunityIdRequest] = useState(null);
+  const [communityPositionRequest, setCommunityPositionRequest] = useState(null);
   const [communityPositionRequest, setCommunityPositionRequest] = useState(null);
   const [communityIdPair, setCommunityIdPair] = useState(null);
   const [communityIdBusy, setCommunityIdBusy] = useState(false);
@@ -241,6 +241,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setIdealCoachName(data?.idealCoachName ? String(data.idealCoachName).trim() : '');
       setTeamSeat(data?.teamSeat || null);
       setCommunityIdRequest(data?.communityIdRequest || null);
+      setCommunityPositionRequest(data?.communityPositionRequest || null);
       setCommunityPositionRequest(data?.communityPositionRequest || null);
       setCommunityIdPair(data?.communityIdPair || null);
       setCommunityIdError('');
@@ -1026,7 +1027,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
               onPremiumCheck={refreshPremium}
             />
             <CoachWebsiteButton userId={premiumUserId} />
-            <AdminPortfolioAccessButton userId={premiumUserId} userRole={userRole} />
             <TouchFeedbackButton
               onClick={() => {
                 setEmailKycMode('recover');

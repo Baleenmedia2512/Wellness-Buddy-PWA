@@ -306,7 +306,6 @@ export function validateFormForSubmit(form, { hasClub = false } = {}) {
   requireText(f.personal.yearsExperience, 'Years of experience', errors);
   requireText(f.personal.background, 'Who are you as a Wellness Professional', errors);
   requireText(f.personal.uniqueApproach, 'What do you believe in', errors);
-  requireText(f.personal.qualifications, 'Qualifications', errors);
   if (!Array.isArray(f.personal.languages) || f.personal.languages.length === 0) {
     errors.push('Languages is required');
   } else if (
@@ -336,7 +335,6 @@ export function validateAboutStep(form) {
   requireText(f.personal.yearsExperience, 'Years of experience', errors);
   requireText(f.personal.background, 'Who are you as a Wellness Professional', errors);
   requireText(f.personal.uniqueApproach, 'What do you believe in', errors);
-  requireText(f.personal.qualifications, 'Qualifications', errors);
   if (!Array.isArray(f.personal.languages) || f.personal.languages.length === 0) {
     errors.push('Languages is required');
   } else if (
@@ -355,6 +353,7 @@ export function toPublicSubmission(row, { includeForm = true } = {}) {
   return {
     id: row.id != null ? Number(row.id) : null,
     userId: Number(row.userId),
+    centerId: row.centerId != null ? Number(row.centerId) : null,
     userName: row.userName != null ? String(row.userName) : null,
     status: String(row.status || SUBMISSION_STATUS.DRAFT),
     adminNote: row.adminNote != null ? String(row.adminNote) : null,

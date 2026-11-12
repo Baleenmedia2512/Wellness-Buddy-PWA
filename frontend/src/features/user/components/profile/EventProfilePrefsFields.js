@@ -1,5 +1,6 @@
 /**
- * Profile: Translation, Your City, Level — saved once for all event registrations.
+ * Profile: Translation and Your City — saved once for all event registrations.
+ * Community Position lives on the profile, under Community ID.
  */
 import React from 'react';
 import {

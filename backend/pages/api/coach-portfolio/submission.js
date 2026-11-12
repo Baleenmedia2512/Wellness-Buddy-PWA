@@ -2,8 +2,10 @@ import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/han
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import {
   getMySubmission,
+  listMyWebsites,
   saveMySubmissionDraft,
-  submitMySubmission,
+  requestPublishOtp,
+  verifyPublishOtp,
 } from '../../../features/coach-portfolio/api/submission.handler.js';
 
 export default async function handler(req, res) {
@@ -14,18 +16,39 @@ export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
 
   if (req.method === 'GET') {
-    return runService(res, () => getMySubmission({ userId: req.query?.userId }));
+    const action = String(req.query?.action || '').trim();
+    if (action === 'list') {
+      return runService(res, () => listMyWebsites({ userId: req.query?.userId }));
+    }
+    return runService(res, () => getMySubmission({
+      userId: req.query?.userId,
+      centerId: req.query?.centerId,
+      createNew: req.query?.createNew,
+    }));
   }
   if (req.method === 'PUT') {
     return runService(res, () => saveMySubmissionDraft({
       userId: req.body?.userId,
+      centerId: req.body?.centerId,
       form: req.body?.form,
+      createNew: req.body?.createNew === true,
     }));
   }
   if (req.method === 'POST') {
-    return runService(res, () => submitMySubmission({
+    const action = String(req.body?.action || 'request-publish-otp').trim();
+    if (action === 'verify-publish-otp') {
+      return runService(res, () => verifyPublishOtp({
+        userId: req.body?.userId,
+        centerId: req.body?.centerId,
+        otp: req.body?.otp,
+        otpKey: req.body?.otpKey,
+      }));
+    }
+    return runService(res, () => requestPublishOtp({
       userId: req.body?.userId,
+      centerId: req.body?.centerId,
       form: req.body?.form,
+      createNew: req.body?.createNew === true,
     }));
   }
   return methodNotAllowed(res);

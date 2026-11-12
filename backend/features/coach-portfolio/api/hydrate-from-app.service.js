@@ -10,48 +10,122 @@ import {
 import { fetchCityVillage } from '../../../shared/lib/reverseGeocode.js';
 import { hydratePortfolioFormFromApp } from '../domain/hydrate-from-app.rules.js';
 
-const EMPTY_CLUB = { hasClub: false, centerName: null, mapsLink: null, latitude: null, longitude: null };
+const EMPTY_CLUB = {
+  hasClub: false,
+  centerId: null,
+  centerName: null,
+  mapsLink: null,
+  latitude: null,
+  longitude: null,
+};
 
-/**
- * Coach's own active club only (latest registration). Never upline working-centre fallback.
- * Portfolio map / address / directions must not show someone else's club.
- *
- * @param {number} userId
- * @returns {Promise<{ hasClub: boolean, centerName: string|null, mapsLink: string|null, latitude: number|null, longitude: number|null }>}
- */
-async function loadOwnClubForPortfolio(userId) {
-  const owned = await findActiveCentersByOwnerIds([userId]);
-  const list = Array.isArray(owned) ? owned : [];
-  if (!list.length) return { ...EMPTY_CLUB };
-
-  const sorted = [...list].sort((a, b) => {
+function sortOwnedCenters(list) {
+  return [...list].sort((a, b) => {
     const atA = Date.parse(a?.registered_at || '') || 0;
     const atB = Date.parse(b?.registered_at || '') || 0;
     return atB - atA || (Number(b?.id) || 0) - (Number(a?.id) || 0);
   });
-  const primary = sorted[0];
-  const centerId = Number(primary?.id);
-  if (!Number.isFinite(centerId) || centerId <= 0) return { ...EMPTY_CLUB };
+}
 
-  let centerName = String(primary?.center_name || '').trim() || null;
+/**
+ * Load one owned active center (by id) with maps fields.
+ * @param {number} userId
+ * @param {number} centerId
+ */
+async function loadOwnedCenterDetails(userId, centerId) {
+  const { data: center } = await findCenterById(centerId);
+  if (!center) return { ...EMPTY_CLUB };
+  // Safety: never treat another owner's center as this user's club.
+  if (Number(center.owner_user_id) !== Number(userId)) return { ...EMPTY_CLUB };
+  const centerName = String(center.center_name || '').trim() || null;
+  if (!centerName) return { ...EMPTY_CLUB };
   let latitude = null;
   let longitude = null;
   let mapsLink = null;
-  const { data: center } = await findCenterById(centerId);
-  if (center) {
-    // Safety: never treat another owner's center as this coach's club.
-    if (Number(center.owner_user_id) !== userId) return { ...EMPTY_CLUB };
-    centerName = String(center.center_name || centerName || '').trim() || null;
-    const lat = Number(center.latitude);
-    const lng = Number(center.longitude);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      latitude = lat;
-      longitude = lng;
-      mapsLink = `https://maps.google.com/?q=${lat},${lng}`;
-    }
+  const lat = Number(center.latitude);
+  const lng = Number(center.longitude);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    latitude = lat;
+    longitude = lng;
+    mapsLink = `https://maps.google.com/?q=${lat},${lng}`;
   }
-  if (!centerName) return { ...EMPTY_CLUB };
-  return { hasClub: true, centerName, mapsLink, latitude, longitude };
+  return {
+    hasClub: true,
+    centerId: Number(centerId),
+    centerName,
+    mapsLink,
+    latitude,
+    longitude,
+  };
+}
+
+/**
+ * Owner's own active clubs only. Never upline working-centre fallback.
+ *
+ * @param {number} userId
+ * @param {number|null} [preferredCenterId]
+ * @returns {Promise<{ hasClub: boolean, centerId: number|null, centerName: string|null, mapsLink: string|null, latitude: number|null, longitude: number|null }>}
+ */
+async function loadOwnClubForPortfolio(userId, preferredCenterId = null) {
+  const owned = await findActiveCentersByOwnerIds([userId]);
+  const list = Array.isArray(owned) ? owned : [];
+  if (!list.length) return { ...EMPTY_CLUB };
+
+  const preferred = Number(preferredCenterId);
+  if (Number.isFinite(preferred) && preferred > 0) {
+    const match = list.find((c) => Number(c?.id) === preferred);
+    if (!match) return { ...EMPTY_CLUB };
+    return loadOwnedCenterDetails(userId, preferred);
+  }
+
+  const primary = sortOwnedCenters(list)[0];
+  const centerId = Number(primary?.id);
+  if (!Number.isFinite(centerId) || centerId <= 0) return { ...EMPTY_CLUB };
+  return loadOwnedCenterDetails(userId, centerId);
+}
+
+/**
+ * All active nutrition centers owned by this user (for My Websites list + city/center dropdowns).
+ * Best-effort reverse-geocode for city/area so Create New can show dropdowns.
+ * @param {number|string} userId
+ * @returns {Promise<Array<{ centerId: number, centerName: string, city: string|null, locality: string|null }>>}
+ */
+export async function listOwnedCentersForPortfolio(userId) {
+  const id = Number(userId);
+  if (!Number.isFinite(id) || id <= 0) return [];
+  try {
+    const owned = await findActiveCentersByOwnerIds([id]);
+    const base = sortOwnedCenters(Array.isArray(owned) ? owned : [])
+      .map((c) => ({
+        centerId: Number(c.id),
+        centerName: String(c.center_name || '').trim() || `Center ${c.id}`,
+      }))
+      .filter((c) => Number.isFinite(c.centerId) && c.centerId > 0);
+
+    const enriched = [];
+    for (const item of base) {
+      let city = null;
+      let locality = null;
+      try {
+        const details = await loadOwnedCenterDetails(id, item.centerId);
+        if (details.hasClub && details.latitude != null && details.longitude != null) {
+          const place = await fetchCityVillage(details.latitude, details.longitude);
+          city = place.city || null;
+          locality = place.village || null;
+        }
+      } catch {
+        // Place lookup is best-effort for dropdown labels.
+      }
+      enriched.push({
+        ...item,
+        city: city ? String(city).trim() : null,
+        locality: locality ? String(locality).trim() : null,
+      });
+    }
+    return enriched;
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -133,54 +207,46 @@ export async function getAppPortfolioHeroPhotoUrl(userId) {
 
 /**
  * Live own club for the public portfolio map / address / directions.
- * Upline “working centre” does not count — coach must own the club.
+ * Upline “working centre” does not count — owner must own the club.
  *
  * @param {number|string} userId
+ * @param {number|string|null} [centerId]
  * @returns {Promise<{
  *   hasClub: boolean,
+ *   centerId: number|null,
  *   centerName: string|null,
  *   mapsLink: string|null,
  *   latitude: number|null,
  *   longitude: number|null,
  * }>}
  */
-export async function getAppWorkingClubForPortfolio(userId) {
+export async function getAppWorkingClubForPortfolio(userId, centerId = null) {
   const id = Number(userId);
   if (!Number.isFinite(id) || id <= 0) {
-    return {
-      hasClub: false,
-      centerName: null,
-      mapsLink: null,
-      latitude: null,
-      longitude: null,
-    };
+    return { ...EMPTY_CLUB };
   }
   try {
-    const club = await loadOwnClubForPortfolio(id);
+    const club = await loadOwnClubForPortfolio(id, centerId);
     return {
       hasClub: club.hasClub,
+      centerId: club.centerId,
       centerName: club.centerName,
       mapsLink: club.mapsLink,
       latitude: club.latitude,
       longitude: club.longitude,
     };
   } catch {
-    return {
-      hasClub: false,
-      centerName: null,
-      mapsLink: null,
-      latitude: null,
-      longitude: null,
-    };
+    return { ...EMPTY_CLUB };
   }
 }
 
 /**
  * @param {number} userId
  * @param {object} form
+ * @param {{ centerId?: number|null }} [opts]
  * @returns {Promise<object>}
  */
-export async function hydrateFormWithAppData(userId, form) {
+export async function hydrateFormWithAppData(userId, form, { centerId = null } = {}) {
   const user = await findByUserId(
     userId,
     '"UserId", "UserName", "PhoneNumber", "Email", "ProfileImageKey", "ProfileImage"',
@@ -191,16 +257,19 @@ export async function hydrateFormWithAppData(userId, form) {
   let city = null;
   let locality = null;
   try {
-    const club = await loadOwnClubForPortfolio(Number(userId));
-    if (club.hasClub) {
-      centerName = club.centerName;
-      latitude = club.latitude;
-      longitude = club.longitude;
-      if (latitude != null && longitude != null) {
-        const place = await fetchCityVillage(latitude, longitude);
-        city = place.city || null;
-        // Prefer neighbourhood/suburb as “area”; fall back to city only if nothing finer.
-        locality = place.village || null;
+    // Freestyle (no CenterId): keep typed City/Area — do not overwrite from primary club GPS.
+    if (centerId != null) {
+      const club = await loadOwnClubForPortfolio(Number(userId), centerId);
+      if (club.hasClub) {
+        centerName = club.centerName;
+        latitude = club.latitude;
+        longitude = club.longitude;
+        if (latitude != null && longitude != null) {
+          const place = await fetchCityVillage(latitude, longitude);
+          city = place.city || null;
+          // Prefer neighbourhood/suburb as “area”; fall back to city only if nothing finer.
+          locality = place.village || null;
+        }
       }
     }
   } catch {

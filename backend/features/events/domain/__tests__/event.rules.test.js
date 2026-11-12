@@ -287,6 +287,30 @@ describe('normalizeEventRegistrationDraft', () => {
     assert.equal(result.ok, false);
     assert.ok(result.errors.length > 0);
   });
+
+  it('accepts a catalog role that is not in the legacy list', () => {
+    const result = normalizeEventRegistrationDraft({
+      eventId: 8,
+      translation: 'TAMIL',
+      attendCity: 'Community Hall',
+      foodType: 'VEG',
+      uplinePresidentTeam: { userId: 21, name: 'President Ravi' },
+      uplineMillTeam: { userId: 22, name: 'Mill Meena' },
+      clubNo: 'CLUB-17',
+      zoomEmail: 'creator@example.com',
+      name: 'Logged In User',
+      idNo: '17',
+      level: 'world team',
+      phoneNumber: '9000000017',
+      participantCount: 1,
+      ticketNo: 'T-55',
+      yourCity: 'CHENNAI',
+      teamIncharge: { userId: 23, name: 'Incharge Arun' },
+      daicyTeamIncharge: { userId: 24, name: 'Daicy Devi' },
+    }, { levelOptions: ['WORLD TEAM'] });
+    assert.equal(result.ok, true);
+    assert.equal(result.value.level, 'WORLD TEAM');
+  });
 });
 
 describe('registration payment helpers', () => {

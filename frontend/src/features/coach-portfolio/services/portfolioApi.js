@@ -81,8 +81,25 @@ export async function uploadPortfolioMedia({ userId, slot, file }) {
   return json.data;
 }
 
-export async function fetchMyPortfolioSubmission(userId) {
+/** Owned centers + website status for My Websites hub. */
+export async function fetchMyWebsites(userId) {
+  const params = new URLSearchParams({
+    userId: String(userId),
+    action: 'list',
+  });
+  const response = await apiFetch(`/api/coach-portfolio/submission?${params.toString()}`);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body?.ok) {
+    const message = body?.error?.message || body?.message || 'Could not load websites';
+    throw new Error(message);
+  }
+  return body.data || { websites: [], centerCount: 0 };
+}
+
+export async function fetchMyPortfolioSubmission(userId, centerId, { createNew = false } = {}) {
   const params = new URLSearchParams({ userId: String(userId) });
+  if (centerId != null) params.set('centerId', String(centerId));
+  if (createNew === true) params.set('createNew', '1');
   const response = await apiFetch(`/api/coach-portfolio/submission?${params.toString()}`);
   const body = await response.json().catch(() => ({}));
   if (!response.ok || !body?.ok) {
@@ -93,14 +110,15 @@ export async function fetchMyPortfolioSubmission(userId) {
 }
 
 /**
- * @param {{ userId: string|number, name: string }} input
+ * @param {{ userId: string|number, name: string, centerId?: string|number }} input
  * @returns {Promise<{ available: boolean, name?: string, reason?: string }>}
  */
-export async function checkPortfolioDisplayName({ userId, name }) {
+export async function checkPortfolioDisplayName({ userId, name, centerId }) {
   const params = new URLSearchParams({
     userId: String(userId),
     name: String(name || ''),
   });
+  if (centerId != null) params.set('centerId', String(centerId));
   const response = await apiFetch(`/api/coach-portfolio/display-name?${params.toString()}`);
   const body = await response.json().catch(() => ({}));
   if (!response.ok || !body?.ok) {
@@ -110,11 +128,16 @@ export async function checkPortfolioDisplayName({ userId, name }) {
   return body.data || { available: false };
 }
 
-export async function savePortfolioDraft({ userId, form }) {
+export async function savePortfolioDraft({ userId, centerId, form, createNew = false }) {
   const response = await apiFetch('/api/coach-portfolio/submission', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId, form }),
+    body: JSON.stringify({
+      userId,
+      centerId: centerId ?? null,
+      form,
+      createNew: createNew === true,
+    }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok || !body?.ok) {
@@ -124,18 +147,51 @@ export async function savePortfolioDraft({ userId, form }) {
   return body.data;
 }
 
-export async function submitPortfolioForm({ userId, form }) {
+/** Step 1: validate + email OTP to the member's coach (site not live until verify). */
+export async function requestPortfolioPublishOtp({ userId, centerId, form, createNew = false }) {
   const response = await apiFetch('/api/coach-portfolio/submission', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId, form }),
+    body: JSON.stringify({
+      action: 'request-publish-otp',
+      userId,
+      centerId: centerId ?? null,
+      form,
+      createNew: createNew === true,
+    }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok || !body?.ok) {
-    const message = body?.error?.message || body?.message || 'Could not submit form';
+    const message = body?.error?.message || body?.message || 'Could not send publish OTP';
     throw new Error(message);
   }
   return body.data;
+}
+
+/** Step 2: verify coach OTP → public /coach/<slug>. */
+export async function verifyPortfolioPublishOtp({ userId, centerId, otp, otpKey }) {
+  const response = await apiFetch('/api/coach-portfolio/submission', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'verify-publish-otp',
+      userId,
+      centerId: centerId ?? null,
+      otp,
+      otpKey: otpKey ?? null,
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body?.ok) {
+    const message = body?.error?.message || body?.message || 'Could not verify publish OTP';
+    throw new Error(message);
+  }
+  return body.data;
+}
+
+/** @deprecated Prefer requestPortfolioPublishOtp — kept for older call sites. */
+export async function submitPortfolioForm({ userId, form }) {
+  return requestPortfolioPublishOtp({ userId, form });
 }
 
 export async function fetchAdminSubmissions({ requesterUserId, status }) {

@@ -90,6 +90,16 @@ const REGISTRY = Object.freeze({
     description:    'Before/after testimonial upload + coach OTP verification flow.',
   },
 
+  // Member must agree + email OTP before Transformation shows on upline coach websites.
+  // Default ON. Set REACT_APP_FF_TESTIMONIAL_UPLINE_DISPLAY_CONSENT=false to hide UI;
+  // backend kill switch is FF_TESTIMONIAL_UPLINE_DISPLAY_CONSENT.
+  'ff.testimonial-upline-display-consent': {
+    envKey:         'REACT_APP_FF_TESTIMONIAL_UPLINE_DISPLAY_CONSENT',
+    storageKey:     'ff.testimonial-upline-display-consent',
+    defaultEnabled: true,
+    description:    'Checkbox + member OTP to show Transformation on all upline coach websites.',
+  },
+
   // Reports module — common analytics (Ideal Weight, Wellness Score, Nutrition, Trend).
   // Shown to every signed-in user. Leaf members see their own data; coaches
   // still see downline search / team scopes.
@@ -200,6 +210,16 @@ const REGISTRY = Object.freeze({
     storageKey:     'ff.height-change-otp',
     defaultEnabled: true,
     description:    'Profile height lock after first save; OTP to change.',
+  },
+
+  // ADR-0015 — Community Position is a catalog role. Choosing one emails the coach.
+  // Default ON. Set REACT_APP_FF_COMMUNITY_POSITION_OTP=false or
+  // localStorage 'ff.community-position-otp'='false' to save the role with Profile.
+  'ff.community-position-otp': {
+    envKey:         'REACT_APP_FF_COMMUNITY_POSITION_OTP',
+    storageKey:     'ff.community-position-otp',
+    defaultEnabled: true,
+    description:    'Profile Community Position coach OTP. Roles come from the catalog.',
   },
 
   // BroadCast — paid how-to + payment entry. Upload and Burst wait on recharge.

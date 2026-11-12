@@ -739,6 +739,9 @@ model team_table {
   IdealWeightReachedNotifiedAt                                                                DateTime?
   BcmProfileReviewedAt                                                                        DateTime?
   WorkingPhysicalCentreId                                                                     Int?
+  EventTranslation                                                                            String?                                 @db.VarChar(40)
+  EventYourCity                                                                               String?                                 @db.VarChar(40)
+  EventLevel                                                                                  String?                                 @db.VarChar(40)
   ai_analysis_jobs_table                                                                      ai_analysis_jobs_table[]
   nutrition_centers_table                                                                     nutrition_centers_table[]
   team_table_team_table_CoachIdToteam_table                                                   team_table?                             @relation("team_table_CoachIdToteam_table", fields: [CoachId], references: [UserId], onUpdate: NoAction, map: "fk_coach_id")

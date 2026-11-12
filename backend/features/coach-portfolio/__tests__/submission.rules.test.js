@@ -87,7 +87,7 @@ describe('coach-portfolio submission.rules', () => {
     assert.ok(errors.some((e) => /Years of experience/i.test(e)));
     assert.ok(errors.some((e) => /Wellness Professional/i.test(e)));
     assert.ok(errors.some((e) => /believe in/i.test(e)));
-    assert.ok(errors.some((e) => /Qualifications/i.test(e)));
+    assert.ok(!errors.some((e) => /Qualifications/i.test(e)));
     assert.ok(errors.some((e) => /Languages/i.test(e)));
   });
 
