@@ -95,7 +95,7 @@ export default function FieldCollectionSetup({ user, apiBaseUrl }) {
   return (
     <div className="mx-auto max-w-lg px-4 py-4 space-y-3 pb-24">
       <p className="text-xs text-gray-600 leading-relaxed">
-        Every field, including Community Position, can be limited to Member, Coach, or both, and to selected positions. While entering, a field cannot be skipped. Choose Ask later to set how often it is asked, how many skips are allowed, and the day it becomes required. Enter 0 in Every (days) to ask again the same day.
+Manage field access, reminders, and skip limits for members and coaches
       </p>
       {fields.map((field) => {
         const selection = positionsToSelection(field.positions);
