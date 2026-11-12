@@ -17,14 +17,14 @@ function PhotoSlot({ src, loading, onOpen }) {
     <button
       type="button"
       disabled={!canOpen}
-      onClick={() => onOpen({ src: displaySrc, label: 'Good Habit' })}
+      onClick={() => onOpen({ src: displaySrc, label: 'Task by Coach' })}
       className="flex h-56 w-full items-center justify-center overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/60 disabled:cursor-default"
-      aria-label={canOpen ? 'View Good Habit photo full size' : 'Good Habit photo'}
+      aria-label={canOpen ? 'View Task by Coach photo full size' : 'Task by Coach photo'}
     >
       {displaySrc ? (
         <img
           src={displaySrc}
-          alt="Good Habit photo"
+          alt="Task by Coach photo"
           className="h-full w-full object-cover"
           onError={(e) => handleActivityPhotoError(e, 'good-habit')}
         />
@@ -115,7 +115,7 @@ export default function GoodHabitDetailModal({
         <div className="flex items-start justify-between px-4 pb-2 pt-4">
           <div>
             <p id="good-habit-detail-title" className="text-sm font-bold text-emerald-900">
-              Good Habit
+              Task by Coach
             </p>
             {timeLabel && (
               <p className="mt-0.5 text-[11px] text-emerald-700/70">{timeLabel}</p>

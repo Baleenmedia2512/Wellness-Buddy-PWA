@@ -580,7 +580,7 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
     await page.waitForTimeout(300);
 
     // BMI should automatically calculate to 24.2
-    const bmiInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /^BMI/i }) }).locator('input');
+    const bmiInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /BMI/i }) }).locator('input');
     await expect(bmiInput).toHaveValue('24.2');
 
     // Fill body fat % to trigger BMR auto-calculation (Katch-McArdle)
@@ -597,7 +597,7 @@ test.describe('BCM Module (Body Composition Metrics)', () => {
 
     const heightInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /^Height/i }) }).locator('input');
     const weightInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /^Weight/i }) }).locator('input');
-    const bmiInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /^BMI/i }) }).locator('input');
+    const bmiInput = page.locator('div').filter({ has: page.locator('> label').filter({ hasText: /BMI/i }) }).locator('input');
 
     // Pre-fill height and weight
     await heightInput.fill('170');

@@ -947,7 +947,7 @@ export function GoodHabitRow({
   const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
   const thumb = thumbPropsFromEntry(entry, { ownerUserId, viewerUserId });
   const [isSharing, setIsSharing] = useState(false);
-  const title = 'Good Habit';
+  const title = 'Task by Coach';
   const shareText = buildDiaryShareSuffix('good-habit', {
     habitType: p.habitType,
     notes: p.notes,
@@ -998,7 +998,7 @@ export function GoodHabitRow({
         ref={swipe.elRef}
         role="button"
         tabIndex={0}
-        aria-label="Good Habit"
+        aria-label="Task by Coach"
         data-testid="diary-row-good-habit"
         className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl shadow-sm p-3 flex items-center gap-3 cursor-pointer hover:shadow-md transition-shadow select-none overflow-hidden ${swipe.leaving ? 'pointer-events-none' : ''}`}
         style={swipeCardStyle(swipe, { enabled: swipeEnabled })}
@@ -1024,7 +1024,7 @@ export function GoodHabitRow({
           )}
         </div>
         <button
-          aria-label="Share this Good Habit"
+          aria-label="Share this Task by Coach"
           onClick={handleShare}
           disabled={isSharing}
           className="shrink-0 ml-1 p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors disabled:opacity-50"

@@ -26,15 +26,6 @@ export const REPORTS_TREND_METRICS = Object.freeze([
     noun: 'Fat % Trend',
   }),
   Object.freeze({
-    key: 'visceralFat',
-    label: 'V-Fat',
-    hint: 'Visceral fat',
-    unit: '',
-    field: 'visceralFat',
-    decimals: 1,
-    noun: 'V-Fat Trend',
-  }),
-  Object.freeze({
     key: 'bmr',
     label: 'BMR (kcal)',
     hint: null,
@@ -45,12 +36,12 @@ export const REPORTS_TREND_METRICS = Object.freeze([
   }),
   Object.freeze({
     key: 'bmi',
-    label: 'BMI',
+    label: 'Indian BMI',
     hint: null,
     unit: '',
     field: 'Bmi',
     decimals: 1,
-    noun: 'BMI Trend',
+    noun: 'Indian BMI Trend',
   }),
   Object.freeze({
     key: 'bodyAge',
@@ -134,7 +125,6 @@ export function bodyParamsCardToTrendEntry(card) {
     BodyFat: card.fatPercent ?? null,
     Bmi: card.bmi ?? null,
     Bmr: card.bmr ?? null,
-    visceralFat: card.visceralFat ?? null,
     bodyAge: card.bodyAge ?? null,
     chestCm: card.chestCm ?? null,
     waistCm: card.waistCm ?? null,

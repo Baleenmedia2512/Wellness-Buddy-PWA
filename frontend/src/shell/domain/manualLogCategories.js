@@ -34,8 +34,8 @@ export const GOOD_HABIT_SUBTYPE = Object.freeze({
 export const GOOD_HABIT_SUBOPTIONS = Object.freeze([
   {
     id: GOOD_HABIT_SUBTYPE.IMAGE_NOTES,
-    label: 'Good Habit Photo',
-    hint: 'Upload a photo of your good habit',
+    label: 'Task by Coach Photo',
+    hint: 'Upload a photo of your task by coach',
   },
 ]);
 

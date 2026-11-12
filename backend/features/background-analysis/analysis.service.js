@@ -17,6 +17,7 @@ import {
 } from '../captures/domain/location.fields.js';
 import { nowUtc, addUtcDays, parseClientTimestampToUtc, normalizeStoredTimestampToUtcIso, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared/lib/datetime/index.js';
 import logger from '../../shared/lib/logger.js';
+import { assertDiaryPostEditableOrDeletable } from '../../shared/lib/diaryPostLock.rules.js';
 import { computeMealGlycemicIndex } from '../food-corrections/mealGlycemicIndex.js';
 import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 import { resolveNutritionSource } from './domain/nutrition-source.js';
@@ -527,6 +528,17 @@ export async function list(input) {
 
 // ─── delete ──────────────────────────────────────────────────────────────────
 export async function deleteAnalysis({ id, userId }) {
+  const record = await repo.findAnalysisRecord(id, userId);
+  if (!record || record.IsDeleted) {
+    return {
+      httpStatus: 403,
+      body: { success: false, message: 'Unauthorized or analysis not found' },
+    };
+  }
+  const lockCheck = await assertDiaryPostEditableOrDeletable(record.CreatedAt, userId, 'delete');
+  if (!lockCheck.allowed) {
+    return lockCheck.errorResponse;
+  }
   const data = await repo.softDeleteAnalysis(id, userId);
   if (data.length === 0) {
     return {
@@ -550,6 +562,13 @@ export async function undoDelete({ id, userId }) {
         httpStatus: 403,
         body: { success: false, message: 'You do not have permission to restore this item.' },
       };
+    }
+    const record = await repo.findAnalysisRecord(id, userId);
+    if (record) {
+      const lockCheck = await assertDiaryPostEditableOrDeletable(record.CreatedAt, userId, 'delete');
+      if (!lockCheck.allowed) {
+        return lockCheck.errorResponse;
+      }
     }
   }
   const data = await repo.restoreAnalysis(id);

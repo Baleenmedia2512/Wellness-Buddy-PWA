@@ -7,7 +7,6 @@ import assert from 'node:assert/strict';
 import {
   evaluateChestCm,
   evaluateHipCm,
-  evaluateVisceralFat,
   evaluateWaistCm,
   getBodyAgeReference,
   getBodyMetricReferences,
@@ -15,7 +14,6 @@ import {
   getChestCmReference,
   getFatPercentReference,
   getHipCmReference,
-  getVisceralFatReference,
   getWaistCmReference,
 } from './bodyMetricReferences.js';
 
@@ -28,10 +26,6 @@ describe('bodyMetricReferences', () => {
     assert.equal(getFatPercentReference('Male'), '10 to 20%');
     assert.equal(getFatPercentReference('Female'), '20 to 30%');
     assert.equal(getFatPercentReference('Other'), null);
-  });
-
-  it('returns visceral fat reference', () => {
-    assert.equal(getVisceralFatReference(), '≤ 9');
   });
 
   it('returns gender-specific waist / chest / hip references', () => {
@@ -47,12 +41,6 @@ describe('bodyMetricReferences', () => {
   it('returns body age reference from actual age', () => {
     assert.equal(getBodyAgeReference(27), '≤ 27 Yrs');
     assert.equal(getBodyAgeReference(null), null);
-  });
-
-  it('evaluates visceral fat against ≤ 9', () => {
-    assert.deepEqual(evaluateVisceralFat(9), { isOutOfRange: false, direction: null });
-    assert.deepEqual(evaluateVisceralFat(10), { isOutOfRange: true, direction: 'high' });
-    assert.equal(evaluateVisceralFat(''), null);
   });
 
   it('evaluates waist / chest / hip by gender', () => {
@@ -76,7 +64,6 @@ describe('bodyMetricReferences', () => {
       age: 27,
       gender: 'Male',
       fatPercent: 16,
-      visceralFat: 9,
       bmi: 17.5,
       bodyAge: 22,
       waistCm: 88,
@@ -86,7 +73,6 @@ describe('bodyMetricReferences', () => {
 
     assert.deepEqual(refs, {
       fatPercent: '10 to 20%',
-      visceralFat: '≤ 9',
       bmi: '18.5 to 23',
       bodyAge: '≤ 27 Yrs',
       waistCm: '≤ 90 cm',

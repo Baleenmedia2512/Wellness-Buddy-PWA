@@ -56,7 +56,7 @@ const WeightModeSelector = ({ height, currentWeight, fallbackMode = 'loss' }) =>
 
       <p className="text-xs text-gray-400">
         {isAuto
-          ? `Set automatically from your current weight vs ideal (BMI 19–23). ${meta.hint}`
+          ? `Set automatically from your current weight vs ideal (Indian BMI 19–23). ${meta.hint}`
           : 'Log your weight to detect your goal mode automatically.'}
       </p>
     </div>

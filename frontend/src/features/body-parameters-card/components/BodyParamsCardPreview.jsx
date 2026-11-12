@@ -533,7 +533,7 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null, tim
           {card.bmi != null && card.bmi !== '' && (
             <MetricRow
               icon="🧍" iconBg="#dcfce7"
-              label="BMI"
+              label="Indian BMI"
               value={String(card.bmi)}
               rangeLabel="18.5 to 23"
               status={bmiStatus}

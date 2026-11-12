@@ -97,7 +97,7 @@ export function buildDiaryShareSuffix(activityType, payload = {}) {
     }
     case 'good-habit': {
       const notes = String(payload.notes || '').trim();
-      return notes ? `Good Habit — ${notes}` : 'Good Habit';
+      return notes ? `Task by Coach — ${notes}` : 'Task by Coach';
     }
     case DIARY_FOOD_ACTIVITY.FOOD:
     case 'food':
