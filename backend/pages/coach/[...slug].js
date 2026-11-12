@@ -24,8 +24,10 @@ import { isEnabled } from '../../shared/lib/feature-flags.js';
 import { getPrisma } from '../../shared/lib/prisma.js';
 import * as submissionRepo from '../../features/coach-portfolio/data/submission.repo.js';
 import {
+  buildCoachPageFaqs,
   buildCoachPageJsonLd,
   buildCoachPageSeo,
+  buildCoachVisibleHeading,
   buildGoogleMapsSearchUrl,
   canShowPublicPortfolio,
   mapsEmbedSrcFromLink,
@@ -160,6 +162,8 @@ export async function getServerSideProps({ params, req }) {
 
   // Map: club GPS when owned center exists; else City/Area Google Maps search (freestyle).
   let hasClub = false;
+  page.geoLatitude = null;
+  page.geoLongitude = null;
   try {
     const club = await getAppWorkingClubForPortfolio(row.userId);
     hasClub = Boolean(club?.hasClub);
@@ -173,6 +177,8 @@ export async function getServerSideProps({ params, req }) {
       const lat = Number(club.latitude);
       const lng = Number(club.longitude);
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        page.geoLatitude = lat;
+        page.geoLongitude = lng;
         try {
           const place = await fetchCityVillage(lat, lng);
           const locality = String(place?.village || '').trim();
@@ -199,6 +205,8 @@ export async function getServerSideProps({ params, req }) {
   } catch {
     hasClub = false;
     page.centerName = '';
+    page.geoLatitude = null;
+    page.geoLongitude = null;
     const placeLabel = [page.locality, page.city].filter(Boolean).join(', ');
     page.address = placeLabel || '';
     page.mapsLink = buildGoogleMapsSearchUrl({
@@ -476,32 +484,12 @@ export default function CoachPortfolioPage({
     { href: '#contact', label: 'Contact' },
   ].filter(Boolean);
 
-  const FAQS = [
-    {
-      q: 'How do I get started?',
-      a: `Message ${heroName} on WhatsApp for a short intro chat. You will get clear next steps for your goals.`,
-    },
-    {
-      q: 'Is coaching only in person?',
-      a: page.onlineConsultation
-        ? 'Both in-person and online sessions are available — choose what fits your routine.'
-        : 'Coaching is available at the wellness center. Ask on WhatsApp for timing and visit options.',
-    },
-    {
-      q: 'Do I need a special diet plan on day one?',
-      a: 'No crash plans. Guidance starts with simple daily habits you can keep.',
-    },
-    {
-      q: 'How often will we check in?',
-      a: 'Check-ins are regular and kind — enough to stay accountable without pressure.',
-    },
-    {
-      q: 'Where is the center?',
-      a: basedIn
-        ? `Based in ${basedIn}${page.centerName ? ` · ${page.centerName}` : ''}. Use Map or Get Directions for the exact location.`
-        : 'Ask on WhatsApp for the center location and visit hours.',
-    },
-  ];
+  const FAQS = buildCoachPageFaqs(page, { heroName, basedIn });
+  const visibleHeading = buildCoachVisibleHeading(page);
+  const placeAlt = [page.locality, page.city].filter(Boolean).join(', ');
+  const profileAlt = [page.fullName || page.displayName || heroName, placeAlt]
+    .filter(Boolean)
+    .join(' — ') || 'Wellness Coach';
 
   const trustItems = [
     { title: 'Personalized Guidance', line: 'Plans that fit your day', icon: '🌿' },
@@ -797,7 +785,12 @@ export default function CoachPortfolioPage({
     };
   }, [menuOpen, lightboxIndex, lightboxItems.length, videoSrc, galleryOpen, bookOpen]);
 
-  const jsonLd = buildCoachPageJsonLd(page, { pageUrl, imageUrl: ogImage });
+  const jsonLd = buildCoachPageJsonLd(page, {
+    pageUrl,
+    imageUrl: ogImage,
+    faqs: FAQS,
+    hasClub,
+  });
   const keywords = Array.isArray(page.seoKeywords) ? page.seoKeywords.join(', ') : '';
 
   return (
@@ -893,7 +886,7 @@ export default function CoachPortfolioPage({
               {hasClub && (bizTitle || heroPlace) ? (
                 <div className="biz-listing" aria-label="Center listing">
                   {bizTitle ? (
-                    <h2 className="biz-listing-name">{bizTitle}</h2>
+                    <p className="biz-listing-name">{bizTitle}</p>
                   ) : null}
                   {heroPlace ? (
                     <p className="biz-listing-place" title={basedIn || heroPlace}>
@@ -913,10 +906,11 @@ export default function CoachPortfolioPage({
                   ) : null}
                 </div>
               ) : null}
-              <h1>
+              <h1 className="hero-seo-heading">{visibleHeading}</h1>
+              <p className="hero-tagline" aria-hidden="false">
                 <span className="hero-h1-main">Your Journey to a Healthier &amp; Happier You</span>
                 <span className="hero-h1-script">Starts Here</span>
-              </h1>
+              </p>
               <p className="hero-lead">{heroSupport}</p>
               <div className="hero-actions">
                 {wa ? (
@@ -945,7 +939,7 @@ export default function CoachPortfolioPage({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={photo}
-                    alt={page.fullName || page.displayName}
+                    alt={profileAlt}
                     className="hero-photo"
                     decoding="async"
                     fetchPriority="high"
@@ -968,7 +962,7 @@ export default function CoachPortfolioPage({
                       <div className="about-media">
                         {aboutPhoto ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={aboutPhoto} alt="" />
+                          <img src={aboutPhoto} alt={profileAlt} />
                         ) : (
                           <span className="about-fallback">{nameInitials(page.displayName || heroName)}</span>
                         )}
@@ -1044,7 +1038,11 @@ export default function CoachPortfolioPage({
                     {photosPreview.map((src, idx) => (
                       <span key={`${src}-${idx}`} className="photos-preview-tile">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={src} alt="" loading="lazy" />
+                        <img
+                          src={src}
+                          alt={`${page.centerName || page.displayName || 'Wellness'} center photo${placeAlt ? ` in ${placeAlt}` : ''}`}
+                          loading="lazy"
+                        />
                       </span>
                     ))}
                   </span>
@@ -1117,7 +1115,11 @@ export default function CoachPortfolioPage({
                         {item.beforeImageUrl ? (
                           <figure className="do-shot">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={item.beforeImageUrl} alt="" loading="lazy" />
+                            <img
+                              src={item.beforeImageUrl}
+                              alt={`${item.memberName || 'Member'} before${placeAlt ? ` — ${placeAlt}` : ''}`}
+                              loading="lazy"
+                            />
                             <span className="do-shot-badge">Before</span>
                           </figure>
                         ) : null}
@@ -1127,7 +1129,11 @@ export default function CoachPortfolioPage({
                         {item.afterImageUrl ? (
                           <figure className="do-shot do-shot-after">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={item.afterImageUrl} alt="" loading="lazy" />
+                            <img
+                              src={item.afterImageUrl}
+                              alt={`${item.memberName || 'Member'} after${placeAlt ? ` — ${placeAlt}` : ''}`}
+                              loading="lazy"
+                            />
                             <span className="do-shot-badge do-shot-badge-after">After</span>
                           </figure>
                         ) : null}
@@ -1369,7 +1375,11 @@ export default function CoachPortfolioPage({
                           onClick={() => openViewerFromList(activePhotoTiles, pair.beforeSrc)}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={pair.beforeSrc} alt={`${pair.label} before`} loading="lazy" />
+                          <img
+                            src={pair.beforeSrc}
+                            alt={`${pair.label || 'Transformation'} before${placeAlt ? ` — ${placeAlt}` : ''}`}
+                            loading="lazy"
+                          />
                           <span>Before</span>
                         </button>
                       ) : null}
@@ -1380,7 +1390,11 @@ export default function CoachPortfolioPage({
                           onClick={() => openViewerFromList(activePhotoTiles, pair.afterSrc)}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={pair.afterSrc} alt={`${pair.label} after`} loading="lazy" />
+                          <img
+                            src={pair.afterSrc}
+                            alt={`${pair.label || 'Transformation'} after${placeAlt ? ` — ${placeAlt}` : ''}`}
+                            loading="lazy"
+                          />
                           <span>After</span>
                         </button>
                       ) : null}
@@ -1909,7 +1923,17 @@ img { max-width: 100%; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.hero-copy h1 {
+.hero-seo-heading {
+  margin: 0 0 10px;
+  font-family: var(--sans);
+  font-size: clamp(15px, 2.4vw, 18px);
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--forest-deep);
+  max-width: 36ch;
+}
+.hero-tagline {
   margin: 0;
   display: grid;
   gap: 2px;
@@ -3243,7 +3267,7 @@ img { max-width: 100%; }
   }
   .biz-listing-score { font-size: 15px; }
   .biz-listing-count { font-size: 12px; }
-  .hero-copy h1 { gap: 4px; }
+  .hero-tagline { gap: 4px; }
   .hero-h1-main {
     font-size: clamp(26px, 7.4vw, 34px);
     line-height: 1.14;

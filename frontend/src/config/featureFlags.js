@@ -257,6 +257,13 @@ const REGISTRY = Object.freeze({
     description:    'Coach Website: paid unlock and portfolio form entry.',
   },
 
+  'ff.gbp-listing': {
+    envKey:         'REACT_APP_FF_GBP_LISTING',
+    storageKey:     'ff.gbp-listing',
+    defaultEnabled: true,
+    description:    'Google Maps Listing request form + ops queue.',
+  },
+
   // Reports detail trial. Kill switch shows the full report again.
   'ff.report-trial': {
     envKey:         'REACT_APP_FF_REPORT_TRIAL',

@@ -27,6 +27,7 @@ const Header = ({
   onShowBroadcast,
   onShowCreateEvent,
   onShowPaidFeatures,
+  onShowMapBusiness,
   onShowEventCheckIn,
   onShowReports,
   onShowWellnessScoreSetup,
@@ -181,6 +182,7 @@ const Header = ({
           onShowBroadcast={onShowBroadcast}
           onShowCreateEvent={onShowCreateEvent}
           onShowPaidFeatures={onShowPaidFeatures}
+          onShowMapBusiness={onShowMapBusiness}
           onShowEventCheckIn={onShowEventCheckIn}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}
@@ -265,6 +267,7 @@ const Header = ({
           onShowBroadcast={onShowBroadcast}
           onShowCreateEvent={onShowCreateEvent}
           onShowPaidFeatures={onShowPaidFeatures}
+          onShowMapBusiness={onShowMapBusiness}
           onShowEventCheckIn={onShowEventCheckIn}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}

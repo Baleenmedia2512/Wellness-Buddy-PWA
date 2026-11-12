@@ -15,6 +15,7 @@ export const NAV_PAGE_KEYS = Object.freeze([
   'broadcast',
   'create-event',
   'paid-features',
+  'map-business',
 ]);
 
 export const MATRIX_ROLES = Object.freeze(['user', 'coach', 'admin', 'developer']);
@@ -31,6 +32,7 @@ export const NAV_PAGE_LABELS = Object.freeze({
   broadcast: 'BroadCast',
   'create-event': 'Create Event',
   'paid-features': 'Digital Portfolio',
+  'map-business': 'Google Map Business',
 });
 
 export const MATRIX_ROLE_LABELS = Object.freeze({

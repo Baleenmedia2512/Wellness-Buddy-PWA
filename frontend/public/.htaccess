@@ -1,0 +1,16 @@
+# Wellness Valley SPA (CRA) — MilesWeb / LiteSpeed
+# Keep /api, /coach, /_next, /share, and coach-sitemap on Node (wellness-api).
+# Do NOT rewrite those paths to index.html.
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Leave Node / Passenger paths alone (no SPA fallback).
+  RewriteRule ^(api|coach|_next|share|coach-sitemap\.xml)(/|$) - [L]
+
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
+</IfModule>

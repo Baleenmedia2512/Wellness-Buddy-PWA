@@ -138,15 +138,99 @@ export function buildCoachPageSeo({
 }
 
 /**
- * JSON-LD graph: Person + ProfessionalService (local).
- * @param {object} page toPublicPortfolioPage result
- * @param {{ pageUrl: string, imageUrl?: string|null }} opts
+ * Visible place label for H1 / copy (area + city).
+ * @param {{ locality?: string, city?: string }} page
  */
-export function buildCoachPageJsonLd(page, { pageUrl, imageUrl = null } = {}) {
+export function buildCoachPlaceLabel(page = {}) {
+  const locality = String(page?.locality || '').trim();
+  const city = String(page?.city || '').trim();
+  return [locality, city].filter(Boolean).join(', ') || city || '';
+}
+
+/**
+ * Primary on-page heading: coach name + place (matches meta intent).
+ * @param {{ displayName?: string, fullName?: string, locality?: string, city?: string }} page
+ */
+export function buildCoachVisibleHeading(page = {}) {
+  const name = String(page?.displayName || page?.fullName || 'Wellness Coach').trim()
+    || 'Wellness Coach';
+  const place = buildCoachPlaceLabel(page);
+  if (place) return `${name} — Wellness Coach in ${place}`;
+  return `${name} — Wellness Coach`;
+}
+
+/**
+ * FAQ copy shown on the public page (also drives FAQPage JSON-LD).
+ * @param {object} page
+ * @param {{ heroName?: string, basedIn?: string|null }} [opts]
+ * @returns {{ q: string, a: string }[]}
+ */
+export function buildCoachPageFaqs(page = {}, { heroName = '', basedIn = null } = {}) {
+  const name = String(heroName || page?.displayName || page?.fullName || 'your coach').trim()
+    || 'your coach';
+  const placeBit = basedIn || buildCoachPlaceLabel(page) || null;
+  return [
+    {
+      q: 'How do I get started?',
+      a: `Message ${name} on WhatsApp for a short intro chat. You will get clear next steps for your goals.`,
+    },
+    {
+      q: 'Is coaching only in person?',
+      a: page?.onlineConsultation
+        ? 'Both in-person and online sessions are available — choose what fits your routine.'
+        : 'Coaching is available at the wellness center. Ask on WhatsApp for timing and visit options.',
+    },
+    {
+      q: 'Do I need a special diet plan on day one?',
+      a: 'No crash plans. Guidance starts with simple daily habits you can keep.',
+    },
+    {
+      q: 'How often will we check in?',
+      a: 'Check-ins are regular and kind — enough to stay accountable without pressure.',
+    },
+    {
+      q: 'Where is the center?',
+      a: placeBit
+        ? `Based in ${placeBit}${page?.centerName ? ` · ${page.centerName}` : ''}. Use Map or Get Directions for the exact location.`
+        : 'Ask on WhatsApp for the center location and visit hours.',
+    },
+  ];
+}
+
+function cleanJsonLdNode(node) {
+  const cleaned = { ...node };
+  Object.keys(cleaned).forEach((k) => {
+    if (cleaned[k] === undefined || cleaned[k] === '') delete cleaned[k];
+  });
+  return cleaned;
+}
+
+/**
+ * JSON-LD graph: Person + ProfessionalService + FAQPage (+ LocalBusiness when club GPS).
+ * @param {object} page toPublicPortfolioPage result (+ optional geoLatitude/geoLongitude)
+ * @param {{
+ *   pageUrl: string,
+ *   imageUrl?: string|null,
+ *   faqs?: { q: string, a: string }[],
+ *   hasClub?: boolean,
+ * }} opts
+ */
+export function buildCoachPageJsonLd(page, {
+  pageUrl,
+  imageUrl = null,
+  faqs = null,
+  hasClub = false,
+} = {}) {
   const name = String(page?.fullName || page?.displayName || 'Wellness Coach').trim();
-  const placeName = String(page?.centerName || '').trim()
-    || [page?.locality, page?.city].filter(Boolean).join(', ')
-    || 'Wellness Valley';
+  const postalAddress = page?.city ? {
+    '@type': 'PostalAddress',
+    addressLocality: page.city,
+    addressRegion: page.state || undefined,
+    postalCode: page.pincode || undefined,
+    streetAddress: page.address || page.centerName || undefined,
+    addressCountry: 'IN',
+  } : undefined;
+
   const person = {
     '@type': 'Person',
     name,
@@ -173,25 +257,56 @@ export function buildCoachPageJsonLd(page, { pageUrl, imageUrl = null } = {}) {
     image: imageUrl || undefined,
     telephone: page?.phone || undefined,
     areaServed: page?.city || page?.locality || undefined,
-    address: page?.city ? {
-      '@type': 'PostalAddress',
-      addressLocality: page.city,
-      addressRegion: page.state || undefined,
-      postalCode: page.pincode || undefined,
-      streetAddress: page.address || page.centerName || undefined,
-      addressCountry: 'IN',
-    } : undefined,
+    address: postalAddress,
     priceRange: page?.feeDetails ? '₹' : undefined,
   };
+
+  const graph = [person, service];
+
+  const faqItems = Array.isArray(faqs) && faqs.length
+    ? faqs
+    : buildCoachPageFaqs(page);
+  if (faqItems.length) {
+    graph.push({
+      '@type': 'FAQPage',
+      mainEntity: faqItems.map((item) => ({
+        '@type': 'Question',
+        name: item.q,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: item.a,
+        },
+      })),
+    });
+  }
+
+  const lat = Number(page?.geoLatitude);
+  const lng = Number(page?.geoLongitude);
+  const hasGeo = Number.isFinite(lat) && Number.isFinite(lng);
+  if (hasClub && hasGeo) {
+    const businessName = String(page?.centerName || '').trim()
+      || `${name} Wellness Center`;
+    graph.push({
+      '@type': 'LocalBusiness',
+      name: businessName,
+      description: page?.seoDescription,
+      url: pageUrl,
+      image: imageUrl || undefined,
+      telephone: page?.phone || undefined,
+      email: page?.email || undefined,
+      address: postalAddress,
+      geo: {
+        '@type': 'GeoCoordinates',
+        latitude: lat,
+        longitude: lng,
+      },
+      priceRange: page?.feeDetails ? '₹' : undefined,
+    });
+  }
+
   return {
     '@context': 'https://schema.org',
-    '@graph': [person, service].map((node) => {
-      const cleaned = { ...node };
-      Object.keys(cleaned).forEach((k) => {
-        if (cleaned[k] === undefined || cleaned[k] === '') delete cleaned[k];
-      });
-      return cleaned;
-    }),
+    '@graph': graph.map(cleanJsonLdNode),
   };
 }
 

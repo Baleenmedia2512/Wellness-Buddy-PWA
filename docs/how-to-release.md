@@ -156,12 +156,13 @@ REACT_APP_API_BASE_URL=http://wellnessvalley.in npm run build
 
 After HTTPS works, use `https://wellnessvalley.in` with no `/api` on the end.
 
-3. Zip the **contents** of `frontend/build` (the files inside `build`, not the `build` folder itself). Include `.htaccess`.
+3. Zip the **contents** of `frontend/build` (the files inside `build`, not the `build` folder itself). Include `.htaccess` and `robots.txt` from the build (sourced from `frontend/public/`).
 4. In File Manager, open `/home/yvyunomg/wellnessvalley`.
 5. Delete the old website files only: `index.html`, the `static` folder, the manifest files, the service worker files, and the old zip.
 6. Leave `uploads`, `cgi-bin`, `php.ini`, `api`, `emoji`, `flags`, and photos in place.
 7. Upload the new zip and extract it.
 8. Open `http://wellnessvalley.in` and confirm the new page loads.
+9. Coach public pages (`/coach`, `/coach-sitemap.xml`, `/_next`) must stay on Node (`wellness-api`) — see [`docs/coach-seo-live-routing.md`](./coach-seo-live-routing.md).
 
 You do **not** rebuild the Node API for a website-only change.
 
