@@ -1,5 +1,5 @@
 /**
- * Community Position — catalog plus coach OTP (ADR-0015).
+ * Community Position — catalog plus coach OTP (ADR-0016).
  * The member picks a role. Their coach (CoachId) receives a 24h code.
  * The position is saved only after the member enters that code.
  */

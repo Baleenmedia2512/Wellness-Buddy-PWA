@@ -182,6 +182,16 @@ const REGISTRY = Object.freeze({
     description:    'Profile Community ID Create + sponsor OTP (create / co-sponsor).',
   },
 
+  // ADR-0016 — Community Position under Community ID. Send code emails the coach.
+  // Default ON. Set REACT_APP_FF_COMMUNITY_POSITION_OTP=false or
+  // localStorage 'ff.community-position-otp'='false' to save the role with the profile.
+  'ff.community-position-otp': {
+    envKey:         'REACT_APP_FF_COMMUNITY_POSITION_OTP',
+    storageKey:     'ff.community-position-otp',
+    defaultEnabled: true,
+    description:    'Profile Community Position under Community ID; coach OTP before the role is saved.',
+  },
+
   // Profile height: first Save free; later changes need the coach's email approval.
   // Default ON. Set REACT_APP_FF_HEIGHT_CHANGE_OTP=false or
   // localStorage 'ff.height-change-otp'='false' to restore free height edits.

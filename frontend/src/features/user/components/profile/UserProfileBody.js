@@ -3,7 +3,10 @@ import React from 'react';
 import { CheckCircle, Mail } from 'lucide-react';
 import UserProfileFields from './UserProfileFields';
 import CommunityIdField from './CommunityIdField';
+import CommunityPositionField from './CommunityPositionField';
 import WorkingPhysicalCentreField from './WorkingPhysicalCentreField';
+import { COMMUNITY_POSITION_OTP_FLAG } from '../../domain/communityPosition';
+import { isFlagEnabled } from '../../../../config/featureFlags';
 import EventProfilePrefsFields from './EventProfilePrefsFields';
 import UserProfileBodyMetrics from './UserProfileBodyMetrics';
 import IdealWeightCards from './IdealWeightCards';
@@ -15,6 +18,8 @@ const UserProfileBody = ({
   marathonWeightComparison = null,
   error, successMessage,
   userId = null,
+  communityPositionRequest = null,
+  onCommunityPositionSettled,
 }) => (
   <div className="p-6 space-y-5">
     {isLoading ? (
@@ -73,6 +78,15 @@ const UserProfileBody = ({
           communityId={form.communityId}
           setCommunityId={form.setCommunityId}
         />
+        <CommunityPositionField
+          userId={userId}
+          email={email}
+          confirmedCode={form.eventLevel}
+          pendingRequest={communityPositionRequest}
+          otpEnabled={isFlagEnabled(COMMUNITY_POSITION_OTP_FLAG)}
+          onChange={form.setEventLevel}
+          onSettled={onCommunityPositionSettled}
+        />
         <WorkingPhysicalCentreField
           userId={userId}
           value={form.workingPhysicalCentreId}
@@ -83,8 +97,6 @@ const UserProfileBody = ({
           setEventTranslation={form.setEventTranslation}
           eventYourCity={form.eventYourCity}
           setEventYourCity={form.setEventYourCity}
-          eventLevel={form.eventLevel}
-          setEventLevel={form.setEventLevel}
         />
         <IdealWeightCards
           height={form.height}

@@ -3,7 +3,6 @@
  */
 import React from 'react';
 import {
-  EVENT_LEVEL_OPTIONS,
   EVENT_TRANSLATION_OPTIONS,
   EVENT_YOUR_CITY_OPTIONS,
 } from '../../domain/eventProfilePrefs';
@@ -41,8 +40,6 @@ export default function EventProfilePrefsFields({
   setEventTranslation,
   eventYourCity,
   setEventYourCity,
-  eventLevel,
-  setEventLevel,
 }) {
   return (
     <div className="space-y-4 rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
@@ -62,14 +59,6 @@ export default function EventProfilePrefsFields({
         options={EVENT_YOUR_CITY_OPTIONS}
         placeholder="Choose your city"
         onChange={setEventYourCity}
-      />
-      <PrefSelect
-        id="profile-event-level"
-        label="Community Position"
-        value={eventLevel}
-        options={EVENT_LEVEL_OPTIONS}
-        placeholder="Choose community position"
-        onChange={setEventLevel}
       />
     </div>
   );

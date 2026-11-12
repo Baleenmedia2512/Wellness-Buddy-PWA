@@ -12,6 +12,7 @@ import {
   isStoredTransformationPhoto,
 } from './domain/transformationPhotos.rules.js';
 import { validateHeightCm as validateHeightCmInput } from './domain/heightChange.rules.js';
+import { isValidPositionCode, normalizePositionCode } from './domain/communityPosition.rules.js';
 
 const VALID_DIETS = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
 const VALID_GOAL_MODES = ['loss', 'gain', 'maintain'];
@@ -492,6 +493,27 @@ export function validateCommunityIdVerify(body) {
   const otp = body?.otp != null ? String(body.otp).trim() : '';
   if (!otp || !/^\d{4}$/.test(otp)) {
     throw new ValidationError(400, 'Enter the 4-digit approval code from your sponsor');
+  }
+  return { ...identity, otp };
+}
+
+export function validateCommunityPositionRequest(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const raw = body.positionCode !== undefined ? body.positionCode : body.position_code;
+  const positionCode = normalizePositionCode(raw);
+  if (!isValidPositionCode(positionCode)) {
+    throw new ValidationError(400, 'Choose a community position.');
+  }
+  return { ...identity, positionCode };
+}
+
+export function validateCommunityPositionVerify(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const otp = body?.otp != null ? String(body.otp).trim() : '';
+  if (!otp || !/^\d{4}$/.test(otp)) {
+    throw new ValidationError(400, 'Enter the 4-digit approval code from your coach');
   }
   return { ...identity, otp };
 }

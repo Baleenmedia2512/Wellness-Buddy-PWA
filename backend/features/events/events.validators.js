@@ -80,9 +80,9 @@ export function validateSearchEventPeople(query) {
   };
 }
 
-export function validateCreateEventRegistration(body) {
+export function validateCreateEventRegistration(body, levelOptions) {
   const userId = requireOwner(body);
-  const draft = normalizeEventRegistrationDraft(body);
+  const draft = normalizeEventRegistrationDraft(body, { levelOptions });
   if (!draft.ok) throw new ValidationError(400, draft.errors.join(' '));
   const confirmPayment = body?.confirmPayment === true
     || body?.confirmPayment === 1

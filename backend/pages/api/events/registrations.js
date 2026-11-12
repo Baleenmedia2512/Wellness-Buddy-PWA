@@ -10,6 +10,7 @@ import {
   getMyEventRegistration,
   listMyEventRegistrations,
 } from '../../../features/events/events.service.js';
+import { listActivePositionCodes } from '../../../features/user/communityPosition.service.js';
 
 function flagOff() {
   return {
@@ -33,7 +34,10 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    return runService(res, () => createEventRegistration(validateCreateEventRegistration(req.body)));
+    return runService(res, async () => {
+      const levelOptions = await listActivePositionCodes();
+      return createEventRegistration(validateCreateEventRegistration(req.body, levelOptions));
+    });
   }
   if (req.method === 'GET') {
     if (req.query?.id != null && String(req.query.id).trim() !== '') {

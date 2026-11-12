@@ -331,9 +331,10 @@ function parsePickedPerson(raw, label) {
 /**
  * Normalize event interest / registration form payload.
  * @param {unknown} raw
+ * @param {{ levelOptions?: string[] }} [options]
  * @returns {{ ok: true, value: object } | { ok: false, errors: string[] }}
  */
-export function normalizeEventRegistrationDraft(raw) {
+export function normalizeEventRegistrationDraft(raw, options = {}) {
   const input = raw && typeof raw === 'object' ? raw : {};
   const eventId = parseEventId(input.eventId);
   const translation = cleanText(input.translation).toUpperCase();
@@ -355,6 +356,9 @@ export function normalizeEventRegistrationDraft(raw) {
   const uplineMill = parsePickedPerson(input.uplineMillTeam, 'Upline Mill Team');
   const teamIncharge = parsePickedPerson(input.teamIncharge, 'Team Incharge');
   const daicyTeamIncharge = parsePickedPerson(input.daicyTeamIncharge, 'Daicy Team Incharge');
+  const levelOptions = Array.isArray(options.levelOptions) && options.levelOptions.length > 0
+    ? options.levelOptions.map((code) => String(code).trim().toUpperCase())
+    : LEVEL_OPTIONS;
   const errors = [];
 
   if (!eventId) errors.push('Event is required.');
@@ -369,7 +373,7 @@ export function normalizeEventRegistrationDraft(raw) {
   }
   if (!name || name.length > NAME_MAX) errors.push('Name is required.');
   if (!idNo || idNo.length > 80) errors.push('ID No is required.');
-  if (!LEVEL_OPTIONS.includes(level)) errors.push('Community Position is required.');
+  if (!levelOptions.includes(level)) errors.push('Community Position is required.');
   if (!phoneNumber || phoneNumber.length > 20) errors.push('Phone Number is required.');
   if (!Number.isInteger(participantCount) || participantCount < 1 || participantCount > 10) {
     errors.push('No of Participant must be from 1 to 10.');
