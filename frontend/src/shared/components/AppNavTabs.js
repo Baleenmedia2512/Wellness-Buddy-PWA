@@ -207,8 +207,8 @@ export default function AppNavTabs({
           iconClass="text-emerald-700"
           labelActiveClass="text-emerald-900"
           labelClass="text-emerald-800"
-          label="Paid Features"
-          ariaLabel="Paid Features"
+          label="Digital Portfolio"
+          ariaLabel="Digital Portfolio"
         />
       )}
       {createEventEnabled && allow('create-event') && (

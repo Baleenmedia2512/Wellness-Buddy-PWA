@@ -30,7 +30,7 @@ export const NAV_PAGE_LABELS = Object.freeze({
   reports: 'Reports',
   broadcast: 'BroadCast',
   'create-event': 'Create Event',
-  'paid-features': 'Paid Features',
+  'paid-features': 'Digital Portfolio',
 });
 
 export const MATRIX_ROLE_LABELS = Object.freeze({
