@@ -17,9 +17,9 @@ import {
   Star,
   UserRound,
   Users,
-  X,
 } from 'lucide-react';
 import { includesOther } from '../domain/formOptions';
+import { isLegacyDefaultProfessionalTitle } from '../domain/applyProfileIntro';
 import {
   formatOpeningHoursSummary,
   resolveMapsUrls,
@@ -110,7 +110,6 @@ function MiniLeaves({ className = '' }) {
  *   publicPath?: string | null,
  *   hasUnpublishedChanges?: boolean,
  *   onAccuracyChange: (checked: boolean) => void,
- *   onAuthorizeChange: (value: 'yes' | 'no') => void,
  *   onOpenLivePage?: (e: React.MouseEvent) => void,
  *   livePageHref?: string,
  * }} props
@@ -124,7 +123,6 @@ export default function SaveYourWebsiteReview({
   publicPath = null,
   hasUnpublishedChanges = false,
   onAccuracyChange,
-  onAuthorizeChange,
   onOpenLivePage,
   livePageHref,
 }) {
@@ -146,10 +144,11 @@ export default function SaveYourWebsiteReview({
 
   const titleRaw = String(personal.professionalTitle || '').trim();
   const designation = includesOther(titleRaw)
-    ? (String(personal.professionalTitleOther || '').trim() || 'Other')
-    : (titleRaw || '—');
-  const years = String(personal.yearsExperience || '').trim() || '—';
-  const about = String(personal.background || '').trim() || '—';
+    ? (String(personal.professionalTitleOther || '').trim() || '')
+    : (isLegacyDefaultProfessionalTitle(titleRaw) ? '' : titleRaw);
+  const years = String(personal.yearsExperience || '').trim();
+  const about = String(personal.background || '').trim();
+  const placeLine = [area !== '—' ? area : '', city !== '—' ? city : ''].filter(Boolean).join(', ');
   const hoursLabel = formatOpeningHoursSummary(timings);
 
   const maps = resolveMapsUrls({
@@ -161,13 +160,17 @@ export default function SaveYourWebsiteReview({
     address: center.address,
   });
 
-  const authorized = String(consent.publishAuthorized || '');
+  const sectionShell =
+    'relative overflow-hidden rounded-2xl border border-[#d7e5dc] p-3.5 shadow-sm';
+  const sectionShellStyle = {
+    background: 'linear-gradient(165deg, #f7faf7 0%, #eef5f0 48%, #e7f0e8 100%)',
+  };
 
   return (
     <div
       className="relative overflow-hidden rounded-[22px] border border-[#d7e5dc] shadow-[0_10px_30px_rgba(15,23,42,0.04)]"
       style={{
-        background: 'linear-gradient(180deg, #f7f3ea 0%, #f3efe4 55%, #eef6f0 100%)',
+        background: 'linear-gradient(180deg, #f4efe6 0%, #eef3ea 42%, #e5efe8 100%)',
         fontFamily: "'Source Sans 3', 'Segoe UI', sans-serif",
         color: '#1f3b2e',
       }}
@@ -197,9 +200,10 @@ export default function SaveYourWebsiteReview({
           <MiniLeaves className="mt-1.5 h-3 w-7" />
         </header>
 
-        {/* Developer / coach information */}
-        <section className="rounded-2xl border border-[#e4ebe4] bg-white p-3.5 shadow-sm">
-          <div className="flex gap-3">
+        {/* 1 — Developer / coach information */}
+        <section className={sectionShell} style={sectionShellStyle}>
+          <LeafMotif className="pointer-events-none absolute -right-2 -top-1 h-12 w-11 opacity-40" flip />
+          <div className="relative z-[1] flex gap-3">
             <div className="shrink-0">
               {profilePhotoUrl ? (
                 <img
@@ -237,27 +241,40 @@ export default function SaveYourWebsiteReview({
             </div>
           </div>
 
-          <div className="mt-3 flex gap-2.5 rounded-xl bg-[#e7f0e8] px-3 py-3">
+          <div className="relative z-[1] mt-3 flex gap-2.5 rounded-xl border border-[#d7e5dc]/80 bg-white/80 px-3 py-3">
             <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#2f6b4f] text-white">
               <Briefcase className="h-4 w-4" />
             </div>
             <div className="min-w-0 space-y-0.5">
               <p className="text-[15px] font-bold text-[#1f3b2e]">{coachName}</p>
-              <p className="text-[14px] font-semibold text-[#2f6b4f]">{designation}</p>
-              <p className="flex items-center gap-1.5 text-[13px] font-medium text-[#3d5c4d]">
-                <Star className="h-3.5 w-3.5 fill-[#2f6b4f] text-[#2f6b4f]" />
-                {years}
-              </p>
-              <p className="pt-0.5 text-[13px] leading-snug text-[#4a5f54] line-clamp-3">
-                {about}
-              </p>
+              {designation ? (
+                <p className="text-[14px] font-semibold text-[#2f6b4f]">{designation}</p>
+              ) : null}
+              {placeLine ? (
+                <p className="flex items-center gap-1.5 text-[13px] font-medium text-[#3d5c4d]">
+                  <MapPin className="h-3.5 w-3.5 shrink-0 text-[#2f6b4f]" />
+                  {placeLine}
+                </p>
+              ) : null}
+              {years ? (
+                <p className="flex items-center gap-1.5 text-[13px] font-medium text-[#3d5c4d]">
+                  <Star className="h-3.5 w-3.5 fill-[#2f6b4f] text-[#2f6b4f]" />
+                  {years}
+                </p>
+              ) : null}
+              {about ? (
+                <p className="pt-0.5 text-[13px] leading-snug text-[#4a5f54] line-clamp-3">
+                  {about}
+                </p>
+              ) : null}
             </div>
           </div>
         </section>
 
-        {/* Location — below developer card */}
-        <section className="rounded-2xl border border-[#e4ebe4] bg-white p-3.5 shadow-sm">
-          <div className="mb-2.5 flex items-center gap-2 border-b border-[#e7efe9] pb-2">
+        {/* 2 — Location */}
+        <section className={sectionShell} style={sectionShellStyle}>
+          <LeafMotif className="pointer-events-none absolute -right-2 -top-1 h-12 w-11 opacity-40" flip />
+          <div className="relative z-[1] mb-2.5 flex items-center gap-2 border-b border-[#d7e5dc]/80 pb-2">
             <h3
               className="flex-1 text-[17px] font-semibold text-[#1f5a42]"
               style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
@@ -267,8 +284,8 @@ export default function SaveYourWebsiteReview({
             <MiniLeaves className="h-3.5 w-8 shrink-0" />
           </div>
 
-          <div className="space-y-2.5">
-            <div className="space-y-2">
+          <div className="relative z-[1] space-y-2.5">
+            <div className="space-y-2 rounded-xl border border-[#d7e5dc]/80 bg-white/80 px-3 py-2.5">
               <p className="flex items-start gap-2 text-[14px] text-[#31453c]">
                 <Building2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#2f6b4f]" />
                 <span><span className="font-semibold">Centre :</span> {centreName}</span>
@@ -283,14 +300,14 @@ export default function SaveYourWebsiteReview({
               </p>
 
               {hoursLabel ? (
-                <div className="flex items-center gap-2 rounded-xl bg-[#f3f6f3] px-3 py-2.5 text-[13px] font-medium text-[#31453c]">
+                <div className="flex items-center gap-2 rounded-xl bg-[#eef5f0] px-3 py-2.5 text-[13px] font-medium text-[#31453c]">
                   <Clock3 className="h-3.5 w-3.5 shrink-0 text-[#2f6b4f]" />
                   <span>{hoursLabel}</span>
                 </div>
               ) : null}
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-[#dce6df] bg-[#eef3ef]">
+            <div className="overflow-hidden rounded-xl border border-[#dce6df] bg-white/70">
               {maps.embedUrl ? (
                 <iframe
                   title="Centre location map"
@@ -319,7 +336,7 @@ export default function SaveYourWebsiteReview({
                 View on Google Maps →
               </a>
             ) : (
-              <p className="rounded-xl bg-amber-50 px-3 py-2 text-[13px] font-medium text-amber-800">
+              <p className="rounded-xl bg-amber-50/90 px-3 py-2 text-[13px] font-medium text-amber-800">
                 Map link not set yet — pick City & Area on the earlier step
               </p>
             )}
@@ -344,70 +361,47 @@ export default function SaveYourWebsiteReview({
           </p>
         ) : null}
 
-        {/* Confirmation */}
-        <section className="space-y-2.5">
-          <label
-            className={`flex cursor-pointer items-start gap-2.5 rounded-2xl border px-3.5 py-3 ${
-              consent.accuracyConfirmed
-                ? 'border-[#9fcdb4] bg-[#e7f4ec]'
-                : 'border-[#d7e2da] bg-[#f4f7f4]'
-            }`}
-          >
-            <span
-              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+        {/* 3 — Confirmation */}
+        <section className={sectionShell} style={sectionShellStyle}>
+          <LeafMotif className="pointer-events-none absolute -right-2 -top-1 h-12 w-11 opacity-40" flip />
+          <div className="relative z-[1] mb-2.5 flex items-center gap-2 border-b border-[#d7e5dc]/80 pb-2">
+            <h3
+              className="flex-1 text-[17px] font-semibold text-[#1f5a42]"
+              style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+            >
+              Confirmation
+            </h3>
+            <MiniLeaves className="h-3.5 w-8 shrink-0" />
+          </div>
+          <div className="relative z-[1]">
+            <label
+              className={`flex cursor-pointer items-start gap-2.5 rounded-2xl border px-3.5 py-3 ${
                 consent.accuracyConfirmed
-                  ? 'border-[#2f6b4f] bg-[#2f6b4f] text-white'
-                  : 'border-[#9aaf9f] bg-white'
+                  ? 'border-[#9fcdb4] bg-white/90'
+                  : 'border-[#d7e2da] bg-white/70'
               }`}
             >
-              {consent.accuracyConfirmed ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : null}
-            </span>
-            <input
-              type="checkbox"
-              className="sr-only"
-              checked={consent.accuracyConfirmed === true}
-              disabled={!canEdit}
-              onChange={(e) => onAccuracyChange?.(e.target.checked)}
-            />
-            <span className="text-[14px] leading-snug text-[#31453c]">
-              I confirm that the information provided is accurate.
-              <span className="ml-0.5 text-rose-500">*</span>
-            </span>
-          </label>
-
-          <div>
-            <p className="mb-2 text-[14px] font-semibold text-[#1f3b2e]">
-              Authorize use of photos and content for publication?
-              <span className="ml-0.5 text-rose-500">*</span>
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                disabled={!canEdit}
-                onClick={() => onAuthorizeChange?.('yes')}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-3 text-[14px] font-semibold transition ${
-                  authorized === 'yes'
-                    ? 'bg-[#2f6b4f] text-white shadow-sm shadow-[#2f6b4f]/25'
-                    : 'border border-[#cfd9d3] bg-white text-[#6b7c73]'
-                } disabled:opacity-60`}
+              <span
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+                  consent.accuracyConfirmed
+                    ? 'border-[#2f6b4f] bg-[#2f6b4f] text-white'
+                    : 'border-[#9aaf9f] bg-white'
+                }`}
               >
-                <Check className="h-4 w-4" strokeWidth={2.5} />
-                Yes
-              </button>
-              <button
-                type="button"
+                {consent.accuracyConfirmed ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : null}
+              </span>
+              <input
+                type="checkbox"
+                className="sr-only"
+                checked={consent.accuracyConfirmed === true}
                 disabled={!canEdit}
-                onClick={() => onAuthorizeChange?.('no')}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-full px-3 py-3 text-[14px] font-semibold transition ${
-                  authorized === 'no'
-                    ? 'bg-[#5b6a62] text-white'
-                    : 'border border-[#cfd9d3] bg-white text-[#6b7c73]'
-                } disabled:opacity-60`}
-              >
-                <X className="h-4 w-4" strokeWidth={2.5} />
-                No
-              </button>
-            </div>
+                onChange={(e) => onAccuracyChange?.(e.target.checked)}
+              />
+              <span className="text-[14px] leading-snug text-[#31453c]">
+                I confirm that the information provided is accurate.
+                <span className="ml-0.5 text-rose-500">*</span>
+              </span>
+            </label>
           </div>
         </section>
 

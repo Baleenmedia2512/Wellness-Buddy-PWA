@@ -100,13 +100,12 @@ export const PREFERRED_ACTIONS = [
 
 /**
  * Step order for the CMS form.
- * Profile photo, club, and contact come from the app — not asked here.
- * About copy (years, bio, languages) is form-only for the public About section.
+ * Profile photo, club, contact, professional title, about me, joining date → years,
+ * languages, qualifications, and social links come from Profile — not asked here.
  * Hours live under City & Area when a center is linked (no separate step).
  */
 export const FORM_STEPS = [
-  { id: 'hero', title: 'Hero', description: 'City & area, title' },
-  { id: 'about', title: 'About', description: 'Bio shown on your About section' },
+  { id: 'hero', title: 'Hero', description: 'City & area' },
   { id: 'photos', title: 'Photos', description: 'Albums + intro video' },
   { id: 'review', title: 'Publish', description: 'Publish live — edit anytime after' },
 ];

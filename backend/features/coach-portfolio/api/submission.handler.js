@@ -123,29 +123,9 @@ export async function listMyWebsites({ userId: rawUserId }) {
   const userId = validateUserId(rawUserId);
   await assertPortfolioOwner(userId);
   const centers = await listOwnedCentersForPortfolio(userId);
-  let rows = await submissionRepo.listSubmissionsByUserId(userId);
-
-  // Legacy rows (pre–multi-center) have CenterId NULL — attach to first free owned center
-  // so already-created forms show up under My Websites again.
-  const orphans = rows.filter((r) => r.centerId == null);
-  for (const orphan of orphans) {
-    const used = new Set(
-      rows.filter((r) => r.centerId != null).map((r) => Number(r.centerId)),
-    );
-    const free = centers.find((c) => !used.has(Number(c.centerId)));
-    if (!free) break;
-    try {
-      await submissionRepo.attachCenterIdToSubmission(orphan.id, free.centerId);
-    } catch (err) {
-      logger.warn('[coach-portfolio] could not backfill CenterId on legacy submission', {
-        userId,
-        submissionId: orphan.id,
-        message: err?.message || String(err),
-      });
-      break;
-    }
-  }
-  rows = await submissionRepo.listSubmissionsByUserId(userId);
+  // Freestyle sites intentionally keep CenterId NULL — never auto-attach them to
+  // an owned club (that made "No center" websites show as Demo center 1).
+  const rows = await submissionRepo.listSubmissionsByUserId(userId);
 
   const byCenter = new Map(
     rows
@@ -167,23 +147,28 @@ export async function listMyWebsites({ userId: rawUserId }) {
     };
   });
 
-  // Still-orphan submissions (no owned center to attach) — show as editable cards.
+  // Freestyle / null-CenterId — title = coach name (never a club label).
   const leftoverOrphans = rows
     .filter((r) => r.centerId == null)
     .map((r) => {
       const pub = toPublicSubmission(r, { includeForm: false });
-      const formCenter = String(r.formJson?.center?.centerName || '').trim();
+      const city = String(r.formJson?.center?.city || '').trim() || null;
+      const locality = String(r.formJson?.center?.locality || '').trim() || null;
+      const coachName = String(
+        r.formJson?.personal?.fullName || r.userName || '',
+      ).trim();
       return {
         centerId: null,
-        centerName: formCenter || r.userName || 'Saved website',
-        city: String(r.formJson?.center?.city || '').trim() || null,
-        locality: String(r.formJson?.center?.locality || '').trim() || null,
+        centerName: coachName || 'No center',
+        city,
+        locality,
         submission: pub,
         isPublished: pub?.isPublished === true,
         publicPath: pub?.publicPath || null,
         status: pub?.status || null,
         hasWebsite: true,
         legacy: true,
+        freestyle: true,
         submissionId: pub?.id ?? r.id,
       };
     });
@@ -214,6 +199,7 @@ export async function listMyWebsites({ userId: rawUserId }) {
 export async function getMySubmission({
   userId: rawUserId,
   centerId: rawCenterId,
+  submissionId: rawSubmissionId = null,
   createNew = false,
 }) {
   if (!isEnabled(PORTFOLIO_FLAG)) featureDisabled();
@@ -221,6 +207,52 @@ export async function getMySubmission({
   await assertPortfolioOwner(userId);
 
   const wantFresh = createNew === true || createNew === 'true' || createNew === '1';
+  // Freestyle edit by Id — do not fall through to newest row (often Demo center 1).
+  const wantedSubmissionId = rawSubmissionId != null && String(rawSubmissionId).trim() !== ''
+    ? Number(rawSubmissionId)
+    : null;
+  if (
+    Number.isFinite(wantedSubmissionId)
+    && wantedSubmissionId > 0
+    && (rawCenterId == null || String(rawCenterId).trim() === '')
+    && !wantFresh
+  ) {
+    const byId = await submissionRepo.findSubmissionById(wantedSubmissionId);
+    if (!byId || Number(byId.userId) !== Number(userId)) {
+      throw new ValidationError(404, 'Website not found');
+    }
+    if (byId.centerId != null) {
+      return getMySubmission({
+        userId,
+        centerId: byId.centerId,
+        createNew: false,
+      });
+    }
+    const form = await hydrateFormWithAppData(
+      userId,
+      byId.formJson || emptyPortfolioForm(),
+      {},
+    );
+    form.center.centerName = '';
+    form.center.address = [form.center.locality, form.center.city]
+      .filter(Boolean)
+      .join(', ');
+    return {
+      httpStatus: 200,
+      body: {
+        ok: true,
+        data: {
+          ...toPublicSubmission({ ...byId, formJson: form }),
+          form,
+          hasClub: false,
+          centerId: null,
+          centerName: null,
+          freestyle: true,
+        },
+      },
+    };
+  }
+
   // Freestyle Create New: hydrate name/phone/photo from app; leave City/Area blank for typing.
   if (wantFresh && (rawCenterId == null || String(rawCenterId).trim() === '')) {
     const form = await hydrateFormWithAppData(userId, emptyPortfolioForm(), {});
@@ -265,12 +297,16 @@ export async function getMySubmission({
     if (existingAny?.centerId != null) {
       centerId = Number(existingAny.centerId);
     } else if (existingAny) {
-      // Legacy row without CenterId — return it directly for edit.
+      // Freestyle / legacy null-CenterId — never treat FormJson club label as a linked club.
       const form = await hydrateFormWithAppData(
         userId,
         existingAny.formJson || emptyPortfolioForm(),
         {},
       );
+      form.center.centerName = '';
+      form.center.address = [form.center.locality, form.center.city]
+        .filter(Boolean)
+        .join(', ');
       return {
         httpStatus: 200,
         body: {
@@ -278,10 +314,11 @@ export async function getMySubmission({
           data: {
             ...toPublicSubmission({ ...existingAny, formJson: form }),
             form,
-            hasClub: Boolean(form?.center?.centerName),
+            hasClub: false,
             centerId: null,
-            centerName: form?.center?.centerName || existingAny.userName || null,
+            centerName: null,
             legacy: true,
+            freestyle: true,
           },
         },
       };
@@ -370,21 +407,34 @@ export async function getMySubmission({
   };
 }
 
-async function assertDisplayNameAvailable(userId, centerId, form) {
+async function assertDisplayNameAvailable(userId, centerId, form, { submissionId = null } = {}) {
   const name = String(form?.mediaBrand?.websiteDisplayName || '').trim();
   if (!name) return;
-  if (await submissionRepo.displayNameTakenByOther(name, userId, { centerId })) {
-    throw new ValidationError(409, 'Website display name already exists — choose another');
+  const city = String(form?.center?.city || '').trim();
+  const locality = String(form?.center?.locality || '').trim();
+  if (await submissionRepo.displayNameTakenByOther(name, userId, {
+    centerId,
+    submissionId,
+    city,
+    locality,
+  })) {
+    throw new ValidationError(
+      409,
+      'This coach name is already used for a website in this City & Area — choose another place',
+    );
   }
 }
 
 /**
- * Check whether a website display name is free for this owner + center.
+ * Check whether a website display name is free in this City & Area.
  */
 export async function checkDisplayNameAvailability({
   userId: rawUserId,
   centerId: rawCenterId,
+  submissionId: rawSubmissionId = null,
   name: rawName,
+  city: rawCity = null,
+  locality: rawLocality = null,
 }) {
   if (!isEnabled(PORTFOLIO_FLAG)) featureDisabled();
   const userId = validateUserId(rawUserId);
@@ -392,14 +442,30 @@ export async function checkDisplayNameAvailability({
   const centerId = rawCenterId != null && String(rawCenterId).trim() !== ''
     ? validateCenterId(rawCenterId)
     : null;
+  const submissionId = rawSubmissionId != null && String(rawSubmissionId).trim() !== ''
+    ? Number(rawSubmissionId)
+    : null;
   const name = String(rawName || '').trim();
+  const city = String(rawCity || '').trim();
+  const locality = String(rawLocality || '').trim();
   if (!name) {
     return {
       httpStatus: 200,
       body: { ok: true, data: { available: false, reason: 'empty' } },
     };
   }
-  const taken = await submissionRepo.displayNameTakenByOther(name, userId, { centerId });
+  if (!city || !locality) {
+    return {
+      httpStatus: 200,
+      body: { ok: true, data: { available: true, name, pendingPlace: true } },
+    };
+  }
+  const taken = await submissionRepo.displayNameTakenByOther(name, userId, {
+    centerId,
+    submissionId: Number.isFinite(submissionId) ? submissionId : null,
+    city,
+    locality,
+  });
   return {
     httpStatus: 200,
     body: {
@@ -425,6 +491,7 @@ export async function saveMySubmissionDraft({
   centerId: rawCenterId,
   form: rawForm,
   createNew = false,
+  submissionId: rawSubmissionId = null,
 }) {
   if (!isEnabled(PORTFOLIO_FLAG)) featureDisabled();
   const userId = validateUserId(rawUserId);
@@ -432,9 +499,18 @@ export async function saveMySubmissionDraft({
   await assertPortfolioOwner(userId);
   if (centerId != null) await assertOwnedCenter(userId, centerId);
 
-  const existing = centerId != null
+  const sid = rawSubmissionId != null && String(rawSubmissionId).trim() !== ''
+    ? Number(rawSubmissionId)
+    : null;
+  let existing = centerId != null
     ? await submissionRepo.findSubmissionByUserAndCenter(userId, centerId)
     : null;
+  if (!existing && Number.isFinite(sid) && sid > 0) {
+    const byId = await submissionRepo.findSubmissionById(sid);
+    if (byId && Number(byId.userId) === Number(userId) && byId.centerId == null) {
+      existing = byId;
+    }
+  }
   if (existing && !coachCanEditSubmission(existing.status)) {
     throw new ValidationError(409, 'This submission cannot be edited');
   }
@@ -443,13 +519,20 @@ export async function saveMySubmissionDraft({
     normalizeFormJson(rawForm),
     { centerId },
   );
+  // Freestyle: never keep a club label from an older FormJson / primary-club hydrate.
+  if (centerId == null) {
+    form.center.centerName = '';
+    form.center.address = [form.center.locality, form.center.city].filter(Boolean).join(', ');
+  }
   if (!String(form.center?.city || '').trim()) {
     throw new ValidationError(400, 'City is required');
   }
   if (!String(form.center?.locality || '').trim()) {
     throw new ValidationError(400, 'Area is required');
   }
-  await assertDisplayNameAvailable(userId, centerId, form);
+  await assertDisplayNameAvailable(userId, centerId, form, {
+    submissionId: existing?.id ?? (Number.isFinite(sid) ? sid : null),
+  });
   const status = existing?.status || SUBMISSION_STATUS.DRAFT;
   let row = await submissionRepo.upsertSubmission({
     userId,
@@ -458,6 +541,7 @@ export async function saveMySubmissionDraft({
     form,
     markSubmitted: false,
     createNew: createNew === true && centerId == null,
+    submissionId: existing?.id ?? (Number.isFinite(sid) ? sid : null),
   });
   // Save is draft-only: never promote PublishedFormJson / live PublicSlug.
   // Unpublished drafts may still get a path preview; already-live sites keep their live slug.
@@ -483,6 +567,7 @@ export async function requestPublishOtp({
   centerId: rawCenterId,
   form: rawForm,
   createNew = false,
+  submissionId: rawSubmissionId = null,
 }) {
   if (!isEnabled(PORTFOLIO_FLAG)) featureDisabled();
   const userId = validateUserId(rawUserId);
@@ -491,10 +576,19 @@ export async function requestPublishOtp({
   const club = centerId != null ? await assertOwnedCenter(userId, centerId) : null;
   const coach = await resolveMemberCoachApprover(person);
 
+  const sid = rawSubmissionId != null && String(rawSubmissionId).trim() !== ''
+    ? Number(rawSubmissionId)
+    : null;
   let existing = centerId != null
     ? await submissionRepo.findSubmissionByUserAndCenter(userId, centerId)
     : null;
-  if (!existing && createNew !== true) {
+  if (!existing && Number.isFinite(sid) && sid > 0) {
+    const byId = await submissionRepo.findSubmissionById(sid);
+    if (byId && Number(byId.userId) === Number(userId) && byId.centerId == null) {
+      existing = byId;
+    }
+  }
+  if (!existing && createNew !== true && centerId == null) {
     // Freestyle edit / republish: load null-center row for diff + edit checks.
     existing = await submissionRepo.findLatestNullCenterSubmission(userId);
   }
@@ -506,6 +600,13 @@ export async function requestPublishOtp({
     normalizeFormJson(rawForm),
     { centerId },
   );
+  // Freestyle publish: strip any stale club name so live page cannot show Demo center 1.
+  if (centerId == null) {
+    form.center.centerName = '';
+    form.center.address = [form.center.locality, form.center.city].filter(Boolean).join(', ');
+  } else if (club?.centerName) {
+    form.center.centerName = club.centerName;
+  }
   if (!String(form.center?.city || '').trim()) {
     throw new ValidationError(400, 'City is required');
   }
@@ -516,7 +617,9 @@ export async function requestPublishOtp({
   if (errors.length) {
     throw new ValidationError(400, errors.join('; '));
   }
-  await assertDisplayNameAvailable(userId, centerId, form);
+  await assertDisplayNameAvailable(userId, centerId, form, {
+    submissionId: existing?.id ?? (Number.isFinite(sid) ? sid : null),
+  });
 
   // Capture live snapshot before draft upsert (for change-diff email).
   const previousPublishedForm = existing?.publishedFormJson
@@ -530,6 +633,7 @@ export async function requestPublishOtp({
     markSubmitted: true,
     clearReview: true,
     createNew: createNew === true && centerId == null,
+    submissionId: existing?.id ?? (Number.isFinite(sid) ? sid : null),
   });
   // Do not rewrite live PublicSlug until OTP verify. Draft-only sites may preview a slug.
   if (row && row.isPublished !== true) {

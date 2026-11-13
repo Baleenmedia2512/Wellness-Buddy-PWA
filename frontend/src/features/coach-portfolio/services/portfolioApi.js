@@ -96,9 +96,14 @@ export async function fetchMyWebsites(userId) {
   return body.data || { websites: [], centerCount: 0 };
 }
 
-export async function fetchMyPortfolioSubmission(userId, centerId, { createNew = false } = {}) {
+export async function fetchMyPortfolioSubmission(
+  userId,
+  centerId,
+  { createNew = false, submissionId = null } = {},
+) {
   const params = new URLSearchParams({ userId: String(userId) });
   if (centerId != null) params.set('centerId', String(centerId));
+  if (submissionId != null) params.set('submissionId', String(submissionId));
   if (createNew === true) params.set('createNew', '1');
   const response = await apiFetch(`/api/coach-portfolio/submission?${params.toString()}`);
   const body = await response.json().catch(() => ({}));
@@ -110,15 +115,32 @@ export async function fetchMyPortfolioSubmission(userId, centerId, { createNew =
 }
 
 /**
- * @param {{ userId: string|number, name: string, centerId?: string|number }} input
+ * @param {{
+ *   userId: string|number,
+ *   name: string,
+ *   centerId?: string|number|null,
+ *   submissionId?: string|number|null,
+ *   city?: string|null,
+ *   locality?: string|null,
+ * }} input
  * @returns {Promise<{ available: boolean, name?: string, reason?: string }>}
  */
-export async function checkPortfolioDisplayName({ userId, name, centerId }) {
+export async function checkPortfolioDisplayName({
+  userId,
+  name,
+  centerId,
+  submissionId = null,
+  city = null,
+  locality = null,
+}) {
   const params = new URLSearchParams({
     userId: String(userId),
     name: String(name || ''),
   });
   if (centerId != null) params.set('centerId', String(centerId));
+  if (submissionId != null) params.set('submissionId', String(submissionId));
+  if (city) params.set('city', String(city));
+  if (locality) params.set('locality', String(locality));
   const response = await apiFetch(`/api/coach-portfolio/display-name?${params.toString()}`);
   const body = await response.json().catch(() => ({}));
   if (!response.ok || !body?.ok) {
@@ -128,7 +150,13 @@ export async function checkPortfolioDisplayName({ userId, name, centerId }) {
   return body.data || { available: false };
 }
 
-export async function savePortfolioDraft({ userId, centerId, form, createNew = false }) {
+export async function savePortfolioDraft({
+  userId,
+  centerId,
+  form,
+  createNew = false,
+  submissionId = null,
+}) {
   const response = await apiFetch('/api/coach-portfolio/submission', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -137,6 +165,7 @@ export async function savePortfolioDraft({ userId, centerId, form, createNew = f
       centerId: centerId ?? null,
       form,
       createNew: createNew === true,
+      submissionId: submissionId ?? null,
     }),
   });
   const body = await response.json().catch(() => ({}));
@@ -148,7 +177,13 @@ export async function savePortfolioDraft({ userId, centerId, form, createNew = f
 }
 
 /** Step 1: validate + email OTP to the member's coach (site not live until verify). */
-export async function requestPortfolioPublishOtp({ userId, centerId, form, createNew = false }) {
+export async function requestPortfolioPublishOtp({
+  userId,
+  centerId,
+  form,
+  createNew = false,
+  submissionId = null,
+}) {
   const response = await apiFetch('/api/coach-portfolio/submission', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -158,6 +193,7 @@ export async function requestPortfolioPublishOtp({ userId, centerId, form, creat
       centerId: centerId ?? null,
       form,
       createNew: createNew === true,
+      submissionId: submissionId ?? null,
     }),
   });
   const body = await response.json().catch(() => ({}));

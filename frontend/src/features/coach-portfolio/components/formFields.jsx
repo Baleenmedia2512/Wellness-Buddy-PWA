@@ -173,11 +173,16 @@ export function YesNo({ value, onChange, disabled = false }) {
 
 export function FormCard({ title, subtitle, children }) {
   return (
-    <section className="overflow-hidden rounded-[22px] border border-slate-200/80 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+    <section
+      className="overflow-hidden rounded-[22px] border border-[#d7e5dc] shadow-[0_10px_30px_rgba(15,23,42,0.04)]"
+      style={{
+        background: 'linear-gradient(165deg, #f7faf7 0%, #eef5f0 48%, #e7f0e8 100%)',
+      }}
+    >
       {(title || subtitle) ? (
-        <div className="border-b border-slate-100 bg-gradient-to-r from-emerald-50/80 to-white px-4 py-3.5">
-          {title ? <h2 className="text-[15px] font-bold text-slate-900">{title}</h2> : null}
-          {subtitle ? <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{subtitle}</p> : null}
+        <div className="border-b border-[#d7e5dc]/80 bg-white/55 px-4 py-3.5">
+          {title ? <h2 className="text-[15px] font-bold text-[#1f5a42]">{title}</h2> : null}
+          {subtitle ? <p className="mt-0.5 text-xs leading-relaxed text-[#5f7268]">{subtitle}</p> : null}
         </div>
       ) : null}
       <div className="space-y-4 p-4">{children}</div>

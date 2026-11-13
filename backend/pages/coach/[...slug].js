@@ -27,6 +27,7 @@ import {
   buildCoachPageFaqs,
   buildCoachPageJsonLd,
   buildCoachPageSeo,
+  buildCoachVisibleHeading,
   buildGoogleMapsSearchUrl,
   canShowPublicPortfolio,
   mapsEmbedSrcFromLink,
@@ -159,38 +160,43 @@ export async function getServerSideProps({ params, req }) {
     /* keep FormJson photo if profile lookup fails */
   }
 
-  // Map: club GPS when owned center exists; else City/Area Google Maps search (freestyle).
+  // Map: only the submission's linked club — never the owner's primary club fallback.
+  // Freestyle (CenterId NULL) keeps FormJson City/Area and must not show Demo center 1.
   let hasClub = false;
   page.geoLatitude = null;
   page.geoLongitude = null;
+  const linkedCenterId = row.centerId != null ? Number(row.centerId) : null;
   try {
-    const club = await getAppWorkingClubForPortfolio(row.userId);
-    hasClub = Boolean(club?.hasClub);
-    if (hasClub) {
-      page.centerName = club.centerName || '';
-      page.mapsLink = club.mapsLink || '';
-      // Clear form locality/city so hero never shows e.g. slug "RS Puram, Coimbatore".
-      page.locality = '';
-      page.city = '';
-      page.address = club.centerName || '';
-      const lat = Number(club.latitude);
-      const lng = Number(club.longitude);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        page.geoLatitude = lat;
-        page.geoLongitude = lng;
-        try {
-          const place = await fetchCityVillage(lat, lng);
-          const locality = String(place?.village || '').trim();
-          const city = String(place?.city || '').trim();
-          page.locality = locality;
-          page.city = city;
-          const label = [locality, city].filter(Boolean).join(', ');
-          if (label) page.address = label;
-        } catch {
-          /* keep empty locality/city — map still works via GPS */
+    if (Number.isFinite(linkedCenterId) && linkedCenterId > 0) {
+      const club = await getAppWorkingClubForPortfolio(row.userId, linkedCenterId);
+      hasClub = Boolean(club?.hasClub)
+        && Number(club.centerId) === linkedCenterId;
+      if (hasClub) {
+        page.centerName = club.centerName || '';
+        page.mapsLink = club.mapsLink || '';
+        page.locality = '';
+        page.city = '';
+        page.address = club.centerName || '';
+        const lat = Number(club.latitude);
+        const lng = Number(club.longitude);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          page.geoLatitude = lat;
+          page.geoLongitude = lng;
+          try {
+            const place = await fetchCityVillage(lat, lng);
+            const locality = String(place?.village || '').trim();
+            const city = String(place?.city || '').trim();
+            page.locality = locality;
+            page.city = city;
+            const label = [locality, city].filter(Boolean).join(', ');
+            if (label) page.address = label;
+          } catch {
+            /* keep empty locality/city — map still works via GPS */
+          }
         }
       }
-    } else {
+    }
+    if (!hasClub) {
       page.centerName = '';
       // Keep FormJson city/area (SEO + freestyle place); map searches that query.
       const placeLabel = [page.locality, page.city].filter(Boolean).join(', ');
@@ -438,8 +444,10 @@ export default function CoachPortfolioPage({
   const whatWeDo = Array.isArray(teamMedia?.whatWeDo) ? teamMedia.whatWeDo : [];
   const hasWhatWeSay = whatWeSay.length > 0;
   const hasWhatWeDo = whatWeDo.length > 0;
-  const bizTitle = String(page.centerName || '').trim()
-    || String(page.displayName || page.fullName || heroName || '').trim();
+  // Club site → centre name. Freestyle (no centre) → "Coach {Name}".
+  const bizTitle = hasClubProp && String(page.centerName || '').trim()
+    ? String(page.centerName).trim()
+    : buildCoachVisibleHeading(page);
   const introVideoSrcs = uniqueMediaUrls(
     (Array.isArray(page.introVideos) && page.introVideos.length
       ? page.introVideos
@@ -505,9 +513,13 @@ export default function CoachPortfolioPage({
   const aboutKicker = coachTitle
     ? `Meet Your ${coachTitle}`
     : 'Meet Your Coach';
+  // About copy = Profile About me; years = Profile Date of joining (hydrated).
+  const yearsLine = String(page.yearsExperience || '').trim();
   const aboutBullets = [
-    String(page.yearsExperience || '').trim() || null,
-    page.qualifications || coachTitle || null,
+    yearsLine
+      ? (/experience/i.test(yearsLine) ? yearsLine : `${yearsLine} of experience`)
+      : null,
+    page.qualifications || null,
     page.languages?.length ? `Languages: ${page.languages.slice(0, 3).join(', ')}` : null,
   ].filter(Boolean).slice(0, 3);
 
@@ -1371,7 +1383,17 @@ export default function CoachPortfolioPage({
                 </label>
                 <label className="book-field">
                   <span>Phone / WhatsApp</span>
-                  <input type="tel" required maxLength={20} value={bookPhone} onChange={(e) => setBookPhone(e.target.value)} placeholder="10-digit mobile" />
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    required
+                    maxLength={15}
+                    value={bookPhone}
+                    onChange={(e) => setBookPhone(e.target.value.replace(/\D/g, ''))}
+                    placeholder="10-digit mobile"
+                    autoComplete="tel"
+                  />
                 </label>
                 <label className="book-field">
                   <span>Message (optional)</span>

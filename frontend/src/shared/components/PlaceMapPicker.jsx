@@ -1,11 +1,10 @@
 /**
- * Lean map pin picker — search / tap / GPS → lat/lng + reverse-geocoded city/area.
- * Reuses Google Maps loader + Nominatim helper (same idea as club center create).
- * Map loads only while `open` (collapsed by default in the form).
+ * Lean map pin picker — search / tap / GPS → preview city/area → user confirms.
+ * Does not auto-save or auto-close on GPS (that flashed the map shut with a wrong place).
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { Geolocation } from '@capacitor/geolocation';
-import { LocateFixed, MapPin, X } from 'lucide-react';
+import { Check, LocateFixed, MapPin, X } from 'lucide-react';
 import { loadGoogleMaps } from '../../features/nutrition-centers/services/googleMapsLoader';
 import { fetchCityVillage } from '../lib/reverseGeocode';
 import TouchFeedbackButton from './TouchFeedbackButton';
@@ -39,16 +38,15 @@ export default function PlaceMapPicker({ open, onClose, disabled = false, onReso
   const autocompleteRef = useRef(null);
   const searchInputRef = useRef(null);
   const resolveSeq = useRef(0);
-  const placeMarkerRef = useRef(null);
-  const onResolvedRef = useRef(onResolved);
+  const movePinRef = useRef(null);
   const disabledRef = useRef(disabled);
 
   const [mapReady, setMapReady] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [hint, setHint] = useState('Search or tap the map to set City & Area');
+  const [hint, setHint] = useState('Search or tap the map, then confirm');
+  const [pending, setPending] = useState(null);
 
-  onResolvedRef.current = onResolved;
   disabledRef.current = disabled;
 
   useEffect(() => {
@@ -61,9 +59,11 @@ export default function PlaceMapPicker({ open, onClose, disabled = false, onReso
     let cancelled = false;
     setError('');
     setMapReady(false);
-    setHint('Search or tap the map to set City & Area');
+    setPending(null);
+    setHint('Search or tap the map, then confirm');
 
-    const applyLatLng = async (lat, lng) => {
+    /** Preview only — never calls onResolved (parent used to close the map). */
+    const previewLatLng = async (lat, lng) => {
       if (disabledRef.current || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
       const seq = ++resolveSeq.current;
       setBusy(true);
@@ -85,22 +85,22 @@ export default function PlaceMapPicker({ open, onClose, disabled = false, onReso
 
       if (!cityLabel && !areaLabel) {
         payload.locality = '';
+        setPending(payload);
         setBusy(false);
-        setHint('Pin set — type City & Area if lookup failed');
-        onResolvedRef.current?.(payload);
+        setHint('Pin set — confirm, or type City & Area if lookup failed');
         return;
       }
 
-      onResolvedRef.current?.(payload);
+      setPending(payload);
       setBusy(false);
       setHint(
         areaLabel
-          ? `Filled: ${areaLabel}, ${cityLabel || '—'}`
-          : `Filled city: ${cityLabel} — add Area if needed`,
+          ? `Preview: ${areaLabel}, ${cityLabel || '—'} — tap Confirm to use`
+          : `Preview city: ${cityLabel} — tap Confirm to use`,
       );
     };
 
-    const placeMarker = (latLng) => {
+    const movePin = (latLng, { preview = true } = {}) => {
       const map = mapRef.current;
       if (!map || !window.google?.maps) return;
       const lat = typeof latLng.lat === 'function' ? latLng.lat() : Number(latLng.lat);
@@ -117,15 +117,15 @@ export default function PlaceMapPicker({ open, onClose, disabled = false, onReso
         });
         markerRef.current.addListener('dragend', (ev) => {
           if (!ev.latLng) return;
-          applyLatLng(ev.latLng.lat(), ev.latLng.lng());
+          previewLatLng(ev.latLng.lat(), ev.latLng.lng());
         });
       }
       map.panTo({ lat, lng });
       if (map.getZoom() < 14) map.setZoom(15);
-      applyLatLng(lat, lng);
+      if (preview) previewLatLng(lat, lng);
     };
 
-    placeMarkerRef.current = placeMarker;
+    movePinRef.current = movePin;
 
     loadGoogleMaps(GOOGLE_MAPS_API_KEY)
       .then(async () => {
@@ -157,7 +157,7 @@ export default function PlaceMapPicker({ open, onClose, disabled = false, onReso
         });
         mapRef.current = map;
         map.addListener('click', (ev) => {
-          if (ev.latLng) placeMarker(ev.latLng);
+          if (ev.latLng) movePin(ev.latLng);
         });
 
         if (searchInputRef.current && window.google.maps.places) {
@@ -170,12 +170,16 @@ export default function PlaceMapPicker({ open, onClose, disabled = false, onReso
           ac.addListener('place_changed', () => {
             const place = ac.getPlace();
             if (!place?.geometry?.location) return;
-            placeMarker(place.geometry.location);
+            movePin(place.geometry.location);
           });
         }
 
         setMapReady(true);
-        if (usedGps) placeMarker(center);
+        // GPS: show pin + preview only — do not auto-confirm (wrong village names).
+        if (usedGps) {
+          movePin(center, { preview: true });
+          setHint('GPS pin shown — move pin or search, then Confirm');
+        }
       })
       .catch((err) => {
         if (!cancelled) {
@@ -192,8 +196,9 @@ export default function PlaceMapPicker({ open, onClose, disabled = false, onReso
       }
       autocompleteRef.current = null;
       mapRef.current = null;
-      placeMarkerRef.current = null;
+      movePinRef.current = null;
       setMapReady(false);
+      setPending(null);
     };
   }, [open]);
 
@@ -207,8 +212,8 @@ export default function PlaceMapPicker({ open, onClose, disabled = false, onReso
         timeout: 10000,
         maximumAge: 0,
       });
-      if (typeof placeMarkerRef.current === 'function') {
-        placeMarkerRef.current({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      if (typeof movePinRef.current === 'function') {
+        movePinRef.current({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       } else {
         setBusy(false);
       }
@@ -218,7 +223,16 @@ export default function PlaceMapPicker({ open, onClose, disabled = false, onReso
     }
   };
 
+  const confirmPlace = () => {
+    if (disabled || !pending) return;
+    onResolved?.(pending);
+  };
+
   if (!open) return null;
+
+  const previewLabel = pending
+    ? [pending.locality, pending.city].filter(Boolean).join(', ')
+    : '';
 
   return (
     <div className="space-y-2 rounded-2xl border border-emerald-200 bg-white p-3 shadow-sm">
@@ -271,8 +285,24 @@ export default function PlaceMapPicker({ open, onClose, disabled = false, onReso
         </span>
       </div>
 
+      {previewLabel ? (
+        <p className="rounded-xl bg-emerald-50 px-3 py-2 text-[12px] font-medium text-emerald-900">
+          Selected: {previewLabel}
+        </p>
+      ) : null}
+
+      <TouchFeedbackButton
+        type="button"
+        disabled={disabled || busy || !pending}
+        onClick={confirmPlace}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-3.5 py-2.5 text-[13px] font-semibold text-white disabled:opacity-50"
+      >
+        <Check className="h-4 w-4" aria-hidden />
+        Confirm City & Area
+      </TouchFeedbackButton>
+
       {error ? <p className="text-[11px] font-medium text-amber-700">{error}</p> : null}
-      {busy ? <p className="text-[11px] text-slate-500">Updating City & Area…</p> : null}
+      {busy ? <p className="text-[11px] text-slate-500">Looking up place…</p> : null}
     </div>
   );
 }

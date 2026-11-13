@@ -9,11 +9,9 @@ import {
   mergePortfolioForm,
   validateAboutForm,
 } from '../domain/formDefaults';
+import { applyProfileIntroToForm } from '../domain/applyProfileIntro';
 import {
   getFormSteps,
-  includesOther,
-  LANGUAGES,
-  PROFESSIONAL_TITLES,
 } from '../domain/formOptions';
 import {
   checkPortfolioDisplayName,
@@ -23,14 +21,11 @@ import {
   uploadPortfolioIntroVideo,
   uploadPortfolioMedia,
 } from '../services/portfolioApi';
+import { fetchProfile } from '../../user/services/profileService';
 import {
   FieldLabel,
   FormCard,
-  MultiCheck,
   PhotoField,
-  SelectInput,
-  TextArea,
-  TextInput,
   ValueSelectInput,
   VideoUploadField,
 } from './formFields';
@@ -58,21 +53,27 @@ function setSection(form, section, patch) {
   return { ...form, [section]: { ...form[section], ...patch } };
 }
 
-function setSocialLink(form, key, value) {
-  return setSection(form, 'mediaBrand', {
-    social: {
-      ...(form.mediaBrand?.social || {}),
-      [key]: value,
-    },
-  });
-}
-
-/** Public website name = app profile name (no separate display-name field). */
-function withProfileWebsiteName(form) {
-  const name = String(form?.personal?.fullName || '').trim();
-  if (!name) return form;
-  if (String(form?.mediaBrand?.websiteDisplayName || '').trim() === name) return form;
-  return setSection(form, 'mediaBrand', { websiteDisplayName: name });
+/**
+ * Prep FormJson for API save/publish.
+ * - Website name = profile name
+ * - uniqueApproach: field removed from UI; production API may still require
+ *   "What do you believe in" — fill from About me so publish works until that
+ *   backend check is deployed away.
+ */
+function prepareFormForApi(form) {
+  let next = form;
+  const name = String(next?.personal?.fullName || '').trim();
+  if (name && String(next?.mediaBrand?.websiteDisplayName || '').trim() !== name) {
+    next = setSection(next, 'mediaBrand', { websiteDisplayName: name });
+  }
+  const approach = String(next?.personal?.uniqueApproach || '').trim();
+  if (!approach) {
+    const about = String(next?.personal?.background || '').trim();
+    if (about) {
+      next = setSection(next, 'personal', { uniqueApproach: about });
+    }
+  }
+  return next;
 }
 
 function Progress({ stepIndex, steps }) {
@@ -117,6 +118,7 @@ export default function CoachPortfolioForm({
   userId,
   centerId,
   centerName = '',
+  submissionId = null,
   createMode = false,
   availableCenters = [],
   onClose,
@@ -128,12 +130,14 @@ export default function CoachPortfolioForm({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [messageIsError, setMessageIsError] = useState(false);
   const [publicPath, setPublicPath] = useState(null);
   const [isPublished, setIsPublished] = useState(false);
   const [hasUnpublishedChanges, setHasUnpublishedChanges] = useState(false);
   const [hasClub, setHasClub] = useState(false);
   const [resolvedCenterId, setResolvedCenterId] = useState(centerId ?? null);
   const [resolvedCenterName, setResolvedCenterName] = useState(centerName || '');
+  const [resolvedSubmissionId, setResolvedSubmissionId] = useState(submissionId ?? null);
   const [displayNameStatus, setDisplayNameStatus] = useState(''); // '', checking, available, taken, error
   const [otpOpen, setOtpOpen] = useState(false);
   const [maskedEmail, setMaskedEmail] = useState('');
@@ -142,11 +146,11 @@ export default function CoachPortfolioForm({
   const [otpResending, setOtpResending] = useState(false);
   const [otpKey, setOtpKey] = useState(null);
   const [placeMapOpen, setPlaceMapOpen] = useState(false);
-  const [placeFromMap, setPlaceFromMap] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const defaultCenterAppliedRef = useRef(false);
   const fieldRefs = useRef({});
   const scrollRootRef = useRef(null);
+  const messageRef = useRef(null);
 
   const setFieldRef = (key) => (el) => {
     if (el) fieldRefs.current[key] = el;
@@ -160,6 +164,25 @@ export default function CoachPortfolioForm({
       delete next[key];
       return next;
     });
+  };
+
+  /** Show status/error banner and scroll it into view (errors pin to top of form). */
+  const flashMessage = (text, { error = false } = {}) => {
+    const next = String(text || '').trim();
+    setMessage(next);
+    setMessageIsError(Boolean(error) && Boolean(next));
+    if (!next) return;
+    window.setTimeout(() => {
+      const root = scrollRootRef.current;
+      if (error && root) {
+        root.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      const el = messageRef.current;
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (typeof el.focus === 'function') el.focus({ preventScroll: true });
+      }
+    }, 50);
   };
 
   const showFieldErrors = (keys) => {
@@ -199,6 +222,21 @@ export default function CoachPortfolioForm({
   /** Save is always draft. Publish (first or changes) always requires coach OTP. */
   const publishButtonLabel = isPublished ? 'Publish changes' : 'Publish website';
 
+  /** Live Profile wins over stale FormJson (empty title → clear old Wellness Coach). */
+  const loadProfileIntro = async () => {
+    try {
+      const { data } = await fetchProfile({ userId });
+      return data || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const withProfileIntro = async (form) => {
+    const profile = await loadProfileIntro();
+    return applyProfileIntroToForm(form, profile);
+  };
+
   const loadCenterForm = async (nextCenterId, { fresh = false, placeFallback = null } = {}) => {
     if (nextCenterId == null) {
       setForm(emptyPortfolioForm());
@@ -221,13 +259,14 @@ export default function CoachPortfolioForm({
         personal: {
           fullName: data?.form?.personal?.fullName || '',
           profilePhoto: data?.form?.personal?.profilePhoto || null,
-          professionalTitle: data?.form?.personal?.professionalTitle || 'Wellness Coach',
+          professionalTitle: '',
         },
         center: {
-          centerName: data?.form?.center?.centerName || fallbackName || '',
-          // Server GPS hydrate can fail; fall back to My Websites list city/area (already on the option label).
-          city: data?.form?.center?.city || fallbackCity || '',
-          locality: data?.form?.center?.locality || fallbackLocality || '',
+          // Live club name wins — never keep another centre's saved label.
+          centerName: fallbackName || data?.centerName || data?.form?.center?.centerName || '',
+          // Prefer centre list / picker place over reverse-geocode noise.
+          city: fallbackCity || data?.form?.center?.city || '',
+          locality: fallbackLocality || data?.form?.center?.locality || '',
           businessPhone: data?.form?.center?.businessPhone || '',
           whatsapp: data?.form?.center?.whatsapp || '',
           businessEmail: data?.form?.center?.businessEmail || '',
@@ -239,7 +278,7 @@ export default function CoachPortfolioForm({
         },
         services: data?.form?.services || undefined,
       });
-      setForm(hydrated);
+      setForm(await withProfileIntro(hydrated));
       setSubmissionStatus('draft');
       setAdminNote(null);
       setPublicPath(null);
@@ -247,16 +286,17 @@ export default function CoachPortfolioForm({
       setHasUnpublishedChanges(false);
     } else {
       const merged = mergePortfolioForm(data?.form);
+      // Keep saved City/Area (map pick). Only fill blanks from the centre list.
       if (!String(merged.center?.city || '').trim() && fallbackCity) {
         merged.center.city = fallbackCity;
       }
       if (!String(merged.center?.locality || '').trim() && fallbackLocality) {
         merged.center.locality = fallbackLocality;
       }
-      if (!String(merged.center?.centerName || '').trim() && fallbackName) {
-        merged.center.centerName = fallbackName;
-      }
-      setForm(merged);
+      // Always sync centre name from the linked club / list row.
+      const liveName = fallbackName || String(data?.centerName || '').trim();
+      if (liveName) merged.center.centerName = liveName;
+      setForm(await withProfileIntro(merged));
       setSubmissionStatus(data?.status || 'draft');
       setAdminNote(data?.adminNote || null);
       setPublicPath(data?.publicPath || null);
@@ -265,60 +305,10 @@ export default function CoachPortfolioForm({
     }
     setHasClub(data?.hasClub === true);
     setResolvedCenterId(data?.centerId != null ? data.centerId : nextCenterId);
-    setResolvedCenterName(data?.centerName || fallbackName || '');
+    setResolvedCenterName(
+      fallbackName || String(data?.centerName || '').trim() || '',
+    );
   };
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setMessage('');
-      try {
-        if (createMode && (centerId == null || String(centerId).trim() === '')) {
-          // Hydrate name / phone / photo from app; City & Area stay blank for freestyle.
-          const data = await fetchMyPortfolioSubmission(userId, null, { createNew: true });
-          if (cancelled) return;
-          setForm(mergePortfolioForm(data?.form || emptyPortfolioForm()));
-          setSubmissionStatus('draft');
-          setAdminNote(null);
-          setPublicPath(null);
-          setIsPublished(false);
-          setHasUnpublishedChanges(false);
-          setHasClub(false);
-          setResolvedCenterId(null);
-          setResolvedCenterName('');
-          setStepIndex(0);
-          setDisplayNameStatus('');
-        } else if (!createMode && (centerId == null || String(centerId).trim() === '')) {
-          // Legacy saved form (no CenterId yet) — load latest submission for this user.
-          const data = await fetchMyPortfolioSubmission(userId);
-          if (cancelled) return;
-          setForm(mergePortfolioForm(data?.form));
-          setSubmissionStatus(data?.status || 'draft');
-          setAdminNote(data?.adminNote || null);
-          setPublicPath(data?.publicPath || null);
-          setIsPublished(data?.isPublished === true);
-          setHasUnpublishedChanges(data?.hasUnpublishedChanges === true);
-          setHasClub(data?.hasClub === true);
-          if (data?.centerId != null) setResolvedCenterId(data.centerId);
-          if (data?.centerName) setResolvedCenterName(data.centerName);
-          setStepIndex(0);
-          setDisplayNameStatus('');
-        } else {
-          await loadCenterForm(centerId, { fresh: false });
-          if (cancelled) return;
-          setStepIndex(0);
-          setDisplayNameStatus('');
-        }
-      } catch (err) {
-        if (!cancelled) setMessage(err?.message || 'Could not load form');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial open only for given center/createMode
-  }, [userId, centerId, createMode]);
 
   const placeFromCenterOption = (meta, optionLabel) => {
     let city = String(meta?.city || '').trim();
@@ -339,15 +329,108 @@ export default function CoachPortfolioForm({
     return { city, locality, centerName };
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setMessage('');
+      try {
+        if (createMode && (centerId == null || String(centerId).trim() === '')) {
+          // Hydrate name / phone / photo from app; City & Area stay blank for freestyle.
+          const data = await fetchMyPortfolioSubmission(userId, null, { createNew: true });
+          if (cancelled) return;
+          const merged = mergePortfolioForm(data?.form || emptyPortfolioForm());
+          // Freestyle create: no linked centre — clear club place/name from any API hydrate.
+          merged.center.city = '';
+          merged.center.locality = '';
+          merged.center.centerName = '';
+          merged.center.address = '';
+          merged.center.mapsLink = '';
+          setForm(await withProfileIntro(merged));
+          setSubmissionStatus('draft');
+          setAdminNote(null);
+          setPublicPath(null);
+          setIsPublished(false);
+          setHasUnpublishedChanges(false);
+          setHasClub(false);
+          setResolvedCenterId(null);
+          setResolvedCenterName('');
+          setResolvedSubmissionId(null);
+          setStepIndex(0);
+          setDisplayNameStatus('');
+        } else if (!createMode && (centerId == null || String(centerId).trim() === '')) {
+          // Freestyle / legacy null-CenterId — load by submissionId when known.
+          const data = await fetchMyPortfolioSubmission(userId, null, {
+            submissionId: submissionId ?? null,
+          });
+          if (cancelled) return;
+          const merged = mergePortfolioForm(data?.form);
+          if (data?.centerId == null) {
+            merged.center.centerName = '';
+            merged.center.address = [merged.center.locality, merged.center.city]
+              .filter(Boolean)
+              .join(', ');
+          }
+          setForm(await withProfileIntro(merged));
+          setSubmissionStatus(data?.status || 'draft');
+          setAdminNote(data?.adminNote || null);
+          setPublicPath(data?.publicPath || null);
+          setIsPublished(data?.isPublished === true);
+          setHasUnpublishedChanges(data?.hasUnpublishedChanges === true);
+          setHasClub(data?.centerId != null && data?.hasClub === true);
+          setResolvedCenterId(data?.centerId != null ? data.centerId : null);
+          setResolvedCenterName(
+            data?.centerId != null ? (String(data?.centerName || '').trim() || '') : '',
+          );
+          if (data?.id != null) setResolvedSubmissionId(data.id);
+          setStepIndex(0);
+          setDisplayNameStatus('');
+        } else {
+          const meta = centers.find((c) => Number(c.centerId) === Number(centerId));
+          const place = placeFromCenterOption(
+            meta,
+            [meta?.centerName, meta?.city, meta?.locality].filter(Boolean).join(' · '),
+          );
+          // Always pass live centre name so stale FormJson "Demo center 1" cannot stick.
+          const placeFallback = {
+            ...place,
+            centerName: place.centerName
+              || String(meta?.centerName || '').trim()
+              || String(centerName || '').trim(),
+          };
+          await loadCenterForm(centerId, {
+            fresh: false,
+            placeFallback,
+          });
+          if (cancelled) return;
+          setStepIndex(0);
+          setDisplayNameStatus('');
+        }
+      } catch (err) {
+        if (!cancelled) setMessage(err?.message || 'Could not load form');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial open only for given center/createMode
+  }, [userId, centerId, createMode, submissionId]);
+
   const onCenterChange = async (rawId) => {
     if (!rawId) {
-      // Explicit "No center" — freestyle map (GPS on open).
+      // Explicit "No center" — freestyle map (GPS pin + Confirm).
       setResolvedCenterId(null);
       setResolvedCenterName('');
       setHasClub(false);
-      setPlaceFromMap(false);
+      setForm((prev) => setSection(prev, 'center', {
+        centerName: '',
+        address: '',
+        city: '',
+        locality: '',
+        mapsLink: '',
+      }));
       setPlaceMapOpen(true);
-      setMessage('No center — map opened at your current location');
+      setMessage('No center — pick City & Area on the map');
       return;
     }
     const nextId = Number(rawId);
@@ -355,22 +438,22 @@ export default function CoachPortfolioForm({
     const meta = selectableCenters.find((c) => Number(c.centerId) === nextId);
     const optionLabel = centerOptions.find((o) => Number(o.value) === nextId)?.label || '';
     const place = placeFromCenterOption(meta, optionLabel);
+    const liveCenterName = place.centerName || String(meta?.centerName || '').trim();
     setBusy(true);
     setMessage('');
     setPlaceMapOpen(false);
-    setPlaceFromMap(false);
     try {
       await loadCenterForm(nextId, {
         fresh: createMode,
-        placeFallback: place,
+        placeFallback: { ...place, centerName: liveCenterName },
       });
-      // Guarantee City/Area show even if a later merge left them blank.
+      // Always take City/Area + name from the selected centre.
       setForm((prev) => setSection(prev, 'center', {
-        city: String(prev?.center?.city || '').trim() || place.city,
-        locality: String(prev?.center?.locality || '').trim() || place.locality,
-        centerName: String(prev?.center?.centerName || '').trim() || place.centerName,
+        city: place.city || '',
+        locality: place.locality || '',
+        centerName: liveCenterName,
       }));
-      setResolvedCenterName(place.centerName || meta?.centerName || '');
+      setResolvedCenterName(liveCenterName);
       if (place.city || place.locality) clearFieldError('place');
       setMessage(
         place.city || place.locality
@@ -384,22 +467,19 @@ export default function CoachPortfolioForm({
     }
   };
 
-  // Must be a render helper (not an inner component) so City/Area inputs keep focus while typing.
+  // Called only after user taps Confirm on the map (not on GPS auto-open).
   const onPlaceMapResolved = (place) => {
     if (!canEdit || !place) return;
     const city = String(place.city || '').trim();
     const locality = String(place.locality || '').trim();
     setForm((prev) => setSection(prev, 'center', {
-      city: city || String(prev.center?.city || '').trim(),
-      locality: locality || String(prev.center?.locality || '').trim(),
+      city,
+      locality,
       mapsLink: place.mapsLink || prev.center?.mapsLink || '',
-      address: [locality, city].filter(Boolean).join(', ') || prev.center?.address || '',
+      address: [locality, city].filter(Boolean).join(', '),
     }));
-    if (city || locality) {
-      setPlaceFromMap(true);
-      setPlaceMapOpen(false);
-      clearFieldError('place');
-    }
+    setPlaceMapOpen(false);
+    if (city || locality) clearFieldError('place');
   };
 
   const placeSummary = [form.center.locality, form.center.city].filter(Boolean).join(', ');
@@ -453,9 +533,6 @@ export default function CoachPortfolioForm({
           <>
             <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-800">Place</p>
             <p className="mt-0.5 text-sm font-semibold text-slate-900">{placeSummary}</p>
-            {placeFromMap ? (
-              <p className="mt-1 text-[11px] font-medium text-emerald-700">From map</p>
-            ) : null}
             {hasLinkedCenter ? (
               <p className="mt-1 text-[11px] text-slate-500">From linked centre</p>
             ) : null}
@@ -495,7 +572,7 @@ export default function CoachPortfolioForm({
     setStepIndex((i) => Math.min(i, Math.max(0, steps.length - 1)));
   }, [steps.length]);
 
-  // Create website: default first available center; else open map at GPS.
+  // Create website: stay freestyle (No center) until the coach picks a centre; open map for GPS.
   useEffect(() => {
     if (loading || !createMode || defaultCenterAppliedRef.current) return;
     if (centerId != null && String(centerId).trim() !== '') {
@@ -506,28 +583,29 @@ export default function CoachPortfolioForm({
       defaultCenterAppliedRef.current = true;
       return;
     }
-    if (selectableCenters.length > 0) {
-      defaultCenterAppliedRef.current = true;
-      const firstId = selectableCenters[0]?.centerId;
-      if (firstId != null) {
-        onCenterChange(String(firstId));
-      }
-      return;
-    }
     defaultCenterAppliedRef.current = true;
+    setResolvedCenterId(null);
+    setResolvedCenterName('');
+    setHasClub(false);
     setPlaceMapOpen(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot default after load
-  }, [loading, createMode, centerId, resolvedCenterId, selectableCenters]);
+  }, [loading, createMode, centerId, resolvedCenterId]);
 
   // Keep websiteDisplayName locked to Coach profile name for slug / uniqueness (not shown in UI).
   useEffect(() => {
     if (loading) return;
-    setForm((prev) => withProfileWebsiteName(prev));
+    setForm((prev) => prepareFormForApi(prev));
   }, [form.personal.fullName, loading]);
 
   useEffect(() => {
     const name = String(form.personal.fullName || form.mediaBrand.websiteDisplayName || '').trim();
+    const city = String(form.center.city || '').trim();
+    const locality = String(form.center.locality || '').trim();
     if (!name || loading) {
+      setDisplayNameStatus('');
+      return undefined;
+    }
+    if (!city || !locality) {
       setDisplayNameStatus('');
       return undefined;
     }
@@ -539,6 +617,9 @@ export default function CoachPortfolioForm({
           userId,
           name,
           centerId: resolvedCenterId,
+          submissionId: resolvedSubmissionId,
+          city,
+          locality,
         });
         if (cancelled) return;
         setDisplayNameStatus(result?.available === true ? 'available' : 'taken');
@@ -550,7 +631,16 @@ export default function CoachPortfolioForm({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [form.personal.fullName, form.mediaBrand.websiteDisplayName, userId, resolvedCenterId, loading]);
+  }, [
+    form.personal.fullName,
+    form.mediaBrand.websiteDisplayName,
+    form.center.city,
+    form.center.locality,
+    userId,
+    resolvedCenterId,
+    resolvedSubmissionId,
+    loading,
+  ]);
 
   const saveDraft = async () => {
     if (!String(form.center.city || '').trim() || !String(form.center.locality || '').trim()) {
@@ -559,19 +649,23 @@ export default function CoachPortfolioForm({
       return;
     }
     if (displayNameStatus === 'taken') {
-      setMessage('Your Coach profile name is already used on another website in this City & Area — change City/Area or contact support');
+      flashMessage(
+        'This coach name is already used for a website in this City & Area — choose another place',
+        { error: true },
+      );
       return;
     }
     setBusy(true);
-    setMessage('');
+    flashMessage('');
     try {
-      const formToSave = withProfileWebsiteName(form);
+      const formToSave = prepareFormForApi(form);
       setForm(formToSave);
       const data = await savePortfolioDraft({
         userId,
         centerId: resolvedCenterId,
         form: formToSave,
         createNew: createMode && resolvedCenterId == null,
+        submissionId: resolvedSubmissionId,
       });
       setSubmissionStatus(data?.status || submissionStatus || 'draft');
       setPublicPath(data?.publicPath || publicPath);
@@ -581,6 +675,7 @@ export default function CoachPortfolioForm({
         || data?.isPublished === true,
       );
       if (data?.centerId != null) setResolvedCenterId(data.centerId);
+      if (data?.id != null) setResolvedSubmissionId(data.id);
       setMessage(
         data?.isPublished
           ? 'Draft saved — live page unchanged until you Publish changes (coach OTP)'
@@ -602,31 +697,6 @@ export default function CoachPortfolioForm({
         missing.push('place');
         if (freestylePlace) setPlaceMapOpen(true);
       }
-      if (!String(form.personal.professionalTitle || '').trim()) missing.push('professionalTitle');
-      if (
-        includesOther(form.personal.professionalTitle)
-        && !String(form.personal.professionalTitleOther || '').trim()
-      ) {
-        missing.push('professionalTitleOther');
-      }
-      if (missing.length) {
-        showFieldErrors(missing);
-        setMessage('');
-        return;
-      }
-    }
-    if (step.id === 'about') {
-      const missing = [];
-      if (!String(form.personal.yearsExperience || '').trim()) missing.push('yearsExperience');
-      if (!String(form.personal.background || '').trim()) missing.push('background');
-      if (!Array.isArray(form.personal.languages) || form.personal.languages.length === 0) {
-        missing.push('languages');
-      } else if (
-        includesOther(form.personal.languages)
-        && !String(form.personal.languagesOther || '').trim()
-      ) {
-        missing.push('languagesOther');
-      }
       if (missing.length) {
         showFieldErrors(missing);
         setMessage('');
@@ -643,18 +713,20 @@ export default function CoachPortfolioForm({
       setPlaceMapOpen(true);
       throw new Error('Enter City and Area before publishing — pick on map or type both');
     }
-    const formToSave = withProfileWebsiteName(form);
+    const formToSave = prepareFormForApi(form);
     setForm(formToSave);
     const data = await requestPortfolioPublishOtp({
       userId,
       centerId: resolvedCenterId,
       form: formToSave,
       createNew: createMode && resolvedCenterId == null,
+      submissionId: resolvedSubmissionId,
     });
     setSubmissionStatus(data?.status || 'approved');
     setMaskedEmail(data?.maskedEmail || '');
     setCoachName(data?.coachName || '');
     setOtpKey(data?.otpKey ?? data?.centerId ?? data?.id ?? null);
+    if (data?.id != null) setResolvedSubmissionId(data.id);
     // Prefer the City/Area the user typed — never fall back to another site's old path.
     const formPath = buildPublicPathPreview({
       websiteDisplayName: formToSave.mediaBrand?.websiteDisplayName,
@@ -682,33 +754,32 @@ export default function CoachPortfolioForm({
 
   const onSubmit = async () => {
     if (!String(form.center.city || '').trim() || !String(form.center.locality || '').trim()) {
-      setMessage('Enter City and Area before publishing — pick on map or type both');
+      flashMessage('Enter City and Area before publishing — pick on map or type both', { error: true });
       setPlaceMapOpen(true);
       return;
     }
     if (displayNameStatus === 'taken') {
-      setMessage('Your Coach profile name is already used on another website in this City & Area — change City/Area or contact support');
+      flashMessage(
+        'This coach name is already used for a website in this City & Area — choose another place',
+        { error: true },
+      );
       return;
     }
     const aboutErrors = validateAboutForm(form);
     if (aboutErrors.length) {
-      setMessage(aboutErrors[0]);
+      flashMessage(aboutErrors[0], { error: true });
       return;
     }
     if (!form.goalsConsent.accuracyConfirmed) {
-      setMessage('Confirm that the information is accurate');
-      return;
-    }
-    if (String(form.goalsConsent.publishAuthorized || '') !== 'yes') {
-      setMessage('Authorize publishing your photos and content');
+      flashMessage('Confirm that the information is accurate', { error: true });
       return;
     }
     setBusy(true);
-    setMessage('');
+    flashMessage('');
     try {
       await sendPublishOtp();
     } catch (err) {
-      setMessage(err?.message || 'Could not send publish OTP');
+      flashMessage(err?.message || 'Could not send publish OTP', { error: true });
     } finally {
       setBusy(false);
     }
@@ -748,7 +819,7 @@ export default function CoachPortfolioForm({
   };
 
   return (
-    <div className={`fixed inset-0 z-50 flex flex-col ${step.id === 'review' ? 'bg-[#f3efe4]' : 'bg-[#eef3ef]'}`}>
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#f4efe6]">
       <header className="relative z-30 shrink-0 border-b border-slate-200/70 bg-white/95 backdrop-blur-md safe-top">
         <div className="mx-auto max-w-lg px-4 py-3">
           <div className="flex items-center gap-3">
@@ -776,6 +847,18 @@ export default function CoachPortfolioForm({
           step.id === 'review' ? 'pb-40' : 'pb-32'
         }`}
       >
+        {message && messageIsError ? (
+          <p
+            ref={messageRef}
+            tabIndex={-1}
+            className="sticky top-0 z-20 rounded-2xl border border-rose-300 bg-rose-50 px-3.5 py-3 text-sm font-semibold text-rose-700 outline-none shadow-sm ring-2 ring-rose-200"
+            role="alert"
+            aria-live="assertive"
+          >
+            {message}
+          </p>
+        ) : null}
+
         {loading ? <p className="text-sm text-slate-500">Loading your form…</p> : null}
 
         {!loading && adminNote ? (
@@ -790,156 +873,9 @@ export default function CoachPortfolioForm({
             {renderPlaceFields('City & area')}
             {displayNameStatus === 'taken' ? (
               <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-medium text-rose-700">
-                Coach profile name is already used in this City & Area — pick another place or contact support
+                This coach name already has a website in this City & Area — choose another place
               </p>
             ) : null}
-            <div ref={setFieldRef('professionalTitle')}>
-              <FieldLabel required hint="Shown as “Meet Your …” on About">
-                Professional Title
-              </FieldLabel>
-              <SelectInput
-                options={PROFESSIONAL_TITLES}
-                value={form.personal.professionalTitle}
-                error={Boolean(fieldErrors.professionalTitle)}
-                onChange={(v) => {
-                  if (!canEdit) return;
-                  clearFieldError('professionalTitle');
-                  setForm(setSection(form, 'personal', { professionalTitle: v }));
-                }}
-              />
-              {fieldErrors.professionalTitle ? (
-                <p className="mt-1 text-[11px] font-medium text-rose-600">Required</p>
-              ) : null}
-            </div>
-            {includesOther(form.personal.professionalTitle) ? (
-              <div ref={setFieldRef('professionalTitleOther')}>
-                <FieldLabel required>Please specify title</FieldLabel>
-                <TextInput
-                  value={form.personal.professionalTitleOther}
-                  error={Boolean(fieldErrors.professionalTitleOther)}
-                  onChange={(v) => {
-                    if (!canEdit) return;
-                    clearFieldError('professionalTitleOther');
-                    setForm(setSection(form, 'personal', { professionalTitleOther: v }));
-                  }}
-                  placeholder="Type your professional title"
-                />
-                {fieldErrors.professionalTitleOther ? (
-                  <p className="mt-1 text-[11px] font-medium text-rose-600">Required</p>
-                ) : null}
-              </div>
-            ) : null}
-            <div>
-              <FieldLabel hint="Shown on your public website footer">Instagram</FieldLabel>
-              <TextInput
-                value={form.mediaBrand.social?.instagram || ''}
-                onChange={(v) => canEdit && setForm(setSocialLink(form, 'instagram', v))}
-                placeholder="https://instagram.com/your-handle"
-              />
-            </div>
-            <div>
-              <FieldLabel hint="Shown on your public website footer">YouTube</FieldLabel>
-              <TextInput
-                value={form.mediaBrand.social?.youtube || ''}
-                onChange={(v) => canEdit && setForm(setSocialLink(form, 'youtube', v))}
-                placeholder="https://youtube.com/@your-channel"
-              />
-            </div>
-            <div>
-              <FieldLabel hint="Shown on your public website footer">LinkedIn</FieldLabel>
-              <TextInput
-                value={form.mediaBrand.social?.linkedin || ''}
-                onChange={(v) => canEdit && setForm(setSocialLink(form, 'linkedin', v))}
-                placeholder="https://linkedin.com/in/your-profile"
-              />
-            </div>
-          </FormCard>
-        ) : null}
-
-        {!loading && step.id === 'about' ? (
-          <FormCard title="About">
-            <div ref={setFieldRef('yearsExperience')}>
-              <FieldLabel required hint="Shown exactly as typed under About (example: 8+ years of coaching)">
-                Years of experience
-              </FieldLabel>
-              <TextInput
-                value={form.personal.yearsExperience}
-                error={Boolean(fieldErrors.yearsExperience)}
-                onChange={(v) => {
-                  if (!canEdit) return;
-                  clearFieldError('yearsExperience');
-                  setForm(setSection(form, 'personal', { yearsExperience: v }));
-                }}
-                placeholder="8+ years of coaching"
-              />
-              {fieldErrors.yearsExperience ? (
-                <p className="mt-1 text-[11px] font-medium text-rose-600">Required</p>
-              ) : null}
-            </div>
-            <div ref={setFieldRef('background')}>
-              <FieldLabel required hint="Shown on your public About section">
-                Who are you as a Wellness Professional
-              </FieldLabel>
-              <TextArea
-                value={form.personal.background}
-                error={Boolean(fieldErrors.background)}
-                onChange={(v) => {
-                  if (!canEdit) return;
-                  clearFieldError('background');
-                  setForm(setSection(form, 'personal', { background: v }));
-                }}
-                placeholder="Your story as a wellness professional — how you help people"
-                rows={4}
-              />
-              {fieldErrors.background ? (
-                <p className="mt-1 text-[11px] font-medium text-rose-600">Required</p>
-              ) : null}
-            </div>
-            <div>
-              <FieldLabel hint="Checklist line under About">
-                Qualifications
-              </FieldLabel>
-              <TextInput
-                value={form.personal.qualifications}
-                onChange={(v) => canEdit && setForm(setSection(form, 'personal', { qualifications: v }))}
-                placeholder="Certified nutrition coach · Habit coaching"
-              />
-            </div>
-            <div ref={setFieldRef('languages')}>
-              <FieldLabel required>Languages</FieldLabel>
-              <MultiCheck
-                options={LANGUAGES}
-                value={form.personal.languages}
-                error={Boolean(fieldErrors.languages)}
-                onChange={(v) => {
-                  if (!canEdit) return;
-                  clearFieldError('languages');
-                  setForm(setSection(form, 'personal', { languages: v }));
-                }}
-                disabled={!canEdit}
-              />
-              {fieldErrors.languages ? (
-                <p className="mt-1 text-[11px] font-medium text-rose-600">Required</p>
-              ) : null}
-              {includesOther(form.personal.languages) ? (
-                <div className="mt-2" ref={setFieldRef('languagesOther')}>
-                  <FieldLabel required>Other language</FieldLabel>
-                  <TextInput
-                    value={form.personal.languagesOther}
-                    error={Boolean(fieldErrors.languagesOther)}
-                    onChange={(v) => {
-                      if (!canEdit) return;
-                      clearFieldError('languagesOther');
-                      setForm(setSection(form, 'personal', { languagesOther: v }));
-                    }}
-                    placeholder="Type language"
-                  />
-                  {fieldErrors.languagesOther ? (
-                    <p className="mt-1 text-[11px] font-medium text-rose-600">Required</p>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
           </FormCard>
         ) : null}
 
@@ -1014,17 +950,22 @@ export default function CoachPortfolioForm({
             onOpenLivePage={(e) => openPublicCoachUrl(publicPath, e)}
             onAccuracyChange={(checked) => {
               if (!canEdit) return;
-              setForm(setSection(form, 'goalsConsent', { accuracyConfirmed: checked }));
-            }}
-            onAuthorizeChange={(v) => {
-              if (!canEdit) return;
-              setForm(setSection(form, 'goalsConsent', { publishAuthorized: v }));
+              // Accuracy confirm also authorizes publication (Yes/No UI removed).
+              setForm(setSection(form, 'goalsConsent', {
+                accuracyConfirmed: checked,
+                publishAuthorized: checked ? 'yes' : '',
+              }));
             }}
           />
         ) : null}
 
-        {message ? (
-          <p className="rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700" role="status">
+        {message && !messageIsError ? (
+          <p
+            ref={messageRef}
+            className="rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700"
+            role="status"
+            aria-live="polite"
+          >
             {message}
           </p>
         ) : null}
