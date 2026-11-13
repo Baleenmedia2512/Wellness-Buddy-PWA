@@ -2,7 +2,7 @@
  * Admin Config — who must fill each profile field, and on what schedule.
  */
 import React, { useEffect, useState } from 'react';
-import { Loader2, Save } from 'lucide-react';
+import { CheckCircle2, Loader2, Save } from 'lucide-react';
 import { getUserId } from '../../../shared/services/userIdentity';
 import { EVENT_LEVEL_OPTIONS } from '../../user/domain/eventProfilePrefs';
 import {
@@ -95,7 +95,8 @@ export default function FieldCollectionSetup({ user, apiBaseUrl }) {
   return (
     <div className="mx-auto max-w-lg px-4 py-4 space-y-3 pb-24">
       <p className="text-xs text-gray-600 leading-relaxed">
-Manage field access, reminders, and skip limits for members and coaches
+        Introduce a field without mandating it. Choose Not required yet until you are ready.
+        Required while entering and Ask later are the mandate. Ask later is where you set days, skips, and must-fill.
       </p>
       {fields.map((field) => {
         const selection = positionsToSelection(field.positions);
@@ -133,9 +134,17 @@ Manage field access, reminders, and skip limits for members and coaches
                   }}
                   className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-2 text-sm text-gray-800"
                 >
-                  <option value="entry">While entering</option>
-                  <option value="scheduled">Ask later</option>
+                  <option value="profile">Not required yet</option>
+                  <option value="entry">Required while entering</option>
+                  <option value="scheduled">Ask later — mandate</option>
                 </select>
+                <p className="mt-1 text-[10px] font-normal leading-snug text-gray-400">
+                  {field.phase === 'profile'
+                    ? 'On the profile only. Members are not stopped. Switch this when you are ready to mandate it.'
+                    : field.phase === 'entry'
+                      ? 'Mandated now. The member cannot continue until this is filled.'
+                      : 'Mandate on a schedule. Set how often it is asked, how many skips, and the day it must be filled.'}
+                </p>
               </label>
             </div>
             {field.phase === 'scheduled' && (
@@ -204,7 +213,6 @@ Manage field access, reminders, and skip limits for members and coaches
         );
       })}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      {saved ? <p className="text-sm text-emerald-700">Saved.</p> : null}
       <button
         type="button"
         onClick={handleSave}
@@ -214,6 +222,31 @@ Manage field access, reminders, and skip limits for members and coaches
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
         Save field rules
       </button>
+      {saved && (
+        <div
+          className="fixed inset-0 z-[10080] flex items-center justify-center bg-black/50 px-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="field-rules-saved-title"
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+            <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" />
+            <h2 id="field-rules-saved-title" className="mt-3 text-lg font-bold text-gray-900">
+              Field rules saved
+            </h2>
+            <p className="mt-1 text-sm text-gray-600">
+              The field rules are saved and will apply the next time a member opens the app.
+            </p>
+            <button
+              type="button"
+              onClick={() => setSaved(false)}
+              className="mt-5 w-full rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

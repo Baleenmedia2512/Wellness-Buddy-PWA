@@ -3,10 +3,13 @@
  */
 import React, { useState } from 'react';
 import { saveProfile } from '../../user/services/profileService';
+import { saveWeight } from '../../weight/services/weight.api';
 import DiseaseMultiSelect from '../../testimonials/components/DiseaseMultiSelect';
 import { EVENT_LEVEL_OPTIONS } from '../../user/domain/eventProfilePrefs';
 import { recordFieldCollectionAction } from '../services/fieldCollection.api';
 import { deferFieldForSession } from '../domain/sessionDefer';
+import ProfileIntroFields from '../../user/components/profile/ProfileIntroFields';
+import { PROFILE_INTRO_KEYS, introPayload, validateProfileIntro } from '../../user/domain/profileIntro';
 
 const inputCls = 'w-full px-3 py-3 border-2 border-gray-200 rounded-xl text-base focus:outline-none focus:border-green-400';
 
@@ -20,6 +23,7 @@ function accountIds(user) {
 export default function FieldCollectionPrompt({ user, prompt, apiBaseUrl, onDone }) {
   const [value, setValue] = useState('');
   const [issues, setIssues] = useState([]);
+  const [languages, setLanguages] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const blocking = prompt?.mode === 'ask_blocking';
@@ -35,7 +39,14 @@ export default function FieldCollectionPrompt({ user, prompt, apiBaseUrl, onDone
         setError('Enter weight from 20 to 300 kg.');
         return false;
       }
-      payload.currentWeight = n;
+      if (!userId) {
+        setError('Sign in again, then save this weight.');
+        return false;
+      }
+      const result = await saveWeight({ userId, weightValue: n, unit: 'kg' });
+      if (!result.ok || result.data?.success === false) {
+        throw new Error(result.data?.message || 'Could not save weight.');
+      }
     } else if (prompt.key === 'fatPercent') {
       const n = parseFloat(value);
       if (!(n >= 1 && n <= 70)) {
@@ -63,15 +74,39 @@ export default function FieldCollectionPrompt({ user, prompt, apiBaseUrl, onDone
       payload.recoveredHealthIssues = issues;
     } else if (prompt.key === 'communityPosition') {
       if (!EVENT_LEVEL_OPTIONS.includes(value)) {
-        setError('Choose your community position.');
+        setError('Choose a community position.');
         return false;
       }
       payload.eventLevel = value;
+    } else if (PROFILE_INTRO_KEYS.includes(prompt.key)) {
+      const introValues = {
+        professionalTitle: value,
+        instagram: value,
+        youtube: value,
+        linkedin: value,
+        herbalifeJoinedOn: value,
+        aboutMe: value,
+        qualification: value,
+        languages,
+      };
+      const message = validateProfileIntro(introValues, [prompt.key]);
+      if (message) {
+        setError(message);
+        return false;
+      }
+      const filled = prompt.key === 'languages'
+        ? languages.length > 0
+        : String(value || '').trim() !== '';
+      if (!filled) {
+        setError('Fill this to continue.');
+        return false;
+      }
+      Object.assign(payload, introPayload(introValues, [prompt.key]));
     } else {
       setError('This field cannot be saved here.');
       return false;
     }
-    await saveProfile(payload);
+    if (prompt.key !== 'currentWeight') await saveProfile(payload);
     await recordFieldCollectionAction({
       userId,
       fieldKey: prompt.key,
@@ -147,6 +182,25 @@ export default function FieldCollectionPrompt({ user, prompt, apiBaseUrl, onDone
             </div>
           ) : prompt.key === 'healthIssues' ? (
             <DiseaseMultiSelect value={issues} onChange={setIssues} />
+          ) : PROFILE_INTRO_KEYS.includes(prompt.key) ? (
+            <ProfileIntroFields
+              values={{
+                professionalTitle: value,
+                instagram: value,
+                youtube: value,
+                linkedin: value,
+                herbalifeJoinedOn: value,
+                aboutMe: value,
+                qualification: value,
+                languages,
+              }}
+              keys={[prompt.key]}
+              onChange={(key, next) => {
+                if (key === 'languages') setLanguages(next);
+                else setValue(next);
+                setError('');
+              }}
+            />
           ) : (
             <label className="block text-sm font-semibold text-gray-700">
               {prompt.label} ({unit}) <span className="text-red-500">*</span>

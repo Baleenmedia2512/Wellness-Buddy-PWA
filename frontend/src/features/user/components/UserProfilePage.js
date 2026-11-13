@@ -34,6 +34,7 @@ import CommunityIdField from './profile/CommunityIdField';
 import CommunityPositionField from './profile/CommunityPositionField';
 import WorkingPhysicalCentreField from './profile/WorkingPhysicalCentreField';
 import EventProfilePrefsFields from './profile/EventProfilePrefsFields';
+import ProfileIntroFields from './profile/ProfileIntroFields';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
@@ -194,6 +195,14 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         eventTranslation: data?.eventTranslation || '',
         eventYourCity: data?.eventYourCity || '',
         eventLevel: data?.eventLevel || '',
+        professionalTitle: data?.professionalTitle || '',
+        instagram: data?.instagram || '',
+        youtube: data?.youtube || '',
+        linkedin: data?.linkedin || '',
+        herbalifeJoinedOn: data?.herbalifeJoinedOn || '',
+        aboutMe: data?.aboutMe || '',
+        qualification: data?.qualification || '',
+        languages: Array.isArray(data?.languages) ? data.languages : [],
         bodyMetrics: data?.bodyMetrics || null,
         recoveredHealthIssues: Array.isArray(data?.recoveredHealthIssues)
           ? data.recoveredHealthIssues
@@ -346,7 +355,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     setSuccessMessage('');
     setIsSaving(true);
     try {
-      const err = form.validate({ requireDiet: false, maxHeight: 198 });
+      const err = form.validate({ requireDiet: false, requireFat: false, maxHeight: 198 });
       if (err) { setError(err); return; }
       // Only send a verified account email — unverified addresses use Profile KYC OTP.
       const emailForSave = accountEmail || undefined;
@@ -648,10 +657,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     }
   }, [profileImagePreview, accountEmail, user, form.name, onProfileUpdate]);
 
-  const saveDisabled = isSaving || !form.nameValid ||
-    !form.height || form.height.trim() === '' ||
-    !form.phone || form.phone.trim() === '' ||
-    !form.fatPercentValid;
+  const photosDirty = transformationPhotos.hasPendingUploads();
+  const saveDisabled = isSaving || (!form.isDirty && !photosDirty);
 
   const derivedWeightGoalMode = useMemo(
     () => deriveWeightGoalMode({ heightCm: form.height, currentWeightKg: latestWeight }),
@@ -661,6 +668,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   useEffect(() => {
     if (derivedWeightGoalMode) form.setWeightGoalMode(derivedWeightGoalMode);
   }, [derivedWeightGoalMode, form.setWeightGoalMode]);
+
+  useEffect(() => {
+    if (form.isDirty || transformationPhotos.hasPendingUploads()) setHasSaved(false);
+  }, [form.isDirty, transformationPhotos]);
 
   const displayWeightGoalMode = derivedWeightGoalMode || form.weightGoalMode || 'loss';
   const displayName = (() => {
@@ -926,6 +937,19 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   setEventTranslation={form.setEventTranslation}
                   eventYourCity={form.eventYourCity}
                   setEventYourCity={form.setEventYourCity}
+                />
+                <ProfileIntroFields
+                  values={{
+                    professionalTitle: form.professionalTitle,
+                    instagram: form.instagram,
+                    youtube: form.youtube,
+                    linkedin: form.linkedin,
+                    herbalifeJoinedOn: form.herbalifeJoinedOn,
+                    aboutMe: form.aboutMe,
+                    qualification: form.qualification,
+                    languages: form.languages,
+                  }}
+                  onChange={form.setIntroField}
                 />
                 <IdealWeightCards
                   height={form.height}
