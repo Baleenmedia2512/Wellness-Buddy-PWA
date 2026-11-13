@@ -7,7 +7,7 @@ App feature: **Google Maps Listing** (flag `ff.gbp-listing`). Coaches submit a r
 1. Migration: `backend/migrations/create_gbp_listing_requests_table.sql` (or auto `ensureSchema` on first API hit).
 2. MilesWeb FTP configured (same as coach-portfolio media). Ensure cPanel folder `uploads/gbp-requests/` exists (or FTP create-on-write works).
 3. Env: `GBP_LISTING_OPS_EMAIL=ops@example.com` (comma-separated OK) so submit sends mail.
-4. Frontend + backend deploy with `ff.gbp-listing` on (default ON).
+4. Frontend + backend deploy with `ff.gbp-listing` on (default is OFF — turn ON when Maps listing QA starts).
 
 ## Coach path
 

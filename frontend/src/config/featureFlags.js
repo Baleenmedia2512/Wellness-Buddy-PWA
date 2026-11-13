@@ -260,8 +260,8 @@ const REGISTRY = Object.freeze({
   'ff.gbp-listing': {
     envKey:         'REACT_APP_FF_GBP_LISTING',
     storageKey:     'ff.gbp-listing',
-    defaultEnabled: true,
-    description:    'Google Maps Listing request form + ops queue.',
+    defaultEnabled: false,
+    description:    'Google Maps Listing request form + ops queue. Off for Digital Portfolio APK review.',
   },
 
   // Reports detail trial. Kill switch shows the full report again.
