@@ -8,6 +8,7 @@ import { nowUtc, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared
 import { buildCardPatchFromProfile } from '../body-parameters-card/domain/sync.rules.js';
 import { findLatestCardForProfileSync } from '../body-parameters-card/data/card.repo.js';
 import { buildAdoptProfileMetricsPatch } from './domain/onboardingEmail.rules.js';
+import { herbalifeDateToSql, sqlDateToHerbalife } from './domain/profileIntro.rules.js';
 import logger from '../../shared/lib/logger.js';
 
 const TEAM = 'team_table';
@@ -733,6 +734,91 @@ export async function setEventProfilePreferences(userId, prefs = {}) {
     if (/EventTranslation|EventYourCity|EventLevel|Unknown column|1054|column|Update payload is empty/i.test(msg)) {
       return false;
     }
+    throw err;
+  }
+}
+
+const INTRO_COLUMNS = 'ProfessionalTitle, InstagramUrl, YoutubeUrl, LinkedinUrl, HerbalifeJoinedOn, AboutMe, Qualification, Languages';
+
+function parseLanguageCodes(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item));
+  if (value == null || value === '') return [];
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.map((item) => String(item)) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+export async function getProfileIntro(userId) {
+  const empty = {
+    professionalTitle: '',
+    instagram: '',
+    youtube: '',
+    linkedin: '',
+    herbalifeJoinedOn: '',
+    aboutMe: '',
+    qualification: '',
+    languages: [],
+  };
+  try {
+    const prisma = getPrisma();
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT ${INTRO_COLUMNS} FROM team_table WHERE UserId = ? LIMIT 1`,
+      Number(userId),
+    );
+    const row = rows?.[0];
+    if (!row) return empty;
+    return {
+      professionalTitle: row.ProfessionalTitle ? String(row.ProfessionalTitle) : '',
+      instagram: row.InstagramUrl ? String(row.InstagramUrl) : '',
+      youtube: row.YoutubeUrl ? String(row.YoutubeUrl) : '',
+      linkedin: row.LinkedinUrl ? String(row.LinkedinUrl) : '',
+      herbalifeJoinedOn: sqlDateToHerbalife(row.HerbalifeJoinedOn),
+      aboutMe: row.AboutMe ? String(row.AboutMe) : '',
+      qualification: row.Qualification ? String(row.Qualification) : '',
+      languages: parseLanguageCodes(row.Languages),
+    };
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/ProfessionalTitle|InstagramUrl|Unknown column|1054|column/i.test(msg)) return empty;
+    throw err;
+  }
+}
+
+export async function setProfileIntro(userId, intro = {}) {
+  const sets = [];
+  const values = [];
+  const assign = (column, value) => {
+    sets.push(`${column} = ?`);
+    values.push(value);
+  };
+  if (intro.professionalTitle !== undefined) assign('ProfessionalTitle', intro.professionalTitle || null);
+  if (intro.instagram !== undefined) assign('InstagramUrl', intro.instagram || null);
+  if (intro.youtube !== undefined) assign('YoutubeUrl', intro.youtube || null);
+  if (intro.linkedin !== undefined) assign('LinkedinUrl', intro.linkedin || null);
+  if (intro.herbalifeJoinedOn !== undefined) {
+    assign('HerbalifeJoinedOn', herbalifeDateToSql(intro.herbalifeJoinedOn));
+  }
+  if (intro.aboutMe !== undefined) assign('AboutMe', intro.aboutMe || null);
+  if (intro.qualification !== undefined) assign('Qualification', intro.qualification || null);
+  if (intro.languages !== undefined) assign('Languages', JSON.stringify(intro.languages || []));
+  if (sets.length === 0) return true;
+  try {
+    const prisma = getPrisma();
+    await prisma.$executeRawUnsafe(
+      `UPDATE team_table SET ${sets.join(', ')} WHERE UserId = ?`,
+      ...values,
+      Number(userId),
+    );
+    return true;
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/ProfessionalTitle|InstagramUrl|Unknown column|1054|column/i.test(msg)) return false;
     throw err;
   }
 }

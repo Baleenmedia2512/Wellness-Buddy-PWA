@@ -8,6 +8,7 @@ import WorkingPhysicalCentreField from './WorkingPhysicalCentreField';
 import { COMMUNITY_POSITION_OTP_FLAG } from '../../domain/communityPosition';
 import { isFlagEnabled } from '../../../../config/featureFlags';
 import EventProfilePrefsFields from './EventProfilePrefsFields';
+import ProfileIntroFields from './ProfileIntroFields';
 import UserProfileBodyMetrics from './UserProfileBodyMetrics';
 import IdealWeightCards from './IdealWeightCards';
 import DietDropdown from './DietDropdown';
@@ -97,6 +98,19 @@ const UserProfileBody = ({
           setEventTranslation={form.setEventTranslation}
           eventYourCity={form.eventYourCity}
           setEventYourCity={form.setEventYourCity}
+        />
+        <ProfileIntroFields
+          values={{
+            professionalTitle: form.professionalTitle,
+            instagram: form.instagram,
+            youtube: form.youtube,
+            linkedin: form.linkedin,
+            herbalifeJoinedOn: form.herbalifeJoinedOn,
+            aboutMe: form.aboutMe,
+            qualification: form.qualification,
+            languages: form.languages,
+          }}
+          onChange={form.setIntroField}
         />
         <IdealWeightCards
           height={form.height}

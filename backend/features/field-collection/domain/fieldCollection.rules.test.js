@@ -324,4 +324,32 @@ describe('planCollectionStep', () => {
     assert.equal(plan.scheduled.key, 'fatPercent');
     assert.equal(plan.scheduled.mode, 'ask_blocking');
   });
+
+  it('keeps profile introduction fields off the gate until an admin asks for them', () => {
+    const title = defaultFieldPolicy().find((field) => field.key === 'professionalTitle');
+    assert.equal(title.phase, 'profile');
+    const plan = planCollectionStep({
+      fields: defaultFieldPolicy(),
+      values: filledEntry,
+      states: settledStates(),
+      role: 'member',
+      now: NOW,
+    });
+    assert.equal(plan.step, 'done');
+  });
+
+  it('asks profile introduction fields while entering when the admin sets that', () => {
+    const fields = defaultFieldPolicy().map((field) => (
+      field.key === 'professionalTitle' ? { ...field, phase: 'entry' } : field
+    ));
+    const plan = planCollectionStep({
+      fields,
+      values: filledEntry,
+      states: settledStates(),
+      role: 'member',
+      now: NOW,
+    });
+    assert.equal(plan.step, 'profileIntro');
+    assert.deepEqual(plan.profileFields, ['professionalTitle']);
+  });
 });

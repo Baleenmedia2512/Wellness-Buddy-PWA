@@ -51,6 +51,14 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           eventTranslation: data.eventTranslation || '',
           eventYourCity: data.eventYourCity || '',
           eventLevel: data.eventLevel || '',
+          professionalTitle: data.professionalTitle || '',
+          instagram: data.instagram || '',
+          youtube: data.youtube || '',
+          linkedin: data.linkedin || '',
+          herbalifeJoinedOn: data.herbalifeJoinedOn || '',
+          aboutMe: data.aboutMe || '',
+          qualification: data.qualification || '',
+          languages: Array.isArray(data.languages) ? data.languages : [],
           bodyMetrics: data.bodyMetrics || null,
         });
         setCommunityPositionRequest(data.communityPositionRequest || null);
@@ -98,7 +106,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   const handleSave = useCallback(async () => {
     setError(''); setSuccessMessage(''); setIsSaving(true);
     try {
-      const err = form.validate({ requireDiet: false, maxHeight: 198 });
+      const err = form.validate({ requireDiet: false, requireFat: false, maxHeight: 198 });
       if (err) { setError(err); return; }
       const data = await saveProfile(form.payload(user.email, {}));
       onProfileUpdate?.({
@@ -122,9 +130,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
 
   if (!isOpen) return null;
 
-  const saveDisabled = isSaving || !form.nameValid ||
-    !form.height || form.height.trim() === '' || !form.phone || form.phone.trim() === '' ||
-    !form.fatPercentValid;
+  const saveDisabled = isSaving || !form.isDirty;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">

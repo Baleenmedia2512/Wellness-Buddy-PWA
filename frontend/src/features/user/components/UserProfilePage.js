@@ -34,6 +34,7 @@ import CommunityIdField from './profile/CommunityIdField';
 import CommunityPositionField from './profile/CommunityPositionField';
 import WorkingPhysicalCentreField from './profile/WorkingPhysicalCentreField';
 import EventProfilePrefsFields from './profile/EventProfilePrefsFields';
+import ProfileIntroFields from './profile/ProfileIntroFields';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
@@ -60,7 +61,6 @@ import { looksLikeEmail } from '../domain/onboardingEmail';
 import GoPremiumButton from '../../payments/components/GoPremiumButton';
 import { PremiumAvatarRing, PremiumCrownMark } from '../../payments/components/PremiumBadge';
 import usePremiumStatus from '../../payments/hooks/usePremiumStatus';
-import { WalletButton } from '../../wallet';
 import { AdminGbpListingButton } from '../../gbp-listing';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
@@ -195,6 +195,14 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         eventTranslation: data?.eventTranslation || '',
         eventYourCity: data?.eventYourCity || '',
         eventLevel: data?.eventLevel || '',
+        professionalTitle: data?.professionalTitle || '',
+        instagram: data?.instagram || '',
+        youtube: data?.youtube || '',
+        linkedin: data?.linkedin || '',
+        herbalifeJoinedOn: data?.herbalifeJoinedOn || '',
+        aboutMe: data?.aboutMe || '',
+        qualification: data?.qualification || '',
+        languages: Array.isArray(data?.languages) ? data.languages : [],
         bodyMetrics: data?.bodyMetrics || null,
         recoveredHealthIssues: Array.isArray(data?.recoveredHealthIssues)
           ? data.recoveredHealthIssues
@@ -347,7 +355,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     setSuccessMessage('');
     setIsSaving(true);
     try {
-      const err = form.validate({ requireDiet: false, maxHeight: 198 });
+      const err = form.validate({ requireDiet: false, requireFat: false, maxHeight: 198 });
       if (err) { setError(err); return; }
       // Only send a verified account email — unverified addresses use Profile KYC OTP.
       const emailForSave = accountEmail || undefined;
@@ -649,10 +657,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     }
   }, [profileImagePreview, accountEmail, user, form.name, onProfileUpdate]);
 
-  const saveDisabled = isSaving || !form.nameValid ||
-    !form.height || form.height.trim() === '' ||
-    !form.phone || form.phone.trim() === '' ||
-    !form.fatPercentValid;
+  const photosDirty = transformationPhotos.hasPendingUploads();
+  const saveDisabled = isSaving || (!form.isDirty && !photosDirty);
 
   const derivedWeightGoalMode = useMemo(
     () => deriveWeightGoalMode({ heightCm: form.height, currentWeightKg: latestWeight }),
@@ -662,6 +668,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   useEffect(() => {
     if (derivedWeightGoalMode) form.setWeightGoalMode(derivedWeightGoalMode);
   }, [derivedWeightGoalMode, form.setWeightGoalMode]);
+
+  useEffect(() => {
+    if (form.isDirty || transformationPhotos.hasPendingUploads()) setHasSaved(false);
+  }, [form.isDirty, transformationPhotos]);
 
   const displayWeightGoalMode = derivedWeightGoalMode || form.weightGoalMode || 'loss';
   const displayName = (() => {
@@ -928,6 +938,19 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   eventYourCity={form.eventYourCity}
                   setEventYourCity={form.setEventYourCity}
                 />
+                <ProfileIntroFields
+                  values={{
+                    professionalTitle: form.professionalTitle,
+                    instagram: form.instagram,
+                    youtube: form.youtube,
+                    linkedin: form.linkedin,
+                    herbalifeJoinedOn: form.herbalifeJoinedOn,
+                    aboutMe: form.aboutMe,
+                    qualification: form.qualification,
+                    languages: form.languages,
+                  }}
+                  onChange={form.setIntroField}
+                />
                 <IdealWeightCards
                   height={form.height}
                   latestWeight={latestWeight}
@@ -1049,22 +1072,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
             <h2 className="text-sm font-semibold text-gray-700">Account</h2>
           </div>
           <div className="divide-y divide-gray-100">
-            <TouchFeedbackButton
-              type="button"
-              onClick={handleAppInvite}
-              disabled={isInviting}
-              className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-green-50 transition-colors"
-              ariaLabel="Invite friends"
-            >
-              <div className="p-2 rounded-full bg-green-50">
-                <Share2 className="w-4 h-4 text-green-600" />
-              </div>
-              <div className="flex-1 text-left">
-                <p className="text-sm font-medium text-gray-900">Invite Friends</p>
-                <p className="text-xs text-gray-400">Share Wellness Valley app with friends & family</p>
-              </div>
-            </TouchFeedbackButton>
-            <WalletButton userId={premiumUserId} />
             <AdminGbpListingButton userId={premiumUserId} userRole={userRole} />
             <TouchFeedbackButton
               onClick={() => {

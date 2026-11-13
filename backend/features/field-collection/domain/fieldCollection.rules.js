@@ -12,6 +12,11 @@
  * Mirrors frontend/src/features/field-collection/domain/fieldCollection.rules.js
  */
 import { EVENT_LEVEL_OPTIONS } from '../../user/domain/eventProfilePrefs.rules.js';
+import {
+  PROFILE_INTRO_KEYS,
+  PROFILE_INTRO_LABELS,
+  profileIntroHasValue,
+} from '../../user/domain/profileIntro.rules.js';
 
 export const FIELD_COLLECTION_POSITIONS = EVENT_LEVEL_OPTIONS;
 
@@ -35,6 +40,7 @@ export const FIELD_KEYS = Object.freeze([
   'waist',
   'hip',
   'healthIssues',
+  ...PROFILE_INTRO_KEYS,
 ]);
 
 export const ENTRY_SCALAR_KEYS = Object.freeze(['gender', 'age', 'height', 'diet']);
@@ -64,6 +70,7 @@ export const FIELD_LABELS = Object.freeze({
   waist: 'Waist',
   hip: 'Hip',
   healthIssues: 'Health issues',
+  ...PROFILE_INTRO_LABELS,
 });
 
 const SCHEDULED_DEFAULTS = Object.freeze({
@@ -161,10 +168,24 @@ export function hasFieldValue(key, values = {}) {
   if (key === 'healthIssues') {
     return Array.isArray(values.healthIssues) && values.healthIssues.length > 0;
   }
+  if (PROFILE_INTRO_KEYS.includes(key)) return profileIntroHasValue(key, values);
   return false;
 }
 
 export function defaultFieldConfig(key) {
+  if (PROFILE_INTRO_KEYS.includes(key)) {
+    return {
+      key,
+      label: FIELD_LABELS[key],
+      phase: 'profile',
+      audience: 'both',
+      positions: 'all',
+      askEveryDays: null,
+      maxSkips: 0,
+      mustFillWithinDays: null,
+      locked: false,
+    };
+  }
   const scheduled = SCHEDULED_DEFAULTS[key];
   if (scheduled) {
     return {
@@ -240,15 +261,17 @@ export function normalizeFieldPolicy(input) {
   return FIELD_KEYS.map((key) => {
     const base = defaultFieldConfig(key);
     const row = byKey.get(key) || {};
-    const phase = row.phase === 'scheduled' ? 'scheduled' : (row.phase === 'entry' ? 'entry' : base.phase);
+    const phase = row.phase === 'scheduled'
+      ? 'scheduled'
+      : (row.phase === 'entry' ? 'entry' : (row.phase === 'profile' ? 'profile' : base.phase));
     const audience = row.audience === 'member' || row.audience === 'coach' || row.audience === 'both'
       ? row.audience
       : base.audience;
     const positions = normalizePositions(row.positions === undefined ? base.positions : row.positions);
-    if (phase === 'entry') {
+    if (phase === 'entry' || phase === 'profile') {
       return {
         ...base,
-        phase: 'entry',
+        phase,
         audience,
         positions,
         askEveryDays: null,
@@ -303,6 +326,7 @@ export function decideField({
   if (!audienceAllows(field.audience, role)) return 'hidden';
   if (field.key !== 'communityPosition' && !positionAllows(field.positions, position)) return 'hidden';
 
+  if (field.phase === 'profile') return 'satisfied';
   if (field.phase === 'entry') {
     return hasFieldValue(field.key, values) ? 'satisfied' : 'ask_blocking';
   }
@@ -382,7 +406,14 @@ export function planCollectionStep({
 
   const lifestyle = decisions.find((item) => item.field.key === 'lifestyle');
   if (lifestyle?.mode === 'ask_blocking') {
-    return { step: 'lifestyle', entryFields: [], photoSlots: [], scheduled: null };
+    return { step: 'lifestyle', entryFields: [], photoSlots: [], profileFields: [], scheduled: null };
+  }
+
+  const profileFields = decisions
+    .filter((item) => PROFILE_INTRO_KEYS.includes(item.field.key) && item.mode === 'ask_blocking')
+    .map((item) => item.field.key);
+  if (profileFields.length > 0) {
+    return { step: 'profileIntro', entryFields: [], photoSlots: [], profileFields, scheduled: null };
   }
 
   const deferred = new Set(deferKeys);
@@ -441,6 +472,14 @@ export function valuesFromProfile(data = {}) {
     waist: metrics.waistCm ?? '',
     hip: metrics.hipCm ?? '',
     healthIssues: Array.isArray(issues) ? issues : [],
+    professionalTitle: data?.professionalTitle || '',
+    instagram: data?.instagram || '',
+    youtube: data?.youtube || '',
+    linkedin: data?.linkedin || '',
+    herbalifeJoinedOn: data?.herbalifeJoinedOn || '',
+    aboutMe: data?.aboutMe || '',
+    qualification: data?.qualification || '',
+    languages: Array.isArray(data?.languages) ? data.languages : [],
   };
 }
 
