@@ -9,6 +9,7 @@
 //   3. Transformation photos (Left / Centre / Right — same as onboarding; do not update avatar)
 //   4. Settings  (auto camera toggle)
 //   5. Account actions (recover, sign out, delete account)
+// Go Premium sits on the green title row, not in Account.
 //
 // Lead pre-fill: on first load, if the profile has no name or phone and the
 // user has a phone number from auth, the app checks for a counselling lead
@@ -56,6 +57,7 @@ import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
 import { COMMUNITY_POSITION_OTP_FLAG } from '../domain/communityPosition';
 import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked, validateHeightCm } from '../domain/heightChange';
 import { looksLikeEmail } from '../domain/onboardingEmail';
+import GoPremiumButton from '../../payments/components/GoPremiumButton';
 import { PremiumAvatarRing, PremiumCrownMark } from '../../payments/components/PremiumBadge';
 import usePremiumStatus from '../../payments/hooks/usePremiumStatus';
 import { WalletButton } from '../../wallet';
@@ -89,7 +91,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const form = useProfileForm();
   const resolvedUserId = user?.id ?? user?._id ?? user?.UserId ?? user?.userId ?? form.userId ?? Session.getDbUserId() ?? null;
   const premiumUserId = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
-  const { premium: isPremiumMember } = usePremiumStatus(premiumUserId);
+  const { premium: isPremiumMember, refresh: refreshPremium } = usePremiumStatus(premiumUserId);
   const transformationPhotos = useTransformationPhotos();
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
@@ -721,6 +723,11 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
             <Share2 className="w-3.5 h-3.5" />
             <span>{isInviting ? 'Sharing...' : 'Invite'}</span>
           </TouchFeedbackButton>
+          <GoPremiumButton
+            userId={premiumUserId}
+            isPremium={isPremiumMember}
+            onPremiumCheck={refreshPremium}
+          />
         </div>
 
         {/* Avatar — tap photo to view; Edit badge to change */}
