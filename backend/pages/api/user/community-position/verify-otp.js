@@ -11,5 +11,5 @@ export default async function handler(req, res) {
   if (applyCors(req, res, 'POST, OPTIONS')) return;
   if (rejectIfAppVersionTooOld(req, res)) return;
   if (req.method !== 'POST') return methodNotAllowed(res);
-  return runService(res, () => verifyCommunityPositionOtp(validateCommunityPositionVerify(req.body)));
+  await runService(res, () => verifyCommunityPositionOtp(validateCommunityPositionVerify(req.body)));
 }

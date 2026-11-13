@@ -470,6 +470,15 @@ registerFlag({
 });
 
 registerFlag({
+  name:           'ff.events-trial',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-12',
+  removeBy:       '2027-05-12',
+  description:    'Create Event, Check-in, Paid Features gate. Shares Reports 14-day trial (report_trials_table); remaining days continue. Kill switch. Version routing: app 3.5.7+ gated; older/missing versions keep free host tools.',
+  defaultEnabled: true,
+});
+
+registerFlag({
   name:           'ff.testimonial-upline-display-consent',
   owner:          '@testimonials-team',
   createdAt:      '2026-11-09',

@@ -26,9 +26,10 @@ VALUES
   ('SV', 'SV', 'sv', 'Profile role. Features check the key sv.', 30, 1),
   ('WT', 'WT', 'wt', 'Profile role. Features check the key wt.', 40, 1),
   ('AWT', 'AWT', 'awt', 'Profile role. Features check the key awt.', 50, 1),
-  ('GET TEAM', 'GET TEAM', 'get-team', 'Profile role. Features check the key get-team.', 60, 1),
-  ('2500 GET TEAM', '2500 GET TEAM', 'get-team-2500', 'Profile role. Features check the key get-team-2500.', 70, 1),
-  ('MILL TEAM', 'MILL TEAM', 'mill-team', 'Profile role. Features check the key mill-team.', 80, 1),
+  ('GET', 'GET', 'get-team', 'Profile role. Features check the key get-team.', 60, 1),
+  ('GET 2500', 'GET 2500', 'get-team-2500', 'Profile role. Features check the key get-team-2500.', 70, 1),
+  ('MILL', 'MILL', 'mill-team', 'Profile role. Features check the key mill-team.', 80, 1),
+  ('MILL 7500', 'MILL 7500', 'mill-7500', 'Profile role. Features check the key mill-7500.', 85, 1),
   ('PT', 'PT', 'pt', 'Profile role. Features check the key pt.', 90, 1);
 
 CREATE TABLE IF NOT EXISTS community_position_requests_table (

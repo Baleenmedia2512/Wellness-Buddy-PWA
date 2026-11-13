@@ -46,11 +46,42 @@ describe('getReportAccess', () => {
   it('reports an ended trial without creating a new one', async () => {
     const result = await getReportAccess({ userId: 7 }, {
       hasPaid: async () => false,
+      hasEverPaid: async () => false,
       readStart: async () => '2026-11-05T02:00:00.000Z',
       todayYmd: '2026-11-19',
     });
     assert.equal(result.body.data.access, 'ended');
     assert.equal(result.body.data.daysLeft, 0);
+    assert.equal(result.body.data.canSeeDetails, false);
+  });
+
+  it('after Premium expires asks to recharge instead of offering trial', async () => {
+    const result = await getReportAccess({ userId: 339 }, {
+      hasPaid: async () => false,
+      hasEverPaid: async () => true,
+      readStart: async () => null,
+      todayYmd: '2026-11-13',
+    });
+    assert.equal(result.body.data.access, 'ended');
+    assert.equal(result.body.data.canSeeDetails, false);
+  });
+});
+
+describe('startReportTrial after Premium', () => {
+  it('does not start a trial for a member who paid before (even if expired)', async () => {
+    let saved = false;
+    const result = await startReportTrial({ userId: 339 }, {
+      hasPaid: async () => false,
+      hasEverPaid: async () => true,
+      readStart: async () => null,
+      saveStart: async () => {
+        saved = true;
+        return '2026-11-13T02:00:00.000Z';
+      },
+      todayYmd: '2026-11-13',
+    });
+    assert.equal(saved, false);
+    assert.equal(result.body.data.access, 'ended');
     assert.equal(result.body.data.canSeeDetails, false);
   });
 });
