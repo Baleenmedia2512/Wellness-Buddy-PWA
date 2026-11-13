@@ -1065,11 +1065,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
               </div>
             </TouchFeedbackButton>
             <WalletButton userId={premiumUserId} />
-            <GoPremiumButton
-              userId={premiumUserId}
-              isPremium={isPremiumMember}
-              onPremiumCheck={refreshPremium}
-            />
             <AdminGbpListingButton userId={premiumUserId} userRole={userRole} />
             <TouchFeedbackButton
               onClick={() => {

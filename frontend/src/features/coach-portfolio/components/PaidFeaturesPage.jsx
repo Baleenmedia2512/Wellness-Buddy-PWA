@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { isFlagEnabled } from '../../../config/featureFlags';
 import ReportAccessBanner from '../../reports/components/ReportAccessBanner';
 import useEventsAccess from '../../events/hooks/useEventsAccess';
@@ -8,7 +8,7 @@ import CoachWebsitePage from './CoachWebsitePage';
 /**
  * Digital Portfolio entry — opens the websites hub directly (no Paid Features shell).
  */
-export default function PaidFeaturesPage({ userId }) {
+export default function PaidFeaturesPage({ userId, onClose }) {
   const [openWebsite, setOpenWebsite] = useState(false);
   const websiteOn = isFlagEnabled(PORTFOLIO_FLAG);
   const trialEnabled = isFlagEnabled('ff.events-trial');
