@@ -13,11 +13,16 @@
  */
 import { EVENT_LEVEL_OPTIONS } from '../../user/domain/eventProfilePrefs.rules.js';
 import {
+  canonicalizePositionCode,
+  isValidPositionCode,
+} from '../../user/domain/communityPosition.rules.js';
+import {
   PROFILE_INTRO_KEYS,
   PROFILE_INTRO_LABELS,
   profileIntroHasValue,
 } from '../../user/domain/profileIntro.rules.js';
 
+/** Legacy codes used by admin “positions” filters on other fields. */
 export const FIELD_COLLECTION_POSITIONS = EVENT_LEVEL_OPTIONS;
 
 const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
@@ -130,7 +135,10 @@ export function istDaysSince(earlier, later) {
 
 export function hasFieldValue(key, values = {}) {
   if (key === 'communityPosition') {
-    return FIELD_COLLECTION_POSITIONS.includes(String(values.communityPosition || '').trim().toUpperCase());
+    // Catalog roles (e.g. WORLD TEAM) are valid profile values — do not
+    // require the legacy hard-coded list or field collection keeps asking.
+    const code = canonicalizePositionCode(values.communityPosition);
+    return Boolean(code) && isValidPositionCode(code);
   }
   if (key === 'gender') {
     const g = String(values.gender || '').trim();
@@ -455,7 +463,10 @@ export function valuesFromProfile(data = {}) {
   const photos = data?.transformationPhotos || {};
   const issues = data?.recoveredHealthIssues;
   return {
-    communityPosition: data?.eventLevel || '',
+    communityPosition: data?.eventLevel
+      || data?.communityPosition?.code
+      || data?.CommunityPosition?.code
+      || '',
     gender: data?.gender || metrics.gender || '',
     age: metrics.age ?? '',
     height: data?.height ?? '',
