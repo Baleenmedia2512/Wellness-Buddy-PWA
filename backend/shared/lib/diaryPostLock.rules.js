@@ -10,13 +10,18 @@ import {
   IANA_IST,
   todayInTimezone,
   timestampToCalendarYmd,
-  normalizeStoredTimestampToUtcIso,
+  normalizeActivityCreatedAt,
 } from './datetime/index.js';
 import { getUserTimezoneIana } from '../../features/user/domain/userTimezone.js';
 
 /**
  * Check whether a stored diary record's timestamp falls on today's calendar date
  * in the specified IANA timezone.
+ *
+ * Weight/education (and most diary) CreatedAt values are legacy IST wall-clock
+ * digits. Prisma/MySQL often re-emits them with a trailing `Z` that is not a
+ * real UTC instant — {@link normalizeActivityCreatedAt} strips that and keeps
+ * the wall clock in IST so evening posts are not shifted into tomorrow.
  *
  * @param {string|Date} createdAt - Stored CreatedAt timestamp
  * @param {string} [timezoneIana=IANA_IST] - User's IANA timezone
@@ -26,7 +31,7 @@ export function isDiaryPostToday(createdAt, timezoneIana = IANA_IST) {
   if (!createdAt) return false;
   try {
     const todayYmd = todayInTimezone(timezoneIana);
-    const utcIso = normalizeStoredTimestampToUtcIso(createdAt, IANA_IST);
+    const utcIso = normalizeActivityCreatedAt(createdAt);
     const recordYmd = timestampToCalendarYmd(utcIso, timezoneIana);
     return recordYmd === todayYmd;
   } catch {
