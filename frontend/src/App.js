@@ -313,6 +313,9 @@ const BroadcastPage = lazy(() =>
 const PaidFeaturesPage = lazy(() =>
   import("./features/coach-portfolio").then((m) => ({ default: m.PaidFeaturesPage })),
 );
+const MapBusinessNavPage = lazy(() =>
+  import("./features/gbp-listing").then((m) => ({ default: m.MapBusinessNavPage })),
+);
 const CreateEventPage = lazy(() =>
   import("./features/events").then((m) => ({ default: m.CreateEventPage })),
 );
@@ -1079,6 +1082,7 @@ function WellnessValleyApp() {
   const [showBroadcast, setShowBroadcast] = useState(false);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
   const [showPaidFeatures, setShowPaidFeatures] = useState(false);
+  const [showMapBusiness, setShowMapBusiness] = useState(false);
   const [createEventTab, setCreateEventTab] = useState('manage');
   const [showEvents, setShowEvents] = useState(false);
   // Reports page — common module (Ideal Weight, Wellness Score, Nutrition, Trend).
@@ -1264,6 +1268,7 @@ function WellnessValleyApp() {
         setShowBroadcast(false);
         setShowCreateEvent(false);
         setShowPaidFeatures(false);
+        setShowMapBusiness(false);
         setShowReports(false);
         setShowProfilePage(false);
         setShowAdminConfigSetup(false);
@@ -1306,6 +1311,7 @@ function WellnessValleyApp() {
         setShowBroadcast(false);
         setShowCreateEvent(false);
         setShowPaidFeatures(false);
+        setShowMapBusiness(false);
         startTransition(() => setShowTestimonials(true));
         Session.setCurrentPage('main');
       } else if (page === 'events') {
@@ -1341,6 +1347,7 @@ function WellnessValleyApp() {
         setShowProfilePage(false);
         setShowCreateEvent(false);
         setShowPaidFeatures(false);
+        setShowMapBusiness(false);
         startTransition(() => setShowBroadcast(true));
         Session.setCurrentPage('main');
       } else if (page === 'create-event' || page === 'event-check-in') {
@@ -1356,6 +1363,7 @@ function WellnessValleyApp() {
         setShowTestimonials(false);
         setShowBroadcast(false);
         setShowPaidFeatures(false);
+        setShowMapBusiness(false);
         setShowReports(false);
         setShowAdminConfigSetup(false);
         setShowWellnessScore(false);
@@ -1376,11 +1384,32 @@ function WellnessValleyApp() {
         setShowEvents(false);
         setShowBroadcast(false);
         setShowCreateEvent(false);
+        setShowMapBusiness(false);
         setShowReports(false);
         setShowAdminConfigSetup(false);
         setShowWellnessScore(false);
         setShowProfilePage(false);
         startTransition(() => setShowPaidFeatures(true));
+        Session.setCurrentPage('main');
+      } else if (page === 'map-business') {
+        if (!isFlagEnabled('ff.gbp-listing')) return;
+        bumpTabVisitKeyRef.current('map-business');
+        setShowDashboard(false);
+        setShowWellnessCounselling(false);
+        setShowUniversityEnrollment(false);
+        setShowNutritionCentersMap(false);
+        setShowActivityReport(false);
+        setShowActivityTimeReport(false);
+        setShowTestimonials(false);
+        setShowEvents(false);
+        setShowBroadcast(false);
+        setShowCreateEvent(false);
+        setShowPaidFeatures(false);
+        setShowReports(false);
+        setShowAdminConfigSetup(false);
+        setShowWellnessScore(false);
+        setShowProfilePage(false);
+        startTransition(() => setShowMapBusiness(true));
         Session.setCurrentPage('main');
       } else if (page === 'reports' || page === 'wellness-score-report') {
         if (!isFlagEnabled('ff.reports-module') || !canAccessReportsModule(userRole)) {
@@ -2529,6 +2558,7 @@ function WellnessValleyApp() {
         setShowBroadcast(false);
         setShowCreateEvent(false);
         setShowPaidFeatures(false);
+        setShowMapBusiness(false);
         const currentWvPage = window.history.state?.wvPage;
         if (currentWvPage && currentWvPage !== 'main') window.history.back();
         return true;
@@ -2536,6 +2566,7 @@ function WellnessValleyApp() {
       if (showCreateEvent) {
         setShowCreateEvent(false);
         setShowPaidFeatures(false);
+        setShowMapBusiness(false);
         const currentWvPage = window.history.state?.wvPage;
         if (currentWvPage && currentWvPage !== 'main') window.history.back();
         return true;
@@ -2552,7 +2583,7 @@ function WellnessValleyApp() {
     initializeBackButton(
       goBack,
       showToast,
-      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showBroadcast && !showCreateEvent && !showPaidFeatures && !showEvents && !showReports && !showAdminConfigSetup && !showManualEntry && !showWellnessScore && !showProfilePage,
+      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showBroadcast && !showCreateEvent && !showPaidFeatures && !showMapBusiness && !showEvents && !showReports && !showAdminConfigSetup && !showManualEntry && !showWellnessScore && !showProfilePage,
     );
     return () => cleanupBackButton();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- showMainPage is useCallback([]) stable; listing it here causes a TDZ crash because it is declared after this effect
@@ -2901,6 +2932,7 @@ function WellnessValleyApp() {
       setShowBroadcast(false);
       setShowCreateEvent(false);
       setShowPaidFeatures(false);
+        setShowMapBusiness(false);
       setShowReports(false);
       setShowAdminConfigSetup(false);
       setShowManualEntry(false);
@@ -2934,6 +2966,7 @@ function WellnessValleyApp() {
         setShowBroadcast(false);
         setShowCreateEvent(false);
         setShowPaidFeatures(false);
+        setShowMapBusiness(false);
         setShowReports(false);
         setShowAdminConfigSetup(false);
         setShowManualEntry(false);
@@ -2965,6 +2998,7 @@ function WellnessValleyApp() {
     setShowBroadcast(false);
     setShowCreateEvent(false);
     setShowPaidFeatures(false);
+        setShowMapBusiness(false);
     setShowReports(false);
     setShowAdminConfigSetup(false);
     setShowManualEntry(false);
@@ -3025,6 +3059,11 @@ function WellnessValleyApp() {
       case 'paid-features':
         if (isFlagEnabled('ff.coach-portfolio')) {
           setShowPaidFeatures(true);
+        }
+        break;
+      case 'map-business':
+        if (isFlagEnabled('ff.gbp-listing')) {
+          setShowMapBusiness(true);
         }
         break;
       case 'reports':
@@ -8057,6 +8096,7 @@ function WellnessValleyApp() {
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
           onShowPaidFeatures={() => navigateTo('paid-features')}
+          onShowMapBusiness={() => navigateTo('map-business')}
           onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
         />
@@ -8201,6 +8241,7 @@ function WellnessValleyApp() {
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
           onShowPaidFeatures={() => navigateTo('paid-features')}
+          onShowMapBusiness={() => navigateTo('map-business')}
           onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
@@ -8249,6 +8290,7 @@ function WellnessValleyApp() {
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
           onShowPaidFeatures={() => navigateTo('paid-features')}
+          onShowMapBusiness={() => navigateTo('map-business')}
           onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
@@ -8293,6 +8335,7 @@ function WellnessValleyApp() {
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
           onShowPaidFeatures={() => navigateTo('paid-features')}
+          onShowMapBusiness={() => navigateTo('map-business')}
           onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
@@ -8336,6 +8379,7 @@ function WellnessValleyApp() {
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
           onShowPaidFeatures={() => navigateTo('paid-features')}
+          onShowMapBusiness={() => navigateTo('map-business')}
           onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
@@ -8378,6 +8422,7 @@ function WellnessValleyApp() {
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
           onShowPaidFeatures={() => navigateTo('paid-features')}
+          onShowMapBusiness={() => navigateTo('map-business')}
           onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
@@ -8419,6 +8464,7 @@ function WellnessValleyApp() {
             onShowBroadcast={() => navigateTo('broadcast')}
             onShowCreateEvent={() => navigateTo('create-event')}
           onShowPaidFeatures={() => navigateTo('paid-features')}
+          onShowMapBusiness={() => navigateTo('map-business')}
             onShowEventCheckIn={() => navigateTo('event-check-in')}
             onShowReports={() => navigateTo('reports')}
             onOpenProfile={() => navigateTo('profile')}
@@ -8484,6 +8530,7 @@ function WellnessValleyApp() {
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
           onShowPaidFeatures={() => navigateTo('paid-features')}
+          onShowMapBusiness={() => navigateTo('map-business')}
           onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
@@ -8563,6 +8610,7 @@ function WellnessValleyApp() {
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
           onShowPaidFeatures={() => navigateTo('paid-features')}
+          onShowMapBusiness={() => navigateTo('map-business')}
           onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
@@ -8594,6 +8642,7 @@ function WellnessValleyApp() {
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
           onShowPaidFeatures={() => navigateTo('paid-features')}
+          onShowMapBusiness={() => navigateTo('map-business')}
           onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
@@ -8624,13 +8673,51 @@ function WellnessValleyApp() {
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
           onShowPaidFeatures={() => navigateTo('paid-features')}
+          onShowMapBusiness={() => navigateTo('map-business')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
-          <Suspense fallback={<LoadingSpinner message="Loading Paid Features..." />}>
-            <PaidFeaturesPage userId={user?.id || user?.UserId || user?.userId || null} />
+          <Suspense fallback={<LoadingSpinner message="Loading Digital Portfolio..." />}>
+            <PaidFeaturesPage
+              userId={user?.id || user?.UserId || user?.userId || null}
+              onClose={() => navigateTo('home')}
+            />
+          </Suspense>
+        </div>
+      </div>
+    );
+
+  } else if (showMapBusiness && isFlagEnabled('ff.gbp-listing')) {
+    homeOverlay = (
+      <div className="ios-full-page bg-gray-50">
+        <Header
+          user={user}
+          userRole={userRole}
+          allowedPages={navAccessPages}
+          activePage="map-business"
+          onShowHome={() => navigateTo('home')}
+          onShowBackgroundHistory={() => navigateTo('dashboard')}
+          onShowWellnessEnrollment={() => navigateTo('enrollment')}
+          onShowWellnessCounselling={() => navigateTo('counselling')}
+          onShowNutritionCentersMap={() => navigateTo('physical-club')}
+          onShowActivityReport={() => navigateTo('activity-report')}
+          onShowTestimonials={() => navigateTo('testimonials')}
+          onShowBroadcast={() => navigateTo('broadcast')}
+          onShowCreateEvent={() => navigateTo('create-event')}
+          onShowPaidFeatures={() => navigateTo('paid-features')}
+          onShowMapBusiness={() => navigateTo('map-business')}
+          onShowReports={() => navigateTo('reports')}
+          onOpenProfile={() => navigateTo('profile')}
+          profileKey={headerProfileKey}
+        />
+        <div className="ios-scroll-body">
+          <Suspense fallback={<LoadingSpinner message="Loading Google Map Business..." />}>
+            <MapBusinessNavPage
+              userId={user?.id || user?.UserId || user?.userId || null}
+              onClose={() => navigateTo('home')}
+            />
           </Suspense>
         </div>
       </div>
@@ -8803,6 +8890,7 @@ function WellnessValleyApp() {
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
           onShowPaidFeatures={() => navigateTo('paid-features')}
+          onShowMapBusiness={() => navigateTo('map-business')}
           onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
@@ -9127,6 +9215,7 @@ function WellnessValleyApp() {
           onShowBroadcast={() => navigateTo('broadcast')}
           onShowCreateEvent={() => navigateTo('create-event')}
           onShowPaidFeatures={() => navigateTo('paid-features')}
+          onShowMapBusiness={() => navigateTo('map-business')}
           onShowEventCheckIn={() => navigateTo('event-check-in')}
           onShowReports={() => navigateTo('reports')}
           onShowWellnessScoreSetup={() => navigateTo('wellness-score-setup')}
@@ -9141,6 +9230,7 @@ function WellnessValleyApp() {
             showEvents ? 'events' :
             showBroadcast ? 'broadcast' :
             showCreateEvent ? (createEventTab === 'checkin' ? 'event-check-in' : 'create-event') :
+            showMapBusiness ? 'map-business' :
             showPaidFeatures ? 'paid-features' :
             showReports ? 'reports' :
             showAdminConfigSetup ? 'admin-config-setup' :

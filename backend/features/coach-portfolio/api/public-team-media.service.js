@@ -8,7 +8,10 @@
 import cache, { cacheKeys } from '../../../utils/cache.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import * as testimonialsRepo from '../../testimonials/testimonials.repository.js';
-import { WEBSITE_DISPLAY_CONSENT_FLAG } from '../../testimonials/domain/websiteDisplayConsent.rules.js';
+import {
+  WEBSITE_DISPLAY_CONSENT_FLAG,
+  resolvePublicTeamMediaAccess,
+} from '../../testimonials/domain/websiteDisplayConsent.rules.js';
 import {
   emptyPublicTeamMedia,
   selectPublicTeamMediaCandidates,
@@ -98,10 +101,32 @@ export async function getPublicTeamMediaForCoach(coachUserId) {
 
   try {
     const consentOn = isEnabled(WEBSITE_DISPLAY_CONSENT_FLAG);
-    // Consent ON → full hierarchy + consent gate. Flag OFF → legacy direct + verified only.
-    const rows = await testimonialsRepo.listForCoach(id, consentOn ? 'full' : 'direct');
+    // Consent ON → owner must have verified display consent, then full hierarchy
+    // with per-member consent. Flag OFF → legacy direct + verified only.
+    let ownerRow = null;
+    if (consentOn) {
+      try {
+        ownerRow = await testimonialsRepo.findByUserId(id);
+      } catch {
+        ownerRow = null;
+      }
+    }
+    const access = resolvePublicTeamMediaAccess({
+      consentFlagEnabled: consentOn,
+      ownerTestimonial: ownerRow,
+    });
+    if (!access.allow) {
+      const empty = emptyPublicTeamMedia();
+      cache.set(key, empty, TEAM_MEDIA_CACHE_TTL_MS);
+      return empty;
+    }
+
+    const rows = await testimonialsRepo.listForCoach(
+      id,
+      access.requireDisplayConsent ? 'full' : 'direct',
+    );
     const candidates = selectPublicTeamMediaCandidates(rows, {
-      requireDisplayConsent: consentOn,
+      requireDisplayConsent: access.requireDisplayConsent,
     });
     const signed = await signPublicTeamMedia(candidates, {
       // 7-day signed URLs for public site (same helper as coach email).

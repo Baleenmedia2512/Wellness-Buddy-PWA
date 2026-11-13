@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# Coach Digital Portfolio pages + sitemap (Node: wellness-api)
+Allow: /coach
+Allow: /coach-sitemap.xml
+
+Sitemap: https://wellnessvalley.in/coach-sitemap.xml

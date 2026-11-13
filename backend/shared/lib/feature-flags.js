@@ -417,6 +417,15 @@ registerFlag({
 });
 
 registerFlag({
+  name:           'ff.gbp-listing',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-12',
+  removeBy:       '2027-05-12',
+  description:    'Google Maps Listing request: coach form + FTP media kit + ops email/admin queue. Kill switch hides nav, Profile queue, and GBP APIs. Default OFF until Digital Portfolio review is done.',
+  defaultEnabled: false,
+});
+
+registerFlag({
   name:           'ff.community-position-otp',
   owner:          '@principal-eng',
   createdAt:      '2026-11-11',

@@ -15,6 +15,7 @@ export const NAV_PAGE_KEYS = Object.freeze([
   'broadcast',
   'create-event',
   'paid-features',
+  'map-business',
 ]);
 
 /** Roles stored in the matrix (UI labels Customer / Sponsor / Admin / Developer). */
@@ -36,6 +37,7 @@ const CUSTOMER_DEFAULT = Object.freeze({
   broadcast: true,
   'create-event': true,
   'paid-features': true,
+  'map-business': true,
 });
 
 /** Default matrix when DB row is missing. */

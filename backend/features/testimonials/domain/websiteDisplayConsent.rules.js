@@ -51,6 +51,37 @@ export function isPublicWebsiteEligible(row) {
 }
 
 /**
+ * Website owner must verify the same display-consent checkbox before any
+ * downline media appears on their public /coach site.
+ * @param {object|null|undefined} ownerRow Owner's testimonial row
+ * @returns {boolean}
+ */
+export function ownerAllowsPublicTeamMedia(ownerRow) {
+  return hasWebsiteDisplayConsent(ownerRow);
+}
+
+/**
+ * Decide whether to load downline team media for a public coach page.
+ * Flag OFF → legacy (no owner gate, no per-member consent).
+ * Flag ON → owner must have consent_at; members still filtered separately.
+ *
+ * @param {{ consentFlagEnabled: boolean, ownerTestimonial: object|null|undefined }} args
+ * @returns {{ allow: boolean, requireDisplayConsent: boolean }}
+ */
+export function resolvePublicTeamMediaAccess({
+  consentFlagEnabled,
+  ownerTestimonial,
+} = {}) {
+  if (!consentFlagEnabled) {
+    return { allow: true, requireDisplayConsent: false };
+  }
+  if (!ownerAllowsPublicTeamMedia(ownerTestimonial)) {
+    return { allow: false, requireDisplayConsent: true };
+  }
+  return { allow: true, requireDisplayConsent: true };
+}
+
+/**
  * @param {unknown} raw
  * @returns {boolean}
  */
