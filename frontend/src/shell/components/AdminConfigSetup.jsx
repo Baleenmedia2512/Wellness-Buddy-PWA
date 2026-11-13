@@ -26,7 +26,7 @@ import {
 export { ADMIN_CONFIG_TABS } from '../domain/adminConfigSetupTabs';
 
 const TAB_BTN = (active) =>
-  `flex-1 min-w-0 py-2 rounded-lg text-[11px] sm:text-xs font-semibold transition-all duration-150 cursor-pointer px-1.5 sm:px-2 ${
+  `shrink-0 whitespace-nowrap py-2 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer px-3 ${
     active
       ? 'bg-emerald-600 text-white shadow-sm'
       : 'text-gray-700 hover:bg-emerald-50'
@@ -115,6 +115,12 @@ export default function AdminConfigSetup({
       if (tab === ADMIN_CONFIG_TABS.PAGE_ACCESS) setPageAccessMounted(true);
       if (tab === ADMIN_CONFIG_TABS.FIELD_COLLECTION) setFieldCollectionMounted(true);
       scrollAdminConfigToTop();
+      // Keep the selected tab visible in the horizontally scrollable tablist.
+      requestAnimationFrame(() => {
+        document
+          .getElementById(`admin-config-tab-${tab}`)
+          ?.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' });
+      });
     });
   };
 
@@ -156,7 +162,7 @@ export default function AdminConfigSetup({
           </div>
 
           <div
-            className="mt-3 flex w-full gap-1 overflow-x-auto rounded-xl border border-gray-200 bg-white p-1 shadow-sm"
+            className="mt-3 flex w-full gap-1 overflow-x-auto scrollbar-hide rounded-xl border border-gray-200 bg-white p-1 shadow-sm"
             role="tablist"
             aria-label="Admin Config Setup tabs"
           >
@@ -171,7 +177,7 @@ export default function AdminConfigSetup({
                 onClick={() => selectTab(ADMIN_CONFIG_TABS.WELLNESS_SCORE)}
                 className={TAB_BTN(wellnessActive)}
               >
-                <span className="truncate">{ADMIN_CONFIG_TAB_LABELS[ADMIN_CONFIG_TABS.WELLNESS_SCORE]}</span>
+                {ADMIN_CONFIG_TAB_LABELS[ADMIN_CONFIG_TABS.WELLNESS_SCORE]}
               </button>
             )}
             <button
@@ -184,7 +190,7 @@ export default function AdminConfigSetup({
               onClick={() => selectTab(ADMIN_CONFIG_TABS.ACTIVITY_TIME)}
               className={TAB_BTN(activityActive)}
             >
-              <span className="truncate">{ADMIN_CONFIG_TAB_LABELS[ADMIN_CONFIG_TABS.ACTIVITY_TIME]}</span>
+              {ADMIN_CONFIG_TAB_LABELS[ADMIN_CONFIG_TABS.ACTIVITY_TIME]}
             </button>
             {aiCreditsEnabled && (
               <button
@@ -197,7 +203,7 @@ export default function AdminConfigSetup({
                 onClick={() => selectTab(ADMIN_CONFIG_TABS.AI_CONFIG)}
                 className={TAB_BTN(aiActive)}
               >
-                <span className="truncate">{ADMIN_CONFIG_TAB_LABELS[ADMIN_CONFIG_TABS.AI_CONFIG]}</span>
+                {ADMIN_CONFIG_TAB_LABELS[ADMIN_CONFIG_TABS.AI_CONFIG]}
               </button>
             )}
             {fieldCollectionEnabled && (
@@ -211,7 +217,7 @@ export default function AdminConfigSetup({
                 onClick={() => selectTab(ADMIN_CONFIG_TABS.FIELD_COLLECTION)}
                 className={TAB_BTN(fieldCollectionActive)}
               >
-                <span className="truncate">{ADMIN_CONFIG_TAB_LABELS[ADMIN_CONFIG_TABS.FIELD_COLLECTION]}</span>
+                {ADMIN_CONFIG_TAB_LABELS[ADMIN_CONFIG_TABS.FIELD_COLLECTION]}
               </button>
             )}
             {navPageAccessEnabled && (
@@ -225,7 +231,7 @@ export default function AdminConfigSetup({
                 onClick={() => selectTab(ADMIN_CONFIG_TABS.PAGE_ACCESS)}
                 className={TAB_BTN(pageAccessActive)}
               >
-                <span className="truncate">{ADMIN_CONFIG_TAB_LABELS[ADMIN_CONFIG_TABS.PAGE_ACCESS]}</span>
+                {ADMIN_CONFIG_TAB_LABELS[ADMIN_CONFIG_TABS.PAGE_ACCESS]}
               </button>
             )}
           </div>
