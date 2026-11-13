@@ -16,7 +16,7 @@ import {
 import { useWeightDetailImage } from '../hooks/useWeightDetailImage';
 import WeightDetailHeader from './WeightDetailHeader';
 import { captureAndShare } from '../../../shared/utils/shareUtils';
-import { DEFAULT_BUSINESS_TIMEZONE } from '../../../shared/utils/datetimeUtils';
+import { DEFAULT_BUSINESS_TIMEZONE, isBusinessToday } from '../../../shared/utils/datetimeUtils';
 
 const WeightCardModal = ({
   data, onClose, onDelete, onUpdate, apiBaseUrl, userId = null,
@@ -33,6 +33,8 @@ const WeightCardModal = ({
   const { lazyImage, imageLoading } = useWeightDetailImage({ apiBaseUrl, userId, entry: data });
 
   if (!data) return null;
+
+  const isToday = isBusinessToday(data?.CreatedAt || data?.Timestamp || data?.Date, timezoneIana);
 
   const startEdit = () => {
     setEditWeight(parseFloat(data.Weight).toFixed(2));
@@ -84,7 +86,7 @@ const WeightCardModal = ({
           <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-100">
             <div className="flex justify-between items-center">
               <span className="text-sm font-semibold text-emerald-800">Weight</span>
-              {!isEditing ? (
+              {!isEditing && isToday ? (
                 <button onClick={startEdit}
                   className="text-emerald-600 hover:text-emerald-800 p-1 rounded-lg hover:bg-emerald-100 transition-colors">
                   <Edit2 className="w-4 h-4" />
@@ -186,12 +188,14 @@ const WeightCardModal = ({
           )}
 
           <div className="flex gap-3">
-            <button
-              onClick={() => { onDelete?.(data); }}
-              className="flex-1 py-3 bg-red-50 text-red-600 rounded-2xl font-semibold flex items-center justify-center gap-2 hover:bg-red-100 transition-colors border border-red-100"
-            >
-              <Trash2 className="w-4 h-4" /> Delete
-            </button>
+            {isToday && (
+              <button
+                onClick={() => { onDelete?.(data); }}
+                className="flex-1 py-3 bg-red-50 text-red-600 rounded-2xl font-semibold flex items-center justify-center gap-2 hover:bg-red-100 transition-colors border border-red-100"
+              >
+                <Trash2 className="w-4 h-4" /> Delete
+              </button>
+            )}
             <button
               onClick={async () => {
                 if (isSharing || !cardRef.current) return;

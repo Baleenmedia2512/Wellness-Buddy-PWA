@@ -49,6 +49,9 @@ function requirePositiveUserId(raw) {
  * @param {number|string|null} [knownCoachId]
  */
 export async function bustUplinePortfolioCaches(memberUserId, knownCoachId = null) {
+  // Owner gate: this user's own /coach page also depends on their consent_at.
+  bustPortfolioTeamMediaCache(memberUserId);
+
   const startCoach = Number(knownCoachId);
   if (Number.isFinite(startCoach) && startCoach > 0) {
     bustPortfolioTeamMediaCache(startCoach);

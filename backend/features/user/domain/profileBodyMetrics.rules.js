@@ -13,7 +13,6 @@ export const PROFILE_BODY_METRIC_KEYS = [
   'age',
   'gender',
   'fatPercent',
-  'visceralFat',
   'bmi',
   'bodyAge',
   'chestCm',
@@ -25,7 +24,6 @@ export const PROFILE_BODY_METRIC_KEYS = [
 export const COACH_RECORDED_BODY_METRIC_KEYS = [
   'age',
   'gender',
-  'visceralFat',
   'bodyAge',
   'chestCm',
   'waistCm',
@@ -36,7 +34,6 @@ const CARD_COLUMN_BY_KEY = {
   age: 'age',
   gender: 'gender',
   fatPercent: 'fat_percent',
-  visceralFat: 'visceral_fat',
   bmi: 'bmi',
   bodyAge: 'body_age',
   chestCm: 'chest_cm',
@@ -97,7 +94,6 @@ export function mapTeamRowToProfileBodyMetrics(user) {
   };
 
   fields.age = numOrNull(user.Age);
-  fields.visceralFat = numOrNull(user.VisceralFat);
   fields.bodyAge = numOrNull(user.BodyAge);
   fields.chestCm = numOrNull(user.ChestCm);
   fields.waistCm = numOrNull(user.WaistCm);

@@ -13,6 +13,7 @@ import {
   Megaphone,
   CalendarPlus,
   Sparkles,
+  MapPinned,
   CalendarDays,
   ScanLine,
 } from 'lucide-react';
@@ -33,6 +34,7 @@ export default function AppNavTabs({
   onShowBroadcast,
   onShowCreateEvent,
   onShowPaidFeatures,
+  onShowMapBusiness,
   onShowEventCheckIn,
   onShowReports,
   reportsEnabled = false,
@@ -43,6 +45,7 @@ export default function AppNavTabs({
   const broadcastEnabled = isFlagEnabled('ff.broadcast');
   const createEventEnabled = isFlagEnabled('ff.create-event');
   const paidFeaturesEnabled = isFlagEnabled('ff.coach-portfolio');
+  const mapBusinessEnabled = isFlagEnabled('ff.gbp-listing');
   // Same gate as the former Home card — do not add a new nav-access key (would hide for existing matrices).
   const upcomingEventsEnabled = isFlagEnabled('ff.events');
 
@@ -207,8 +210,23 @@ export default function AppNavTabs({
           iconClass="text-emerald-700"
           labelActiveClass="text-emerald-900"
           labelClass="text-emerald-800"
-          label="Paid Features"
-          ariaLabel="Paid Features"
+          label="Digital Portfolio"
+          ariaLabel="Digital Portfolio"
+        />
+      )}
+      {mapBusinessEnabled && allow('map-business') && (
+        <NavTabButton
+          onClick={onShowMapBusiness ?? (() => {})}
+          active={activePage === 'map-business'}
+          activeBg="bg-emerald-100"
+          hoverBg="hover:bg-emerald-50"
+          icon={MapPinned}
+          iconActiveClass="text-emerald-800"
+          iconClass="text-emerald-700"
+          labelActiveClass="text-emerald-900"
+          labelClass="text-emerald-800"
+          label="Google Map Business"
+          ariaLabel="Google Map Business"
         />
       )}
       {createEventEnabled && allow('create-event') && (

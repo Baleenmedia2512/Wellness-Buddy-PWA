@@ -257,6 +257,13 @@ const REGISTRY = Object.freeze({
     description:    'Coach Website: paid unlock and portfolio form entry.',
   },
 
+  'ff.gbp-listing': {
+    envKey:         'REACT_APP_FF_GBP_LISTING',
+    storageKey:     'ff.gbp-listing',
+    defaultEnabled: false,
+    description:    'Google Maps Listing request form + ops queue. Off for Digital Portfolio APK review.',
+  },
+
   // Profile field collection. Kill switch returns to the previous onboarding screens.
   'ff.field-collection': {
     envKey:         'REACT_APP_FF_FIELD_COLLECTION',

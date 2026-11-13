@@ -6,7 +6,7 @@ import { PORTFOLIO_FLAG } from '../domain/portfolio.rules';
 import CoachWebsitePage from './CoachWebsitePage';
 
 /**
- * Profile row for any user — opens My Websites (one site per owned center).
+ * Profile row — opens Digital Portfolio hub (one page per owned center).
  */
 export default function CoachWebsiteButton({ userId }) {
   const [open, setOpen] = useState(false);
@@ -18,16 +18,16 @@ export default function CoachWebsiteButton({ userId }) {
     <div>
       <TouchFeedbackButton
         onClick={() => setOpen(true)}
-        ariaLabel="My Websites"
+        ariaLabel="Digital Portfolio"
         className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-emerald-50 transition-colors"
       >
         <div className="p-2 rounded-full bg-emerald-50">
           <Globe2 className="w-4 h-4 text-emerald-700" aria-hidden />
         </div>
         <div className="flex-1 text-left">
-          <p className="text-sm font-medium text-gray-900">My Websites</p>
+          <p className="text-sm font-medium text-gray-900">Digital Portfolio</p>
           <p className="text-xs text-gray-400">
-            Create one website per center — coach OTP to publish
+            Create one page per center — coach OTP to publish
           </p>
         </div>
       </TouchFeedbackButton>
