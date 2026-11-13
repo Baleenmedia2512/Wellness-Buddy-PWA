@@ -1,6 +1,6 @@
 /**
  * Paid Premium orders. One row per Cashfree order that was confirmed PAID.
- * Premium access lasts until ExpiresAt (India calendar day), not forever.
+ * Premium access lasts until the exact ExpiresAt instant, not forever.
  *
  * Plain SQL on purpose: the table is created here on first use, so deploys do
  * not need a Prisma client regenerate or a manual migration to keep working.
@@ -9,7 +9,13 @@
  */
 import { getPrisma } from '../../../shared/lib/prisma.js';
 import logger from '../../../shared/lib/logger.js';
-import { todayInTimezone, timestampToCalendarYmd, IANA_IST } from '../../../shared/lib/datetime/datetime.js';
+import {
+  todayInTimezone,
+  timestampToCalendarYmd,
+  formatUtcForDisplay,
+  normalizeStoredTimestampToUtcIso,
+  IANA_IST,
+} from '../../../shared/lib/datetime/datetime.js';
 import {
   computeExtendedExpiresYmd,
   premiumExpiresAtToYmd,
@@ -45,6 +51,25 @@ function expiresYmdFromDb(value) {
     if (raw == null || raw === '') return null;
     return timestampToCalendarYmd(raw, IANA_IST);
   });
+}
+
+/**
+ * @param {unknown} value
+ * @returns {number|null}
+ */
+function expiresAtMsFromDb(value) {
+  if (value == null || value === '') return null;
+  try {
+    if (value instanceof Date) {
+      const ms = value.getTime();
+      return Number.isFinite(ms) ? ms : null;
+    }
+    const iso = normalizeStoredTimestampToUtcIso(value, IANA_IST);
+    const ms = Date.parse(iso);
+    return Number.isFinite(ms) ? ms : null;
+  } catch {
+    return null;
+  }
 }
 
 async function ensureExpiresAtColumn(prisma) {
@@ -84,11 +109,11 @@ async function ensureTable() {
 }
 
 /**
- * Latest ExpiresAt YMD for this member in this Cashfree mode.
+ * Latest ExpiresAt raw value for this member in this Cashfree mode.
  * @param {{ userId: number, mode: string }} input
- * @returns {Promise<string|null>}
+ * @returns {Promise<unknown>}
  */
-async function findLatestExpiresYmd({ userId, mode }) {
+async function findLatestExpiresAtRaw({ userId, mode }) {
   const rows = await getPrisma().$queryRawUnsafe(
     `SELECT ExpiresAt AS expiresAt FROM premium_orders_table
      WHERE UserId = ? AND Mode = ? AND Status = 'paid' AND ExpiresAt IS NOT NULL
@@ -98,7 +123,30 @@ async function findLatestExpiresYmd({ userId, mode }) {
     String(mode),
   );
   if (!Array.isArray(rows) || !rows.length) return null;
-  return expiresYmdFromDb(rows[0].expiresAt ?? rows[0].ExpiresAt);
+  return rows[0].expiresAt ?? rows[0].ExpiresAt ?? null;
+}
+
+/**
+ * Latest ExpiresAt YMD for this member in this Cashfree mode.
+ * @param {{ userId: number, mode: string }} input
+ * @returns {Promise<string|null>}
+ */
+async function findLatestExpiresYmd({ userId, mode }) {
+  return expiresYmdFromDb(await findLatestExpiresAtRaw({ userId, mode }));
+}
+
+/**
+ * India wall-clock label for ExpiresAt, e.g. "13 Nov 2026, 4:56 AM".
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+function formatExpiresAtDisplay(value) {
+  if (value == null || value === '') return null;
+  try {
+    return formatUtcForDisplay(value, IANA_IST, 'dd MMM yyyy, h:mm a');
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -113,18 +161,24 @@ async function findLatestExpiresYmd({ userId, mode }) {
  * }} input
  * @returns {Promise<{ expiresAt: string|null }>}
  */
-export async function recordPaidPremiumOrder({ orderId, userId, amount, mode, todayYmd }) {
+export async function recordPaidPremiumOrder({ orderId, userId, amount, mode, todayYmd, nowMs }) {
   await ensureTable();
   const today = todayYmd || todayInTimezone(IANA_IST);
-  const currentExpiresYmd = await findLatestExpiresYmd({ userId, mode });
+  const now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+  const currentRaw = await findLatestExpiresAtRaw({ userId, mode });
+  const currentExpiresYmd = expiresYmdFromDb(currentRaw);
+  const currentExpiresMs = expiresAtMsFromDb(currentRaw);
   const expiresAt = computeExtendedExpiresYmd({
     currentExpiresYmd,
+    currentExpiresMs,
+    nowMs: now,
     todayYmd: today,
   });
   if (!expiresAt) {
     throw new Error('Could not compute Premium expiry');
   }
 
+  // End of the expiry India calendar day so the full last day stays Premium.
   await getPrisma().$executeRawUnsafe(
     `INSERT INTO premium_orders_table (OrderId, UserId, Amount, Mode, Status, PaidAt, ExpiresAt)
      VALUES (?, ?, ?, ?, 'paid', UTC_TIMESTAMP(), ?)
@@ -133,7 +187,7 @@ export async function recordPaidPremiumOrder({ orderId, userId, amount, mode, to
     Number(userId),
     Number(amount),
     String(mode),
-    `${expiresAt} 00:00:00`,
+    `${expiresAt} 23:59:59`,
   );
 
   // Re-read so a duplicate confirm does not pretend the window was extended again.
@@ -148,14 +202,26 @@ export async function recordPaidPremiumOrder({ orderId, userId, amount, mode, to
  *   premium: boolean,
  *   daysLeft: number|null,
  *   expiresAt: string|null,
+ *   expiresAtDisplay: string|null,
  *   showExpiryWarning: boolean,
  * }>}
  */
-export async function getPremiumMembership({ userId, mode, todayYmd }) {
+export async function getPremiumMembership({ userId, mode, todayYmd, nowMs }) {
   await ensureTable();
   const today = todayYmd || todayInTimezone(IANA_IST);
-  const expiresAtYmd = await findLatestExpiresYmd({ userId, mode });
-  return resolvePremiumMembership({ expiresAtYmd, todayYmd: today });
+  const now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+  const expiresAtRaw = await findLatestExpiresAtRaw({ userId, mode });
+  const expiresAtYmd = expiresYmdFromDb(expiresAtRaw);
+  const expiresAtMs = expiresAtMsFromDb(expiresAtRaw);
+  return {
+    ...resolvePremiumMembership({
+      expiresAtYmd,
+      expiresAtMs,
+      nowMs: now,
+      todayYmd: today,
+    }),
+    expiresAtDisplay: formatExpiresAtDisplay(expiresAtRaw),
+  };
 }
 
 /**
@@ -169,6 +235,24 @@ export async function hasPaidPremium(input) {
 }
 
 /**
+ * True if this member ever confirmed a Premium payment in this mode
+ * (active or expired). Used so free trial is offered only once.
+ * @param {{ userId: number, mode: 'sandbox'|'production' }} input
+ * @returns {Promise<boolean>}
+ */
+export async function hasEverPaidPremium({ userId, mode }) {
+  await ensureTable();
+  const rows = await getPrisma().$queryRawUnsafe(
+    `SELECT 1 AS ok FROM premium_orders_table
+     WHERE UserId = ? AND Mode = ? AND Status = 'paid'
+     LIMIT 1`,
+    Number(userId),
+    String(mode),
+  );
+  return Array.isArray(rows) && rows.length > 0;
+}
+
+/**
  * Mark ranked people who have an active Premium window.
  * Extra `isPremium` on a list is safe for older apps: they ignore unknown fields.
  * If the lookup fails, every row stays non-premium so the list still loads.
@@ -176,7 +260,7 @@ export async function hasPaidPremium(input) {
  * @param {{ mode: 'sandbox'|'production', todayYmd?: string }} input
  * @returns {Promise<Array<object>>}
  */
-export async function attachPremiumFlags(entries, { mode, todayYmd }) {
+export async function attachPremiumFlags(entries, { mode, todayYmd, nowMs }) {
   const list = Array.isArray(entries) ? entries : [];
   const plain = () => list.map((entry) => ({ ...entry, isPremium: false }));
   const ids = [...new Set(
@@ -189,6 +273,7 @@ export async function attachPremiumFlags(entries, { mode, todayYmd }) {
   try {
     await ensureTable();
     const today = todayYmd || todayInTimezone(IANA_IST);
+    const now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
     const placeholders = ids.map(() => '?').join(', ');
     const rows = await getPrisma().$queryRawUnsafe(
       `SELECT UserId AS userId, MAX(ExpiresAt) AS expiresAt FROM premium_orders_table
@@ -200,8 +285,14 @@ export async function attachPremiumFlags(entries, { mode, todayYmd }) {
     );
     const paid = new Set();
     for (const row of rows || []) {
-      const expiresAtYmd = expiresYmdFromDb(row.expiresAt ?? row.ExpiresAt);
-      const membership = resolvePremiumMembership({ expiresAtYmd, todayYmd: today });
+      const raw = row.expiresAt ?? row.ExpiresAt;
+      const expiresAtYmd = expiresYmdFromDb(raw);
+      const membership = resolvePremiumMembership({
+        expiresAtYmd,
+        expiresAtMs: expiresAtMsFromDb(raw),
+        nowMs: now,
+        todayYmd: today,
+      });
       if (membership.premium) paid.add(Number(row.userId ?? row.UserId));
     }
     return list.map((entry) => ({

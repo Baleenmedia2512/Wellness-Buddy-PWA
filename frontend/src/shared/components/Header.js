@@ -53,6 +53,7 @@ const Header = ({
   const {
     premium: isPremiumMember,
     daysLeft: premiumDaysLeft,
+    expiresAtDisplay: premiumExpiresAtDisplay,
     showExpiryWarning,
     refresh: refreshPremium,
   } = usePremiumStatus(premiumUserId);
@@ -259,6 +260,7 @@ const Header = ({
       {activePage === 'home' && showExpiryWarning ? (
         <PremiumExpiryBanner
           daysLeft={premiumDaysLeft}
+          expiresAtDisplay={premiumExpiresAtDisplay}
           userId={premiumUserId}
           onPremiumCheck={refreshPremium}
         />

@@ -1,20 +1,17 @@
 import React from 'react';
 import GoPremiumButton from './GoPremiumButton';
+import { buildPremiumExpiryBannerLabel } from '../domain/premiumExpiryBanner.rules';
 
 /**
  * Home reminder when Premium has 2 or fewer days left.
  */
 export default function PremiumExpiryBanner({
   daysLeft = null,
+  expiresAtDisplay = null,
   userId,
   onPremiumCheck,
 }) {
-  const days = Number(daysLeft);
-  const label = !Number.isFinite(days) || days < 1
-    ? 'Your plan analysis expires today. Please recharge.'
-    : days === 1
-      ? 'Your plan analysis expires in 1 day. Please recharge.'
-      : `Your plan analysis expires in ${days} days. Please recharge.`;
+  const label = buildPremiumExpiryBannerLabel({ daysLeft, expiresAtDisplay });
 
   return (
     <div
@@ -22,7 +19,7 @@ export default function PremiumExpiryBanner({
       role="status"
       data-testid="premium-expiry-banner"
     >
-      <p className="text-sm font-semibold text-amber-950">{label}</p>
+      <p className="text-sm font-semibold text-amber-950 leading-snug">{label}</p>
       <GoPremiumButton
         userId={userId}
         isPremium={false}

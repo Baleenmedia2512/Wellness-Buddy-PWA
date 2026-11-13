@@ -9,6 +9,7 @@ export const PREMIUM_STATUS_TTL_MS = 5 * 60 * 1000;
  *   premium: boolean,
  *   daysLeft: number|null,
  *   expiresAt: string|null,
+ *   expiresAtDisplay: string|null,
  *   showExpiryWarning: boolean,
  * }} PremiumMembershipStatus */
 
@@ -16,6 +17,7 @@ export const INACTIVE_PREMIUM_STATUS = Object.freeze({
   premium: false,
   daysLeft: null,
   expiresAt: null,
+  expiresAtDisplay: null,
   showExpiryWarning: false,
 });
 
@@ -29,6 +31,7 @@ export function normalizePremiumMembershipStatus(raw) {
       premium: true,
       daysLeft: null,
       expiresAt: null,
+      expiresAtDisplay: null,
       showExpiryWarning: false,
     };
   }
@@ -38,6 +41,9 @@ export function normalizePremiumMembershipStatus(raw) {
     daysLeft: Number.isFinite(Number(raw.daysLeft)) ? Number(raw.daysLeft) : null,
     expiresAt: typeof raw.expiresAt === 'string' && raw.expiresAt.trim()
       ? raw.expiresAt.trim()
+      : null,
+    expiresAtDisplay: typeof raw.expiresAtDisplay === 'string' && raw.expiresAtDisplay.trim()
+      ? raw.expiresAtDisplay.trim()
       : null,
     showExpiryWarning: raw.showExpiryWarning === true,
   };

@@ -18,6 +18,7 @@ export const premiumStatusStore = createPremiumStatusStore({
         premium: true,
         daysLeft: null,
         expiresAt: null,
+        expiresAtDisplay: null,
         showExpiryWarning: false,
       };
     }

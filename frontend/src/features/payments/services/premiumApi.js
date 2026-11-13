@@ -111,6 +111,7 @@ export async function fetchPremiumQuote(userId) {
  *   premium: boolean,
  *   daysLeft: number|null,
  *   expiresAt: string|null,
+ *   expiresAtDisplay: string|null,
  *   showExpiryWarning: boolean,
  * }|null>} null when the server could not be reached
  */
@@ -127,6 +128,9 @@ export async function fetchPremiumStatus(userId) {
       daysLeft: Number.isFinite(Number(body.data.daysLeft)) ? Number(body.data.daysLeft) : null,
       expiresAt: typeof body.data.expiresAt === 'string' && body.data.expiresAt.trim()
         ? body.data.expiresAt.trim()
+        : null,
+      expiresAtDisplay: typeof body.data.expiresAtDisplay === 'string' && body.data.expiresAtDisplay.trim()
+        ? body.data.expiresAtDisplay.trim()
         : null,
       showExpiryWarning: body.data.showExpiryWarning === true,
     };

@@ -10,6 +10,7 @@ import { premiumStatusStore } from '../services/premiumStatus';
  *   premium: boolean,
  *   daysLeft: number|null,
  *   expiresAt: string|null,
+ *   expiresAtDisplay: string|null,
  *   showExpiryWarning: boolean,
  *   refresh: () => Promise<boolean>,
  * }}
@@ -50,6 +51,7 @@ export default function usePremiumStatus(userId) {
     premium: status.premium === true,
     daysLeft: status.daysLeft ?? null,
     expiresAt: status.expiresAt ?? null,
+    expiresAtDisplay: status.expiresAtDisplay ?? null,
     showExpiryWarning: status.showExpiryWarning === true,
     refresh,
   };

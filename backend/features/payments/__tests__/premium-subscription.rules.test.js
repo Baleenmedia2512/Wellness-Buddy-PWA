@@ -26,48 +26,81 @@ describe('premium subscription window', () => {
     );
   });
 
-  it('extends from the current expiry when still active', () => {
+  it('extends from the current expiry when still active by clock', () => {
     assert.equal(
-      computeExtendedExpiresYmd({ currentExpiresYmd: '2026-12-13', todayYmd: '2026-11-20' }),
+      computeExtendedExpiresYmd({
+        currentExpiresYmd: '2026-12-13',
+        currentExpiresMs: Date.parse('2026-12-13T10:00:00.000Z'),
+        nowMs: Date.parse('2026-11-20T10:00:00.000Z'),
+        todayYmd: '2026-11-20',
+      }),
       '2027-01-12',
     );
   });
 
-  it('treats the expiry day as still premium', () => {
+  it('starts from today when the clock has already passed expiry', () => {
+    assert.equal(
+      computeExtendedExpiresYmd({
+        currentExpiresYmd: '2026-11-13',
+        currentExpiresMs: Date.parse('2026-11-13T04:56:42.000Z'),
+        nowMs: Date.parse('2026-11-13T10:42:00.000Z'),
+        todayYmd: '2026-11-13',
+      }),
+      '2026-12-13',
+    );
+  });
+
+  it('stays premium before the exact expiry instant', () => {
     assert.deepEqual(
-      resolvePremiumMembership({ expiresAtYmd: '2026-12-13', todayYmd: '2026-12-13' }),
+      resolvePremiumMembership({
+        expiresAtYmd: '2026-11-13',
+        expiresAtMs: Date.parse('2026-11-13T04:56:42.000Z'),
+        nowMs: Date.parse('2026-11-13T04:00:00.000Z'),
+        todayYmd: '2026-11-13',
+      }),
       {
         premium: true,
         daysLeft: 0,
-        expiresAt: '2026-12-13',
+        expiresAt: '2026-11-13',
         showExpiryWarning: true,
       },
     );
   });
 
-  it('drops to normal the day after expiry', () => {
+  it('drops premium after the exact expiry instant even on the same day', () => {
     assert.deepEqual(
-      resolvePremiumMembership({ expiresAtYmd: '2026-12-13', todayYmd: '2026-12-14' }),
+      resolvePremiumMembership({
+        expiresAtYmd: '2026-11-13',
+        expiresAtMs: Date.parse('2026-11-13T04:56:42.000Z'),
+        nowMs: Date.parse('2026-11-13T10:42:00.000Z'),
+        todayYmd: '2026-11-13',
+      }),
       {
         premium: false,
         daysLeft: 0,
-        expiresAt: '2026-12-13',
+        expiresAt: '2026-11-13',
         showExpiryWarning: false,
       },
     );
   });
 
-  it('warns when two or fewer days remain', () => {
+  it('warns when two or fewer days remain and still active', () => {
     assert.equal(
-      resolvePremiumMembership({ expiresAtYmd: '2026-12-13', todayYmd: '2026-12-11' }).showExpiryWarning,
+      resolvePremiumMembership({
+        expiresAtYmd: '2026-12-13',
+        expiresAtMs: Date.parse('2026-12-13T18:29:59.000Z'),
+        nowMs: Date.parse('2026-12-11T10:00:00.000Z'),
+        todayYmd: '2026-12-11',
+      }).showExpiryWarning,
       true,
     );
     assert.equal(
-      resolvePremiumMembership({ expiresAtYmd: '2026-12-13', todayYmd: '2026-12-10' }).showExpiryWarning,
-      false,
-    );
-    assert.equal(
-      resolvePremiumMembership({ expiresAtYmd: '2026-12-13', todayYmd: '2026-12-10' }).daysLeft,
+      resolvePremiumMembership({
+        expiresAtYmd: '2026-12-13',
+        expiresAtMs: Date.parse('2026-12-13T18:29:59.000Z'),
+        nowMs: Date.parse('2026-12-10T10:00:00.000Z'),
+        todayYmd: '2026-12-10',
+      }).daysLeft,
       3,
     );
   });

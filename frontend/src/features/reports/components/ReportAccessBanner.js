@@ -56,10 +56,11 @@ export default function ReportAccessBanner({
   if (access === 'ended') {
     return (
       <div className={row}>
-        <p className="text-sm font-semibold text-gray-800">Free trial ended</p>
+        <p className="text-sm font-semibold text-gray-800">Please recharge</p>
         <GoPremiumButton
           userId={userId}
           isPremium={false}
+          renew
           onPremiumCheck={onPremiumCheck}
         />
       </div>

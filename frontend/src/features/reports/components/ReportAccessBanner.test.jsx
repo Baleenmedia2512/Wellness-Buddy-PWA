@@ -50,10 +50,10 @@ describe('ReportAccessBanner', () => {
     view.unmount();
   });
 
-  it('shows Go Premium after the trial ends', () => {
+  it('shows Please recharge after the trial or Premium ends', () => {
     const view = renderBanner({ access: 'ended', userId: '42', onPremiumCheck: async () => false });
-    expect(view.container.textContent).toMatch(/Free trial ended/);
-    expect(view.container.querySelector('button[aria-label="Go Premium"]')).not.toBeNull();
+    expect(view.container.textContent).toMatch(/Please recharge/);
+    expect(view.container.querySelector('button[aria-label="Recharge Premium"]')).not.toBeNull();
     view.unmount();
   });
 

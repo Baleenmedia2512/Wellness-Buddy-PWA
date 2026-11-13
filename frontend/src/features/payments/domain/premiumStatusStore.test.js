@@ -36,12 +36,14 @@ describe('premium status store', () => {
         premium: true,
         daysLeft: 2,
         expiresAt: '2026-12-13',
+        expiresAtDisplay: '13 Dec 2026, 4:56 AM',
         showExpiryWarning: true,
       }),
       {
         premium: true,
         daysLeft: 2,
         expiresAt: '2026-12-13',
+        expiresAtDisplay: '13 Dec 2026, 4:56 AM',
         showExpiryWarning: true,
       },
     );

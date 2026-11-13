@@ -1,6 +1,6 @@
 /**
  * Premium is a 30 India-calendar-day plan. Pure: no clock and no database.
- * Day of payment counts; ExpiresAt YMD is still premium; the next day is not.
+ * Access ends at the exact ExpiresAt instant when nowMs / expiresAtMs are provided.
  */
 
 export const PREMIUM_PERIOD_DAYS = 30;
@@ -60,27 +60,58 @@ export function addPremiumCalendarDays(ymd, days) {
 }
 
 /**
- * Extend from current expiry when still active; otherwise from today.
- * @param {{ currentExpiresYmd?: string|null, todayYmd?: string|null, periodDays?: number }} input
+ * @param {unknown} value
+ * @returns {number|null}
+ */
+function asFiniteMs(value) {
+  if (value == null || value === '') return null;
+  const ms = Number(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * Extend from current expiry when still active (by instant if given); otherwise from today.
+ * @param {{
+ *   currentExpiresYmd?: string|null,
+ *   currentExpiresMs?: number|null,
+ *   nowMs?: number|null,
+ *   todayYmd?: string|null,
+ *   periodDays?: number,
+ * }} input
  * @returns {string|null}
  */
 export function computeExtendedExpiresYmd({
   currentExpiresYmd = null,
+  currentExpiresMs = null,
+  nowMs = null,
   todayYmd = null,
   periodDays = PREMIUM_PERIOD_DAYS,
 } = {}) {
   const today = String(todayYmd || '').trim();
   if (!YMD.test(today)) return null;
   const current = String(currentExpiresYmd || '').trim();
-  const stillActive = YMD.test(current)
-    && premiumCalendarDaysBetween(today, current) != null
-    && premiumCalendarDaysBetween(today, current) >= 0;
+  const expiresMs = asFiniteMs(currentExpiresMs);
+  const now = asFiniteMs(nowMs);
+  let stillActive = false;
+  if (expiresMs != null && now != null) {
+    stillActive = now <= expiresMs;
+  } else {
+    stillActive = YMD.test(current)
+      && premiumCalendarDaysBetween(today, current) != null
+      && premiumCalendarDaysBetween(today, current) >= 0;
+  }
   const base = stillActive ? current : today;
   return addPremiumCalendarDays(base, periodDays);
 }
 
 /**
- * @param {{ expiresAtYmd?: string|null, todayYmd?: string|null, warnDays?: number }} input
+ * @param {{
+ *   expiresAtYmd?: string|null,
+ *   expiresAtMs?: number|null,
+ *   nowMs?: number|null,
+ *   todayYmd?: string|null,
+ *   warnDays?: number,
+ * }} input
  * @returns {{
  *   premium: boolean,
  *   daysLeft: number|null,
@@ -90,6 +121,8 @@ export function computeExtendedExpiresYmd({
  */
 export function resolvePremiumMembership({
   expiresAtYmd = null,
+  expiresAtMs = null,
+  nowMs = null,
   todayYmd = null,
   warnDays = PREMIUM_EXPIRY_WARN_DAYS,
 } = {}) {
@@ -98,15 +131,32 @@ export function resolvePremiumMembership({
   if (!YMD.test(expiresAt) || !YMD.test(today)) {
     return { premium: false, daysLeft: null, expiresAt: null, showExpiryWarning: false };
   }
+
   const daysLeft = premiumCalendarDaysBetween(today, expiresAt);
-  if (daysLeft == null || daysLeft < 0) {
-    return { premium: false, daysLeft: 0, expiresAt, showExpiryWarning: false };
+  const expiresMs = asFiniteMs(expiresAtMs);
+  const now = asFiniteMs(nowMs);
+
+  let premium;
+  if (expiresMs != null && now != null) {
+    premium = now <= expiresMs;
+  } else {
+    premium = daysLeft != null && daysLeft >= 0;
   }
+
+  if (!premium) {
+    return {
+      premium: false,
+      daysLeft: daysLeft != null && daysLeft >= 0 ? daysLeft : 0,
+      expiresAt,
+      showExpiryWarning: false,
+    };
+  }
+
   return {
     premium: true,
-    daysLeft,
+    daysLeft: daysLeft ?? 0,
     expiresAt,
-    showExpiryWarning: daysLeft <= warnDays,
+    showExpiryWarning: (daysLeft ?? 0) <= warnDays,
   };
 }
 

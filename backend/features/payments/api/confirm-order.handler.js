@@ -38,6 +38,7 @@ function membershipPayload(membership) {
     premium: membership?.premium === true,
     daysLeft: membership?.daysLeft ?? null,
     expiresAt: membership?.expiresAt ?? null,
+    expiresAtDisplay: membership?.expiresAtDisplay ?? null,
     showExpiryWarning: membership?.showExpiryWarning === true,
   };
 }
@@ -48,6 +49,7 @@ function inactivePayload(status) {
     status,
     daysLeft: null,
     expiresAt: null,
+    expiresAtDisplay: null,
     showExpiryWarning: false,
   };
 }
@@ -136,6 +138,7 @@ export async function getPremiumStatus(input, deps = {}) {
         premium: await deps.hasPaid(args),
         daysLeft: null,
         expiresAt: null,
+        expiresAtDisplay: null,
         showExpiryWarning: false,
       })
       : getPremiumMembership);
@@ -149,6 +152,7 @@ export async function getPremiumStatus(input, deps = {}) {
     premium: false,
     daysLeft: null,
     expiresAt: null,
+    expiresAtDisplay: null,
     showExpiryWarning: false,
   };
   try {
