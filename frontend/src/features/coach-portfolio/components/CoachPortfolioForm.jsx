@@ -33,11 +33,11 @@ import {
   TextInput,
   ValueSelectInput,
   VideoUploadField,
-  YesNo,
 } from './formFields';
 import { openPublicCoachUrl, resolvePublicCoachUrl } from '../utils/publicCoachUrl';
 import { publicWebsiteUrl } from '../domain/publicWebsiteUrl';
 import PublishOtpModal from './PublishOtpModal';
+import SaveYourWebsiteReview from './SaveYourWebsiteReview';
 import { buildPublicPathPreview } from '../domain/publicPathPreview';
 
 async function uploadFormPhoto(userId, slot, file) {
@@ -748,8 +748,8 @@ export default function CoachPortfolioForm({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#eef3ef]">
-      <header className="sticky top-0 z-10 border-b border-slate-200/70 bg-white/90 backdrop-blur-md safe-top">
+    <div className={`fixed inset-0 z-50 flex flex-col ${step.id === 'review' ? 'bg-[#f3efe4]' : 'bg-[#eef3ef]'}`}>
+      <header className="relative z-30 shrink-0 border-b border-slate-200/70 bg-white/95 backdrop-blur-md safe-top">
         <div className="mx-auto max-w-lg px-4 py-3">
           <div className="flex items-center gap-3">
             <TouchFeedbackButton
@@ -772,7 +772,9 @@ export default function CoachPortfolioForm({
 
       <div
         ref={scrollRootRef}
-        className="mx-auto w-full max-w-lg flex-1 overflow-y-auto px-4 py-4 pb-32 space-y-4"
+        className={`relative z-0 mx-auto w-full max-w-lg flex-1 overflow-y-auto px-4 py-4 space-y-4 ${
+          step.id === 'review' ? 'pb-40' : 'pb-32'
+        }`}
       >
         {loading ? <p className="text-sm text-slate-500">Loading your form…</p> : null}
 
@@ -996,89 +998,29 @@ export default function CoachPortfolioForm({
         ) : null}
 
         {!loading && step.id === 'review' ? (
-          <FormCard title="Save your website">
-            <div className="space-y-3 text-sm text-slate-800">
-              <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 px-3.5 py-3 space-y-1.5">
-                <p>
-                  <span className="font-semibold text-slate-900">Centre:</span>{' '}
-                  {resolvedCenterName || form.center.centerName || '—'}
-                </p>
-                <p>
-                  <span className="font-semibold text-slate-900">City:</span>{' '}
-                  {form.center.city || '—'}
-                </p>
-                <p>
-                  <span className="font-semibold text-slate-900">Area:</span>{' '}
-                  {form.center.locality || '—'}
-                </p>
-              </div>
-              <div className="rounded-2xl bg-slate-50 px-3.5 py-3 space-y-3">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">From your app</p>
-                {displayMediaUrl(form.personal.profilePhoto) ? (
-                  <div className="flex items-center gap-3">
-                    {/* eslint-disable-next-line jsx-a11y/alt-text -- decorative publish preview */}
-                    <img
-                      src={displayMediaUrl(form.personal.profilePhoto)}
-                      alt=""
-                      className="h-14 w-14 shrink-0 rounded-full border border-slate-200 object-cover bg-white"
-                    />
-                    <p className="text-xs font-semibold text-emerald-700">Profile photo</p>
-                  </div>
-                ) : (
-                  <p className="text-xs text-amber-700">No profile photo in app yet</p>
-                )}
-                <div className="space-y-1">
-                  <p><span className="font-semibold text-slate-900">Name:</span> {form.personal.fullName || '—'}</p>
-                  <p><span className="font-semibold text-slate-900">Phone / WhatsApp:</span> {form.center.businessPhone || form.center.whatsapp || '—'}</p>
-                  {hasClub ? (
-                    <p><span className="font-semibold text-slate-900">Club:</span> {form.center.centerName || '—'}</p>
-                  ) : null}
-                </div>
-              </div>
-              <div className="rounded-2xl bg-slate-50 px-3.5 py-3 space-y-1">
-                <p className="font-semibold text-slate-900">
-                  {form.personal.fullName || form.mediaBrand.websiteDisplayName || '—'}
-                </p>
-                <p className="text-slate-600">{form.personal.professionalTitle || '—'}</p>
-                <p className="text-slate-600">{form.personal.yearsExperience || '—'}</p>
-                <p className="line-clamp-3 text-slate-600">
-                  {form.personal.background || '—'}
-                </p>
-              </div>
-              {isPublished && publicPath ? (
-                <a
-                  href={resolvePublicCoachUrl(publicPath) || publicWebsiteUrl(publicPath)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block rounded-2xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-center text-sm font-semibold text-emerald-800"
-                  onClick={(e) => openPublicCoachUrl(publicPath, e)}
-                >
-                  Open live page
-                </a>
-              ) : null}
-              {isPublished && hasUnpublishedChanges ? (
-                <p className="rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs font-medium text-amber-900">
-                  Unpublished changes — live page still shows the last published version until you Publish changes.
-                </p>
-              ) : null}
-              <label className="flex items-start gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/80 px-3.5 py-3 text-sm text-slate-800">
-                <input
-                  type="checkbox"
-                  checked={form.goalsConsent.accuracyConfirmed === true}
-                  onChange={(e) => canEdit && setForm(setSection(form, 'goalsConsent', { accuracyConfirmed: e.target.checked }))}
-                  className="mt-0.5"
-                />
-                <span>I confirm that the information provided is accurate. *</span>
-              </label>
-              <div>
-                <FieldLabel required>Authorize use of photos and content for publication?</FieldLabel>
-                <YesNo value={form.goalsConsent.publishAuthorized} onChange={(v) => canEdit && setForm(setSection(form, 'goalsConsent', { publishAuthorized: v }))} />
-              </div>
-              <p className="text-xs text-slate-500">
-                Save keeps a draft only. Publish emails a verification OTP to your coach — the live page updates after the code is verified.
-              </p>
-            </div>
-          </FormCard>
+          <SaveYourWebsiteReview
+            form={form}
+            centerDisplayName={resolvedCenterName || form.center.centerName || ''}
+            profilePhotoUrl={displayMediaUrl(form.personal.profilePhoto)}
+            canEdit={canEdit}
+            isPublished={isPublished}
+            publicPath={publicPath}
+            hasUnpublishedChanges={hasUnpublishedChanges}
+            livePageHref={
+              isPublished && publicPath
+                ? (resolvePublicCoachUrl(publicPath) || publicWebsiteUrl(publicPath))
+                : undefined
+            }
+            onOpenLivePage={(e) => openPublicCoachUrl(publicPath, e)}
+            onAccuracyChange={(checked) => {
+              if (!canEdit) return;
+              setForm(setSection(form, 'goalsConsent', { accuracyConfirmed: checked }));
+            }}
+            onAuthorizeChange={(v) => {
+              if (!canEdit) return;
+              setForm(setSection(form, 'goalsConsent', { publishAuthorized: v }));
+            }}
+          />
         ) : null}
 
         {message ? (
@@ -1088,7 +1030,7 @@ export default function CoachPortfolioForm({
         ) : null}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 border-t border-slate-200/80 bg-white/95 backdrop-blur-md safe-bottom">
+      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/80 bg-white safe-bottom shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
         <div className="mx-auto flex max-w-lg gap-2 px-4 py-3">
           <TouchFeedbackButton
             onClick={() => setStepIndex((i) => Math.max(0, i - 1))}
