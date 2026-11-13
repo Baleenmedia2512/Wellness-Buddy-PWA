@@ -67,6 +67,20 @@ export async function listAnalyses({ userId, limit, offset }) {
   return { rows: data || [], count: count || 0 };
 }
 
+export async function findAnalysisRecord(id, userId) {
+  const db = getMysqlClient();
+  let query = db
+    .from('food_nutrition_data_table')
+    .select('"ID", "UserID", "CreatedAt", "IsDeleted"')
+    .eq('"ID"', id);
+  if (userId) {
+    query = query.eq('"UserID"', userId);
+  }
+  const { data, error } = await query.limit(1);
+  if (error) throw error;
+  return Array.isArray(data) && data[0] ? data[0] : null;
+}
+
 export async function softDeleteAnalysis(id, userId) {
   const db = getMysqlClient();
   const currentTime = legacyIstWallNow();

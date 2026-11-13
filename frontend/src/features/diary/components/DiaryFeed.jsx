@@ -30,7 +30,7 @@ import { useDiaryWeightPreviousMap } from '../hooks/useDiaryWeightPreviousMap';
 import ROWS_BY_KIND, { OtherRow } from './rows';
 import DiaryUndoRow, { DIARY_UNDO_SECONDS } from './DiaryUndoRow';
 import { EmojiOrNative } from '../../../shared/components/icons/EmojiImage';
-import { formatBusinessTime, formatOwnerDayLabel } from '../../../shared/utils/datetimeUtils';
+import { formatBusinessTime, formatOwnerDayLabel, isBusinessToday } from '../../../shared/utils/datetimeUtils';
 import { resolveDiaryTimezone } from '../utils/diaryTimezone';
 import { isStalePendingAnalysis, filterPendingCaptureMetaForOwner } from '../utils/stalePending';
 import { getProfile } from '../../user/services/user.api';
@@ -478,13 +478,14 @@ export default function DiaryFeed({
       const weightId = entry.kind === 'weight' && entry.payload?.id != null
         ? String(entry.payload.id)
         : null;
+      const isEntryToday = isBusinessToday(entry.capturedAt, ownerTimezoneIana);
       return (
         <Row
           key={`${entry.kind}-${entry.payload?.id ?? entry.capturedAt}`}
           entry={entry}
           onOpen={onEntryOpen}
           onDelete={onEntryDelete}
-          canDelete={canDelete}
+          canDelete={canDelete && isEntryToday}
           hideTime={hideTime}
           timezoneIana={ownerTimezoneIana}
           ownerUserId={ownerUserId}

@@ -77,7 +77,7 @@ function buildEmail({
   const rangeLabel =
     Number.isFinite(Number(idealMin)) && Number.isFinite(Number(idealMax))
       ? `${Number(idealMin).toFixed(1)} – ${Number(idealMax).toFixed(1)} kg`
-      : 'BMI 19–23';
+      : 'Indian BMI 19–23';
 
   const subject = `${memberName || 'A team member'} reached ideal weight`;
   const text = [

@@ -17,7 +17,6 @@ const cleanPhone = (s) => s.trim().replace(/[\s\-()]/g, '');
 const EMPTY_BODY_METRICS = {
   age: '',
   fatPercent: '',
-  visceralFat: '',
   bmi: '',
   bodyAge: '',
   chestCm: '',
@@ -34,7 +33,6 @@ function metricsFromProfile(p) {
   return {
     age: m.age != null && m.age !== '' ? String(m.age) : '',
     fatPercent: fat != null && fat !== '' ? String(fat) : '',
-    visceralFat: m.visceralFat != null && m.visceralFat !== '' ? String(m.visceralFat) : '',
     bmi: m.bmi != null && m.bmi !== '' ? String(m.bmi) : '',
     bodyAge: m.bodyAge != null && m.bodyAge !== '' ? String(m.bodyAge) : '',
     chestCm: m.chestCm != null && m.chestCm !== '' ? String(m.chestCm) : '',
@@ -146,7 +144,6 @@ export default function useProfileForm(initial = {}) {
       phoneNumber: phone.trim() || undefined,
       weightGoalMode: weightGoalMode || 'loss',
       age: parseOptionalNumber(bodyMetrics.age, { integer: true }),
-      visceralFat: parseOptionalNumber(bodyMetrics.visceralFat),
       bodyAge: parseOptionalNumber(bodyMetrics.bodyAge),
       chestCm: parseOptionalNumber(bodyMetrics.chestCm),
       waistCm: parseOptionalNumber(bodyMetrics.waistCm),

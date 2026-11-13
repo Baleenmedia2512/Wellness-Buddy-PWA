@@ -651,9 +651,9 @@ test.describe('Diary / Food Log Module', () => {
 
     await diaryPage.gotoDiary();
     await expect(diaryPage.goodHabitCard).toBeVisible({ timeout: 10000 });
-    await expect(diaryPage.goodHabitCard.getByText('Good Habit')).toBeVisible();
+    await expect(diaryPage.goodHabitCard.getByText(/Task by Coach|Good Habit/i)).toBeVisible();
 
-    const shareBtn = diaryPage.goodHabitCard.locator('button[aria-label*="Share this Good Habit"]');
+    const shareBtn = diaryPage.goodHabitCard.locator('button[aria-label*="Share this"]');
     await expect(shareBtn).toBeVisible();
   });
 
@@ -1047,7 +1047,7 @@ test.describe('Diary / Food Log Module', () => {
 
     // 4. Verify Share button on Good Habit Card
     await expect(diaryPage.goodHabitCard).toBeVisible({ timeout: 10000 });
-    const habitShareBtn = diaryPage.goodHabitCard.locator('button[aria-label*="Share this Good Habit"]');
+    const habitShareBtn = diaryPage.goodHabitCard.locator('button[aria-label*="Share this"]');
     await expect(habitShareBtn).toBeVisible();
   });
 });

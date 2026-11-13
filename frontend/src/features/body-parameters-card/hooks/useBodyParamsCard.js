@@ -101,7 +101,6 @@ function toPhoneSuggestion(m) {
     bmr: m.bmr != null ? m.bmr : null,
     gender: m.gender ?? null,
     age: m.age != null ? m.age : null,
-    visceralFat: m.visceralFat != null ? m.visceralFat : null,
     bodyAge: m.bodyAge != null ? m.bodyAge : null,
     chestCm: m.chestCm != null ? m.chestCm : null,
     waistCm: m.waistCm != null ? m.waistCm : null,
@@ -131,7 +130,6 @@ function applyMemberPrefillToForm(prev, member) {
     if (member[src] != null && member[src] !== '') next[dest] = String(member[src]);
   };
   copy('age');
-  copy('visceralFat');
   copy('bodyAge');
   copy('chestCm');
   copy('waistCm');
@@ -172,7 +170,7 @@ function applyExistingBcmCardToForm(prev, card, timezoneIana) {
   if (card.createdAt || card.updatedAt) {
     next.recordedTime = formatBcmFormTime(resolveBcmCardDisplayTimestamp(card), tz);
   }
-  ['age', 'heightCm', 'weightKg', 'bmi', 'fatPercent', 'bmr', 'visceralFat', 'bodyAge', 'chestCm', 'waistCm', 'hipCm']
+  ['age', 'heightCm', 'weightKg', 'bmi', 'fatPercent', 'bmr', 'bodyAge', 'chestCm', 'waistCm', 'hipCm']
     .forEach((key) => {
       if (card[key] != null && card[key] !== '') next[key] = str(card[key]);
     });
@@ -212,7 +210,6 @@ function buildEmptyForm(timezoneIana) {
     bmi: '',
     fatPercent: '',
     bmr: '',
-    visceralFat: '',
     bodyAge: '',
     chestCm: '',
     waistCm: '',
@@ -245,7 +242,6 @@ function cardToFormState(card, timezoneIana) {
     bmi: card.bmi != null ? String(card.bmi) : '',
     fatPercent: card.fatPercent != null ? String(card.fatPercent) : '',
     bmr: card.bmr != null ? String(card.bmr) : '',
-    visceralFat: card.visceralFat != null ? String(card.visceralFat) : '',
     bodyAge: card.bodyAge != null ? String(card.bodyAge) : '',
     chestCm: card.chestCm != null ? String(card.chestCm) : '',
     waistCm: card.waistCm != null ? String(card.waistCm) : '',
@@ -500,7 +496,6 @@ export function useBodyParamsCard({
       existingCard.bmi,
       existingCard.fatPercent,
       existingCard.bmr,
-      existingCard.visceralFat,
       existingCard.bodyAge,
       existingCard.chestCm,
       existingCard.waistCm,
@@ -992,7 +987,6 @@ export function useBodyParamsCard({
               bmr: prefill.bmr,
               gender: prefill.gender,
               age: prefill.age,
-              visceralFat: prefill.visceralFat,
               bodyAge: prefill.bodyAge,
               chestCm: prefill.chestCm,
               waistCm: prefill.waistCm,
@@ -1054,7 +1048,6 @@ export function useBodyParamsCard({
         bmi: '',
         fatPercent: '',
         bmr: '',
-        visceralFat: '',
         bodyAge: '',
         chestCm: '',
         waistCm: '',
@@ -1177,11 +1170,6 @@ export function useBodyParamsCard({
         fatPercent: form.fatPercent || undefined,
         bmr: form.bmr || undefined,
         bmrManualOverride: bmrUserEdited,
-        // BCM no longer collects V-Fat. Omit on create; keep stored value on edit
-        // so updateCard does not wipe visceral_fat (reports still use it).
-        visceralFat: isEditMode
-          ? (toOptionalNum(existingCard?.visceralFat) ?? undefined)
-          : undefined,
         bodyAge: form.bodyAge || undefined,
         chestCm: toOptionalNum(form.chestCm),
         waistCm: toOptionalNum(form.waistCm),
@@ -1222,7 +1210,6 @@ export function useBodyParamsCard({
         bmi: pickSavedField(cardCore.bmi, form.bmi),
         fatPercent: pickSavedField(cardCore.fatPercent, form.fatPercent),
         bmr: pickSavedField(cardCore.bmr, form.bmr),
-        visceralFat: pickSavedField(cardCore.visceralFat, form.visceralFat),
         bodyAge: pickSavedField(cardCore.bodyAge, form.bodyAge),
         chestCm: pickSavedField(cardCore.chestCm, form.chestCm),
         waistCm: pickSavedField(cardCore.waistCm, form.waistCm),
