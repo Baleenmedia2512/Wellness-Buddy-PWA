@@ -306,7 +306,6 @@ export function validateFormForSubmit(form, { hasClub = false } = {}) {
   // About step — all mandatory for publish.
   requireText(f.personal.yearsExperience, 'Years of experience', errors);
   requireText(f.personal.background, 'Who are you as a Wellness Professional', errors);
-  requireText(f.personal.uniqueApproach, 'What do you believe in', errors);
   if (!Array.isArray(f.personal.languages) || f.personal.languages.length === 0) {
     errors.push('Languages is required');
   } else if (
@@ -319,7 +318,12 @@ export function validateFormForSubmit(form, { hasClub = false } = {}) {
     requireText(f.center.centerName, 'Wellness center name (from your club)', errors);
   }
   requireText(f.center.businessPhone, 'Contact number (from your app profile)', errors);
-  requireText(f.mediaBrand.websiteDisplayName, 'Website display name', errors);
+  // Public slug name = Coach profile name (UI no longer collects a separate display name).
+  requireText(
+    f.mediaBrand.websiteDisplayName || f.personal.fullName,
+    'Coach profile name (used as website name)',
+    errors,
+  );
   if (f.goalsConsent.accuracyConfirmed !== true) {
     errors.push('Confirm that the information is accurate');
   }
@@ -335,7 +339,6 @@ export function validateAboutStep(form) {
   const f = normalizeFormJson(form);
   requireText(f.personal.yearsExperience, 'Years of experience', errors);
   requireText(f.personal.background, 'Who are you as a Wellness Professional', errors);
-  requireText(f.personal.uniqueApproach, 'What do you believe in', errors);
   if (!Array.isArray(f.personal.languages) || f.personal.languages.length === 0) {
     errors.push('Languages is required');
   } else if (

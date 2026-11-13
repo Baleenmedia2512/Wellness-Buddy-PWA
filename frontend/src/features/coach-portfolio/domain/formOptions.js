@@ -102,20 +102,18 @@ export const PREFERRED_ACTIONS = [
  * Step order for the CMS form.
  * Profile photo, club, and contact come from the app — not asked here.
  * About copy (years, bio, languages) is form-only for the public About section.
- * Hours is club-only — coaches without an owned club skip that step.
+ * Hours live under City & Area when a center is linked (no separate step).
  */
 export const FORM_STEPS = [
-  { id: 'hero', title: 'Hero', description: 'Display name, title, city & area' },
+  { id: 'hero', title: 'Hero', description: 'City & area, title' },
   { id: 'about', title: 'About', description: 'Bio shown on your About section' },
   { id: 'photos', title: 'Photos', description: 'Albums + intro video' },
-  { id: 'center', title: 'Hours', description: 'Opening hours on your site' },
   { id: 'review', title: 'Publish', description: 'Publish live — edit anytime after' },
 ];
 
-/** Form steps for this coach — Hours only when they own a club. */
-export function getFormSteps({ hasClub = false } = {}) {
-  if (hasClub) return FORM_STEPS;
-  return FORM_STEPS.filter((s) => s.id !== 'center');
+/** Form steps for this coach. `hasClub` kept for callers; hours are inline on Hero. */
+export function getFormSteps({ hasClub: _hasClub = false } = {}) {
+  return FORM_STEPS;
 }
 
 export const ADMIN_STATUS_OPTIONS = [

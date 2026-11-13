@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, MapPinned } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import PlaceMapPicker from '../../../shared/components/PlaceMapPicker';
+import HoursPicker from './HoursPicker';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import {
   emptyPortfolioForm,
@@ -63,6 +65,14 @@ function setSocialLink(form, key, value) {
       [key]: value,
     },
   });
+}
+
+/** Public website name = app profile name (no separate display-name field). */
+function withProfileWebsiteName(form) {
+  const name = String(form?.personal?.fullName || '').trim();
+  if (!name) return form;
+  if (String(form?.mediaBrand?.websiteDisplayName || '').trim() === name) return form;
+  return setSection(form, 'mediaBrand', { websiteDisplayName: name });
 }
 
 function Progress({ stepIndex, steps }) {
@@ -131,6 +141,39 @@ export default function CoachPortfolioForm({
   const [pathPreview, setPathPreview] = useState('');
   const [otpResending, setOtpResending] = useState(false);
   const [otpKey, setOtpKey] = useState(null);
+  const [placeMapOpen, setPlaceMapOpen] = useState(false);
+  const [placeFromMap, setPlaceFromMap] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const defaultCenterAppliedRef = useRef(false);
+  const fieldRefs = useRef({});
+  const scrollRootRef = useRef(null);
+
+  const setFieldRef = (key) => (el) => {
+    if (el) fieldRefs.current[key] = el;
+    else delete fieldRefs.current[key];
+  };
+
+  const clearFieldError = (key) => {
+    setFieldErrors((prev) => {
+      if (!prev?.[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const showFieldErrors = (keys) => {
+    const list = (Array.isArray(keys) ? keys : [keys]).filter(Boolean);
+    if (!list.length) return;
+    const next = {};
+    list.forEach((k) => { next[k] = true; });
+    setFieldErrors(next);
+    const first = list[0];
+    const el = fieldRefs.current[first];
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
 
   const centers = useMemo(
     () => (Array.isArray(availableCenters) ? availableCenters : []),
@@ -192,7 +235,7 @@ export default function CoachPortfolioForm({
           address: data?.form?.center?.address || '',
         },
         mediaBrand: {
-          websiteDisplayName: '',
+          websiteDisplayName: data?.form?.personal?.fullName || '',
         },
         services: data?.form?.services || undefined,
       });
@@ -298,11 +341,13 @@ export default function CoachPortfolioForm({
 
   const onCenterChange = async (rawId) => {
     if (!rawId) {
-      // Optional: clear link only — keep any City/Area the user already typed.
+      // Explicit "No center" — freestyle map (GPS on open).
       setResolvedCenterId(null);
       setResolvedCenterName('');
       setHasClub(false);
-      setMessage('Center unlinked — type City & Area below, or pick another center');
+      setPlaceFromMap(false);
+      setPlaceMapOpen(true);
+      setMessage('No center — map opened at your current location');
       return;
     }
     const nextId = Number(rawId);
@@ -312,6 +357,8 @@ export default function CoachPortfolioForm({
     const place = placeFromCenterOption(meta, optionLabel);
     setBusy(true);
     setMessage('');
+    setPlaceMapOpen(false);
+    setPlaceFromMap(false);
     try {
       await loadCenterForm(nextId, {
         fresh: createMode,
@@ -324,10 +371,11 @@ export default function CoachPortfolioForm({
         centerName: String(prev?.center?.centerName || '').trim() || place.centerName,
       }));
       setResolvedCenterName(place.centerName || meta?.centerName || '');
+      if (place.city || place.locality) clearFieldError('place');
       setMessage(
         place.city || place.locality
-          ? 'Center loaded — City & Area filled (you can still edit)'
-          : 'Center linked — type City & Area below if empty',
+          ? 'Center loaded — City & Area filled from center'
+          : 'Center linked',
       );
     } catch (err) {
       setMessage(err?.message || 'Could not load center');
@@ -337,43 +385,109 @@ export default function CoachPortfolioForm({
   };
 
   // Must be a render helper (not an inner component) so City/Area inputs keep focus while typing.
+  const onPlaceMapResolved = (place) => {
+    if (!canEdit || !place) return;
+    const city = String(place.city || '').trim();
+    const locality = String(place.locality || '').trim();
+    setForm((prev) => setSection(prev, 'center', {
+      city: city || String(prev.center?.city || '').trim(),
+      locality: locality || String(prev.center?.locality || '').trim(),
+      mapsLink: place.mapsLink || prev.center?.mapsLink || '',
+      address: [locality, city].filter(Boolean).join(', ') || prev.center?.address || '',
+    }));
+    if (city || locality) {
+      setPlaceFromMap(true);
+      setPlaceMapOpen(false);
+      clearFieldError('place');
+    }
+  };
+
+  const placeSummary = [form.center.locality, form.center.city].filter(Boolean).join(', ');
+  const hasLinkedCenter = resolvedCenterId != null;
+  const freestylePlace = !hasLinkedCenter;
+
   const renderPlaceFields = (title = 'City & area') => (
     <div className="space-y-3 rounded-2xl border border-emerald-100 bg-emerald-50/40 px-3.5 py-3">
       <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-800">{title}</p>
       {selectableCenters.length > 0 ? (
         <div>
-          <FieldLabel hint="Optional. Skip to type City & Area. Each center can link to only one website.">
-            Link a center (optional)
-          </FieldLabel>
+          <FieldLabel>Centre</FieldLabel>
           <ValueSelectInput
             options={centerOptions}
             value={resolvedCenterId != null ? String(resolvedCenterId) : ''}
             onChange={onCenterChange}
-            placeholder="No center — type City & Area below"
+            placeholder="No center — pick on map"
             disabled={!canEdit || busy}
           />
         </div>
       ) : null}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <FieldLabel required>City</FieldLabel>
-          <TextInput
-            value={form.center.city}
-            onChange={(v) => canEdit && setForm(setSection(form, 'center', { city: v }))}
-            placeholder="e.g. Chennai"
-            disabled={!canEdit || busy}
-          />
-        </div>
-        <div>
-          <FieldLabel required>Area</FieldLabel>
-          <TextInput
-            value={form.center.locality}
-            onChange={(v) => canEdit && setForm(setSection(form, 'center', { locality: v }))}
-            placeholder="e.g. Kodambakkam"
-            disabled={!canEdit || busy}
-          />
-        </div>
+
+      {freestylePlace && canEdit && !placeMapOpen ? (
+        <TouchFeedbackButton
+          type="button"
+          disabled={busy}
+          onClick={() => setPlaceMapOpen(true)}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-300 bg-white px-3.5 py-2.5 text-[13px] font-semibold text-emerald-800 shadow-sm disabled:opacity-50"
+        >
+          <MapPinned className="h-4 w-4" aria-hidden />
+          Pick City & Area on map
+        </TouchFeedbackButton>
+      ) : null}
+
+      {freestylePlace && placeMapOpen ? (
+        <PlaceMapPicker
+          open={placeMapOpen}
+          disabled={!canEdit || busy}
+          onClose={() => setPlaceMapOpen(false)}
+          onResolved={onPlaceMapResolved}
+        />
+      ) : null}
+
+      <div
+        ref={setFieldRef('place')}
+        className={`rounded-xl border bg-white px-3 py-2.5 ${
+          fieldErrors.place ? 'border-rose-500 ring-2 ring-rose-400/40' : 'border-emerald-200'
+        }`}
+      >
+        {placeSummary ? (
+          <>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-800">Place</p>
+            <p className="mt-0.5 text-sm font-semibold text-slate-900">{placeSummary}</p>
+            {placeFromMap ? (
+              <p className="mt-1 text-[11px] font-medium text-emerald-700">From map</p>
+            ) : null}
+            {hasLinkedCenter ? (
+              <p className="mt-1 text-[11px] text-slate-500">From linked centre</p>
+            ) : null}
+            {freestylePlace && canEdit && !placeMapOpen ? (
+              <TouchFeedbackButton
+                type="button"
+                disabled={busy}
+                onClick={() => setPlaceMapOpen(true)}
+                className="mt-2 text-[12px] font-semibold text-emerald-800 underline"
+              >
+                Change on map
+              </TouchFeedbackButton>
+            ) : null}
+          </>
+        ) : (
+          <p className={`text-[12px] font-medium ${fieldErrors.place ? 'text-rose-600' : 'text-amber-700'}`}>
+            {fieldErrors.place
+              ? 'Required — pick a center or set place on map'
+              : (freestylePlace
+                ? 'Pick on map to set City & Area'
+                : 'Select a center to fill City & Area')}
+          </p>
+        )}
       </div>
+
+      {hasLinkedCenter ? (
+        <HoursPicker
+          timings={form.timings}
+          disabled={!canEdit || busy}
+          onChange={(patch) => canEdit && setForm(setSection(form, 'timings', patch))}
+        />
+      ) : null}
     </div>
   );
 
@@ -381,8 +495,38 @@ export default function CoachPortfolioForm({
     setStepIndex((i) => Math.min(i, Math.max(0, steps.length - 1)));
   }, [steps.length]);
 
+  // Create website: default first available center; else open map at GPS.
   useEffect(() => {
-    const name = String(form.mediaBrand.websiteDisplayName || '').trim();
+    if (loading || !createMode || defaultCenterAppliedRef.current) return;
+    if (centerId != null && String(centerId).trim() !== '') {
+      defaultCenterAppliedRef.current = true;
+      return;
+    }
+    if (resolvedCenterId != null) {
+      defaultCenterAppliedRef.current = true;
+      return;
+    }
+    if (selectableCenters.length > 0) {
+      defaultCenterAppliedRef.current = true;
+      const firstId = selectableCenters[0]?.centerId;
+      if (firstId != null) {
+        onCenterChange(String(firstId));
+      }
+      return;
+    }
+    defaultCenterAppliedRef.current = true;
+    setPlaceMapOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot default after load
+  }, [loading, createMode, centerId, resolvedCenterId, selectableCenters]);
+
+  // Keep websiteDisplayName locked to Coach profile name for slug / uniqueness (not shown in UI).
+  useEffect(() => {
+    if (loading) return;
+    setForm((prev) => withProfileWebsiteName(prev));
+  }, [form.personal.fullName, loading]);
+
+  useEffect(() => {
+    const name = String(form.personal.fullName || form.mediaBrand.websiteDisplayName || '').trim();
     if (!name || loading) {
       setDisplayNameStatus('');
       return undefined;
@@ -406,24 +550,27 @@ export default function CoachPortfolioForm({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [form.mediaBrand.websiteDisplayName, userId, resolvedCenterId, loading]);
+  }, [form.personal.fullName, form.mediaBrand.websiteDisplayName, userId, resolvedCenterId, loading]);
 
   const saveDraft = async () => {
     if (!String(form.center.city || '').trim() || !String(form.center.locality || '').trim()) {
-      setMessage('Enter City and Area before saving');
+      setMessage('Enter City and Area — use Pick on map, or type both fields');
+      setPlaceMapOpen(true);
       return;
     }
     if (displayNameStatus === 'taken') {
-      setMessage('Website display name already exists — choose another');
+      setMessage('Your Coach profile name is already used on another website in this City & Area — change City/Area or contact support');
       return;
     }
     setBusy(true);
     setMessage('');
     try {
+      const formToSave = withProfileWebsiteName(form);
+      setForm(formToSave);
       const data = await savePortfolioDraft({
         userId,
         centerId: resolvedCenterId,
-        form,
+        form: formToSave,
         createNew: createMode && resolvedCenterId == null,
       });
       setSubmissionStatus(data?.status || submissionStatus || 'draft');
@@ -450,30 +597,58 @@ export default function CoachPortfolioForm({
 
   const goNext = () => {
     if (step.id === 'hero') {
+      const missing = [];
       if (!String(form.center.city || '').trim() || !String(form.center.locality || '').trim()) {
-        setMessage('Enter City and Area first');
+        missing.push('place');
+        if (freestylePlace) setPlaceMapOpen(true);
+      }
+      if (!String(form.personal.professionalTitle || '').trim()) missing.push('professionalTitle');
+      if (
+        includesOther(form.personal.professionalTitle)
+        && !String(form.personal.professionalTitleOther || '').trim()
+      ) {
+        missing.push('professionalTitleOther');
+      }
+      if (missing.length) {
+        showFieldErrors(missing);
+        setMessage('');
         return;
       }
     }
     if (step.id === 'about') {
-      const aboutErrors = validateAboutForm(form);
-      if (aboutErrors.length) {
-        setMessage(aboutErrors[0]);
+      const missing = [];
+      if (!String(form.personal.yearsExperience || '').trim()) missing.push('yearsExperience');
+      if (!String(form.personal.background || '').trim()) missing.push('background');
+      if (!Array.isArray(form.personal.languages) || form.personal.languages.length === 0) {
+        missing.push('languages');
+      } else if (
+        includesOther(form.personal.languages)
+        && !String(form.personal.languagesOther || '').trim()
+      ) {
+        missing.push('languagesOther');
+      }
+      if (missing.length) {
+        showFieldErrors(missing);
+        setMessage('');
         return;
       }
     }
+    setFieldErrors({});
     setMessage('');
     setStepIndex((i) => Math.min(steps.length - 1, i + 1));
   };
 
   const sendPublishOtp = async () => {
     if (!String(form.center.city || '').trim() || !String(form.center.locality || '').trim()) {
-      throw new Error('Enter City and Area before publishing');
+      setPlaceMapOpen(true);
+      throw new Error('Enter City and Area before publishing — pick on map or type both');
     }
+    const formToSave = withProfileWebsiteName(form);
+    setForm(formToSave);
     const data = await requestPortfolioPublishOtp({
       userId,
       centerId: resolvedCenterId,
-      form,
+      form: formToSave,
       createNew: createMode && resolvedCenterId == null,
     });
     setSubmissionStatus(data?.status || 'approved');
@@ -482,10 +657,10 @@ export default function CoachPortfolioForm({
     setOtpKey(data?.otpKey ?? data?.centerId ?? data?.id ?? null);
     // Prefer the City/Area the user typed — never fall back to another site's old path.
     const formPath = buildPublicPathPreview({
-      websiteDisplayName: form.mediaBrand?.websiteDisplayName,
-      fullName: form.personal?.fullName,
-      city: form.center?.city,
-      locality: form.center?.locality,
+      websiteDisplayName: formToSave.mediaBrand?.websiteDisplayName,
+      fullName: formToSave.personal?.fullName,
+      city: formToSave.center?.city,
+      locality: formToSave.center?.locality,
       userId,
     });
     setPathPreview(data?.publicPathPreview || formPath);
@@ -507,11 +682,12 @@ export default function CoachPortfolioForm({
 
   const onSubmit = async () => {
     if (!String(form.center.city || '').trim() || !String(form.center.locality || '').trim()) {
-      setMessage('Enter City and Area before publishing');
+      setMessage('Enter City and Area before publishing — pick on map or type both');
+      setPlaceMapOpen(true);
       return;
     }
     if (displayNameStatus === 'taken') {
-      setMessage('Website display name already exists — choose another');
+      setMessage('Your Coach profile name is already used on another website in this City & Area — change City/Area or contact support');
       return;
     }
     const aboutErrors = validateAboutForm(form);
@@ -594,7 +770,10 @@ export default function CoachPortfolioForm({
         </div>
       </header>
 
-      <div className="mx-auto w-full max-w-lg flex-1 overflow-y-auto px-4 py-4 pb-32 space-y-4">
+      <div
+        ref={scrollRootRef}
+        className="mx-auto w-full max-w-lg flex-1 overflow-y-auto px-4 py-4 pb-32 space-y-4"
+      >
         {loading ? <p className="text-sm text-slate-500">Loading your form…</p> : null}
 
         {!loading && adminNote ? (
@@ -605,51 +784,49 @@ export default function CoachPortfolioForm({
         ) : null}
 
         {!loading && step.id === 'hero' ? (
-          <FormCard title="Hero" subtitle="Name, title, and place shown on your website">
-            <div>
-              <FieldLabel
-                required
-                hint="Your public link: wellnessvalley.in/coach/city/area/your-name — must be unique"
-              >
-                Website Display Name
-              </FieldLabel>
-              <TextInput
-                value={form.mediaBrand.websiteDisplayName}
-                onChange={(v) => canEdit && setForm(setSection(form, 'mediaBrand', { websiteDisplayName: v }))}
-                placeholder="e.g. coach-your-name"
-              />
-              {displayNameStatus === 'checking' ? (
-                <p className="mt-1 text-[11px] text-slate-500">Checking name…</p>
-              ) : null}
-              {displayNameStatus === 'available' ? (
-                <p className="mt-1 text-[11px] font-medium text-emerald-700">Name is available</p>
-              ) : null}
-              {displayNameStatus === 'taken' ? (
-                <p className="mt-1 text-[11px] font-medium text-rose-600">
-                  This name already exists — choose another
-                </p>
-              ) : null}
-              {displayNameStatus === 'error' ? (
-                <p className="mt-1 text-[11px] text-amber-700">Could not verify name right now</p>
-              ) : null}
-            </div>
-            <div>
+          <FormCard title="Hero">
+            {renderPlaceFields('City & area')}
+            {displayNameStatus === 'taken' ? (
+              <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-medium text-rose-700">
+                Coach profile name is already used in this City & Area — pick another place or contact support
+              </p>
+            ) : null}
+            <div ref={setFieldRef('professionalTitle')}>
               <FieldLabel required hint="Shown as “Meet Your …” on About">
                 Professional Title
               </FieldLabel>
-              <SelectInput options={PROFESSIONAL_TITLES} value={form.personal.professionalTitle} onChange={(v) => canEdit && setForm(setSection(form, 'personal', { professionalTitle: v }))} />
+              <SelectInput
+                options={PROFESSIONAL_TITLES}
+                value={form.personal.professionalTitle}
+                error={Boolean(fieldErrors.professionalTitle)}
+                onChange={(v) => {
+                  if (!canEdit) return;
+                  clearFieldError('professionalTitle');
+                  setForm(setSection(form, 'personal', { professionalTitle: v }));
+                }}
+              />
+              {fieldErrors.professionalTitle ? (
+                <p className="mt-1 text-[11px] font-medium text-rose-600">Required</p>
+              ) : null}
             </div>
             {includesOther(form.personal.professionalTitle) ? (
-              <div>
+              <div ref={setFieldRef('professionalTitleOther')}>
                 <FieldLabel required>Please specify title</FieldLabel>
                 <TextInput
                   value={form.personal.professionalTitleOther}
-                  onChange={(v) => canEdit && setForm(setSection(form, 'personal', { professionalTitleOther: v }))}
+                  error={Boolean(fieldErrors.professionalTitleOther)}
+                  onChange={(v) => {
+                    if (!canEdit) return;
+                    clearFieldError('professionalTitleOther');
+                    setForm(setSection(form, 'personal', { professionalTitleOther: v }));
+                  }}
                   placeholder="Type your professional title"
                 />
+                {fieldErrors.professionalTitleOther ? (
+                  <p className="mt-1 text-[11px] font-medium text-rose-600">Required</p>
+                ) : null}
               </div>
             ) : null}
-            {renderPlaceFields('City & area')}
             <div>
               <FieldLabel hint="Shown on your public website footer">Instagram</FieldLabel>
               <TextInput
@@ -678,38 +855,43 @@ export default function CoachPortfolioForm({
         ) : null}
 
         {!loading && step.id === 'about' ? (
-          <FormCard title="About" subtitle="All fields required — shown on your public website">
-            <div>
+          <FormCard title="About">
+            <div ref={setFieldRef('yearsExperience')}>
               <FieldLabel required hint="Shown exactly as typed under About (example: 8+ years of coaching)">
                 Years of experience
               </FieldLabel>
               <TextInput
                 value={form.personal.yearsExperience}
-                onChange={(v) => canEdit && setForm(setSection(form, 'personal', { yearsExperience: v }))}
+                error={Boolean(fieldErrors.yearsExperience)}
+                onChange={(v) => {
+                  if (!canEdit) return;
+                  clearFieldError('yearsExperience');
+                  setForm(setSection(form, 'personal', { yearsExperience: v }));
+                }}
                 placeholder="8+ years of coaching"
               />
+              {fieldErrors.yearsExperience ? (
+                <p className="mt-1 text-[11px] font-medium text-rose-600">Required</p>
+              ) : null}
             </div>
-            <div>
+            <div ref={setFieldRef('background')}>
               <FieldLabel required hint="Shown on your public About section">
                 Who are you as a Wellness Professional
               </FieldLabel>
               <TextArea
                 value={form.personal.background}
-                onChange={(v) => canEdit && setForm(setSection(form, 'personal', { background: v }))}
+                error={Boolean(fieldErrors.background)}
+                onChange={(v) => {
+                  if (!canEdit) return;
+                  clearFieldError('background');
+                  setForm(setSection(form, 'personal', { background: v }));
+                }}
                 placeholder="Your story as a wellness professional — how you help people"
                 rows={4}
               />
-            </div>
-            <div>
-              <FieldLabel required hint="Shown on your public About section">
-                What do you believe in
-              </FieldLabel>
-              <TextArea
-                value={form.personal.uniqueApproach}
-                onChange={(v) => canEdit && setForm(setSection(form, 'personal', { uniqueApproach: v }))}
-                placeholder="The beliefs that guide your coaching"
-                rows={3}
-              />
+              {fieldErrors.background ? (
+                <p className="mt-1 text-[11px] font-medium text-rose-600">Required</p>
+              ) : null}
             </div>
             <div>
               <FieldLabel hint="Checklist line under About">
@@ -721,22 +903,38 @@ export default function CoachPortfolioForm({
                 placeholder="Certified nutrition coach · Habit coaching"
               />
             </div>
-            <div>
+            <div ref={setFieldRef('languages')}>
               <FieldLabel required>Languages</FieldLabel>
               <MultiCheck
                 options={LANGUAGES}
                 value={form.personal.languages}
-                onChange={(v) => canEdit && setForm(setSection(form, 'personal', { languages: v }))}
+                error={Boolean(fieldErrors.languages)}
+                onChange={(v) => {
+                  if (!canEdit) return;
+                  clearFieldError('languages');
+                  setForm(setSection(form, 'personal', { languages: v }));
+                }}
                 disabled={!canEdit}
               />
+              {fieldErrors.languages ? (
+                <p className="mt-1 text-[11px] font-medium text-rose-600">Required</p>
+              ) : null}
               {includesOther(form.personal.languages) ? (
-                <div className="mt-2">
+                <div className="mt-2" ref={setFieldRef('languagesOther')}>
                   <FieldLabel required>Other language</FieldLabel>
                   <TextInput
                     value={form.personal.languagesOther}
-                    onChange={(v) => canEdit && setForm(setSection(form, 'personal', { languagesOther: v }))}
+                    error={Boolean(fieldErrors.languagesOther)}
+                    onChange={(v) => {
+                      if (!canEdit) return;
+                      clearFieldError('languagesOther');
+                      setForm(setSection(form, 'personal', { languagesOther: v }));
+                    }}
                     placeholder="Type language"
                   />
+                  {fieldErrors.languagesOther ? (
+                    <p className="mt-1 text-[11px] font-medium text-rose-600">Required</p>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -744,16 +942,16 @@ export default function CoachPortfolioForm({
         ) : null}
 
         {!loading && step.id === 'photos' ? (
-          <FormCard title="Photos" subtitle="Albums visitors open on your site (Entrance, Interior, Activity)">
+          <FormCard title="Photos">
             <PhotoField
-              label="Center Entrance Photo"
+              label="Centre Entrance Photo"
               value={form.mediaBrand.entrancePhoto}
               disabled={!canEdit}
               onUpload={(file) => uploadFormPhoto(userId, 'entrance', file)}
               onChange={(v) => canEdit && setForm(setSection(form, 'mediaBrand', { entrancePhoto: v }))}
             />
             <PhotoField
-              label="Center Interior Photos"
+              label="Centre Interior Photos"
               multiple
               values={form.mediaBrand.interiorPhotos}
               disabled={!canEdit}
@@ -761,7 +959,7 @@ export default function CoachPortfolioForm({
               onChangeMultiple={(v) => canEdit && setForm(setSection(form, 'mediaBrand', { interiorPhotos: v }))}
             />
             <PhotoField
-              label="Center Name Board Photo"
+              label="Centre Name Board Photo"
               value={form.mediaBrand.nameBoardPhoto}
               disabled={!canEdit}
               onUpload={(file) => uploadFormPhoto(userId, 'nameboard', file)}
@@ -797,28 +995,23 @@ export default function CoachPortfolioForm({
           </FormCard>
         ) : null}
 
-        {!loading && step.id === 'center' ? (
-          <FormCard title="Hours" subtitle="Opening hours shown on your website">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <FieldLabel>Opening Time</FieldLabel>
-                <TextInput type="time" value={form.timings.openingTime} onChange={(v) => canEdit && setForm(setSection(form, 'timings', { openingTime: v }))} />
-              </div>
-              <div>
-                <FieldLabel>Closing Time</FieldLabel>
-                <TextInput type="time" value={form.timings.closingTime} onChange={(v) => canEdit && setForm(setSection(form, 'timings', { closingTime: v }))} />
-              </div>
-            </div>
-          </FormCard>
-        ) : null}
-
         {!loading && step.id === 'review' ? (
-          <FormCard
-            title="Save your website"
-            subtitle={hasClub ? 'Edit anytime — photos, hours, copy' : 'Edit anytime — photos and copy'}
-          >
+          <FormCard title="Save your website">
             <div className="space-y-3 text-sm text-slate-800">
-              {renderPlaceFields('Confirm city & area')}
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 px-3.5 py-3 space-y-1.5">
+                <p>
+                  <span className="font-semibold text-slate-900">Centre:</span>{' '}
+                  {resolvedCenterName || form.center.centerName || '—'}
+                </p>
+                <p>
+                  <span className="font-semibold text-slate-900">City:</span>{' '}
+                  {form.center.city || '—'}
+                </p>
+                <p>
+                  <span className="font-semibold text-slate-900">Area:</span>{' '}
+                  {form.center.locality || '—'}
+                </p>
+              </div>
               <div className="rounded-2xl bg-slate-50 px-3.5 py-3 space-y-3">
                 <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">From your app</p>
                 {displayMediaUrl(form.personal.profilePhoto) ? (
@@ -842,29 +1035,25 @@ export default function CoachPortfolioForm({
                   ) : null}
                 </div>
               </div>
-              <div className="rounded-2xl bg-slate-50 px-3.5 py-3">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Hero</p>
-                <p className="mt-1 font-semibold">{form.mediaBrand.websiteDisplayName || form.personal.fullName || '—'}</p>
+              <div className="rounded-2xl bg-slate-50 px-3.5 py-3 space-y-1">
+                <p className="font-semibold text-slate-900">
+                  {form.personal.fullName || form.mediaBrand.websiteDisplayName || '—'}
+                </p>
                 <p className="text-slate-600">{form.personal.professionalTitle || '—'}</p>
-              </div>
-              <div className="rounded-2xl bg-slate-50 px-3.5 py-3">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">About</p>
-                <p className="mt-1 text-slate-600">{form.personal.yearsExperience || '—'}</p>
-                <p className="mt-1 line-clamp-2 text-slate-600">
-                  {form.personal.background || form.personal.uniqueApproach || 'No About copy yet'}
+                <p className="text-slate-600">{form.personal.yearsExperience || '—'}</p>
+                <p className="line-clamp-3 text-slate-600">
+                  {form.personal.background || '—'}
                 </p>
               </div>
-              {publicPath ? (
+              {isPublished && publicPath ? (
                 <a
-                  href={isPublished ? (resolvePublicCoachUrl(publicPath) || publicWebsiteUrl(publicPath)) : undefined}
-                  target={isPublished ? '_blank' : undefined}
-                  rel={isPublished ? 'noreferrer' : undefined}
-                  className="block rounded-2xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-sm font-semibold text-emerald-800"
-                  onClick={isPublished
-                    ? (e) => openPublicCoachUrl(publicPath, e)
-                    : (e) => e.preventDefault()}
+                  href={resolvePublicCoachUrl(publicPath) || publicWebsiteUrl(publicPath)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block rounded-2xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-center text-sm font-semibold text-emerald-800"
+                  onClick={(e) => openPublicCoachUrl(publicPath, e)}
                 >
-                  {isPublished ? 'Live page: ' : 'Your link: '}{publicPath}
+                  Open live page
                 </a>
               ) : null}
               {isPublished && hasUnpublishedChanges ? (
