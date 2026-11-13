@@ -355,10 +355,14 @@ export function decideField({
     && istDaysSince(row.cycleStartedAt, now) >= field.mustFillWithinDays,
   );
   const skipsHit = row.skipCount >= (field.maxSkips || 0);
+  // A skip covers the current ask window — including the last remaining skip.
+  // Exhausted skips become blocking only on the *next* due ask, not immediately
+  // after the user taps Skip (that felt like skip was broken).
+  // Must-fill deadline still wins over a recent skip.
   const skippedRecently = askEveryDays > 0 && Boolean(
     row.lastSkippedAt && istDaysSince(row.lastSkippedAt, now) < askEveryDays,
   );
-  if (skippedRecently && !deadlineHit && !skipsHit) return 'satisfied';
+  if (skippedRecently && !deadlineHit) return 'satisfied';
   if (deadlineHit || skipsHit) return 'ask_blocking';
   return 'ask_skippable';
 }
@@ -426,12 +430,10 @@ export function planCollectionStep({
 
   const deferred = new Set(deferKeys);
   const scheduled = decisions.find((item) => {
+    // Every 0 days: skip/save only clears the field for this app visit.
+    // Honor defer even if that skip exhausted maxSkips (mode → ask_blocking).
     const passedForNow = Number(item.field.askEveryDays) === 0
-      && deferred.has(item.field.key)
-      && (
-        item.mode === 'ask_skippable'
-        || istDaysSince(states[item.field.key]?.lastFilledAt, now) === 0
-      );
+      && deferred.has(item.field.key);
     return item.field.phase === 'scheduled'
       && (item.mode === 'ask_blocking' || item.mode === 'ask_skippable')
       && !passedForNow;

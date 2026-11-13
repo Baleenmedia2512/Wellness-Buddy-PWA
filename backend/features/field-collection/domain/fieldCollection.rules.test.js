@@ -135,6 +135,70 @@ describe('normalizeFieldPolicy', () => {
     assert.notEqual(plan.scheduled?.key, 'currentWeight');
   });
 
+  it('honors session defer after the last remaining skip when every days is 0', () => {
+    const fields = defaultFieldPolicy().map((field) => (
+      field.key === 'fatPercent'
+        ? { ...field, askEveryDays: 0, maxSkips: 1, mustFillWithinDays: 1 }
+        : field
+    ));
+    const plan = planCollectionStep({
+      fields,
+      values: { ...filledEntry, fatPercent: '' },
+      states: settledStates({
+        fatPercent: {
+          skipCount: 1,
+          cycleStartedAt: TODAY,
+          lastFilledAt: null,
+          lastSkippedAt: TODAY,
+        },
+      }),
+      deferKeys: ['fatPercent'],
+      role: 'member',
+      now: NOW,
+    });
+    assert.notEqual(plan.scheduled?.key, 'fatPercent');
+  });
+
+  it('keeps the last skip dismissed until the next ask window', () => {
+    const fields = defaultFieldPolicy().map((field) => (
+      field.key === 'fatPercent'
+        ? { ...field, askEveryDays: 1, maxSkips: 1, mustFillWithinDays: 3 }
+        : field
+    ));
+    const afterLastSkip = planCollectionStep({
+      fields,
+      values: { ...filledEntry, fatPercent: '' },
+      states: settledStates({
+        fatPercent: {
+          skipCount: 1,
+          cycleStartedAt: TODAY,
+          lastFilledAt: null,
+          lastSkippedAt: TODAY,
+        },
+      }),
+      role: 'member',
+      now: NOW,
+    });
+    assert.notEqual(afterLastSkip.scheduled?.key, 'fatPercent');
+
+    const nextDay = planCollectionStep({
+      fields,
+      values: { ...filledEntry, fatPercent: '' },
+      states: settledStates({
+        fatPercent: {
+          skipCount: 1,
+          cycleStartedAt: YESTERDAY,
+          lastFilledAt: null,
+          lastSkippedAt: YESTERDAY,
+        },
+      }),
+      role: 'member',
+      now: NOW,
+    });
+    assert.equal(nextDay.scheduled?.key, 'fatPercent');
+    assert.equal(nextDay.scheduled.mode, 'ask_blocking');
+  });
+
   it('keeps later-field schedule numbers inside bounds', () => {
     const fields = normalizeFieldPolicy([{
       key: 'fatPercent',
