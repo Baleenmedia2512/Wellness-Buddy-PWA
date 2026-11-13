@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Pencil, Trash2, X } from 'lucide-react';
+import { isFlagEnabled } from '../../../config/featureFlags';
 import { getUserId } from '../../../shared/services/getUserId.js';
+import ReportAccessBanner from '../../reports/components/ReportAccessBanner';
+import useEventsAccess from '../hooks/useEventsAccess.js';
 import {
   createEvent,
   deleteEvent,
@@ -56,6 +59,10 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [actionModalEvent, setActionModalEvent] = useState(null);
+  const trialEnabled = isFlagEnabled('ff.events-trial');
+  const eventsAccess = useEventsAccess(trialEnabled && userId ? userId : null);
+  const waitingAccess = trialEnabled && (!ready || !userId || !eventsAccess.loaded);
+  const hostLocked = trialEnabled && Boolean(userId) && eventsAccess.loaded && !eventsAccess.canUseHostTools;
 
   useEffect(() => {
     setPageTab(initialTab === 'checkin' ? 'checkin' : 'manage');
@@ -92,8 +99,26 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
   }, []);
 
   useEffect(() => {
-    if (userId) loadEvents(userId);
-  }, [userId, loadEvents]);
+    if (userId && !hostLocked) loadEvents(userId);
+  }, [userId, loadEvents, hostLocked]);
+
+  const accessBanner = trialEnabled && eventsAccess.loaded ? (
+    <ReportAccessBanner
+      centered={hostLocked}
+      access={eventsAccess.access}
+      daysLeft={eventsAccess.daysLeft}
+      error={eventsAccess.error}
+      starting={eventsAccess.starting}
+      onStartTrial={eventsAccess.startTrial}
+      onRetry={eventsAccess.refresh}
+      userId={userId}
+      trialLengthDays={14}
+      onPremiumCheck={async () => {
+        const next = await eventsAccess.refresh();
+        return next?.access === 'premium';
+      }}
+    />
+  ) : null;
 
   const onChange = (key) => (event) => {
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -252,9 +277,22 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
     return (
       <div className="max-w-lg mx-auto px-4 py-4 pb-10">
         <h1 className="text-xl font-extrabold text-green-800">Check-in</h1>
-        <div className="mt-4">
-          <EventCheckInPanel user={user} />
-        </div>
+        {waitingAccess ? (
+          <p className="mt-6 text-sm text-gray-500">Loading…</p>
+        ) : hostLocked ? (
+          <div className="flex min-h-[70vh] items-center justify-center px-2">
+            {accessBanner}
+          </div>
+        ) : (
+          <>
+            {trialEnabled && eventsAccess.access === 'trial' ? (
+              <div className="mt-3">{accessBanner}</div>
+            ) : null}
+            <div className="mt-4">
+              <EventCheckInPanel user={user} />
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -270,8 +308,17 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
         <p className="mt-6 text-sm text-gray-500">Loading…</p>
       ) : !userId ? (
         <p className="mt-6 text-sm text-rose-700">Sign in to create events.</p>
+      ) : waitingAccess ? (
+        <p className="mt-6 text-sm text-gray-500">Loading…</p>
+      ) : hostLocked ? (
+        <div className="flex min-h-[70vh] items-center justify-center px-2">
+          {accessBanner}
+        </div>
       ) : (
         <>
+          {trialEnabled && eventsAccess.access === 'trial' ? (
+            <div className="mt-3">{accessBanner}</div>
+          ) : null}
           <form onSubmit={onSubmit} className="mt-4 space-y-3 rounded-2xl border border-green-100 bg-white p-4 shadow-sm">
             <h2 className="text-base font-bold text-gray-900">
               {editingId ? 'Update event' : 'New event'}

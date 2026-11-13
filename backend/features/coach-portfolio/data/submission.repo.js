@@ -19,6 +19,7 @@ const CREATE_TABLE_SQL = `CREATE TABLE IF NOT EXISTS coach_portfolio_submissions
   CenterId      BIGINT       NULL,
   Status        VARCHAR(32)  NOT NULL DEFAULT 'draft',
   FormJson      LONGTEXT     NOT NULL,
+  PublishedFormJson LONGTEXT NULL,
   AdminNote     TEXT         NULL,
   PublicSlug    VARCHAR(160) NULL,
   IsPublished   TINYINT(1)   NOT NULL DEFAULT 0,
@@ -36,6 +37,7 @@ const CREATE_TABLE_SQL = `CREATE TABLE IF NOT EXISTS coach_portfolio_submissions
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`;
 
 const SELECT_COLS = `s.Id AS id, s.UserId AS userId, s.CenterId AS centerId, s.Status AS status, s.FormJson AS formJson,
+            s.PublishedFormJson AS publishedFormJson,
             s.AdminNote AS adminNote, s.PublicSlug AS publicSlug, s.IsPublished AS isPublished,
             s.SubmittedAt AS submittedAt, s.ReviewedAt AS reviewedAt,
             s.ReviewedBy AS reviewedBy, s.UpdatedAt AS updatedAt,
@@ -80,6 +82,22 @@ async function ensureSchema() {
       await runIgnoreDuplicate(
         'ALTER TABLE coach_portfolio_submissions_table ADD KEY idx_coach_portfolio_center (CenterId)',
       );
+      await runIgnoreDuplicate(
+        'ALTER TABLE coach_portfolio_submissions_table ADD COLUMN PublishedFormJson LONGTEXT NULL AFTER FormJson',
+      );
+      // Backfill live snapshots once (safe to re-run: only fills NULL/empty).
+      try {
+        await getPrisma().$executeRawUnsafe(
+          `UPDATE coach_portfolio_submissions_table
+           SET PublishedFormJson = FormJson
+           WHERE IsPublished = 1
+             AND (PublishedFormJson IS NULL OR PublishedFormJson = '')`,
+        );
+      } catch (error) {
+        logger.warn('coach_portfolio PublishedFormJson backfill skipped', {
+          message: error?.message || String(error),
+        });
+      }
     })().catch((error) => {
       ensurePromise = null;
       logger.warn('coach_portfolio_submissions_table could not be prepared', {
@@ -91,23 +109,29 @@ async function ensureSchema() {
   return ensurePromise;
 }
 
+function parseFormJsonColumn(raw) {
+  if (raw == null || raw === '') return null;
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw || '{}') : raw;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return normalizeFormJson(parsed);
+  } catch {
+    return null;
+  }
+}
+
 function mapRow(row) {
   if (!row) return null;
-  let formJson = {};
-  try {
-    formJson = typeof row.formJson === 'string'
-      ? JSON.parse(row.formJson || '{}')
-      : (row.formJson || {});
-  } catch {
-    formJson = {};
-  }
+  const formJson = parseFormJsonColumn(row.formJson) || normalizeFormJson({});
+  const publishedFormJson = parseFormJsonColumn(row.publishedFormJson);
   return {
     id: Number(row.id),
     userId: Number(row.userId),
     centerId: row.centerId != null ? Number(row.centerId) : null,
     userName: row.userName != null ? String(row.userName) : null,
     status: String(row.status || SUBMISSION_STATUS.DRAFT),
-    formJson: normalizeFormJson(formJson),
+    formJson,
+    publishedFormJson,
     adminNote: row.adminNote ?? null,
     publicSlug: row.publicSlug ? String(row.publicSlug) : null,
     isPublished: Number(row.isPublished) === 1,
@@ -473,8 +497,45 @@ export async function assignPublicSlug(userId, {
   throw lastDuplicate;
 }
 
+/**
+ * Copy draft FormJson → PublishedFormJson and mark live.
+ * Call before/with assignPublicSlug so /coach pages read the promoted snapshot.
+ */
+export async function promoteDraftToPublished(submissionId) {
+  await ensureSchema();
+  const id = Number(submissionId);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error('submissionId is required');
+  }
+  await getPrisma().$executeRawUnsafe(
+    `UPDATE coach_portfolio_submissions_table
+     SET PublishedFormJson = FormJson, IsPublished = 1
+     WHERE Id = ?`,
+    id,
+  );
+  return findSubmissionById(id);
+}
+
 export async function publishSubmission(userId, { centerId, submissionId = null } = {}) {
-  return assignPublicSlug(userId, { centerId, submissionId, markPublished: true });
+  let row = null;
+  if (submissionId != null) {
+    row = await findSubmissionById(submissionId);
+    if (row && Number(row.userId) !== Number(userId)) row = null;
+  }
+  if (!row && centerId != null) {
+    row = await findSubmissionByUserAndCenter(userId, centerId);
+  }
+  if (!row) {
+    row = await findLatestNullCenterSubmission(userId)
+      || await findSubmissionByUserId(userId);
+  }
+  if (!row) return null;
+  await promoteDraftToPublished(row.id);
+  return assignPublicSlug(userId, {
+    centerId: row.centerId ?? centerId,
+    submissionId: row.id,
+    markPublished: true,
+  });
 }
 
 export async function unpublishSubmission(userId, { centerId } = {}) {
@@ -498,7 +559,7 @@ export async function unpublishSubmission(userId, { centerId } = {}) {
   return findSubmissionByUserId(userId);
 }
 
-async function findLatestNullCenterSubmission(userId) {
+export async function findLatestNullCenterSubmission(userId) {
   await ensureSchema();
   const rows = await getPrisma().$queryRawUnsafe(
     `SELECT ${SELECT_COLS}

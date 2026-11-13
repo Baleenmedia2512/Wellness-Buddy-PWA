@@ -1,5 +1,5 @@
 /**
- * Community Position — catalog plus coach OTP (ADR-0015).
+ * Community Position — catalog plus coach OTP (ADR-0016).
  * The member picks a role. Their coach (CoachId) receives a 24h code.
  * The position is saved only after the member enters that code.
  */
@@ -20,6 +20,8 @@ import {
   COMMUNITY_POSITION_OTP_HOURS,
   COMMUNITY_POSITION_OTP_MAX_ATTEMPTS,
   LEGACY_COMMUNITY_POSITIONS,
+  canonicalizePositionCode,
+
   POSITION_ALREADY_HELD,
   POSITION_STATUS_PENDING,
   canAttemptCommunityPositionOtp,
@@ -130,13 +132,17 @@ export async function listCommunityPositions() {
 export async function describeCommunityPosition(code) {
   const normalized = normalizePositionCode(code);
   if (!normalized) return null;
+  const canonical = canonicalizePositionCode(normalized);
   try {
-    const row = await repo.findPositionByCode(normalized);
+    const row = await repo.findPositionByCode(canonical)
+      || (canonical !== normalized ? await repo.findPositionByCode(normalized) : null);
     if (row) return toPublicCommunityPosition(row);
   } catch (err) {
     if (!repo.isPositionsTableMissing(err)) throw err;
   }
-  const legacy = LEGACY_COMMUNITY_POSITIONS.find((row) => row.code === normalized);
+  const legacy = LEGACY_COMMUNITY_POSITIONS.find(
+    (row) => row.code === canonical || row.code === normalized,
+  );
   if (legacy) return { ...legacy, active: true };
   return {
     code: normalized,
@@ -244,6 +250,10 @@ export async function requestCommunityPositionApproval({
       RequestedAt: requestedAt,
     });
   } catch (err) {
+    logger.warn('[community-position] request persist failed', {
+      message: err?.message || String(err),
+      code: err?.code || null,
+    });
     if (repo.isPositionRequestsTableMissing(err) || repo.isPositionsTableMissing(err)) {
       setupRequired();
     }

@@ -38,15 +38,29 @@ export const LEGACY_COMMUNITY_POSITIONS = Object.freeze([
   { code: 'SV', label: 'SV', featureKey: 'sv', usageNote: 'Profile role. Features check the key sv.', sortOrder: 30 },
   { code: 'WT', label: 'WT', featureKey: 'wt', usageNote: 'Profile role. Features check the key wt.', sortOrder: 40 },
   { code: 'AWT', label: 'AWT', featureKey: 'awt', usageNote: 'Profile role. Features check the key awt.', sortOrder: 50 },
-  { code: 'GET TEAM', label: 'GET TEAM', featureKey: 'get-team', usageNote: 'Profile role. Features check the key get-team.', sortOrder: 60 },
-  { code: '2500 GET TEAM', label: '2500 GET TEAM', featureKey: 'get-team-2500', usageNote: 'Profile role. Features check the key get-team-2500.', sortOrder: 70 },
-  { code: 'MILL TEAM', label: 'MILL TEAM', featureKey: 'mill-team', usageNote: 'Profile role. Features check the key mill-team.', sortOrder: 80 },
+  { code: 'GET', label: 'GET', featureKey: 'get-team', usageNote: 'Profile role. Features check the key get-team.', sortOrder: 60 },
+  { code: 'GET 2500', label: 'GET 2500', featureKey: 'get-team-2500', usageNote: 'Profile role. Features check the key get-team-2500.', sortOrder: 70 },
+  { code: 'MILL', label: 'MILL', featureKey: 'mill-team', usageNote: 'Profile role. Features check the key mill-team.', sortOrder: 80 },
+  { code: 'MILL 7500', label: 'MILL 7500', featureKey: 'mill-7500', usageNote: 'Profile role. Features check the key mill-7500.', sortOrder: 85 },
   { code: 'PT', label: 'PT', featureKey: 'pt', usageNote: 'Profile role. Features check the key pt.', sortOrder: 90 },
 ]);
+
+/** Old app / DB codes → current catalog codes (§5.1 keep accepting legacy). */
+export const COMMUNITY_POSITION_CODE_ALIASES = Object.freeze({
+  'GET TEAM': 'GET',
+  '2500 GET TEAM': 'GET 2500',
+  'MILL TEAM': 'MILL',
+});
 
 export const LEGACY_COMMUNITY_POSITION_CODES = Object.freeze(
   LEGACY_COMMUNITY_POSITIONS.map((row) => row.code),
 );
+
+/** Codes accepted on profile/events: current + renamed legacy. */
+export const ACCEPTED_COMMUNITY_POSITION_CODES = Object.freeze([
+  ...LEGACY_COMMUNITY_POSITION_CODES,
+  ...Object.keys(COMMUNITY_POSITION_CODE_ALIASES),
+]);
 
 /**
  * @param {{ flagEnabled?: boolean, appVersion?: string|null, minAppVersion?: string }} args
@@ -63,6 +77,17 @@ export function shouldDeferCommunityPositionToOtp({
 
 export function normalizePositionCode(value) {
   return String(value ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+/**
+ * Map renamed legacy codes to the current catalog code.
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function canonicalizePositionCode(value) {
+  const code = normalizePositionCode(value);
+  if (!code) return '';
+  return COMMUNITY_POSITION_CODE_ALIASES[code] || code;
 }
 
 export function isValidPositionCode(value) {

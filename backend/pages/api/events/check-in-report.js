@@ -2,6 +2,7 @@ import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/han
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import { validateEventCheckInReport } from '../../../features/events/events.validators.js';
 import { reportCheckInMisuse } from '../../../features/events/events.service.js';
+import { assertEventsHostToolsAllowed } from '../../../features/payments/api/events-access.handler.js';
 
 function flagOff() {
   return {
@@ -19,7 +20,11 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    return runService(res, () => reportCheckInMisuse(validateEventCheckInReport(req.body)));
+    return runService(res, async () => {
+      const input = validateEventCheckInReport(req.body);
+      await assertEventsHostToolsAllowed(req, input.userId);
+      return reportCheckInMisuse(input);
+    });
   }
   return methodNotAllowed(res);
 }

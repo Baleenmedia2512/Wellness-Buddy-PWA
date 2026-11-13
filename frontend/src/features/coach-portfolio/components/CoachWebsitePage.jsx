@@ -40,11 +40,12 @@ export default function CoachWebsitePage({
     load();
   }, [load]);
 
-  const closeForm = () => {
+  const closeForm = (opts = {}) => {
     setFormOpen(false);
     setCreateMode(false);
     setActiveCenterId(null);
     setActiveCenterName('');
+    setMessage(typeof opts?.message === 'string' ? opts.message : '');
     load();
   };
 
@@ -73,8 +74,8 @@ export default function CoachWebsitePage({
             <ArrowLeft className="h-5 w-5 text-gray-700" />
           </TouchFeedbackButton>
           <div className="min-w-0 flex-1">
-            <h1 className="text-base font-bold text-gray-900">My Websites</h1>
-            <p className="text-xs text-gray-500">One website per center you own</p>
+            <h1 className="text-base font-bold text-gray-900">Digital Portfolio</h1>
+            <p className="text-xs text-gray-500">One page per center you own</p>
           </div>
         </div>
       </header>

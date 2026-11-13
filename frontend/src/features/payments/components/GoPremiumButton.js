@@ -4,6 +4,7 @@ import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton'
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { openPremiumCheckout } from '../openPremiumCheckout';
 import { memberCheckoutErrorMessage } from '../domain/nativePremiumCheckout.rules';
+import { fetchPremiumQuote } from '../services/premiumApi';
 import PremiumPlanPage from './PremiumPlanPage';
 
 const CONFIRM_ATTEMPTS_AFTER_PAYMENT = 4;
@@ -14,15 +15,22 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 /**
  * Header chip that opens the Premium plan page, then Cashfree on Pay Now.
  * `onPremiumCheck` asks the server whether the payment went through.
- * Members who already paid do not see this chip again.
+ * Members who already paid do not see this chip again, unless `renew` (expiry reminder).
  */
-export default function GoPremiumButton({ userId, isPremium = false, onPremiumCheck }) {
+export default function GoPremiumButton({
+  userId,
+  isPremium = false,
+  onPremiumCheck,
+  renew = false,
+}) {
   const [showPlan, setShowPlan] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [quote, setQuote] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
 
   if (!isFlagEnabled('ff.go-premium')) return null;
-  if (isPremium) return null;
+  if (isPremium && !renew) return null;
 
   const checkPremium = async (attempts) => {
     if (typeof onPremiumCheck !== 'function') return false;
@@ -37,18 +45,24 @@ export default function GoPremiumButton({ userId, isPremium = false, onPremiumCh
     return false;
   };
 
-  const onOpenPlan = () => {
+  const onOpenPlan = async () => {
     if (busy) return;
     if (userId == null || String(userId).trim() === '') {
       setMessage('Sign in again before paying');
       return;
     }
     setMessage('');
+    setQuote(null);
     setShowPlan(true);
+    setQuoteLoading(true);
+    const result = await fetchPremiumQuote(userId);
+    setQuote(result.quote);
+    if (!result.quote && result.message) setMessage(result.message);
+    setQuoteLoading(false);
   };
 
   const onPayNow = async () => {
-    if (busy) return;
+    if (busy || !quote) return;
     setBusy(true);
     setMessage('');
     try {
@@ -72,12 +86,12 @@ export default function GoPremiumButton({ userId, isPremium = false, onPremiumCh
       <TouchFeedbackButton
         onClick={onOpenPlan}
         disabled={busy}
-        ariaLabel="Go Premium"
+        ariaLabel={renew ? 'Recharge Premium' : 'Go Premium'}
         title="Pay with UPI, card, or net banking"
         className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-amber-900 shadow-sm disabled:opacity-60"
       >
         <Crown className="w-3.5 h-3.5 text-amber-600" aria-hidden />
-        <span className="whitespace-nowrap text-xs font-bold">Go Premium</span>
+        <span className="whitespace-nowrap text-xs font-bold">{renew ? 'Recharge' : 'Go Premium'}</span>
       </TouchFeedbackButton>
       {!showPlan && message ? (
         <p className="mt-1 max-w-[11rem] text-right text-[11px] leading-tight text-amber-50" role="alert">{message}</p>
@@ -86,10 +100,14 @@ export default function GoPremiumButton({ userId, isPremium = false, onPremiumCh
         <PremiumPlanPage
           busy={busy}
           message={message}
+          quote={quote}
+          quoteLoading={quoteLoading}
           onClose={() => {
             if (busy) return;
             setShowPlan(false);
             setMessage('');
+            setQuote(null);
+            setQuoteLoading(false);
           }}
           onPayNow={onPayNow}
         />

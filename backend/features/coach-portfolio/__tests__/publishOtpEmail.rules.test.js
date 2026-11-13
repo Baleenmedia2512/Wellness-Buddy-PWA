@@ -44,7 +44,20 @@ describe('coach-portfolio publishOtpEmail.rules', () => {
     assert.equal(summary.displayName, 'System');
     assert.equal(summary.media.interiorCount, 3);
     assert.equal(summary.media.introVideo, true);
-    assert.ok(summary.offerings.includes('Weight Management'));
+    assert.equal(summary.offerings, undefined);
+  });
+
+  it('does not include default offerings / programs in the email body', () => {
+    const mail = buildPublishOtpEmail({
+      otp: '5650',
+      form,
+      userId: 1,
+      userName: 'System Nitheesh',
+    });
+    assert.doesNotMatch(mail.html, /Offerings/i);
+    assert.doesNotMatch(mail.html, /Weight Management/);
+    assert.doesNotMatch(mail.text, /Offerings:/i);
+    assert.doesNotMatch(mail.text, /default program/i);
   });
 
   it('builds HTML email with OTP box, path, and escaped coach name', () => {

@@ -1,20 +1,31 @@
 /**
  * Start one Premium Cashfree checkout for a member already loaded from the database.
+ * Charge = Community Position base + 18% GST (server price; client never sets amount).
  */
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import logger from '../../../shared/lib/logger.js';
 import { createCashfreeOrder } from '../data/cashfree.client.js';
 import {
-  parsePremiumAmount,
   cashfreeApiBase,
   cashfreeCheckoutMode,
   normalizeIndianPhone,
   sanitizeReturnUrl,
   buildPremiumOrderPayload,
 } from '../domain/premium.rules.js';
+import {
+  getPremiumPricingConfig,
+  resolvePremiumQuote,
+} from '../domain/premiumPricing.rules.js';
 
 /**
- * @param {{ userId: unknown, phone: unknown, customerName?: unknown, returnUrl?: unknown, nowMs?: number }} input
+ * @param {{
+ *   userId: unknown,
+ *   phone: unknown,
+ *   customerName?: unknown,
+ *   returnUrl?: unknown,
+ *   eventLevel?: unknown,
+ *   nowMs?: number,
+ * }} input
  */
 export async function createPremiumOrder(input) {
   const userId = Number.parseInt(String(input.userId ?? ''), 10);
@@ -27,10 +38,18 @@ export async function createPremiumOrder(input) {
     throw new ValidationError(422, 'Add a mobile number on your profile before paying');
   }
 
+  const pricing = getPremiumPricingConfig();
+  const quote = resolvePremiumQuote(input.eventLevel, pricing);
+  if (!quote) {
+    throw new ValidationError(
+      422,
+      'Set Community Position on your profile before paying',
+    );
+  }
+
   const clientId = String(process.env.CASHFREE_CLIENT_ID || '').trim();
   const clientSecret = String(process.env.CASHFREE_CLIENT_SECRET || '').trim();
-  const amount = parsePremiumAmount(process.env.CASHFREE_ORDER_AMOUNT || '99');
-  if (!clientId || !clientSecret || amount == null) {
+  if (!clientId || !clientSecret) {
     throw new ValidationError(500, 'Payment is not configured');
   }
 
@@ -39,10 +58,11 @@ export async function createPremiumOrder(input) {
     userId,
     phone10,
     customerName: input.customerName,
-    amount,
+    amount: quote.totalAmount,
     returnUrl: sanitizeReturnUrl(input.returnUrl),
     nowMs: input.nowMs ?? Date.now(),
   });
+  payload.order_note = `Wellness Valley Premium (${quote.positionCode})`;
 
   const created = await createCashfreeOrder({
     apiBase: cashfreeApiBase(envName),
@@ -51,7 +71,12 @@ export async function createPremiumOrder(input) {
     payload,
   });
 
-  logger.info('Premium Cashfree order created', { userId, orderId: created.orderId });
+  logger.info('Premium Cashfree order created', {
+    userId,
+    orderId: created.orderId,
+    positionCode: quote.positionCode,
+    amount: quote.totalAmount,
+  });
 
   return {
     httpStatus: 200,
@@ -61,7 +86,11 @@ export async function createPremiumOrder(input) {
         orderId: created.orderId,
         paymentSessionId: created.paymentSessionId,
         mode: cashfreeCheckoutMode(envName),
-        amount,
+        amount: quote.totalAmount,
+        baseAmount: quote.baseAmount,
+        gstAmount: quote.gstAmount,
+        gstRate: quote.gstRate,
+        positionCode: quote.positionCode,
       },
     },
   };

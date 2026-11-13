@@ -4,15 +4,41 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildCoachPageFaqs,
   buildCoachPageJsonLd,
   buildCoachPageSeo,
+  buildCoachVisibleHeading,
+  buildGoogleMapsSearchUrl,
   canShowPublicPortfolio,
+  mapsEmbedSrcFromLink,
   toPublicPortfolioPage,
 } from '../domain/public-page.rules.js';
 import { DEFAULT_PORTFOLIO_OFFERINGS } from '../domain/default-offerings.rules.js';
 import { SUBMISSION_STATUS } from '../domain/submission.rules.js';
 
 describe('coach-portfolio public-page.rules', () => {
+  it('builds freestyle Google Maps search URL from City / Area', () => {
+    const url = buildGoogleMapsSearchUrl({
+      locality: 'Vadapalani',
+      city: 'Chennai',
+    });
+    assert.match(url, /^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=/);
+    assert.match(url, /Vadapalani/);
+    assert.match(url, /Chennai/);
+    assert.equal(buildGoogleMapsSearchUrl({}), '');
+    const embed = mapsEmbedSrcFromLink(url);
+    assert.match(embed, /maps\.google\.com\/maps\?q=/);
+    assert.match(embed, /output=embed/);
+  });
+
+  it('embeds club GPS maps links from q=lat,lng', () => {
+    const embed = mapsEmbedSrcFromLink('https://maps.google.com/?q=13.05,80.21');
+    assert.equal(
+      embed,
+      'https://maps.google.com/maps?q=13.05%2C80.21&z=15&output=embed',
+    );
+  });
+
   it('builds local SEO title, description, and keywords from place', () => {
     const seo = buildCoachPageSeo({
       displayName: 'Avinash',
@@ -25,17 +51,83 @@ describe('coach-portfolio public-page.rules', () => {
     assert.match(seo.seoTitle, /Madurai|Avaniyapuram/);
     assert.ok(seo.seoDescription.length <= 160);
     assert.ok(seo.seoKeywords.some((k) => /Madurai/i.test(k)));
+    assert.match(
+      buildCoachVisibleHeading({
+        displayName: 'Avinash',
+        city: 'Madurai',
+        locality: 'Avaniyapuram',
+      }),
+      /Avinash — Wellness Coach in Avaniyapuram, Madurai/,
+    );
+    const faqs = buildCoachPageFaqs({
+      displayName: 'Avinash',
+      city: 'Madurai',
+      locality: 'Avaniyapuram',
+      onlineConsultation: true,
+    }, { heroName: 'Avinash', basedIn: 'Avaniyapuram, Madurai' });
+    assert.ok(faqs.length >= 4);
+    assert.match(faqs[0].a, /Avinash/);
     const ld = buildCoachPageJsonLd({
       fullName: 'Avinash',
       title: 'Wellness Coach',
       city: 'Madurai',
       locality: 'Avaniyapuram',
       seoDescription: seo.seoDescription,
-    }, { pageUrl: 'https://example.com/coach/madurai/avaniyapuram/avinash' });
+    }, {
+      pageUrl: 'https://example.com/coach/madurai/avaniyapuram/avinash',
+      faqs,
+    });
     assert.equal(ld['@context'], 'https://schema.org');
-    assert.equal(ld['@graph'].length, 2);
+    assert.equal(ld['@graph'].length, 3);
     assert.equal(ld['@graph'][0]['@type'], 'Person');
     assert.equal(ld['@graph'][1]['@type'], 'ProfessionalService');
+    assert.equal(ld['@graph'][2]['@type'], 'FAQPage');
+    assert.equal(ld['@graph'][2].mainEntity.length, faqs.length);
+  });
+
+  it('adds LocalBusiness JSON-LD when club GPS is present', () => {
+    const faqs = buildCoachPageFaqs({
+      displayName: 'Priya',
+      centerName: 'Valley Center',
+      city: 'Chennai',
+      locality: 'Vadapalani',
+    });
+    const ld = buildCoachPageJsonLd({
+      fullName: 'Priya',
+      displayName: 'Priya',
+      title: 'Wellness Coach',
+      centerName: 'Valley Center',
+      city: 'Chennai',
+      locality: 'Vadapalani',
+      phone: '9876543210',
+      seoDescription: 'Priya — Wellness Coach in Vadapalani, Chennai.',
+      geoLatitude: 13.05,
+      geoLongitude: 80.21,
+    }, {
+      pageUrl: 'https://example.com/coach/chennai/vadapalani/priya',
+      faqs,
+      hasClub: true,
+    });
+    const types = ld['@graph'].map((n) => n['@type']);
+    assert.deepEqual(types, ['Person', 'ProfessionalService', 'FAQPage', 'LocalBusiness']);
+    const local = ld['@graph'].find((n) => n['@type'] === 'LocalBusiness');
+    assert.equal(local.name, 'Valley Center');
+    assert.equal(local.geo.latitude, 13.05);
+    assert.equal(local.geo.longitude, 80.21);
+  });
+
+  it('skips LocalBusiness JSON-LD without club GPS', () => {
+    const ld = buildCoachPageJsonLd({
+      fullName: 'Ravi',
+      city: 'Salem',
+      locality: 'Hasthampatti',
+      seoDescription: 'Ravi coach',
+    }, {
+      pageUrl: 'https://example.com/coach/salem/hasthampatti/ravi',
+      hasClub: false,
+    });
+    assert.ok(!ld['@graph'].some((n) => n['@type'] === 'LocalBusiness'));
+    assert.ok(ld['@graph'].some((n) => n['@type'] === 'FAQPage'));
   });
 
   it('shows only published approved-or-later statuses', () => {

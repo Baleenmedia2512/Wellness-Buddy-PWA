@@ -3,7 +3,11 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickShortAreaName, shortenAreaLabel } from '../reverseGeocode.js';
+import {
+  buildStreetAddressFromNominatim,
+  pickShortAreaName,
+  shortenAreaLabel,
+} from '../reverseGeocode.js';
 
 describe('reverseGeocode short area labels', () => {
   it('keeps simple area names', () => {
@@ -29,5 +33,16 @@ describe('reverseGeocode short area labels', () => {
       neighbourhood: 'Adyar',
       suburb: null,
     }), 'Adyar');
+  });
+
+  it('builds street line from house number + road', () => {
+    assert.equal(
+      buildStreetAddressFromNominatim({ house_number: '12', road: 'Arcót Road' }),
+      '12 Arcót Road',
+    );
+    assert.equal(
+      buildStreetAddressFromNominatim({ road: '100 Feet Road' }),
+      '100 Feet Road',
+    );
   });
 });

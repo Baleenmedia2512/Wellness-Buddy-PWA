@@ -1,6 +1,6 @@
 /**
  * Minimal consent UI: checkbox only (below Result Video).
- * Tick → email OTP → after verify, checkbox stays checked (no Send again).
+ * Tick → OTP panel opens immediately → email OTP → after verify, checkbox stays checked.
  */
 import React, { useEffect, useState } from 'react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
@@ -19,17 +19,21 @@ import {
 const CONSENT_COPY =
   'I agree to upload this document to display in website by all my Upline';
 
+const OWNER_HINT =
+  'If you own a coach website, verifying this also allows consented downlines to appear on your site.';
+
 export default function WebsiteDisplayConsentCard({
   userId,
   testimonial,
   onChanged,
+  showOwnerHint = true,
 }) {
   const propConsented = Boolean(testimonial?.websiteDisplayConsentAt);
+  const propAgreedPending = Boolean(testimonial?.websiteDisplayAgreed) && !propConsented;
+
   const [localConsented, setLocalConsented] = useState(propConsented);
-  const [agreed, setAgreed] = useState(
-    propConsented || Boolean(testimonial?.websiteDisplayAgreed),
-  );
-  const [otpOpen, setOtpOpen] = useState(false);
+  const [agreed, setAgreed] = useState(propConsented || propAgreedPending);
+  const [otpOpen, setOtpOpen] = useState(propAgreedPending);
   const [otp, setOtp] = useState('');
   const [maskedEmail, setMaskedEmail] = useState('');
   const [busy, setBusy] = useState(false);
@@ -47,8 +51,15 @@ export default function WebsiteDisplayConsentCard({
       setOtpOpen(false);
       setOtp('');
       setError(null);
+      return;
     }
-  }, [propConsented]);
+    // Agreed on server but OTP not verified yet — keep the OTP panel visible
+    // (e.g. after a parent refresh mid-flow).
+    if (propAgreedPending) {
+      setAgreed(true);
+      setOtpOpen(true);
+    }
+  }, [propConsented, propAgreedPending]);
 
   if (!canConsent) return null;
 
@@ -58,7 +69,7 @@ export default function WebsiteDisplayConsentCard({
     setError(null);
   };
 
-  const sendOtp = async () => {
+  const sendOtp = async ({ keepOpenOnError = false } = {}) => {
     setError(null);
     setBusy(true);
     try {
@@ -68,13 +79,29 @@ export default function WebsiteDisplayConsentCard({
       });
       setMaskedEmail(data?.maskedEmail || '');
       setOtpOpen(true);
-      onChanged?.();
+      // Do not call onChanged here — parent refresh remounts and hid the OTP panel.
     } catch (err) {
       setError(err?.message || 'Could not send OTP');
-      setAgreed(false);
-      setOtpOpen(false);
+      if (!keepOpenOnError) {
+        setAgreed(false);
+        setOtpOpen(false);
+      }
     } finally {
       setBusy(false);
+    }
+  };
+
+  const clearPendingAgree = async () => {
+    setOtpOpen(false);
+    setOtp('');
+    setMaskedEmail('');
+    setAgreed(false);
+    setError(null);
+    // Clear server-side agreed flag so a later reload does not re-open OTP alone.
+    try {
+      await revokeDisplayConsent({ userId });
+    } catch {
+      /* non-fatal — local UI already cleared */
     }
   };
 
@@ -100,13 +127,18 @@ export default function WebsiteDisplayConsentCard({
       return;
     }
 
-    setAgreed(checked);
     if (checked) {
+      // Show OTP card immediately (first-image behaviour), then email the code.
+      setAgreed(true);
+      setOtpOpen(true);
       await sendOtp();
     } else {
-      setOtpOpen(false);
-      setOtp('');
-      setMaskedEmail('');
+      setBusy(true);
+      try {
+        await clearPendingAgree();
+      } finally {
+        setBusy(false);
+      }
     }
   };
 
@@ -143,6 +175,11 @@ export default function WebsiteDisplayConsentCard({
         />
         <span>{CONSENT_COPY}</span>
       </label>
+      {showOwnerHint ? (
+        <p className="pl-6 text-[11px] leading-snug text-slate-500">
+          {OWNER_HINT}
+        </p>
+      ) : null}
 
       {!consented && otpOpen ? (
         <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
@@ -150,7 +187,11 @@ export default function WebsiteDisplayConsentCard({
             <p className="text-center text-[12px] text-slate-600">
               Code sent to <strong>{maskedEmail}</strong>
             </p>
-          ) : null}
+          ) : (
+            <p className="text-center text-[12px] text-slate-500">
+              {busy ? 'Sending code to your email…' : 'Enter the code from your email'}
+            </p>
+          )}
           <NativeInput
             otp
             type="text"
@@ -165,18 +206,14 @@ export default function WebsiteDisplayConsentCard({
               e.preventDefault();
               handleOtpInput(e.clipboardData?.getData('text') ?? '');
             }}
-            className="w-full rounded-xl border border-slate-200 bg-white py-2.5 text-center text-xl font-bold tracking-[0.45em] outline-none focus:ring-2 focus:ring-emerald-400"
+            className="w-full rounded-xl border-2 border-emerald-400 bg-white py-2.5 text-center text-xl font-bold tracking-[0.45em] outline-none focus:ring-2 focus:ring-emerald-400"
             autoFocus
           />
           <div className="flex gap-2">
             <TouchFeedbackButton
-              onClick={() => {
-                setOtpOpen(false);
-                setOtp('');
-                setAgreed(false);
-              }}
+              onClick={() => { void clearPendingAgree(); }}
               disabled={busy}
-              className="flex-1 rounded-xl border border-slate-200 py-2 text-sm font-semibold text-slate-600"
+              className="flex-1 rounded-xl border border-slate-200 bg-white py-2 text-sm font-semibold text-slate-600"
             >
               Cancel
             </TouchFeedbackButton>
@@ -189,7 +226,7 @@ export default function WebsiteDisplayConsentCard({
             </TouchFeedbackButton>
           </div>
           <TouchFeedbackButton
-            onClick={sendOtp}
+            onClick={() => { void sendOtp({ keepOpenOnError: true }); }}
             disabled={busy}
             className="w-full py-1 text-[12px] font-semibold text-emerald-700"
           >

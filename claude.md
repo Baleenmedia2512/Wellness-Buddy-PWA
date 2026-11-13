@@ -1,7 +1,7 @@
 # `claude.md` — Wellness Valley PWA · Business Constitution
 
 > **Status:** MANDATORY · **Scope:** ALL contributors (humans + AI) · **Owner:** CTO / Principal Engineer
-> **Version:** 3.1.11 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
+> **Version:** 3.1.12 · **Purpose:** Business rules, domain ownership, governance, permissions, and policies.
 >
 > **Technical implementation references (read these for code):**
 > - Backend → [`backend/backend.md`](backend/backend.md)
@@ -158,6 +158,9 @@ All work-in-progress is gated behind a feature flag. No exception.
 | `ff.broadcast` | ON | @principal-eng | 2027-03-29 | BroadCast paid screen: how-to video and payment entry. Upload and Burst stay locked until recharge is connected. |
 | `ff.go-premium` | ON | @principal-eng | 2027-04-28 | Profile Go Premium opens Cashfree checkout. Kill switch hides the row and the create-order API. |
 | `ff.report-trial` | ON | @principal-eng | 2027-05-05 | Reports stay open. Unpaid detail hides until a 14-day trial or Premium. Apps below 3.5.5, and requests with no version, keep the full report. |
+| `ff.gbp-listing` | OFF | @principal-eng | 2027-05-12 | Google Maps Listing request: coach form + FTP media kit + ops email/admin queue. Kill switch hides nav, Profile queue, and GBP APIs. Default OFF for Digital Portfolio APK review. |
+| `ff.field-collection` | ON | @principal-eng | 2027-05-12 | Admin field rules: Community Position first, then entry or later fields by member/coach and community position. Kill switch. Released app bundles keep the previous onboarding screens. |
+| `ff.events-trial` | ON | @principal-eng | 2027-05-12 | Create Event, Check-in, Paid Features gated. Uses the **same** centralized 14-day trial as Reports (`report_trials_table`). Remaining days continue across modules. Apps below 3.5.7 keep free host tools. |
 
 **Frontend-only UI flags (`frontend/src/config/featureFlags.js`, no backend mirror):** `ff.shake-calculator` (OFF), `ff.contact-picker` (OFF).
 
