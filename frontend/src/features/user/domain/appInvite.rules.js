@@ -1,9 +1,23 @@
 /**
  * App invite / share rules.
- * URL: https://play.google.com/store/apps/details?id=com.wellnessvalley.app
+ * URL: https://wellnessvalley.in/share
  */
 
+export const APP_SHARE_URL = 'https://wellnessvalley.in/share';
 export const PLAY_STORE_APP_URL = 'https://play.google.com/store/apps/details?id=com.wellnessvalley.app';
+
+export const APP_INVITE_MESSAGE = [
+  '🎉 Welcome to Wellness Valley! 🌿',
+  '',
+  '📲 Download the app using the link below:',
+  APP_SHARE_URL,
+  '',
+  'Step 1: Enter your mobile number and verify it using the OTP.',
+  '',
+  "Step 2: Select the Sponsor's email address who invited you and verify it using the OTP sent to that email.",
+  '',
+  'Step 3: Fill in all the required details in the Complete Profile form.',
+].join('\n');
 
 /**
  * Builds the text message for inviting friends to the Wellness Valley app.
@@ -11,18 +25,8 @@ export const PLAY_STORE_APP_URL = 'https://play.google.com/store/apps/details?id
  * @returns {string}
  */
 export function buildAppInviteShareText({ inviterName = '' } = {}) {
-  const inviter = String(inviterName || '').trim();
-  const greeting = inviter
-    ? `🌟 ${inviter} invites you to join Wellness Valley!`
-    : '🌟 Join me on Wellness Valley!';
-
-  return [
-    greeting,
-    'Your personal health and wellness companion for daily nutrition tracking, body parameters, healthy habits, and expert coaching.',
-    '',
-    'Download the app on Google Play Store:',
-    PLAY_STORE_APP_URL,
-  ].join('\n');
+  void inviterName;
+  return APP_INVITE_MESSAGE;
 }
 
 /**
@@ -32,11 +36,10 @@ export function buildAppInviteShareText({ inviterName = '' } = {}) {
 export function buildAppInviteSharePayload({ inviterName = '' } = {}) {
   const text = buildAppInviteShareText({ inviterName });
   return {
-    title: 'Join me on Wellness Valley',
+    title: 'Welcome to Wellness Valley',
     text,
-    url: PLAY_STORE_APP_URL,
+    url: APP_SHARE_URL,
     dialogTitle: 'Invite Friends to Wellness Valley',
     fileName: 'wellness-valley-invite.png',
   };
 }
-
