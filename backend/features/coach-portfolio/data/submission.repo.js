@@ -318,14 +318,13 @@ export async function slugTakenByOther(publicSlug, optsOrUserId = {}) {
     );
     return Array.isArray(rows) && rows.length > 0;
   }
+  // Freestyle / unknown row: any other row (same coach included) owning the slug blocks it.
   const rows = await getPrisma().$queryRawUnsafe(
-    `SELECT UserId AS userId FROM coach_portfolio_submissions_table
+    `SELECT Id AS id FROM coach_portfolio_submissions_table
      WHERE PublicSlug IS NOT NULL
        AND LOWER(TRIM(PublicSlug)) = ?
-       AND UserId <> ?
      LIMIT 1`,
     needle,
-    Number(userId),
   );
   return Array.isArray(rows) && rows.length > 0;
 }
@@ -345,31 +344,59 @@ function duplicateEntryFromError(error) {
 }
 
 /**
- * True when another submission already uses this website display name (case-insensitive).
+ * True when another website already uses this display name in the same City + Area.
+ * Same coach cannot publish two sites at the same city/area/name path.
+ *
+ * @param {string} displayName
+ * @param {number|string} userId
+ * @param {{
+ *   centerId?: number|null,
+ *   submissionId?: number|null,
+ *   city?: string|null,
+ *   locality?: string|null,
+ * }} [opts]
  */
-export async function displayNameTakenByOther(displayName, userId, { centerId } = {}) {
+export async function displayNameTakenByOther(displayName, userId, {
+  centerId = null,
+  submissionId = null,
+  city = null,
+  locality = null,
+} = {}) {
   await ensureSchema();
   const name = String(displayName || '').trim().toLowerCase();
   if (!name) return false;
-  if (centerId != null) {
-    const rows = await getPrisma().$queryRawUnsafe(
-      `SELECT UserId AS userId FROM coach_portfolio_submissions_table
-       WHERE NOT (UserId = ? AND CenterId = ?)
-         AND LOWER(TRIM(JSON_UNQUOTE(JSON_EXTRACT(FormJson, '$.mediaBrand.websiteDisplayName')))) = ?
-       LIMIT 1`,
-      Number(userId),
-      Number(centerId),
-      name,
-    );
-    return Array.isArray(rows) && rows.length > 0;
+  const cityKey = String(city || '').trim().toLowerCase();
+  const areaKey = String(locality || '').trim().toLowerCase();
+  // Without City/Area we cannot scope uniqueness to a public path — treat as not taken here;
+  // save/publish still require City/Area separately.
+  if (!cityKey || !areaKey) return false;
+
+  const sid = submissionId != null && Number.isFinite(Number(submissionId))
+    ? Number(submissionId)
+    : null;
+  const cid = centerId != null && Number.isFinite(Number(centerId))
+    ? Number(centerId)
+    : null;
+
+  // Exclude the row being edited (by Id, or by UserId+CenterId for club sites).
+  let excludeSql = '';
+  const params = [name, cityKey, areaKey];
+  if (sid != null && sid > 0) {
+    excludeSql = 'AND Id <> ?';
+    params.push(sid);
+  } else if (cid != null && cid > 0) {
+    excludeSql = 'AND NOT (UserId = ? AND CenterId = ?)';
+    params.push(Number(userId), cid);
   }
+
   const rows = await getPrisma().$queryRawUnsafe(
-    `SELECT UserId AS userId FROM coach_portfolio_submissions_table
-     WHERE UserId <> ?
-       AND LOWER(TRIM(JSON_UNQUOTE(JSON_EXTRACT(FormJson, '$.mediaBrand.websiteDisplayName')))) = ?
+    `SELECT Id AS id FROM coach_portfolio_submissions_table
+     WHERE LOWER(TRIM(JSON_UNQUOTE(JSON_EXTRACT(FormJson, '$.mediaBrand.websiteDisplayName')))) = ?
+       AND LOWER(TRIM(JSON_UNQUOTE(JSON_EXTRACT(FormJson, '$.center.city')))) = ?
+       AND LOWER(TRIM(JSON_UNQUOTE(JSON_EXTRACT(FormJson, '$.center.locality')))) = ?
+       ${excludeSql}
      LIMIT 1`,
-    Number(userId),
-    name,
+    ...params,
   );
   return Array.isArray(rows) && rows.length > 0;
 }

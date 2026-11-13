@@ -23,6 +23,7 @@ export default async function handler(req, res) {
     return runService(res, () => getMySubmission({
       userId: req.query?.userId,
       centerId: req.query?.centerId,
+      submissionId: req.query?.submissionId,
       createNew: req.query?.createNew,
     }));
   }
@@ -32,6 +33,7 @@ export default async function handler(req, res) {
       centerId: req.body?.centerId,
       form: req.body?.form,
       createNew: req.body?.createNew === true,
+      submissionId: req.body?.submissionId ?? null,
     }));
   }
   if (req.method === 'POST') {
@@ -49,6 +51,7 @@ export default async function handler(req, res) {
       centerId: req.body?.centerId,
       form: req.body?.form,
       createNew: req.body?.createNew === true,
+      submissionId: req.body?.submissionId ?? null,
     }));
   }
   return methodNotAllowed(res);

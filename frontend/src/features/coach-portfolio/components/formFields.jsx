@@ -36,7 +36,10 @@ export function FieldLabel({ children, required, hint }) {
 const controlClass =
   'w-full rounded-2xl border border-slate-200/90 bg-slate-50/80 px-3.5 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 disabled:opacity-60';
 
-export function TextInput({ value, onChange, placeholder, type = 'text', disabled = false }) {
+const errorControlClass =
+  'w-full rounded-2xl border border-rose-500 bg-rose-50/40 px-3.5 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-rose-500 focus:bg-white focus:ring-4 focus:ring-rose-500/15 disabled:opacity-60';
+
+export function TextInput({ value, onChange, placeholder, type = 'text', disabled = false, error = false }) {
   return (
     <input
       type={type}
@@ -45,12 +48,13 @@ export function TextInput({ value, onChange, placeholder, type = 'text', disable
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       autoComplete={type === 'time' ? 'off' : undefined}
-      className={controlClass}
+      aria-invalid={error || undefined}
+      className={error ? errorControlClass : controlClass}
     />
   );
 }
 
-export function TextArea({ value, onChange, placeholder, rows = 3, disabled = false }) {
+export function TextArea({ value, onChange, placeholder, rows = 3, disabled = false, error = false }) {
   return (
     <textarea
       value={value || ''}
@@ -58,18 +62,20 @@ export function TextArea({ value, onChange, placeholder, rows = 3, disabled = fa
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       rows={rows}
-      className={`${controlClass} resize-y min-h-[88px]`}
+      aria-invalid={error || undefined}
+      className={`${error ? errorControlClass : controlClass} resize-y min-h-[88px]`}
     />
   );
 }
 
-export function SelectInput({ value, onChange, options, placeholder = 'Select', disabled = false }) {
+export function SelectInput({ value, onChange, options, placeholder = 'Select', disabled = false, error = false }) {
   return (
     <select
       value={value || ''}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
-      className={`${controlClass} appearance-none`}
+      aria-invalid={error || undefined}
+      className={`${error ? errorControlClass : controlClass} appearance-none`}
     >
       <option value="">{placeholder}</option>
       {options.map((opt) => (
@@ -104,7 +110,7 @@ export function ValueSelectInput({
   );
 }
 
-export function MultiCheck({ options, value = [], onChange, disabled = false }) {
+export function MultiCheck({ options, value = [], onChange, disabled = false, error = false }) {
   const selected = Array.isArray(value) ? value : [];
   const toggle = (opt) => {
     if (disabled) return;
@@ -112,7 +118,10 @@ export function MultiCheck({ options, value = [], onChange, disabled = false }) 
     else onChange([...selected, opt]);
   };
   return (
-    <div className="flex flex-wrap gap-2">
+    <div
+      className={`flex flex-wrap gap-2 rounded-2xl p-1 ${error ? 'ring-2 ring-rose-400 ring-offset-2' : ''}`}
+      aria-invalid={error || undefined}
+    >
       {options.map((opt) => {
         const active = selected.includes(opt);
         return (
@@ -124,7 +133,9 @@ export function MultiCheck({ options, value = [], onChange, disabled = false }) 
             className={`rounded-full border px-3.5 py-2 text-left text-[13px] font-medium transition ${
               active
                 ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm shadow-emerald-600/20'
-                : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50/50'
+                : error
+                  ? 'border-rose-300 bg-rose-50 text-slate-700'
+                  : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50/50'
             } disabled:opacity-60`}
           >
             {opt}
@@ -162,11 +173,16 @@ export function YesNo({ value, onChange, disabled = false }) {
 
 export function FormCard({ title, subtitle, children }) {
   return (
-    <section className="overflow-hidden rounded-[22px] border border-slate-200/80 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+    <section
+      className="overflow-hidden rounded-[22px] border border-[#d7e5dc] shadow-[0_10px_30px_rgba(15,23,42,0.04)]"
+      style={{
+        background: 'linear-gradient(165deg, #f7faf7 0%, #eef5f0 48%, #e7f0e8 100%)',
+      }}
+    >
       {(title || subtitle) ? (
-        <div className="border-b border-slate-100 bg-gradient-to-r from-emerald-50/80 to-white px-4 py-3.5">
-          {title ? <h2 className="text-[15px] font-bold text-slate-900">{title}</h2> : null}
-          {subtitle ? <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{subtitle}</p> : null}
+        <div className="border-b border-[#d7e5dc]/80 bg-white/55 px-4 py-3.5">
+          {title ? <h2 className="text-[15px] font-bold text-[#1f5a42]">{title}</h2> : null}
+          {subtitle ? <p className="mt-0.5 text-xs leading-relaxed text-[#5f7268]">{subtitle}</p> : null}
         </div>
       ) : null}
       <div className="space-y-4 p-4">{children}</div>
@@ -242,12 +258,12 @@ export function VideoUploadField({
         className="w-full rounded-2xl border border-dashed border-emerald-300 bg-emerald-50/70 px-3 py-4 text-sm font-semibold text-emerald-800 disabled:opacity-60"
       >
         {busy
-          ? 'Uploading to FTP…'
+          ? 'Uploading…'
           : multiple
             ? (list.length ? `Add more videos (${list.length})` : 'Upload intro videos')
             : (list.length ? 'Replace intro video' : 'Upload intro video')}
       </button>
-      <p className="text-[11px] text-slate-500">MP4 / WebM / MOV · max 80 MB each · stored on FTP</p>
+      <p className="text-[11px] text-slate-500">MP4 / WebM / MOV · max 80 MB each</p>
       {error ? <p className="text-xs text-rose-600">{error}</p> : null}
       {list.length ? (
         <div className="space-y-3">
@@ -369,7 +385,7 @@ export function PhotoField({
       </button>
       {onUpload ? (
         <p className="text-[11px] text-slate-500">
-          JPG / PNG / WEBP · compressed · stored on wellnessvalley FTP
+          JPG / PNG / WEBP
         </p>
       ) : null}
       {error ? <p className="text-xs text-rose-600">{error}</p> : null}

@@ -76,7 +76,7 @@ describe('coach-portfolio submission.rules', () => {
     assert.ok(errors.some((e) => /Wellness center name/i.test(e)));
   });
 
-  it('requires About step fields for publish', () => {
+  it('requires Profile-hydrated About fields for publish', () => {
     const form = normalizeFormJson({
       personal: { fullName: 'A Coach', professionalTitle: 'Wellness Coach' },
       center: { businessPhone: '9876543210' },
@@ -85,8 +85,8 @@ describe('coach-portfolio submission.rules', () => {
     });
     const errors = validateFormForSubmit(form, { hasClub: false });
     assert.ok(errors.some((e) => /Years of experience/i.test(e)));
-    assert.ok(errors.some((e) => /Wellness Professional/i.test(e)));
-    assert.ok(errors.some((e) => /believe in/i.test(e)));
+    assert.ok(errors.some((e) => /About me/i.test(e)));
+    assert.ok(!errors.some((e) => /believe in/i.test(e)));
     assert.ok(!errors.some((e) => /Qualifications/i.test(e)));
     assert.ok(errors.some((e) => /Languages/i.test(e)));
   });

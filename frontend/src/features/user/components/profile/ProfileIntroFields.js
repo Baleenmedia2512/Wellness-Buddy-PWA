@@ -205,7 +205,7 @@ export default function ProfileIntroFields({ values = {}, onChange, keys = null 
             maxLength={PROFESSIONAL_TITLE_MAX}
             value={values.professionalTitle || ''}
             onChange={set('professionalTitle')}
-            placeholder="Wellness coach"
+            placeholder=""
             className={inputClass}
             style={{ fontSize: '16px' }}
           />
