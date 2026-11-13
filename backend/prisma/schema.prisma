@@ -752,6 +752,14 @@ model team_table {
   ChestCm                                                                                     Decimal?                                @db.Decimal(20, 6)
   WaistCm                                                                                     Decimal?                                @db.Decimal(20, 6)
   HipCm                                                                                       Decimal?                                @db.Decimal(20, 6)
+  ProfessionalTitle                                                                           String?                                 @db.VarChar(80)
+  InstagramUrl                                                                                String?                                 @db.VarChar(255)
+  YoutubeUrl                                                                                  String?                                 @db.VarChar(255)
+  LinkedinUrl                                                                                 String?                                 @db.VarChar(255)
+  HerbalifeJoinedOn                                                                           DateTime?                               @db.Date
+  AboutMe                                                                                     String?                                 @db.VarChar(500)
+  Qualification                                                                               String?                                 @db.VarChar(250)
+  Languages                                                                                   Json?
   recovered_health_issues                                                                     Json                                    @default(dbgenerated("(cast(_utf8mb4\\'[]\\' as json))"))
   transformation_photos                                                                       Json?
   ProfileImageKey                                                                             String?                                 @db.LongText

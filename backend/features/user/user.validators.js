@@ -13,6 +13,7 @@ import {
 } from './domain/transformationPhotos.rules.js';
 import { validateHeightCm as validateHeightCmInput } from './domain/heightChange.rules.js';
 import { isValidPositionCode, normalizePositionCode } from './domain/communityPosition.rules.js';
+import { normalizeProfileIntroPatch, PROFILE_INTRO_KEYS } from './domain/profileIntro.rules.js';
 
 const VALID_DIETS = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
 const VALID_GOAL_MODES = ['loss', 'gain', 'maintain'];
@@ -268,6 +269,21 @@ export function validateUpdateProfile(body) {
       : body.EventLevel;
   }
 
+  const introInput = {};
+  let hasIntro = false;
+  for (const key of PROFILE_INTRO_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      introInput[key] = body[key];
+      hasIntro = true;
+    }
+  }
+  let profileIntro;
+  if (hasIntro) {
+    const normalizedIntro = normalizeProfileIntroPatch(introInput);
+    if (!normalizedIntro.ok) throw new ValidationError(400, normalizedIntro.message);
+    profileIntro = normalizedIntro.value;
+  }
+
   return {
     email,
     userId: resolvedUserId,
@@ -297,6 +313,7 @@ export function validateUpdateProfile(body) {
     eventTranslation,
     eventYourCity,
     eventLevel,
+    profileIntro,
   };
 }
 

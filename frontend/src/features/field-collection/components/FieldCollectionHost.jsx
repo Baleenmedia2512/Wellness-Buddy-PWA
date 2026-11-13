@@ -9,6 +9,7 @@ import { fetchFieldCollectionPrompts } from '../services/fieldCollection.api';
 import { readDeferredFields } from '../domain/sessionDefer';
 import OnboardingCommunityPositionPage from './OnboardingCommunityPositionPage';
 import OnboardingEntryFieldsPage from './OnboardingEntryFieldsPage';
+import OnboardingProfileIntroPage from './OnboardingProfileIntroPage';
 import FieldCollectionPrompt from './FieldCollectionPrompt';
 
 export default function FieldCollectionHost({
@@ -117,9 +118,19 @@ export default function FieldCollectionHost({
   if (plan.step === 'lifestyle') {
     return <PhysicalActivitySetup user={user} preferUserId onComplete={load} />;
   }
+  if (plan.step === 'profileIntro') {
+    return (
+      <OnboardingProfileIntroPage
+        user={user}
+        fields={plan.profileFields || []}
+        onComplete={load}
+      />
+    );
+  }
   if (plan.step === 'scheduled' && plan.scheduled) {
     return (
       <FieldCollectionPrompt
+        key={plan.scheduled.key}
         user={user}
         prompt={plan.scheduled}
         apiBaseUrl={apiBaseUrl}

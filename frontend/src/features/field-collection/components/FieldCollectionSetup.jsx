@@ -133,6 +133,7 @@ Manage field access, reminders, and skip limits for members and coaches
                   }}
                   className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-2 text-sm text-gray-800"
                 >
+                  <option value="profile">On profile</option>
                   <option value="entry">While entering</option>
                   <option value="scheduled">Ask later</option>
                 </select>

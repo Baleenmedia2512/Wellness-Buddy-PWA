@@ -69,6 +69,7 @@ import {
 } from './domain/heightChange.rules.js';
 import { getWorkingPhysicalCentre } from '../nutrition-centers/workingPhysicalCentre.service.js';
 import { normalizeEventProfilePrefs } from './domain/eventProfilePrefs.rules.js';
+import { normalizeProfileIntroPatch } from './domain/profileIntro.rules.js';
 import {
   COMMUNITY_POSITION_OTP_FLAG,
   shouldDeferCommunityPositionToOtp,
@@ -307,6 +308,25 @@ export async function getProfile({ email, userId = null, appVersion = null, bypa
     });
   }
 
+  let profileIntro = {
+    professionalTitle: '',
+    instagram: '',
+    youtube: '',
+    linkedin: '',
+    herbalifeJoinedOn: '',
+    aboutMe: '',
+    qualification: '',
+    languages: [],
+  };
+  try {
+    profileIntro = await repo.getProfileIntro(user.UserId);
+  } catch (err) {
+    logger.warn('[profile] profile intro lookup failed', {
+      userId: user.UserId,
+      message: err?.message,
+    });
+  }
+
   // Onboarding identity uses team_table.UserName only. A BCM card name must
   // not skip the name gate for users who still have a placeholder login name.
   const persistedUserName = user.UserName;
@@ -384,6 +404,7 @@ export async function getProfile({ email, userId = null, appVersion = null, bypa
         eventTranslation: eventProfilePrefs.eventTranslation,
         eventYourCity: eventProfilePrefs.eventYourCity,
         eventLevel: eventProfilePrefs.eventLevel,
+        ...profileIntro,
         communityPosition,
         communityPositionRequest,
         communityIdRequest: communityIdRequest || null,
@@ -524,6 +545,7 @@ export async function updateProfile(input) {
     eventTranslation = undefined,
     eventYourCity = undefined,
     eventLevel = undefined,
+    profileIntro = undefined,
     appVersion = null,
   } = input;
   const deferCommunityId = shouldDeferCommunityIdToOtpFlow({
@@ -702,6 +724,15 @@ export async function updateProfile(input) {
       if (toSave.eventLevel !== undefined) {
         throw new Error('Community Position could not be saved. Add EventLevel on the profile table and try again.');
       }
+    }
+  }
+
+  if (profileIntro && typeof profileIntro === 'object') {
+    const normalizedIntro = normalizeProfileIntroPatch(profileIntro);
+    if (!normalizedIntro.ok) throw new Error(normalizedIntro.message);
+    const savedIntro = await repo.setProfileIntro(userId, normalizedIntro.value);
+    if (!savedIntro) {
+      throw new Error('Profile details could not be saved. Run the profile intro migration and try again.');
     }
   }
 
