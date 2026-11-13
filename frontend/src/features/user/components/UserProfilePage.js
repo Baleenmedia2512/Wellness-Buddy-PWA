@@ -61,7 +61,6 @@ import { looksLikeEmail } from '../domain/onboardingEmail';
 import GoPremiumButton from '../../payments/components/GoPremiumButton';
 import { PremiumAvatarRing, PremiumCrownMark } from '../../payments/components/PremiumBadge';
 import usePremiumStatus from '../../payments/hooks/usePremiumStatus';
-import { WalletButton } from '../../wallet';
 import { AdminGbpListingButton } from '../../gbp-listing';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
@@ -1073,22 +1072,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
             <h2 className="text-sm font-semibold text-gray-700">Account</h2>
           </div>
           <div className="divide-y divide-gray-100">
-            <TouchFeedbackButton
-              type="button"
-              onClick={handleAppInvite}
-              disabled={isInviting}
-              className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-green-50 transition-colors"
-              ariaLabel="Invite friends"
-            >
-              <div className="p-2 rounded-full bg-green-50">
-                <Share2 className="w-4 h-4 text-green-600" />
-              </div>
-              <div className="flex-1 text-left">
-                <p className="text-sm font-medium text-gray-900">Invite Friends</p>
-                <p className="text-xs text-gray-400">Share Wellness Valley app with friends & family</p>
-              </div>
-            </TouchFeedbackButton>
-            <WalletButton userId={premiumUserId} />
             <AdminGbpListingButton userId={premiumUserId} userRole={userRole} />
             <TouchFeedbackButton
               onClick={() => {
