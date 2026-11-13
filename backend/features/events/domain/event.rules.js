@@ -301,10 +301,15 @@ const LEVEL_OPTIONS = Object.freeze([
   'SV',
   'WT',
   'AWT',
+  'GET',
+  'GET 2500',
+  'MILL',
+  'MILL 7500',
+  'PT',
+  // Legacy renamed codes (still accepted if catalog is unavailable)
   'GET TEAM',
   '2500 GET TEAM',
   'MILL TEAM',
-  'PT',
 ]);
 
 /** Empty query lists people; 2+ characters filters the full directory. */
@@ -335,6 +340,7 @@ function parsePickedPerson(raw, label) {
 /**
  * Normalize event interest / registration form payload.
  * @param {unknown} raw
+ * @param {{ levelOptions?: string[] }} [options]
  * @returns {{ ok: true, value: object } | { ok: false, errors: string[] }}
  */
 export function normalizeEventRegistrationDraft(raw, options = {}) {
@@ -359,6 +365,9 @@ export function normalizeEventRegistrationDraft(raw, options = {}) {
   const uplineMill = parsePickedPerson(input.uplineMillTeam, 'Upline Mill Team');
   const teamIncharge = parsePickedPerson(input.teamIncharge, 'Team Incharge');
   const daicyTeamIncharge = parsePickedPerson(input.daicyTeamIncharge, 'Daicy Team Incharge');
+  const levelOptions = Array.isArray(options.levelOptions) && options.levelOptions.length > 0
+    ? options.levelOptions.map((code) => String(code).trim().toUpperCase())
+    : LEVEL_OPTIONS;
   const errors = [];
 
   if (!eventId) errors.push('Event is required.');

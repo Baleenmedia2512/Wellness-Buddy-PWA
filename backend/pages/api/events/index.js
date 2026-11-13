@@ -12,6 +12,7 @@ import {
   listEvents,
   updateEvent,
 } from '../../../features/events/events.service.js';
+import { assertEventsHostToolsAllowed } from '../../../features/payments/api/events-access.handler.js';
 
 function flagOff() {
   return {
@@ -28,9 +29,28 @@ export default async function handler(req, res) {
     return runService(res, async () => flagOff());
   }
 
+  // GET list stays open (shell). Mutating host tools need trial/Premium on 3.5.7+.
   if (req.method === 'GET') return runService(res, () => listEvents(validateListEvents(req.query)));
-  if (req.method === 'POST') return runService(res, () => createEvent(validateCreateEvent(req.body)));
-  if (req.method === 'PATCH') return runService(res, () => updateEvent(validateUpdateEvent(req.body)));
-  if (req.method === 'DELETE') return runService(res, () => deleteEvent(validateDeleteEvent(req.body)));
+  if (req.method === 'POST') {
+    return runService(res, async () => {
+      const input = validateCreateEvent(req.body);
+      await assertEventsHostToolsAllowed(req, input.userId);
+      return createEvent(input);
+    });
+  }
+  if (req.method === 'PATCH') {
+    return runService(res, async () => {
+      const input = validateUpdateEvent(req.body);
+      await assertEventsHostToolsAllowed(req, input.userId);
+      return updateEvent(input);
+    });
+  }
+  if (req.method === 'DELETE') {
+    return runService(res, async () => {
+      const input = validateDeleteEvent(req.body);
+      await assertEventsHostToolsAllowed(req, input.userId);
+      return deleteEvent(input);
+    });
+  }
   return methodNotAllowed(res);
 }

@@ -11,6 +11,19 @@ export const EVENT_TRANSLATION_OPTIONS = Object.freeze([
   'KANNADA',
 ]);
 
+/** Released roles used by field collection until a screen loads the catalog. */
+export const EVENT_LEVEL_OPTIONS = Object.freeze([
+  'PC',
+  'ASSOCIATE',
+  'SV',
+  'WT',
+  'AWT',
+  'GET TEAM',
+  '2500 GET TEAM',
+  'MILL TEAM',
+  'PT',
+]);
+
 export const EVENT_YOUR_CITY_OPTIONS = Object.freeze([
   'OTHER COUNTRY',
   'OTHER CITY',

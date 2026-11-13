@@ -3,6 +3,7 @@ import {
   parsePendingPremiumOrder,
   shouldKeepPendingPremiumOrder,
 } from '../domain/pendingPremiumOrder.js';
+import { normalizePremiumQuote } from '../domain/premiumPlan.js';
 
 const PENDING_KEY = 'wv.pendingPremiumOrder';
 
@@ -76,9 +77,43 @@ export function hasPendingPremiumOrder(userId) {
 }
 
 /**
- * Does the server say this member has paid for Premium?
+ * Premium price for this member's Community Position (base + GST).
  * @param {string|number} userId
- * @returns {Promise<boolean|null>} null when the server could not be reached
+ * @returns {Promise<{ quote: object|null, message: string }>}
+ */
+export async function fetchPremiumQuote(userId) {
+  try {
+    const response = await apiFetch(
+      `/api/payments/premium-quote?userId=${encodeURIComponent(userId)}`,
+      { method: 'GET', cache: 'no-store' },
+    );
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        quote: null,
+        message: body?.message || body?.error?.message || 'Could not load Premium price',
+      };
+    }
+    const quote = normalizePremiumQuote(body?.data);
+    if (!quote) {
+      return { quote: null, message: 'Could not load Premium price' };
+    }
+    return { quote, message: '' };
+  } catch {
+    return { quote: null, message: 'Could not load Premium price' };
+  }
+}
+
+/**
+ * Active Premium window for this member.
+ * @param {string|number} userId
+ * @returns {Promise<{
+ *   premium: boolean,
+ *   daysLeft: number|null,
+ *   expiresAt: string|null,
+ *   expiresAtDisplay: string|null,
+ *   showExpiryWarning: boolean,
+ * }|null>} null when the server could not be reached
  */
 export async function fetchPremiumStatus(userId) {
   try {
@@ -88,7 +123,17 @@ export async function fetchPremiumStatus(userId) {
     );
     const body = await response.json().catch(() => ({}));
     if (!response.ok || typeof body?.data?.premium !== 'boolean') return null;
-    return body.data.premium;
+    return {
+      premium: body.data.premium === true,
+      daysLeft: Number.isFinite(Number(body.data.daysLeft)) ? Number(body.data.daysLeft) : null,
+      expiresAt: typeof body.data.expiresAt === 'string' && body.data.expiresAt.trim()
+        ? body.data.expiresAt.trim()
+        : null,
+      expiresAtDisplay: typeof body.data.expiresAtDisplay === 'string' && body.data.expiresAtDisplay.trim()
+        ? body.data.expiresAtDisplay.trim()
+        : null,
+      showExpiryWarning: body.data.showExpiryWarning === true,
+    };
   } catch {
     return null;
   }

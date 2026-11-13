@@ -12,6 +12,8 @@ import {
   isStoredTransformationPhoto,
 } from './domain/transformationPhotos.rules.js';
 import { validateHeightCm as validateHeightCmInput } from './domain/heightChange.rules.js';
+import { isValidPositionCode, normalizePositionCode } from './domain/communityPosition.rules.js';
+import { normalizeProfileIntroPatch, PROFILE_INTRO_KEYS } from './domain/profileIntro.rules.js';
 
 const VALID_DIETS = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
 const VALID_GOAL_MODES = ['loss', 'gain', 'maintain'];
@@ -267,6 +269,21 @@ export function validateUpdateProfile(body) {
       : body.EventLevel;
   }
 
+  const introInput = {};
+  let hasIntro = false;
+  for (const key of PROFILE_INTRO_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      introInput[key] = body[key];
+      hasIntro = true;
+    }
+  }
+  let profileIntro;
+  if (hasIntro) {
+    const normalizedIntro = normalizeProfileIntroPatch(introInput);
+    if (!normalizedIntro.ok) throw new ValidationError(400, normalizedIntro.message);
+    profileIntro = normalizedIntro.value;
+  }
+
   return {
     email,
     userId: resolvedUserId,
@@ -296,6 +313,7 @@ export function validateUpdateProfile(body) {
     eventTranslation,
     eventYourCity,
     eventLevel,
+    profileIntro,
   };
 }
 
@@ -496,6 +514,27 @@ export function validateCommunityIdVerify(body) {
   return { ...identity, otp };
 }
 
+export function validateCommunityPositionRequest(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const raw = body.positionCode !== undefined ? body.positionCode : body.position_code;
+  const positionCode = normalizePositionCode(raw);
+  if (!isValidPositionCode(positionCode)) {
+    throw new ValidationError(400, 'Choose a community position.');
+  }
+  return { ...identity, positionCode };
+}
+
+export function validateCommunityPositionVerify(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const otp = body?.otp != null ? String(body.otp).trim() : '';
+  if (!otp || !/^\d{4}$/.test(otp)) {
+    throw new ValidationError(400, 'Enter the 4-digit approval code from your coach');
+  }
+  return { ...identity, otp };
+}
+
 export function validateHeightChangeRequest(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
   const identity = parseProfileIdentity(body);
@@ -514,25 +553,6 @@ export function validateHeightChangeVerify(body) {
     throw new ValidationError(400, 'Enter the 4-digit code sent to your email or phone');
   }
   return { ...identity, height: check.value, otp };
-}
-
-export function validateCommunityPositionRequest(body) {
-  if (!body) throw new ValidationError(400, 'Request body is missing');
-  const identity = parseProfileIdentity(body);
-  const raw = body.positionCode !== undefined ? body.positionCode : body.position_code;
-  const positionCode = raw != null ? String(raw).trim() : '';
-  if (!positionCode) throw new ValidationError(400, 'Choose a community position.');
-  return { ...identity, positionCode };
-}
-
-export function validateCommunityPositionVerify(body) {
-  if (!body) throw new ValidationError(400, 'Request body is missing');
-  const identity = parseProfileIdentity(body);
-  const otp = body?.otp != null ? String(body.otp).trim() : '';
-  if (!otp || !/^\d{4}$/.test(otp)) {
-    throw new ValidationError(400, 'Enter the 4-digit approval code from your coach');
-  }
-  return { ...identity, otp };
 }
 
 export { VALID_DIETS, VALID_GENDERS };

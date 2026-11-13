@@ -228,6 +228,21 @@ model community_id_requests_table {
   ProcessedAt     DateTime?
 }
 
+/// Catalog of community roles. New roles are rows, not hard-coded lists.
+model community_positions_table {
+  Id         BigInt   @id @default(autoincrement())
+  Code       String   @unique(map: "uq_community_positions_code") @db.VarChar(40)
+  Label      String   @db.VarChar(40)
+  FeatureKey String   @unique(map: "uq_community_positions_feature_key") @db.VarChar(40)
+  UsageNote  String   @db.VarChar(240)
+  SortOrder  Int      @default(0)
+  IsActive   Boolean  @default(true)
+  CreatedAt  DateTime @default(now())
+
+  @@index([IsActive, SortOrder], map: "idx_community_positions_active_sort")
+}
+
+/// Pending coach OTP before a community position is saved on the profile.
 model community_position_requests_table {
   Id           BigInt    @id @default(autoincrement())
   RequesterId  BigInt
@@ -242,21 +257,6 @@ model community_position_requests_table {
   ProcessedAt  DateTime?
 
   @@index([RequesterId, Status], map: "idx_community_position_requests_requester_status")
-}
-
-model community_positions_table {
-  Id         BigInt   @id @default(autoincrement())
-  Code       String   @db.VarChar(40)
-  Label      String   @db.VarChar(40)
-  FeatureKey String   @db.VarChar(40)
-  UsageNote  String   @db.VarChar(240)
-  SortOrder  Int      @default(0)
-  IsActive   Boolean  @default(true)
-  CreatedAt  DateTime @default(now())
-
-  @@unique([Code], map: "uq_community_positions_code")
-  @@unique([FeatureKey], map: "uq_community_positions_feature_key")
-  @@index([IsActive, SortOrder], map: "idx_community_positions_active_sort")
 }
 
 model daily_step_activity {
@@ -341,6 +341,26 @@ model education_logs_table {
   @@index([nutrition_center_id, CreatedAt], map: "idx_education_logs_center_created_active")
   @@index([UserId, IsDeleted, CreatedAt], map: "idx_education_logs_user_created")
   @@index([UserId], map: "idx_education_user_id")
+}
+
+model field_collection_policy_table {
+  id                 BigInt   @id @default(autoincrement())
+  fields             Json
+  updated_at         DateTime @default(now())
+  updated_by_user_id BigInt?
+}
+
+model field_collection_prompt_state_table {
+  id               BigInt    @id @default(autoincrement())
+  user_id          BigInt
+  field_key        String    @db.VarChar(64)
+  skip_count       Int       @default(0)
+  cycle_started_at DateTime?
+  last_filled_at   DateTime?
+  last_skipped_at  DateTime?
+
+  @@unique([user_id, field_key], map: "uq_field_collection_user_field")
+  @@index([user_id], map: "idx_field_collection_prompt_state_user")
 }
 
 model food_corrections_table {
@@ -732,6 +752,14 @@ model team_table {
   ChestCm                                                                                     Decimal?                                @db.Decimal(20, 6)
   WaistCm                                                                                     Decimal?                                @db.Decimal(20, 6)
   HipCm                                                                                       Decimal?                                @db.Decimal(20, 6)
+  ProfessionalTitle                                                                           String?                                 @db.VarChar(80)
+  InstagramUrl                                                                                String?                                 @db.VarChar(255)
+  YoutubeUrl                                                                                  String?                                 @db.VarChar(255)
+  LinkedinUrl                                                                                 String?                                 @db.VarChar(255)
+  HerbalifeJoinedOn                                                                           DateTime?                               @db.Date
+  AboutMe                                                                                     String?                                 @db.VarChar(500)
+  Qualification                                                                               String?                                 @db.VarChar(250)
+  Languages                                                                                   Json?
   recovered_health_issues                                                                     Json                                    @default(dbgenerated("(cast(_utf8mb4\\'[]\\' as json))"))
   transformation_photos                                                                       Json?
   ProfileImageKey                                                                             String?                                 @db.LongText

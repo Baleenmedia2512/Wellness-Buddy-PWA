@@ -69,6 +69,7 @@ import {
 } from './domain/heightChange.rules.js';
 import { getWorkingPhysicalCentre } from '../nutrition-centers/workingPhysicalCentre.service.js';
 import { normalizeEventProfilePrefs } from './domain/eventProfilePrefs.rules.js';
+import { normalizeProfileIntroPatch } from './domain/profileIntro.rules.js';
 import {
   COMMUNITY_POSITION_OTP_FLAG,
   shouldDeferCommunityPositionToOtp,
@@ -100,16 +101,18 @@ function clearProfileCaches({ email, userId } = {}) {
   }
 }
 
-export async function getProfile({ email, userId = null, appVersion = null }) {
+export async function getProfile({ email, userId = null, appVersion = null, bypassCache = false }) {
   const preferTransformR2 = shouldPreferTransformationR2Urls({ appVersion });
   const cacheKeyBase = email
     ? cacheKeys.userProfile(String(email || '').toLowerCase())
     : cacheKeys.userProfile(`id:${userId}`);
   const cacheKey = `${cacheKeyBase}:tp-${preferTransformR2 ? 'r2' : 'legacy'}`;
-  try {
-    const cached = cache.get(cacheKey);
-    if (cached) return cached;
-  } catch { /* non-fatal */ }
+  if (!bypassCache) {
+    try {
+      const cached = cache.get(cacheKey);
+      if (cached) return cached;
+    } catch { /* non-fatal */ }
+  }
 
   const user = userId
     ? await repo.getProfileByUserId(userId)
@@ -297,16 +300,28 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
   let communityPositionRequest = null;
   try {
     communityPosition = await describeCommunityPosition(eventProfilePrefs.eventLevel);
+    communityPositionRequest = await getPublicPendingCommunityPositionRequest(user.UserId);
   } catch (err) {
     logger.warn('[profile] community position lookup failed', {
       userId: user.UserId,
       message: err?.message,
     });
   }
+
+  let profileIntro = {
+    professionalTitle: '',
+    instagram: '',
+    youtube: '',
+    linkedin: '',
+    herbalifeJoinedOn: '',
+    aboutMe: '',
+    qualification: '',
+    languages: [],
+  };
   try {
-    communityPositionRequest = await getPublicPendingCommunityPositionRequest(user.UserId);
+    profileIntro = await repo.getProfileIntro(user.UserId);
   } catch (err) {
-    logger.warn('[profile] pending community position lookup failed', {
+    logger.warn('[profile] profile intro lookup failed', {
       userId: user.UserId,
       message: err?.message,
     });
@@ -389,8 +404,9 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
         eventTranslation: eventProfilePrefs.eventTranslation,
         eventYourCity: eventProfilePrefs.eventYourCity,
         eventLevel: eventProfilePrefs.eventLevel,
-        communityPosition: communityPosition || null,
-        communityPositionRequest: communityPositionRequest || null,
+        ...profileIntro,
+        communityPosition,
+        communityPositionRequest,
         communityIdRequest: communityIdRequest || null,
         communityIdPair: communityIdPair || null,
         timezone: profileTimezone,
@@ -529,6 +545,7 @@ export async function updateProfile(input) {
     eventTranslation = undefined,
     eventYourCity = undefined,
     eventLevel = undefined,
+    profileIntro = undefined,
     appVersion = null,
   } = input;
   const deferCommunityId = shouldDeferCommunityIdToOtpFlow({
@@ -704,6 +721,18 @@ export async function updateProfile(input) {
         userId,
         keys: Object.keys(toSave),
       });
+      if (toSave.eventLevel !== undefined) {
+        throw new Error('Community Position could not be saved. Add EventLevel on the profile table and try again.');
+      }
+    }
+  }
+
+  if (profileIntro && typeof profileIntro === 'object') {
+    const normalizedIntro = normalizeProfileIntroPatch(profileIntro);
+    if (!normalizedIntro.ok) throw new Error(normalizedIntro.message);
+    const savedIntro = await repo.setProfileIntro(userId, normalizedIntro.value);
+    if (!savedIntro) {
+      throw new Error('Profile details could not be saved. Run the profile intro migration and try again.');
     }
   }
 
