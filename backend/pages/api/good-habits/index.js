@@ -25,7 +25,7 @@ export const config = {
 function flagOff() {
   return {
     httpStatus: 404,
-    body: { ok: false, error: { code: 'FLAG_OFF', message: 'Good Habit is not enabled' } },
+    body: { ok: false, error: { code: 'FLAG_OFF', message: 'Task by Coach is not enabled' } },
   };
 }
 

@@ -1,7 +1,8 @@
 /**
  * Event registration preferences stored once on the profile.
- * Community Position codes for legacy profile save come from the role catalog
- * seed (apps below 3.5.6). New roles are not added to this list.
+ * Pure — same option lists as event registration validation.
+ * Community Position codes stay the released list. New roles live in
+ * community_positions_table and are chosen under Community ID, not here.
  */
 import { ACCEPTED_COMMUNITY_POSITION_CODES } from './communityPosition.rules.js';
 

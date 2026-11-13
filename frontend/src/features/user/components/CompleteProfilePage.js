@@ -35,7 +35,6 @@ const API = process.env.REACT_APP_API_BASE_URL;
 const EMPTY_OPTIONAL_METRICS = {
   age: '',
   fatPercent: '',
-  visceralFat: '',
   bmi: '',
   bodyAge: '',
   chestCm: '',
@@ -187,7 +186,6 @@ const CompleteProfilePage = ({
         setOptionalMetrics({
           age: bm.age != null ? String(bm.age) : '',
           fatPercent: fatFallback != null && fatFallback !== '' ? String(fatFallback) : '',
-          visceralFat: bm.visceralFat != null ? String(bm.visceralFat) : '',
           bmi: bm.bmi != null ? String(bm.bmi) : '',
           bodyAge: bm.bodyAge != null ? String(bm.bodyAge) : '',
           chestCm: bm.chestCm != null ? String(bm.chestCm) : '',
@@ -366,13 +364,11 @@ const CompleteProfilePage = ({
       }
 
       const age = parseOptionalNumber(optionalMetrics.age, { integer: true });
-      const visceralFat = parseOptionalNumber(optionalMetrics.visceralFat);
       const bodyAge = parseOptionalNumber(optionalMetrics.bodyAge);
       const chestCm = parseOptionalNumber(optionalMetrics.chestCm);
       const waistCm = parseOptionalNumber(optionalMetrics.waistCm);
       const hipCm = parseOptionalNumber(optionalMetrics.hipCm);
       if (age !== undefined) payload.age = age;
-      if (visceralFat !== undefined) payload.visceralFat = visceralFat;
       if (bodyAge !== undefined) payload.bodyAge = bodyAge;
       if (chestCm !== undefined) payload.chestCm = chestCm;
       if (waistCm !== undefined) payload.waistCm = waistCm;

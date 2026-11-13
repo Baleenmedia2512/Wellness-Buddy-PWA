@@ -1,11 +1,10 @@
-// Editable body metrics (Age, Fat %, V-Fat, Body Age, Chest/Waist/Hip).
+// Editable body metrics (Age, Fat %, Body Age, Chest/Waist/Hip).
 // Fat % is required. BMI is calculated from height + weight — read-only.
 // hideReadOnly omits that calculated field (initial Complete Profile).
 import React, { useMemo } from 'react';
 import {
   evaluateChestCm,
   evaluateHipCm,
-  evaluateVisceralFat,
   evaluateWaistCm,
   getBodyMetricReferences,
 } from '../../../body-parameters-card/domain/bodyMetricReferences';
@@ -26,8 +25,7 @@ const referenceBadCls =
 const FIELDS = [
   { key: 'age', label: 'Age', inputMode: 'numeric' },
   { key: 'fatPercent', label: 'Fat %', inputMode: 'decimal', required: true },
-  { key: 'visceralFat', label: 'V-Fat', inputMode: 'decimal' },
-  { key: 'bmi', label: 'BMI', inputMode: 'decimal', readOnly: true },
+  { key: 'bmi', label: 'Indian BMI', inputMode: 'decimal', readOnly: true },
   { key: 'bodyAge', label: 'Body Age', inputMode: 'decimal' },
   { key: 'chestCm', label: 'Chest (cm)', inputMode: 'decimal' },
   { key: 'waistCm', label: 'Waist (cm)', inputMode: 'decimal' },
@@ -35,7 +33,6 @@ const FIELDS = [
 ];
 
 function isMetricOutOfRange(key, metrics) {
-  if (key === 'visceralFat') return evaluateVisceralFat(metrics.visceralFat)?.isOutOfRange === true;
   if (key === 'waistCm') return evaluateWaistCm(metrics.waistCm, metrics.gender)?.isOutOfRange === true;
   if (key === 'chestCm') return evaluateChestCm(metrics.chestCm, metrics.gender)?.isOutOfRange === true;
   if (key === 'hipCm') return evaluateHipCm(metrics.hipCm, metrics.gender)?.isOutOfRange === true;

@@ -24,9 +24,13 @@ import { isEnabled } from '../../shared/lib/feature-flags.js';
 import { getPrisma } from '../../shared/lib/prisma.js';
 import * as submissionRepo from '../../features/coach-portfolio/data/submission.repo.js';
 import {
+  buildCoachPageFaqs,
   buildCoachPageJsonLd,
   buildCoachPageSeo,
+  buildCoachVisibleHeading,
+  buildGoogleMapsSearchUrl,
   canShowPublicPortfolio,
+  mapsEmbedSrcFromLink,
   toPublicPortfolioPage,
 } from '../../features/coach-portfolio/domain/public-page.rules.js';
 import { isValidCoachSlug } from '../../features/coach-portfolio/domain/slug.rules.js';
@@ -69,49 +73,6 @@ function nameInitials(displayName) {
   const a = parts[0][0] || '';
   const b = (parts[1] || parts[0])[0] || '';
   return `${a}${b}`.toUpperCase();
-}
-
-/** @param {unknown} raw @returns {number} */
-function reviewRating(raw) {
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return 5;
-  return Math.min(5, Math.max(1, Math.round(n)));
-}
-
-/** Filled ★ + empty ☆ for 1–5. */
-function starGlyphs(raw) {
-  const r = reviewRating(raw);
-  return `${'★'.repeat(r)}${'☆'.repeat(5 - r)}`;
-}
-
-/** 5 stars with fractional fill (e.g. 4.7 → four full + partial fifth). */
-function FractionalStars({ value }) {
-  const v = Math.min(5, Math.max(0, Number(value) || 0));
-  return (
-    <span className="biz-stars" aria-hidden="true">
-      {[0, 1, 2, 3, 4].map((i) => {
-        const fill = Math.min(1, Math.max(0, v - i));
-        return (
-          <span key={i} className="biz-star">
-            <svg className="biz-star-base" viewBox="0 0 24 24" width="15" height="15">
-              <path
-                fill="currentColor"
-                d="M12 2.8l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 16.7 6.6 19.6l1-6.1-4.4-4.3 6.1-.9L12 2.8z"
-              />
-            </svg>
-            <span className="biz-star-clip" style={{ width: `${fill * 100}%` }}>
-              <svg className="biz-star-fill" viewBox="0 0 24 24" width="15" height="15">
-                <path
-                  fill="currentColor"
-                  d="M12 2.8l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 16.7 6.6 19.6l1-6.1-4.4-4.3 6.1-.9L12 2.8z"
-                />
-              </svg>
-            </span>
-          </span>
-        );
-      })}
-    </span>
-  );
 }
 
 export async function getServerSideProps({ params, req }) {
@@ -199,9 +160,10 @@ export async function getServerSideProps({ params, req }) {
     /* keep FormJson photo if profile lookup fails */
   }
 
-  // Map / address / directions / place label = coach's own club only
-  // (never FormJson locality/city — that is portfolio SEO, not club GPS).
+  // Map: club GPS when owned center exists; else City/Area Google Maps search (freestyle).
   let hasClub = false;
+  page.geoLatitude = null;
+  page.geoLongitude = null;
   try {
     const club = await getAppWorkingClubForPortfolio(row.userId);
     hasClub = Boolean(club?.hasClub);
@@ -215,6 +177,8 @@ export async function getServerSideProps({ params, req }) {
       const lat = Number(club.latitude);
       const lng = Number(club.longitude);
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        page.geoLatitude = lat;
+        page.geoLongitude = lng;
         try {
           const place = await fetchCityVillage(lat, lng);
           const locality = String(place?.village || '').trim();
@@ -229,14 +193,27 @@ export async function getServerSideProps({ params, req }) {
       }
     } else {
       page.centerName = '';
-      page.address = '';
-      page.mapsLink = '';
+      // Keep FormJson city/area (SEO + freestyle place); map searches that query.
+      const placeLabel = [page.locality, page.city].filter(Boolean).join(', ');
+      page.address = placeLabel || '';
+      page.mapsLink = buildGoogleMapsSearchUrl({
+        locality: page.locality,
+        city: page.city,
+        address: page.address,
+      });
     }
   } catch {
     hasClub = false;
     page.centerName = '';
-    page.address = '';
-    page.mapsLink = '';
+    page.geoLatitude = null;
+    page.geoLongitude = null;
+    const placeLabel = [page.locality, page.city].filter(Boolean).join(', ');
+    page.address = placeLabel || '';
+    page.mapsLink = buildGoogleMapsSearchUrl({
+      locality: page.locality,
+      city: page.city,
+      address: page.address,
+    });
   }
 
   // Refresh SEO after live club place resolve (city/area may change from GPS).
@@ -428,7 +405,6 @@ export default function CoachPortfolioPage({
   const [bookPhone, setBookPhone] = useState('');
   const [bookNote, setBookNote] = useState('');
   const mediaPageSize = useCarouselPageSize(1, 2);
-  const reviewPageSize = useCarouselPageSize(1, 3);
   const touchStartX = useRef(null);
   const photo = absoluteUrl(baseUrl, page.profilePhoto);
   const aboutPhoto = photo
@@ -437,9 +413,6 @@ export default function CoachPortfolioPage({
   const logo = absoluteUrl(baseUrl, page.logo);
   const ogImage = photo || logo || (baseUrl ? `${baseUrl}/wellness-valley-icon.png` : null);
   const wa = whatsappHref(page.whatsapp);
-  const reviewWa = wa
-    ? `${wa}?text=${encodeURIComponent(`Hi ${firstName(page.displayName || page.fullName || 'Coach')}, I'd like to leave a review for your wellness coaching.`)}`
-    : null;
   const call = telHref(page.phone);
   const heroName = firstName(page.displayName);
   const placeShort = [page.locality, page.city].filter(Boolean).join(', ');
@@ -466,14 +439,6 @@ export default function CoachPortfolioPage({
   const whatWeDo = Array.isArray(teamMedia?.whatWeDo) ? teamMedia.whatWeDo : [];
   const hasWhatWeSay = whatWeSay.length > 0;
   const hasWhatWeDo = whatWeDo.length > 0;
-  const reviews = Array.isArray(page.testimonials) ? page.testimonials : [];
-  const hasReviews = reviews.length > 0;
-  const reviewAvg = hasReviews
-    ? reviews.reduce((sum, item) => sum + reviewRating(item.rating), 0) / reviews.length
-    : 0;
-  const reviewAvgLabel = hasReviews
-    ? (Math.round(reviewAvg * 10) / 10).toFixed(1).replace(/\.0$/, '')
-    : null;
   const bizTitle = String(page.centerName || '').trim()
     || String(page.displayName || page.fullName || heroName || '').trim();
   const introVideoSrcs = uniqueMediaUrls(
@@ -515,37 +480,16 @@ export default function CoachPortfolioPage({
     hasAbout ? { href: '#about', label: 'About' } : null,
     (page.offeringCards || []).length ? { href: '#services', label: 'Services' } : null,
     hasMedia ? { href: '#gallery', label: 'Gallery' } : null,
-    (hasReviews || reviewWa) ? { href: '#reviews', label: 'Reviews' } : null,
     { href: '#faq', label: 'FAQ' },
     { href: '#contact', label: 'Contact' },
   ].filter(Boolean);
 
-  const FAQS = [
-    {
-      q: 'How do I get started?',
-      a: `Message ${heroName} on WhatsApp for a short intro chat. You will get clear next steps for your goals.`,
-    },
-    {
-      q: 'Is coaching only in person?',
-      a: page.onlineConsultation
-        ? 'Both in-person and online sessions are available — choose what fits your routine.'
-        : 'Coaching is available at the wellness center. Ask on WhatsApp for timing and visit options.',
-    },
-    {
-      q: 'Do I need a special diet plan on day one?',
-      a: 'No crash plans. Guidance starts with simple daily habits you can keep.',
-    },
-    {
-      q: 'How often will we check in?',
-      a: 'Check-ins are regular and kind — enough to stay accountable without pressure.',
-    },
-    {
-      q: 'Where is the center?',
-      a: basedIn
-        ? `Based in ${basedIn}${page.centerName ? ` · ${page.centerName}` : ''}. Use Map or Get Directions for the exact location.`
-        : 'Ask on WhatsApp for the center location and visit hours.',
-    },
-  ];
+  const FAQS = buildCoachPageFaqs(page, { heroName, basedIn });
+  const visibleHeading = buildCoachVisibleHeading(page);
+  const placeAlt = [page.locality, page.city].filter(Boolean).join(', ');
+  const profileAlt = [page.fullName || page.displayName || heroName, placeAlt]
+    .filter(Boolean)
+    .join(' — ') || 'Wellness Coach';
 
   const trustItems = [
     { title: 'Personalized Guidance', line: 'Plans that fit your day', icon: '🌿' },
@@ -566,23 +510,11 @@ export default function CoachPortfolioPage({
   ].filter(Boolean).slice(0, 3);
 
   const social = page.social || {};
-  // Own club with GPS only — map pins the club lat/lng, nothing else.
+  // Club → GPS mapsLink; freestyle → City/Area search mapsLink (set in getServerSideProps).
   const hasClub = Boolean(hasClubProp);
-  const clubMapQuery = (() => {
-    if (!hasClub) return null;
-    const link = String(page.mapsLink || '').trim();
-    if (!link) return null;
-    try {
-      const q = new URL(link).searchParams.get('q');
-      return q ? String(q).trim() : null;
-    } catch {
-      return null;
-    }
-  })();
-  const mapsEmbedSrc = clubMapQuery
-    ? `https://maps.google.com/maps?q=${encodeURIComponent(clubMapQuery)}&z=15&output=embed`
-    : null;
-  const showClubMap = Boolean(hasClub && mapsEmbedSrc);
+  const mapsLink = String(page.mapsLink || '').trim();
+  const mapsEmbedSrc = mapsEmbedSrcFromLink(mapsLink);
+  const showMap = Boolean(mapsEmbedSrc);
   const heroSupport = page.highlight
     || [
       'Get personalized wellness guidance from',
@@ -853,7 +785,12 @@ export default function CoachPortfolioPage({
     };
   }, [menuOpen, lightboxIndex, lightboxItems.length, videoSrc, galleryOpen, bookOpen]);
 
-  const jsonLd = buildCoachPageJsonLd(page, { pageUrl, imageUrl: ogImage });
+  const jsonLd = buildCoachPageJsonLd(page, {
+    pageUrl,
+    imageUrl: ogImage,
+    faqs: FAQS,
+    hasClub,
+  });
   const keywords = Array.isArray(page.seoKeywords) ? page.seoKeywords.join(', ') : '';
 
   return (
@@ -895,7 +832,7 @@ export default function CoachPortfolioPage({
           <div className="shell header-row">
             <a className="brand" href="#top" aria-label="Wellness Valley home" onClick={closeMenu}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/wellness-valley-logo.png" alt="Wellness Valley" className="brand-logo" width={48} height={48} />
+              <img src="/wellness-valley-logo.png" alt="Wellness Valley" className="brand-logo" width={72} height={72} />
             </a>
             <nav className="desk-nav" aria-label="Primary">
               {navItems.map((item) => (
@@ -946,19 +883,10 @@ export default function CoachPortfolioPage({
           <div className="hero-wave" aria-hidden="true" />
           <div className="shell hero-grid">
             <div className="hero-copy">
-              {hasClub && (bizTitle || (hasReviews && reviewAvgLabel) || heroPlace) ? (
+              {hasClub && (bizTitle || heroPlace) ? (
                 <div className="biz-listing" aria-label="Center listing">
                   {bizTitle ? (
-                    <h2 className="biz-listing-name">{bizTitle}</h2>
-                  ) : null}
-                  {hasReviews && reviewAvgLabel ? (
-                    <p className="biz-listing-review" aria-label={`Rated ${reviewAvgLabel} out of 5`}>
-                      <FractionalStars value={reviewAvg} />
-                      <span className="biz-listing-score">{reviewAvgLabel}</span>
-                      <span className="biz-listing-count">
-                        ({reviews.length} review{reviews.length === 1 ? '' : 's'})
-                      </span>
-                    </p>
+                    <p className="biz-listing-name">{bizTitle}</p>
                   ) : null}
                   {heroPlace ? (
                     <p className="biz-listing-place" title={basedIn || heroPlace}>
@@ -978,10 +906,11 @@ export default function CoachPortfolioPage({
                   ) : null}
                 </div>
               ) : null}
-              <h1>
+              <h1 className="hero-seo-heading">{visibleHeading}</h1>
+              <p className="hero-tagline" aria-hidden="false">
                 <span className="hero-h1-main">Your Journey to a Healthier &amp; Happier You</span>
                 <span className="hero-h1-script">Starts Here</span>
-              </h1>
+              </p>
               <p className="hero-lead">{heroSupport}</p>
               <div className="hero-actions">
                 {wa ? (
@@ -1010,7 +939,7 @@ export default function CoachPortfolioPage({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={photo}
-                    alt={page.fullName || page.displayName}
+                    alt={profileAlt}
                     className="hero-photo"
                     decoding="async"
                     fetchPriority="high"
@@ -1033,7 +962,7 @@ export default function CoachPortfolioPage({
                       <div className="about-media">
                         {aboutPhoto ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={aboutPhoto} alt="" />
+                          <img src={aboutPhoto} alt={profileAlt} />
                         ) : (
                           <span className="about-fallback">{nameInitials(page.displayName || heroName)}</span>
                         )}
@@ -1109,7 +1038,11 @@ export default function CoachPortfolioPage({
                     {photosPreview.map((src, idx) => (
                       <span key={`${src}-${idx}`} className="photos-preview-tile">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={src} alt="" loading="lazy" />
+                        <img
+                          src={src}
+                          alt={`${page.centerName || page.displayName || 'Wellness'} center photo${placeAlt ? ` in ${placeAlt}` : ''}`}
+                          loading="lazy"
+                        />
                       </span>
                     ))}
                   </span>
@@ -1182,7 +1115,11 @@ export default function CoachPortfolioPage({
                         {item.beforeImageUrl ? (
                           <figure className="do-shot">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={item.beforeImageUrl} alt="" loading="lazy" />
+                            <img
+                              src={item.beforeImageUrl}
+                              alt={`${item.memberName || 'Member'} before${placeAlt ? ` — ${placeAlt}` : ''}`}
+                              loading="lazy"
+                            />
                             <span className="do-shot-badge">Before</span>
                           </figure>
                         ) : null}
@@ -1192,7 +1129,11 @@ export default function CoachPortfolioPage({
                         {item.afterImageUrl ? (
                           <figure className="do-shot do-shot-after">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={item.afterImageUrl} alt="" loading="lazy" />
+                            <img
+                              src={item.afterImageUrl}
+                              alt={`${item.memberName || 'Member'} after${placeAlt ? ` — ${placeAlt}` : ''}`}
+                              loading="lazy"
+                            />
                             <span className="do-shot-badge do-shot-badge-after">After</span>
                           </figure>
                         ) : null}
@@ -1212,66 +1153,8 @@ export default function CoachPortfolioPage({
             </section>
           ) : null}
 
-          {(hasReviews || reviewWa) ? (
-            <section id="reviews" className="section ratings-section">
-              <div className="shell">
-                <div className="section-head center">
-                  <p className="ratings-kicker">Community voice</p>
-                  <h2>Ratings &amp; Reviews</h2>
-                  <p className="panel-sub ratings-sub">What members say about coaching</p>
-                </div>
-
-                {hasReviews ? (
-                  <div className="rating-summary">
-                    <p className="rating-score">{reviewAvgLabel}</p>
-                    <p className="rating-stars" aria-label={`${reviewAvgLabel} out of 5 stars`}>
-                      {starGlyphs(Math.round(reviewAvg))}
-                    </p>
-                    <p className="rating-count">
-                      based on {reviews.length} review{reviews.length === 1 ? '' : 's'}
-                    </p>
-                  </div>
-                ) : (
-                  <p className="ratings-empty">Be the first to share your experience.</p>
-                )}
-
-                {hasReviews ? (
-                  <MediaCarousel
-                    items={reviews}
-                    pageSize={reviewPageSize}
-                    tone="light"
-                    label="reviews"
-                    renderItem={(item, idx) => (
-                      <article
-                        key={`review-${item.name}-${idx}`}
-                        className="rating-card"
-                      >
-                        <p className="rating-card-stars" aria-hidden="true">
-                          {starGlyphs(item.rating)}
-                        </p>
-                        <p className="rating-card-quote">“{item.quote}”</p>
-                        <p className="rating-card-name">{item.name}</p>
-                      </article>
-                    )}
-                  />
-                ) : null}
-
-                {reviewWa ? (
-                  <div className="ratings-cta">
-                    <a className="btn btn-primary" href={reviewWa} target="_blank" rel="noreferrer">
-                      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                        <path fill="currentColor" d="M20.5 3.5A11 11 0 0 0 3.2 17.7L2 22l4.4-1.2A11 11 0 1 0 20.5 3.5zm-8.6 17a9.1 9.1 0 0 1-4.6-1.3l-.3-.2-2.7.7.7-2.6-.2-.3a9.1 9.1 0 1 1 7.1 3.7zm5-6.8c-.3-.1-1.6-.8-1.8-.9s-.4-.1-.6.1-.7.9-.8 1-.3.2-.6.1a7.4 7.4 0 0 1-2.2-1.4 8.2 8.2 0 0 1-1.5-1.9c-.2-.3 0-.4.1-.6l.4-.5.1-.3a.5.5 0 0 0 0-.5l-.6-1.5c-.2-.4-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 2.9 2.9 0 0 0-.9 2.2 5 5 0 0 0 1.1 2.7 11.5 11.5 0 0 0 4.4 3.9 15 15 0 0 0 1.5.5 3.6 3.6 0 0 0 1.6.1 2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .2-1.2c-.1-.1-.3-.2-.6-.3z" />
-                      </svg>
-                      Leave a Review
-                    </a>
-                  </div>
-                ) : null}
-              </div>
-            </section>
-          ) : null}
-
           <section id="faq" className="section faq-contact-section">
-            <div className={`shell faq-contact-grid${showClubMap ? '' : ' no-map'}`}>
+            <div className={`shell faq-contact-grid${showMap ? '' : ' no-map'}`}>
               <div className="faq-panel">
                 <p className="section-kicker">Questions</p>
                 <h2>FAQ</h2>
@@ -1319,6 +1202,15 @@ export default function CoachPortfolioPage({
                       </div>
                     </li>
                   ) : null}
+                  {!hasClub && (page.locality || page.city) ? (
+                    <li>
+                      <span className="contact-ico" aria-hidden="true">📍</span>
+                      <div>
+                        <span className="contact-label">Location</span>
+                        <p>{[page.locality, page.city].filter(Boolean).join(', ')}</p>
+                      </div>
+                    </li>
+                  ) : null}
                   {hasClub && (page.openingTime || page.closingTime) ? (
                     <li>
                       <span className="contact-ico" aria-hidden="true">🕒</span>
@@ -1331,12 +1223,17 @@ export default function CoachPortfolioPage({
                 </ul>
               </div>
 
-              {showClubMap ? (
+              {showMap ? (
                 <div className="map-panel">
                   <div className="map-frame">
-                    <iframe title="Club location" src={mapsEmbedSrc} loading="lazy" referrerPolicy="no-referrer-when-downgrade" />
+                    <iframe
+                      title={hasClub ? 'Club location' : 'Location'}
+                      src={mapsEmbedSrc}
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                    />
                   </div>
-                  <a className="btn btn-primary map-directions" href={page.mapsLink} target="_blank" rel="noreferrer">
+                  <a className="btn btn-primary map-directions" href={mapsLink} target="_blank" rel="noreferrer">
                     Get Directions
                   </a>
                 </div>
@@ -1357,16 +1254,24 @@ export default function CoachPortfolioPage({
               <p className="footer-label">Follow Us</p>
               <div className="footer-social">
                 {social.facebook ? (
-                  <a href={social.facebook} target="_blank" rel="noreferrer" aria-label="Facebook" className="social-ico">f</a>
+                  <a href={social.facebook} target="_blank" rel="noreferrer" aria-label="Facebook" className="social-ico" title="Facebook">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M14 8h3V5h-3c-2.2 0-4 1.8-4 4v2H8v3h2v7h3v-7h2.6l.4-3H13V9c0-.6.4-1 1-1z" /></svg>
+                  </a>
                 ) : null}
                 {social.instagram ? (
-                  <a href={social.instagram} target="_blank" rel="noreferrer" aria-label="Instagram" className="social-ico">ig</a>
+                  <a href={social.instagram} target="_blank" rel="noreferrer" aria-label="Instagram" className="social-ico" title="Instagram">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5zm0 2a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3H7zm11 1.5a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4zM12 7.5A4.5 4.5 0 1 1 12 16.5 4.5 4.5 0 0 1 12 7.5zm0 2A2.5 2.5 0 1 0 12 14.5 2.5 2.5 0 0 0 12 9.5z" /></svg>
+                  </a>
                 ) : null}
                 {social.youtube ? (
-                  <a href={social.youtube} target="_blank" rel="noreferrer" aria-label="YouTube" className="social-ico">yt</a>
+                  <a href={social.youtube} target="_blank" rel="noreferrer" aria-label="YouTube" className="social-ico" title="YouTube">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M23 12.2s0-3.2-.4-4.7c-.2-.9-.9-1.6-1.8-1.8C19.3 5.3 12 5.3 12 5.3s-7.3 0-8.8.4c-.9.2-1.6.9-1.8 1.8C1 9 1 12.2 1 12.2s0 3.2.4 4.7c.2.9.9 1.6 1.8 1.8 1.5.4 8.8.4 8.8.4s7.3 0 8.8-.4c.9-.2 1.6-.9 1.8-1.8.4-1.5.4-4.7.4-4.7zM9.8 15.5v-6.6l6.2 3.3-6.2 3.3z" /></svg>
+                  </a>
                 ) : null}
                 {social.linkedin ? (
-                  <a href={social.linkedin} target="_blank" rel="noreferrer" aria-label="LinkedIn" className="social-ico">in</a>
+                  <a href={social.linkedin} target="_blank" rel="noreferrer" aria-label="LinkedIn" className="social-ico" title="LinkedIn">
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M6.5 8.5H3.7V21h2.8V8.5zM5.1 3A1.6 1.6 0 1 0 5.1 6.2 1.6 1.6 0 0 0 5.1 3zM20.3 21h-2.8v-6.1c0-1.7-.7-2.3-1.7-2.3s-1.9.8-1.9 2.4V21H11V8.5h2.7v1.5c.5-.9 1.7-1.8 3.5-1.8 2.4 0 3.1 1.4 3.1 4.1V21z" /></svg>
+                  </a>
                 ) : null}
                 {!social.instagram && !social.facebook && !social.youtube && !social.linkedin ? (
                   <span className="footer-muted">Coming soon</span>
@@ -1470,7 +1375,11 @@ export default function CoachPortfolioPage({
                           onClick={() => openViewerFromList(activePhotoTiles, pair.beforeSrc)}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={pair.beforeSrc} alt={`${pair.label} before`} loading="lazy" />
+                          <img
+                            src={pair.beforeSrc}
+                            alt={`${pair.label || 'Transformation'} before${placeAlt ? ` — ${placeAlt}` : ''}`}
+                            loading="lazy"
+                          />
                           <span>Before</span>
                         </button>
                       ) : null}
@@ -1481,7 +1390,11 @@ export default function CoachPortfolioPage({
                           onClick={() => openViewerFromList(activePhotoTiles, pair.afterSrc)}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={pair.afterSrc} alt={`${pair.label} after`} loading="lazy" />
+                          <img
+                            src={pair.afterSrc}
+                            alt={`${pair.label || 'Transformation'} after${placeAlt ? ` — ${placeAlt}` : ''}`}
+                            loading="lazy"
+                          />
                           <span>After</span>
                         </button>
                       ) : null}
@@ -1697,8 +1610,8 @@ img { max-width: 100%; }
   flex: 0 0 auto;
 }
 .brand-logo {
-  width: 48px;
-  height: 48px;
+  width: 72px;
+  height: 72px;
   object-fit: contain;
   display: block;
 }
@@ -2010,7 +1923,17 @@ img { max-width: 100%; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.hero-copy h1 {
+.hero-seo-heading {
+  margin: 0 0 10px;
+  font-family: var(--sans);
+  font-size: clamp(15px, 2.4vw, 18px);
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--forest-deep);
+  max-width: 36ch;
+}
+.hero-tagline {
   margin: 0;
   display: grid;
   gap: 2px;
@@ -2935,11 +2858,9 @@ img { max-width: 100%; }
   border: 1px solid rgba(255,255,255,0.16);
   display: grid; place-items: center;
   text-decoration: none;
-  font-size: 12px;
-  font-weight: 800;
-  text-transform: uppercase;
   color: #fff;
 }
+.social-ico svg { display: block; }
 .footer-muted { opacity: 0.7; font-size: 14px; }
 
 .float-wa {
@@ -3282,9 +3203,9 @@ img { max-width: 100%; }
 
 @media (max-width: 719px) {
   .shell { width: min(1140px, calc(100% - 28px)); }
-  :root { --header-h: 64px; }
+  :root { --header-h: 76px; }
   .header-row { gap: 12px; }
-  .brand-logo { width: 40px; height: 40px; }
+  .brand-logo { width: 60px; height: 60px; }
   .section { padding: 36px 0; }
   .section-head.center { margin-bottom: 20px; }
   .section-head h2,
@@ -3346,7 +3267,7 @@ img { max-width: 100%; }
   }
   .biz-listing-score { font-size: 15px; }
   .biz-listing-count { font-size: 12px; }
-  .hero-copy h1 { gap: 4px; }
+  .hero-tagline { gap: 4px; }
   .hero-h1-main {
     font-size: clamp(26px, 7.4vw, 34px);
     line-height: 1.14;

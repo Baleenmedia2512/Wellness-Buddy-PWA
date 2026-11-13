@@ -15,7 +15,7 @@
 // user has a phone number from auth, the app checks for a counselling lead
 // record with the same phone and pre-populates the form fields.
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, LogOut, Trash2, CheckCircle, Sparkles, Camera, KeyRound } from 'lucide-react';
+import { ArrowLeft, LogOut, Trash2, CheckCircle, Sparkles, Camera, KeyRound, Share2 } from 'lucide-react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import * as Session from '../../../shared/services/sessionStorage';
 import {
@@ -24,6 +24,7 @@ import {
 } from '../../../shared/utils/autoCameraPreference';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile, requestCommunityId, verifyCommunityIdOtp, requestHeightChangeOtp, verifyHeightChangeOtp } from '../services/profileService';
+import { shareAppInvite } from '../services/appInviteShare.service';
 import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import { loadProfileMarathonWeightComparison } from '../../marathon';
 import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/counsellingApi';
@@ -60,7 +61,7 @@ import GoPremiumButton from '../../payments/components/GoPremiumButton';
 import { PremiumAvatarRing, PremiumCrownMark } from '../../payments/components/PremiumBadge';
 import usePremiumStatus from '../../payments/hooks/usePremiumStatus';
 import { WalletButton } from '../../wallet';
-import { CoachWebsiteButton } from '../../coach-portfolio';
+import { AdminGbpListingButton } from '../../gbp-listing';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -120,6 +121,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     return !getCachedProfile({ email, userId: uid })?.data;
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [isInviting, setIsInviting] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [hasSaved, setHasSaved] = useState(false);
@@ -671,6 +673,21 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   })();
   const role = ROLE_LABELS[userRole] || 'Customer';
 
+  const handleAppInvite = useCallback(async () => {
+    if (isInviting) return;
+    setIsInviting(true);
+    try {
+      const result = await shareAppInvite({ inviterName: displayName });
+      if (result.method === 'clipboard') {
+        setSuccessMessage('Invite message & link copied to clipboard!');
+      }
+    } catch (err) {
+      console.warn('[UserProfilePage] App invite share failed', err);
+    } finally {
+      setIsInviting(false);
+    }
+  }, [isInviting, displayName]);
+
   return (
     <div className="min-h-full bg-gray-50 pb-8">
       {/* Page Header */}
@@ -690,6 +707,22 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
             <ArrowLeft className="w-5 h-5" />
           </TouchFeedbackButton>
           <h1 className={`min-w-0 flex-1 truncate text-lg font-bold ${isPremiumMember ? 'text-sky-950' : 'text-white'}`}>My Profile</h1>
+          <TouchFeedbackButton
+            type="button"
+            onClick={handleAppInvite}
+            disabled={isInviting}
+            data-testid="profile-invite-button"
+            className={`px-3 py-1.5 rounded-full flex items-center gap-1.5 text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-60 shrink-0 ${
+              isPremiumMember
+                ? 'bg-white hover:bg-sky-50 text-sky-950 border border-sky-300'
+                : 'bg-white/20 hover:bg-white/30 text-white border border-white/30 backdrop-blur-sm'
+            }`}
+            ariaLabel="Invite to Wellness Valley"
+            title="Invite to Wellness Valley"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span>{isInviting ? 'Sharing...' : 'Invite'}</span>
+          </TouchFeedbackButton>
           <GoPremiumButton
             userId={premiumUserId}
             isPremium={isPremiumMember}
@@ -880,6 +913,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   confirmedCode={form.eventLevel}
                   pendingRequest={communityPositionRequest}
                   otpEnabled={isFlagEnabled(COMMUNITY_POSITION_OTP_FLAG)}
+                  disabled={isSaving || isUploadingPhoto}
                   onChange={form.setEventLevel}
                   onSettled={() => loadProfile({ cacheBust: true })}
                 />
@@ -1015,13 +1049,28 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
             <h2 className="text-sm font-semibold text-gray-700">Account</h2>
           </div>
           <div className="divide-y divide-gray-100">
+            <TouchFeedbackButton
+              type="button"
+              onClick={handleAppInvite}
+              disabled={isInviting}
+              className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-green-50 transition-colors"
+              ariaLabel="Invite friends"
+            >
+              <div className="p-2 rounded-full bg-green-50">
+                <Share2 className="w-4 h-4 text-green-600" />
+              </div>
+              <div className="flex-1 text-left">
+                <p className="text-sm font-medium text-gray-900">Invite Friends</p>
+                <p className="text-xs text-gray-400">Share Wellness Valley app with friends & family</p>
+              </div>
+            </TouchFeedbackButton>
             <WalletButton userId={premiumUserId} />
             <GoPremiumButton
               userId={premiumUserId}
               isPremium={isPremiumMember}
               onPremiumCheck={refreshPremium}
             />
-            <CoachWebsiteButton userId={premiumUserId} />
+            <AdminGbpListingButton userId={premiumUserId} userRole={userRole} />
             <TouchFeedbackButton
               onClick={() => {
                 setEmailKycMode('recover');

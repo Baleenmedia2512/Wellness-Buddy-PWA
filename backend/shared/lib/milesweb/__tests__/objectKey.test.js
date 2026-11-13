@@ -9,6 +9,7 @@ describe('MilesWeb upload keys', () => {
     assert.equal(isAllowedUploadKey('good-habits/1/2/main/ab.jpg'), true);
     assert.equal(isAllowedUploadKey('transformation/3/front/ab.jpg'), true);
     assert.equal(isAllowedUploadKey('coach-portfolio/42/intro-ab12.mp4'), true);
+    assert.equal(isAllowedUploadKey('gbp-requests/42/9/photo-ab12.jpg'), true);
   });
 
   it('rejects paths that leave the upload folders', () => {

@@ -27,6 +27,7 @@ import { mergeLocationWithCapture } from '../captures/domain/location.fields.js'
 import logger from '../../shared/lib/logger.js';
 import { confirmPersisted, confirmFailed } from '../../shared/lib/ai-orchestration/AIAnalysisOrchestrator.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
+import { assertDiaryPostEditableOrDeletable } from '../../shared/lib/diaryPostLock.rules.js';
 import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { assertViewerCanAccessMember } from '../../utils/reportingHierarchyService.js';
 import { resolveMarathonWeightComparison } from '../marathon/domain/marathonWeightComparison.service.js';
@@ -161,6 +162,14 @@ export async function saveWeight(input) {
   let wasUpdated = false;
 
   if (entryId) {
+    const existing = await repo.findEntryById(entryId);
+    if (!existing || String(existing.UserId) !== String(userId)) {
+      return { httpStatus: 403, body: { success: false, message: 'Entry not found or unauthorized' } };
+    }
+    const lockCheck = await assertDiaryPostEditableOrDeletable(existing.CreatedAt, userId, 'edit');
+    if (!lockCheck.allowed) {
+      return lockCheck.errorResponse;
+    }
     const updates = { Weight: weight };
     if (bmiValue !== null) updates.Bmi = bmiValue;
     if (bodyFatValue !== null) updates.BodyFat = bodyFatValue;
@@ -402,6 +411,14 @@ export async function getImage({ userId, id }) {
 }
 
 export async function deleteWeight({ userId, entryId }) {
+  const existing = await repo.findEntryById(entryId);
+  if (!existing || String(existing.UserId) !== String(userId)) {
+    return { httpStatus: 404, body: { success: false, message: 'Weight entry not found or unauthorized' } };
+  }
+  const lockCheck = await assertDiaryPostEditableOrDeletable(existing.CreatedAt, userId, 'delete');
+  if (!lockCheck.allowed) {
+    return lockCheck.errorResponse;
+  }
   const updated = await repo.softDelete(entryId, userId);
   if (updated.length === 0) {
     return { httpStatus: 404, body: { success: false, message: 'Weight entry not found or unauthorized' } };
@@ -419,6 +436,13 @@ export async function undoDeleteWeight({ id, userId }) {
     const owns = await repo.checkOwnership(id, userId);
     if (!owns) {
       return { httpStatus: 403, body: { success: false, message: 'You do not have permission to restore this item.' } };
+    }
+    const existing = await repo.findEntryById(id);
+    if (existing) {
+      const lockCheck = await assertDiaryPostEditableOrDeletable(existing.CreatedAt, userId, 'delete');
+      if (!lockCheck.allowed) {
+        return lockCheck.errorResponse;
+      }
     }
   }
   const restored = await repo.restoreEntry(id);

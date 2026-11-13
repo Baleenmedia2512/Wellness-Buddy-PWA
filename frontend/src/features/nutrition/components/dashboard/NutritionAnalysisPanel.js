@@ -6,7 +6,7 @@ import MealAddItemForm from '../MealAddItemForm';
 import StatusOverlay from './StatusOverlay';
 import { parseAnalysisData, recalculateTotals } from '../../services/nutritionDashboard/analysisHelpers';
 import { computeMealGlycemicIndex } from '../../domain/mealGlycemicIndex';
-import { formatBusinessTime, resolveBusinessTimezone } from '../../../../shared/utils/datetimeUtils';
+import { formatBusinessTime, resolveBusinessTimezone, isBusinessToday } from '../../../../shared/utils/datetimeUtils';
 import {
   DIARY_FOOD_ACTIVITY,
   resolveFoodActivityType,
@@ -117,6 +117,10 @@ const NutritionAnalysisPanel = ({
   // the logged-in `user` object is missing timezone — that caused "Logged at"
   // to show Kolkata time for Qatar/US/UK members.
   const timezoneIana = timezoneIanaProp || resolveBusinessTimezone(user);
+  const isToday = isBusinessToday(
+    selectedMeal.CreatedAt || selectedMeal.created_at || selectedMeal.CapturedAt,
+    timezoneIana,
+  );
   const mealTime = formatBusinessTime(
     selectedMeal.CreatedAt,
     timezoneIana,
@@ -263,7 +267,8 @@ const NutritionAnalysisPanel = ({
                           foodItem={item} index={originalIndex}
                           onUpdate={handleFoodUpdate} onDelete={handleDeleteFoodItem}
                           onRestore={handleRestoreFoodItem} onEditingChange={handleEditingChange}
-                          disabled={isEditing && !editingStates[originalIndex]} hideButtons={false} user={user}
+                          disabled={isEditing && !editingStates[originalIndex]} hideButtons={!isToday}
+                          canEdit={isToday} canDelete={isToday} user={user}
                           mealRow={selectedMeal}
                           mealDetailStatus={mealDetailStatus} />
                       </div>
@@ -290,7 +295,7 @@ const NutritionAnalysisPanel = ({
             )}
           </div>
 
-          {!isEditing && (
+          {!isEditing && isToday && (
             isWater || isAfresh ? (
               <div className="p-4 border-t border-gray-100 shrink-0 bg-white">
                 <TouchFeedbackButton

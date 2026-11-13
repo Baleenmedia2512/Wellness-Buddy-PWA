@@ -38,7 +38,7 @@ function ImageSlot({ image, onPick, compressing }) {
   return (
     <div className="flex min-w-0 flex-col items-center gap-2">
       {image?.preview ? (
-        <img src={image.preview} alt="Good Habit preview" className="h-52 w-full rounded-xl border border-emerald-200 object-cover" />
+        <img src={image.preview} alt="Task by Coach preview" className="h-52 w-full rounded-xl border border-emerald-200 object-cover" />
       ) : (
         <>
           <div className="flex h-52 w-full items-center justify-center rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/50 text-emerald-400">
@@ -120,7 +120,7 @@ export default function GoodHabitFlow({
         shareImage: image.base64,
       });
     } catch (err) {
-      setError(err?.message || "Couldn't save Good Habit.");
+      setError(err?.message || "Couldn't save Task by Coach.");
       setSaving(false);
     }
   };
@@ -130,9 +130,9 @@ export default function GoodHabitFlow({
       <div className="flex w-full max-w-sm flex-col rounded-2xl bg-white shadow-2xl">
         <div className="flex items-start justify-between px-4 pb-2 pt-4">
           <div>
-            <p id="good-habit-title" className="text-sm font-bold leading-snug text-emerald-900">Good Habit</p>
+            <p id="good-habit-title" className="text-sm font-bold leading-snug text-emerald-900">Task by Coach</p>
             <p className="mt-0.5 text-[11px] leading-snug text-emerald-700/70">
-              Click Save if this photo shows a good habit you started today.
+              Click Save if this photo shows a task by coach you completed today.
             </p>
           </div>
           <button

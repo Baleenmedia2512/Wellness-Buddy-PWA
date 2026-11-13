@@ -44,6 +44,7 @@ import {
   formatPickerDayButtonLabel,
   isPickerDateToday,
   isPickerDateFuture,
+  isBusinessToday,
 } from '../../shared/utils/datetimeUtils';
 
 // âœ… LAZY LOADING: Load tab components on-demand (only one visible at a time)
@@ -557,6 +558,20 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     // Guard: prevent double-tap opening two modals.
     if (captureId && analyzingRef.current.has(captureId)) return;
 
+    const isToday = isBusinessToday(entry.capturedAt, diaryOwnerTimezoneIana);
+    if (!isToday) {
+      setUnknownFlow({
+        captureId,
+        imageBase64: p.imageBase64,
+        diaryDate: selectedDate,
+        originalCapturedAt: entry.capturedAt ?? null,
+        initialAiResult: null,
+        deleteOnly: false,
+        canMutate: false,
+      });
+      return;
+    }
+
     // Coach viewing member diary — read-only / legacy delete flow only.
     if (!viewingSelf) {
       setUnknownFlow({
@@ -603,7 +618,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       case 'unknown':
         return 'Capture';
       case 'good-habit':
-        return 'Good Habit';
+        return 'Task by Coach';
       default:
         return 'Entry';
     }
@@ -795,6 +810,11 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // NutritionDashboard meal deletes — APIs receive ownerId = diary subject).
   const handleEntryDelete = async (entry) => {
     if (!entry || !ownerId) return;
+    const isToday = isBusinessToday(entry.capturedAt, diaryOwnerTimezoneIana);
+    if (!isToday) {
+      alert('Diary posts from previous days cannot be deleted.');
+      return;
+    }
     const entryId = entry.payload?.id;
     if (!entryId) return;
 
@@ -1500,7 +1520,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         diaryDate={unknownFlow.diaryDate ?? null}
         originalCapturedAt={unknownFlow.originalCapturedAt ?? null}
         deleteOnly={unknownFlow.deleteOnly ?? false}
-        canMutate={viewingSelf}
+        canMutate={viewingSelf && (unknownFlow.canMutate !== false)}
         userId={ownerId}
         userName={user?.userName || user?.username || user?.name || null}
         userEmail={user?.email || user?.Email || null}

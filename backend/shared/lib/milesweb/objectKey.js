@@ -8,6 +8,7 @@ const UPLOAD_FOLDERS = new Set([
   'coach-portfolio',
   'education',
   'food',
+  'gbp-requests',
   'good-habits',
   'transformation',
   'weight',
