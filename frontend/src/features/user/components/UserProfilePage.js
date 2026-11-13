@@ -1048,21 +1048,6 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
             <h2 className="text-sm font-semibold text-gray-700">Account</h2>
           </div>
           <div className="divide-y divide-gray-100">
-            <TouchFeedbackButton
-              type="button"
-              onClick={handleAppInvite}
-              disabled={isInviting}
-              className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-green-50 transition-colors"
-              ariaLabel="Invite friends"
-            >
-              <div className="p-2 rounded-full bg-green-50">
-                <Share2 className="w-4 h-4 text-green-600" />
-              </div>
-              <div className="flex-1 text-left">
-                <p className="text-sm font-medium text-gray-900">Invite Friends</p>
-                <p className="text-xs text-gray-400">Share Wellness Valley app with friends & family</p>
-              </div>
-            </TouchFeedbackButton>
             <WalletButton userId={premiumUserId} />
             <GoPremiumButton
               userId={premiumUserId}
