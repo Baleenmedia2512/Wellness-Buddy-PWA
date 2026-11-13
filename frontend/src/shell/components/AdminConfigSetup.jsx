@@ -16,6 +16,7 @@ import { useNutritionRefreshOptional } from '../../shared/context/NutritionRefre
 import { WellnessScoreSetup } from '../../features/wellness-score-sheet';
 import { AiCreditsSetup } from '../../features/ai-credits';
 import { NavPageAccessSetup } from '../../features/nav-page-access';
+import { FieldCollectionSetup } from '../../features/field-collection';
 import {
   ADMIN_CONFIG_TABS,
   ADMIN_CONFIG_TAB_LABELS,
@@ -51,7 +52,13 @@ export default function AdminConfigSetup({
   const wellnessScoreEnabled = isFlagEnabled('ff.wellness-score-sheet');
   const aiCreditsEnabled = isFlagEnabled('ff.ai-credits');
   const navPageAccessEnabled = isFlagEnabled('ff.nav-page-access');
-  const flagOpts = { wellnessScoreEnabled, aiCreditsEnabled, navPageAccessEnabled };
+  const fieldCollectionEnabled = isFlagEnabled('ff.field-collection');
+  const flagOpts = {
+    wellnessScoreEnabled,
+    aiCreditsEnabled,
+    navPageAccessEnabled,
+    fieldCollectionEnabled,
+  };
   const nutritionRefresh = useNutritionRefreshOptional();
 
   const [activeTab, setActiveTab] = useState(() =>
@@ -68,6 +75,9 @@ export default function AdminConfigSetup({
   );
   const [pageAccessMounted, setPageAccessMounted] = useState(
     () => resolveAdminConfigTab(initialTab, flagOpts) === ADMIN_CONFIG_TABS.PAGE_ACCESS,
+  );
+  const [fieldCollectionMounted, setFieldCollectionMounted] = useState(
+    () => resolveAdminConfigTab(initialTab, flagOpts) === ADMIN_CONFIG_TABS.FIELD_COLLECTION,
   );
   const [resolvedUserId, setResolvedUserId] = useState(user?.id || null);
 
@@ -87,20 +97,23 @@ export default function AdminConfigSetup({
     if (next === ADMIN_CONFIG_TABS.ACTIVITY_TIME) setActivityMounted(true);
     if (next === ADMIN_CONFIG_TABS.AI_CONFIG) setAiMounted(true);
     if (next === ADMIN_CONFIG_TABS.PAGE_ACCESS) setPageAccessMounted(true);
+    if (next === ADMIN_CONFIG_TABS.FIELD_COLLECTION) setFieldCollectionMounted(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialTab, wellnessScoreEnabled, aiCreditsEnabled, navPageAccessEnabled]);
+  }, [initialTab, wellnessScoreEnabled, aiCreditsEnabled, navPageAccessEnabled, fieldCollectionEnabled]);
 
   const selectTab = (tab) => {
     if (tab === activeTab) return;
     if (tab === ADMIN_CONFIG_TABS.WELLNESS_SCORE && !wellnessScoreEnabled) return;
     if (tab === ADMIN_CONFIG_TABS.AI_CONFIG && !aiCreditsEnabled) return;
     if (tab === ADMIN_CONFIG_TABS.PAGE_ACCESS && !navPageAccessEnabled) return;
+    if (tab === ADMIN_CONFIG_TABS.FIELD_COLLECTION && !fieldCollectionEnabled) return;
     startTransition(() => {
       setActiveTab(tab);
       if (tab === ADMIN_CONFIG_TABS.WELLNESS_SCORE) setWellnessMounted(true);
       if (tab === ADMIN_CONFIG_TABS.ACTIVITY_TIME) setActivityMounted(true);
       if (tab === ADMIN_CONFIG_TABS.AI_CONFIG) setAiMounted(true);
       if (tab === ADMIN_CONFIG_TABS.PAGE_ACCESS) setPageAccessMounted(true);
+      if (tab === ADMIN_CONFIG_TABS.FIELD_COLLECTION) setFieldCollectionMounted(true);
       scrollAdminConfigToTop();
     });
   };
@@ -109,6 +122,7 @@ export default function AdminConfigSetup({
   const activityActive = activeTab === ADMIN_CONFIG_TABS.ACTIVITY_TIME;
   const aiActive = activeTab === ADMIN_CONFIG_TABS.AI_CONFIG;
   const pageAccessActive = activeTab === ADMIN_CONFIG_TABS.PAGE_ACCESS;
+  const fieldCollectionActive = activeTab === ADMIN_CONFIG_TABS.FIELD_COLLECTION;
 
   const handleTimeWindowsUpdated = () => {
     nutritionRefresh?.triggerRefresh?.({
@@ -186,6 +200,20 @@ export default function AdminConfigSetup({
                 <span className="truncate">{ADMIN_CONFIG_TAB_LABELS[ADMIN_CONFIG_TABS.AI_CONFIG]}</span>
               </button>
             )}
+            {fieldCollectionEnabled && (
+              <button
+                type="button"
+                role="tab"
+                id="admin-config-tab-field-collection"
+                aria-controls="admin-config-panel-field-collection"
+                aria-selected={fieldCollectionActive}
+                tabIndex={fieldCollectionActive ? 0 : -1}
+                onClick={() => selectTab(ADMIN_CONFIG_TABS.FIELD_COLLECTION)}
+                className={TAB_BTN(fieldCollectionActive)}
+              >
+                <span className="truncate">{ADMIN_CONFIG_TAB_LABELS[ADMIN_CONFIG_TABS.FIELD_COLLECTION]}</span>
+              </button>
+            )}
             {navPageAccessEnabled && (
               <button
                 type="button"
@@ -253,6 +281,18 @@ export default function AdminConfigSetup({
             apiBaseUrl={apiBaseUrl}
             embedded
           />
+        </div>
+      )}
+
+      {fieldCollectionMounted && fieldCollectionEnabled && (
+        <div
+          id="admin-config-panel-field-collection"
+          role="tabpanel"
+          aria-labelledby="admin-config-tab-field-collection"
+          hidden={!fieldCollectionActive}
+          className={fieldCollectionActive ? '' : 'hidden'}
+        >
+          <FieldCollectionSetup user={user} apiBaseUrl={apiBaseUrl} />
         </div>
       )}
 

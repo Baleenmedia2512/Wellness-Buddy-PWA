@@ -913,6 +913,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   confirmedCode={form.eventLevel}
                   pendingRequest={communityPositionRequest}
                   otpEnabled={isFlagEnabled(COMMUNITY_POSITION_OTP_FLAG)}
+                  disabled={isSaving || isUploadingPhoto}
                   onChange={form.setEventLevel}
                   onSettled={() => loadProfile({ cacheBust: true })}
                 />

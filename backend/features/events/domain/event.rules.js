@@ -335,6 +335,7 @@ function parsePickedPerson(raw, label) {
 /**
  * Normalize event interest / registration form payload.
  * @param {unknown} raw
+ * @param {{ levelOptions?: string[] }} [options]
  * @returns {{ ok: true, value: object } | { ok: false, errors: string[] }}
  */
 export function normalizeEventRegistrationDraft(raw, options = {}) {
@@ -359,6 +360,9 @@ export function normalizeEventRegistrationDraft(raw, options = {}) {
   const uplineMill = parsePickedPerson(input.uplineMillTeam, 'Upline Mill Team');
   const teamIncharge = parsePickedPerson(input.teamIncharge, 'Team Incharge');
   const daicyTeamIncharge = parsePickedPerson(input.daicyTeamIncharge, 'Daicy Team Incharge');
+  const levelOptions = Array.isArray(options.levelOptions) && options.levelOptions.length > 0
+    ? options.levelOptions.map((code) => String(code).trim().toUpperCase())
+    : LEVEL_OPTIONS;
   const errors = [];
 
   if (!eventId) errors.push('Event is required.');

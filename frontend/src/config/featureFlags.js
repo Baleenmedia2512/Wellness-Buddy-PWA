@@ -192,6 +192,16 @@ const REGISTRY = Object.freeze({
     description:    'Profile Community ID Create + sponsor OTP (create / co-sponsor).',
   },
 
+  // ADR-0016 — Community Position under Community ID. Send code emails the coach.
+  // Default ON. Set REACT_APP_FF_COMMUNITY_POSITION_OTP=false or
+  // localStorage 'ff.community-position-otp'='false' to save the role with the profile.
+  'ff.community-position-otp': {
+    envKey:         'REACT_APP_FF_COMMUNITY_POSITION_OTP',
+    storageKey:     'ff.community-position-otp',
+    defaultEnabled: true,
+    description:    'Profile Community Position under Community ID; coach OTP before the role is saved.',
+  },
+
   // Profile height: first Save free; later changes need the coach's email approval.
   // Default ON. Set REACT_APP_FF_HEIGHT_CHANGE_OTP=false or
   // localStorage 'ff.height-change-otp'='false' to restore free height edits.
@@ -200,16 +210,6 @@ const REGISTRY = Object.freeze({
     storageKey:     'ff.height-change-otp',
     defaultEnabled: true,
     description:    'Profile height lock after first save; OTP to change.',
-  },
-
-  // ADR-0015 — Community Position is a catalog role. Choosing one emails the coach.
-  // Default ON. Set REACT_APP_FF_COMMUNITY_POSITION_OTP=false or
-  // localStorage 'ff.community-position-otp'='false' to save the role with Profile.
-  'ff.community-position-otp': {
-    envKey:         'REACT_APP_FF_COMMUNITY_POSITION_OTP',
-    storageKey:     'ff.community-position-otp',
-    defaultEnabled: true,
-    description:    'Profile Community Position coach OTP. Roles come from the catalog.',
   },
 
   // BroadCast — paid how-to + payment entry. Upload and Burst wait on recharge.
@@ -262,6 +262,14 @@ const REGISTRY = Object.freeze({
     storageKey:     'ff.gbp-listing',
     defaultEnabled: false,
     description:    'Google Maps Listing request form + ops queue. Off for Digital Portfolio APK review.',
+  },
+
+  // Profile field collection. Kill switch returns to the previous onboarding screens.
+  'ff.field-collection': {
+    envKey:         'REACT_APP_FF_FIELD_COLLECTION',
+    storageKey:     'ff.field-collection',
+    defaultEnabled: true,
+    description:    'Community Position first, then admin-configured entry and later fields.',
   },
 
   // Reports detail trial. Kill switch shows the full report again.

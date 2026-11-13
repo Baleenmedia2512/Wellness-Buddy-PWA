@@ -363,6 +363,15 @@ registerFlag({
 });
 
 registerFlag({
+  name:           'ff.community-position-otp',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-11',
+  removeBy:       '2027-05-11',
+  description:    'ADR-0016 — Profile Community Position sits under Community ID. Choosing a role emails a 24h code to the coach. Kill switch. Version routing: app 3.5.6+ skips immediate save on profile POST; older or missing versions still save the legacy list.',
+  defaultEnabled: true,
+});
+
+registerFlag({
   name:           'ff.height-change-otp',
   owner:          '@principal-eng',
   createdAt:      '2026-09-25',
@@ -426,11 +435,28 @@ registerFlag({
 });
 
 registerFlag({
+  name:           'ff.gbp-listing',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-12',
+  removeBy:       '2027-05-12',
+  description:    'Google Maps Listing request: coach form + FTP media kit + ops email/admin queue. Kill switch hides nav, Profile queue, and GBP APIs. Default OFF until Digital Portfolio review is done.',
+  defaultEnabled: false,
+});
+
+registerFlag({
   name:           'ff.community-position-otp',
   owner:          '@principal-eng',
   createdAt:      '2026-11-11',
   removeBy:       '2027-05-11',
   description:    'ADR-0015 — Profile Community Position is a catalog role. Choosing one emails a 24h code to the coach. Kill switch. Version routing: app 3.5.6+ skips immediate save on profile POST; older or missing versions still save the legacy list.',
+  defaultEnabled: true,
+});
+registerFlag({
+  name:           'ff.field-collection',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-12',
+  removeBy:       '2027-05-12',
+  description:    'Admin-configured profile fields. Community Position is first. Entry fields block; later fields follow skip count, ask interval, and a must-fill day. Role and community position decide who sees each field. Kill switch. Already released app bundles keep the previous onboarding screens.',
   defaultEnabled: true,
 });
 

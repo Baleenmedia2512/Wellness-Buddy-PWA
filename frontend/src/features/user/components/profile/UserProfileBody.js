@@ -5,13 +5,13 @@ import UserProfileFields from './UserProfileFields';
 import CommunityIdField from './CommunityIdField';
 import CommunityPositionField from './CommunityPositionField';
 import WorkingPhysicalCentreField from './WorkingPhysicalCentreField';
+import { COMMUNITY_POSITION_OTP_FLAG } from '../../domain/communityPosition';
+import { isFlagEnabled } from '../../../../config/featureFlags';
 import EventProfilePrefsFields from './EventProfilePrefsFields';
 import UserProfileBodyMetrics from './UserProfileBodyMetrics';
 import IdealWeightCards from './IdealWeightCards';
 import DietDropdown from './DietDropdown';
 import HealthIssuesFilterSelect from '../../../body-parameters-card/components/HealthIssuesFilterSelect';
-import { isFlagEnabled } from '../../../../config/featureFlags';
-import { COMMUNITY_POSITION_OTP_FLAG } from '../../domain/communityPosition';
 
 const UserProfileBody = ({
   isLoading, form, email, latestWeight, initialWeight, initialWeightDate,

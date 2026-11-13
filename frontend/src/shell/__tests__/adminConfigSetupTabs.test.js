@@ -45,6 +45,24 @@ describe('resolveAdminConfigTab', () => {
     })).toBe(ADMIN_CONFIG_TABS.PAGE_ACCESS);
   });
 
+  it('honours field collection when enabled', () => {
+    expect(resolveAdminConfigTab(ADMIN_CONFIG_TABS.FIELD_COLLECTION, {
+      wellnessScoreEnabled: true,
+      aiCreditsEnabled: true,
+      navPageAccessEnabled: true,
+      fieldCollectionEnabled: true,
+    })).toBe(ADMIN_CONFIG_TABS.FIELD_COLLECTION);
+  });
+
+  it('falls through when field collection is off', () => {
+    expect(resolveAdminConfigTab(ADMIN_CONFIG_TABS.FIELD_COLLECTION, {
+      wellnessScoreEnabled: true,
+      aiCreditsEnabled: false,
+      navPageAccessEnabled: false,
+      fieldCollectionEnabled: false,
+    })).toBe(ADMIN_CONFIG_TABS.WELLNESS_SCORE);
+  });
+
   it('always allows activity time', () => {
     expect(resolveAdminConfigTab(ADMIN_CONFIG_TABS.ACTIVITY_TIME, {
       wellnessScoreEnabled: false,
