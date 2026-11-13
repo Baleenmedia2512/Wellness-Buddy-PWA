@@ -84,7 +84,7 @@ export default function OnboardingProfileIntroPage({ user, fields = [], onComple
 
   return (
     <div className="fixed inset-0 z-[10060] bg-gray-50 flex flex-col">
-      <div className="px-5 pt-12 pb-6 text-white bg-amber-600">
+      <div className="px-5 pt-12 pb-6 text-white bg-green-600">
         <h1 className="text-xl font-bold">About you</h1>
         <p className="text-sm text-white/90 mt-1">Required now</p>
       </div>
