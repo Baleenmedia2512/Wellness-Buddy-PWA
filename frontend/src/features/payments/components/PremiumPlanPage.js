@@ -8,9 +8,9 @@ import {
 } from '../domain/premiumPlan';
 
 const PLAN_POINTS = [
-  'Premium access for your Wellness Valley account',
+  '30-day Premium access for report and plan analysis',
   'Pay with UPI, card, or net banking',
-  'Secure checkout',
+  'Secure checkout — recharge anytime before expiry',
 ];
 
 /**
@@ -61,7 +61,7 @@ export default function PremiumPlanPage({
           </h1>
         </div>
         <p className="mt-3 ml-1 text-green-50 text-sm">
-          Price is based on your Community Position, plus GST.
+          30-day plan. Price is based on your Community Position, plus GST.
         </p>
       </div>
 
@@ -76,14 +76,14 @@ export default function PremiumPlanPage({
                 Best value
               </span>
             </div>
-            <p className="mt-4 text-sm font-semibold text-gray-500">{PREMIUM_PLAN_NAME}</p>
+            <p className="mt-4 text-sm font-semibold text-gray-500">{PREMIUM_PLAN_NAME} · 30 days</p>
             {quoteLoading ? (
               <p className="mt-1 text-sm text-gray-500">Loading your price…</p>
             ) : quote ? (
               <>
                 <p className="mt-1 flex items-baseline gap-1">
                   <span className="text-4xl font-bold text-gray-900">₹{amountLabel}</span>
-                  <span className="text-sm text-gray-400">incl. GST</span>
+                  <span className="text-sm text-gray-400">/ 30 days · incl. GST</span>
                 </p>
                 <p className="mt-2 text-sm text-gray-600">
                   {quote.positionCode}: ₹{baseLabel} + {gstPct}% GST (₹{gstLabel})

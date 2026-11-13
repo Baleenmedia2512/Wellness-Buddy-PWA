@@ -105,9 +105,14 @@ export async function fetchPremiumQuote(userId) {
 }
 
 /**
- * Does the server say this member has paid for Premium?
+ * Active Premium window for this member.
  * @param {string|number} userId
- * @returns {Promise<boolean|null>} null when the server could not be reached
+ * @returns {Promise<{
+ *   premium: boolean,
+ *   daysLeft: number|null,
+ *   expiresAt: string|null,
+ *   showExpiryWarning: boolean,
+ * }|null>} null when the server could not be reached
  */
 export async function fetchPremiumStatus(userId) {
   try {
@@ -117,7 +122,14 @@ export async function fetchPremiumStatus(userId) {
     );
     const body = await response.json().catch(() => ({}));
     if (!response.ok || typeof body?.data?.premium !== 'boolean') return null;
-    return body.data.premium;
+    return {
+      premium: body.data.premium === true,
+      daysLeft: Number.isFinite(Number(body.data.daysLeft)) ? Number(body.data.daysLeft) : null,
+      expiresAt: typeof body.data.expiresAt === 'string' && body.data.expiresAt.trim()
+        ? body.data.expiresAt.trim()
+        : null,
+      showExpiryWarning: body.data.showExpiryWarning === true,
+    };
   } catch {
     return null;
   }
