@@ -11,6 +11,7 @@ import useOtpInput from '../hooks/useOtpInput';
 import useResendCountdown from '../hooks/useResendCountdown';
 import { SMS_OTP_LENGTH } from '../domain/otpLength';
 import { DEMO_LOGIN_OTP, isDemoPhone } from '../domain/demoAccount';
+import { focusInputForKeyboard } from '../../../shared/utils/focusInputForKeyboard.js';
 import LoginBlobs from './login/LoginBlobs';
 import LoginEmailEntry from './login/LoginEmailEntry';
 import LoginOtpEntry from './login/LoginOtpEntry';
@@ -103,8 +104,27 @@ const Login = ({ onSignIn, loading, error, onOtpVerified, forceOtpVerification }
           )}
         </div>
       </div>
-      {showTerms && <TermsAndConditions onClose={() => setShowTerms(false)} />}
-      {showPrivacy && <PrivacyPolicy onClose={() => setShowPrivacy(false)} />}
+      {showTerms && (
+        <TermsAndConditions
+          onClose={() => {
+            setShowTerms(false);
+            // Return focus to the phone field so the number pad stays available.
+            requestAnimationFrame(() => {
+              focusInputForKeyboard(document.getElementById('recipient'));
+            });
+          }}
+        />
+      )}
+      {showPrivacy && (
+        <PrivacyPolicy
+          onClose={() => {
+            setShowPrivacy(false);
+            requestAnimationFrame(() => {
+              focusInputForKeyboard(document.getElementById('recipient'));
+            });
+          }}
+        />
+      )}
     </div>
   );
 };
