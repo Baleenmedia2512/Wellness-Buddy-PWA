@@ -75,7 +75,7 @@ export function parseEventTime(raw) {
   return text.slice(0, 20);
 }
 
-export function parseEventDates(raw, fallbackDate = null, fallbackStart = null, fallbackEnd = null) {
+export function parseEventDates(raw, fallbackDate = null, fallbackStart = null, fallbackEnd = null, today = null) {
   const dates = [];
   const errors = [];
   if (Array.isArray(raw) && raw.length > 0) {
@@ -95,6 +95,11 @@ export function parseEventDates(raw, fallbackDate = null, fallbackStart = null, 
           ? 'End time must be after start time.'
           : `For date ${parsedDate}: End time must be after start time.`);
       }
+      if (today && parsedDate < today) {
+        errors.push(raw.length === 1
+          ? 'Choose today or a later date.'
+          : `Date ${parsedDate} is in the past. Choose today or a later date.`);
+      }
       dates.push({
         date: parsedDate,
         startTime: itemStart || null,
@@ -112,6 +117,9 @@ export function parseEventDates(raw, fallbackDate = null, fallbackStart = null, 
       const end = parseEventTime(fallbackEnd);
       if (start && end && start >= end) {
         errors.push('End time must be after start time.');
+      }
+      if (today && singleDate < today) {
+        errors.push('Choose today or a later date.');
       }
       dates.push({
         date: singleDate,
@@ -202,14 +210,56 @@ function parseDesignatedPersons(raw) {
   return { people };
 }
 
+const SPEAKER_MAX = 20;
+const SPEAKER_NAME_MAX = 80;
+
+function speakerFromItem(item) {
+  if (typeof item === 'string') {
+    const name = cleanText(item);
+    return name ? { name, userId: null } : null;
+  }
+  if (!item || typeof item !== 'object') return null;
+  const name = cleanText(item.name ?? item.userName);
+  if (!name) return null;
+  return { name, userId: parseEventUserId(item.userId) };
+}
+
+function parseSpeakers(rawList, hostName) {
+  let source = Array.isArray(rawList) ? rawList : [];
+  if (source.length === 0 && hostName) source = String(hostName).split(' · ');
+  if (source.length > SPEAKER_MAX) {
+    return { error: `Add at most ${SPEAKER_MAX} speakers.` };
+  }
+  const seen = new Set();
+  const speakers = [];
+  for (const item of source) {
+    const speaker = speakerFromItem(item);
+    if (!speaker) return { error: 'Each speaker needs a name.' };
+    if (speaker.name.length > SPEAKER_NAME_MAX) {
+      return { error: `Each speaker name must be ${SPEAKER_NAME_MAX} characters or fewer.` };
+    }
+    const key = speaker.name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    speakers.push(speaker);
+  }
+  if (speakers.length === 0) return { error: 'Add at least one speaker.' };
+  const hostNameJoined = speakers.map((speaker) => speaker.name).join(' · ');
+  if (hostNameJoined.length > NAME_MAX) {
+    return { error: 'Speaker names together must be 200 characters or fewer.' };
+  }
+  return { speakers, hostName: hostNameJoined };
+}
+
 /**
  * @param {unknown} raw
+ * @param {{ today?: string|null }} [options]
  * @returns {{ ok: true, value: object } | { ok: false, errors: string[] }}
  */
-export function normalizeEventDraft(raw) {
+export function normalizeEventDraft(raw, options = {}) {
   const input = raw && typeof raw === 'object' ? raw : {};
   const eventName = cleanText(input.eventName);
-  const hostName = cleanText(input.hostName ?? input.host);
+  const speakerDraft = parseSpeakers(input.speakers, cleanText(input.hostName ?? input.host));
   const fallbackPlace = cleanText(input.place) || cleanText(input.city);
   const fallbackVenue = cleanText(input.venue);
   const { places, errors: placeErrors } = parseEventPlaces(
@@ -218,11 +268,15 @@ export function normalizeEventDraft(raw) {
     fallbackVenue,
   );
   const fallbackDate = cleanText(input.eventDate) || cleanText(input.date);
+  const today = typeof options.today === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(options.today)
+    ? options.today
+    : null;
   const { dates, errors: dateErrors } = parseEventDates(
     input.eventDates,
     fallbackDate,
     input.startTime ?? input.StartTime,
     input.endTime ?? input.EndTime,
+    today,
   );
   const ticketPrice = parseTicketPrice(input.ticketPrice);
   const seatCount = parseSeatCount(input.seatCount);
@@ -232,8 +286,7 @@ export function normalizeEventDraft(raw) {
   if (!eventName) errors.push('Event name is required.');
   else if (eventName.length > NAME_MAX) errors.push(`Event name must be ${NAME_MAX} characters or fewer.`);
 
-  if (!hostName) errors.push('Host is required.');
-  else if (hostName.length > NAME_MAX) errors.push(`Host must be ${NAME_MAX} characters or fewer.`);
+  if (speakerDraft.error) errors.push(speakerDraft.error);
 
   if (places.length === 0) errors.push('City is required.');
   if (dates.length === 0) errors.push('Date is required.');
@@ -248,7 +301,8 @@ export function normalizeEventDraft(raw) {
     ok: true,
     value: {
       eventName,
-      hostName,
+      hostName: speakerDraft.hostName || '',
+      speakers: speakerDraft.speakers || [],
       place: primaryPlace.city,
       venue: primaryPlace.venue || null,
       places,
@@ -271,6 +325,32 @@ export function normalizeEventStatus(status) {
   const value = String(status ?? '').trim().toLowerCase();
   if (!EVENT_STATUSES.includes(value)) return null;
   return value;
+}
+
+/**
+ * A live event with at least one booking cannot be deleted.
+ * A cancelled event can be deleted even when people had booked it.
+ */
+export function eventDeleteBlockedByBookings(seatsTaken, status) {
+  if (String(status || '').toLowerCase() === 'cancelled') return false;
+  const taken = Number(seatsTaken);
+  return Number.isFinite(taken) && taken > 0;
+}
+
+/** Missing or unknown booking target stays a self booking for older apps. */
+export function normalizeBookingFor(value) {
+  return String(value || '').trim().toLowerCase() === 'friend' ? 'friend' : 'self';
+}
+
+/**
+ * A paid self booking blocks another ticket for the same person.
+ * A friend booking does not.
+ */
+export function selfBookingAlreadyTaken(registration) {
+  if (!registration) return false;
+  if (normalizeBookingFor(registration.bookingFor) === 'friend') return false;
+  const paid = String(registration.paymentStatus || '').toLowerCase() === 'paid';
+  return paid || Boolean(registration.entryCode);
 }
 
 export const EVENT_PEOPLE_LIMIT = 30;

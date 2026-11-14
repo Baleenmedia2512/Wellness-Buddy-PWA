@@ -81,6 +81,7 @@ import {
 } from "./features/marathon";
 import { EducationLogCard } from "./features/education";
 import { EventsPage } from "./features/events";
+import EventCancelledHomeNotice from "./features/events/components/EventCancelledHomeNotice.jsx";
 import { WatchActivityCard } from "./features/activity";
 import LoadingSpinner from "./shared/components/LoadingSpinner";
 import { Login, ConsentForm } from "./features/user";
@@ -1098,7 +1099,11 @@ function WellnessValleyApp() {
   const [showPaidFeatures, setShowPaidFeatures] = useState(false);
   const [showMapBusiness, setShowMapBusiness] = useState(false);
   const [createEventTab, setCreateEventTab] = useState('manage');
+  const [eventsInitialTab, setEventsInitialTab] = useState('events');
   const [showEvents, setShowEvents] = useState(false);
+  useEffect(() => {
+    if (!showEvents) setEventsInitialTab('events');
+  }, [showEvents]);
   // Reports page — common module (Ideal Weight, Wellness Score, Nutrition, Trend).
   const [showReports, setShowReports] = useState(false);
   const [reportsDashboardTab, setReportsDashboardTab] = useState(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
@@ -8670,7 +8675,7 @@ function WellnessValleyApp() {
           profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
-          <EventsPage user={user} />
+          <EventsPage user={user} initialTab={eventsInitialTab} />
         </div>
       </div>
     );
@@ -9442,6 +9447,13 @@ function WellnessValleyApp() {
                       <span className="text-sm font-bold text-emerald-700">Gallery</span>
                     </button>
                   </div>
+                  <EventCancelledHomeNotice
+                    user={user}
+                    onOpenBookings={() => {
+                      setEventsInitialTab('bookings');
+                      navigateTo('events');
+                    }}
+                  />
                   <DetoxDayReminder user={user} />
                 </div>
               </div>

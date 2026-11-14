@@ -41,6 +41,10 @@ export function validateCancelRequest(body = {}) {
   return { userId: validateWalletUserId(body.userId) };
 }
 
+export function validateResendOtp(body = {}) {
+  return { userId: validateWalletUserId(body.userId) };
+}
+
 export function validatePeopleSearch(query = {}) {
   const userId = validateWalletUserId(query.userId);
   const q = sanitizePeopleSearchQuery(query.q);

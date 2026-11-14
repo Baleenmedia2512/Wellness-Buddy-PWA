@@ -72,6 +72,21 @@ export function isCommunityIdOtpExpired(expiresAt, now = new Date()) {
   return now.getTime() > exp.getTime();
 }
 
+/** A second Confirm of a code that just saved is the same confirmation. */
+export const COMMUNITY_ID_OTP_REPLAY_MS = 2 * 60 * 1000;
+
+export function isRecentCommunityIdApproval(
+  processedAt,
+  now = new Date(),
+  windowMs = COMMUNITY_ID_OTP_REPLAY_MS,
+) {
+  if (!processedAt) return false;
+  const at = new Date(processedAt).getTime();
+  if (!Number.isFinite(at)) return false;
+  const age = now.getTime() - at;
+  return age >= 0 && age <= windowMs;
+}
+
 /**
  * @param {unknown} attempts
  * @param {number} [max]

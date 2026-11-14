@@ -10,23 +10,47 @@ import {
   formatEventTimeRange,
   getEventDatesList,
   getEventPlacesList,
+  eventSpeakerNames,
   listEvents,
   notifyEventsUpdated,
   updateEvent,
 } from '../services/events.api.js';
 import DesignatedPersonPicker from './DesignatedPersonPicker.jsx';
 import EventCheckInPanel from './EventCheckInPanel.jsx';
+import EventTicketReport from './EventTicketReport.jsx';
 import HostPersonPicker from './HostPersonPicker.jsx';
 
 const EMPTY_FORM = {
   eventName: '',
-  hostName: '',
+  speakers: [],
   places: [{ city: '', venue: '' }],
   eventDates: [{ date: '', startTime: '', endTime: '' }],
   ticketPrice: '',
   seatCount: '',
   designatedPersons: [],
 };
+
+function todayIstYmd() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+function speakersFromEvent(item) {
+  const names = eventSpeakerNames(item);
+  const stored = Array.isArray(item?.speakers) ? item.speakers : [];
+  return names.map((name) => {
+    const match = stored.find((speaker) => String(speaker?.name || '').trim() === name);
+    const userId = Number(match?.userId);
+    return {
+      name,
+      userId: Number.isInteger(userId) && userId > 0 ? userId : null,
+    };
+  });
+}
 
 const STATUS_LABEL = {
   scheduled: 'Scheduled',
@@ -58,7 +82,10 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [whatsappChats, setWhatsappChats] = useState([]);
   const [actionModalEvent, setActionModalEvent] = useState(null);
+  const [reportEvent, setReportEvent] = useState(null);
   const trialEnabled = isFlagEnabled('ff.events-trial');
   const eventsAccess = useEventsAccess(trialEnabled && userId ? userId : null);
   const waitingAccess = trialEnabled && (!ready || !userId || !eventsAccess.loaded);
@@ -91,6 +118,10 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
     try {
       const data = await listEvents(id);
       setEvents(Array.isArray(data.events) ? data.events : []);
+      if (data?.notice) {
+        setNotice(data.notice);
+        setWhatsappChats(Array.isArray(data.whatsappChats) ? data.whatsappChats : []);
+      }
     } catch (err) {
       setError(err?.message || 'Could not load events.');
     } finally {
@@ -180,6 +211,17 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
     if (!userId) return;
     setSaving(true);
     setError('');
+    const today = todayIstYmd();
+    if ((form.speakers || []).length === 0) {
+      setError('Add at least one speaker.');
+      setSaving(false);
+      return;
+    }
+    if ((form.eventDates || []).some((entry) => entry.date && entry.date < today)) {
+      setError('Choose today or a later date.');
+      setSaving(false);
+      return;
+    }
     const primaryDate = form.eventDates[0] || {};
     const primaryPlace = form.places[0] || {};
     const payload = {
@@ -190,6 +232,8 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
       eventDate: primaryDate.date || '',
       startTime: primaryDate.startTime || '',
       endTime: primaryDate.endTime || '',
+      speakers: form.speakers,
+      hostName: form.speakers.map((speaker) => speaker.name).join(' · '),
     };
     try {
       if (editingId) {
@@ -233,7 +277,7 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
 
     setForm({
       eventName: item.eventName || '',
-      hostName: item.hostName || '',
+      speakers: speakersFromEvent(item),
       places: existingPlaces,
       eventDates: existingDates,
       ticketPrice: item.ticketPrice ?? '',
@@ -247,9 +291,13 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
     setSaving(true);
     setError('');
     try {
-      await updateEvent({ userId, id: item.id, status });
+      const result = await updateEvent({ userId, id: item.id, status });
       notifyEventsUpdated();
       await loadEvents(userId);
+      if (status === 'cancelled' && result?.notice) {
+        setNotice(result.notice);
+        setWhatsappChats(Array.isArray(result.whatsappChats) ? result.whatsappChats : []);
+      }
     } catch (err) {
       setError(err?.message || 'Could not update the event.');
     } finally {
@@ -259,6 +307,12 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
 
   const onDelete = async (item) => {
     if (!userId) return;
+    const cancelled = String(item?.status || '').toLowerCase() === 'cancelled';
+    if (!cancelled && (Number(item?.seatsTaken) > 0 || item?.hasBookings)) {
+      const message = 'This event already has bookings, so it cannot be deleted. Cancel it first, then you can delete it.';
+      setError(message);
+      throw new Error(message);
+    }
     setSaving(true);
     setError('');
     try {
@@ -268,6 +322,7 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
       await loadEvents(userId);
     } catch (err) {
       setError(err?.message || 'Could not delete the event.');
+      throw err;
     } finally {
       setSaving(false);
     }
@@ -329,8 +384,8 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
             </label>
             <HostPersonPicker
               userId={userId}
-              value={form.hostName}
-              onChange={(hostName) => setForm((prev) => ({ ...prev, hostName }))}
+              speakers={form.speakers}
+              onChange={(speakers) => setForm((prev) => ({ ...prev, speakers }))}
             />
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -429,7 +484,16 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
                     <input
                       type="date"
                       value={entry.date}
-                      onChange={(e) => updateDateEntry(index, 'date', e.target.value)}
+                      min={todayIstYmd()}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        if (next && next < todayIstYmd()) {
+                          setError('Choose today or a later date.');
+                          return;
+                        }
+                        setError('');
+                        updateDateEntry(index, 'date', next);
+                      }}
                       required
                       className={inputClass}
                     />
@@ -472,6 +536,26 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
               onChange={(designatedPersons) => setForm((prev) => ({ ...prev, designatedPersons }))}
             />
             {error ? <p className="text-sm text-rose-700">{error}</p> : null}
+            {notice ? (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950" role="status">
+                <p>{notice}</p>
+                {whatsappChats.length > 0 ? (
+                  <div className="mt-2 flex flex-col gap-1">
+                    {whatsappChats.map((chat) => (
+                      <a
+                        key={chat.url}
+                        href={chat.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold text-emerald-800 underline"
+                      >
+                        Send WhatsApp to {chat.name}
+                      </a>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -500,7 +584,11 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-bold text-gray-900">{item.eventName}</p>
-                      <p className="text-sm text-gray-600">Host: {item.hostName}</p>
+                      <p className="text-sm text-gray-600">
+                        {eventSpeakerNames(item).length > 1 ? 'Speakers' : 'Speaker'}
+                        {': '}
+                        {eventSpeakerNames(item).join(', ') || '—'}
+                      </p>
                       <div className="text-sm text-gray-600">
                         {getEventPlacesList(item).length > 1 ? (
                           <div className="space-y-0.5">
@@ -551,6 +639,13 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
                   <div className="mt-3 flex items-center justify-end gap-2 border-t border-gray-100 pt-2.5">
                     <button
                       type="button"
+                      onClick={() => setReportEvent(item)}
+                      className="mr-auto rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-xs font-bold text-emerald-900"
+                    >
+                      Report
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => onEdit(item)}
                       aria-label="Edit event"
                       title="Edit event"
@@ -587,7 +682,9 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
             <div className="flex items-start justify-between gap-3">
               <h3 className="text-base font-bold text-gray-900">
-                Cancel or Delete Event
+                {String(actionModalEvent.status || '').toLowerCase() === 'cancelled'
+                  ? 'Delete Event'
+                  : 'Cancel or Delete Event'}
               </h3>
               <button
                 type="button"
@@ -601,11 +698,19 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
             </div>
 
             <p className="mt-2 text-sm text-gray-600">
-              What would you like to do with{' '}
-              <span className="font-semibold text-gray-900">
-                &ldquo;{actionModalEvent.eventName}&rdquo;
-              </span>
-              ?
+              {String(actionModalEvent.status || '').toLowerCase() === 'cancelled'
+                ? 'This event is cancelled. You can delete it from your list. People who booked still see that it was cancelled.'
+                : actionModalEvent.hasBookings || Number(actionModalEvent.seatsTaken) > 0
+                ? 'People have already booked this event. Cancelling returns their ticket credit and emails them. After it is cancelled, you can delete it.'
+                : (
+                  <>
+                    What would you like to do with{' '}
+                    <span className="font-semibold text-gray-900">
+                      &ldquo;{actionModalEvent.eventName}&rdquo;
+                    </span>
+                    ?
+                  </>
+                )}
             </p>
 
             {error ? (
@@ -613,41 +718,55 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
             ) : null}
 
             <div className="mt-5 space-y-2">
-              <button
-                type="button"
-                disabled={saving}
-                onClick={async () => {
-                  try {
-                    await onStatus(actionModalEvent, 'cancelled');
-                    setActionModalEvent(null);
-                  } catch {
-                    // error handled in onStatus
-                  }
-                }}
-                className="w-full rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-center text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
-              >
-                {saving ? 'Processing…' : 'Cancel Event'}
-              </button>
+              {String(actionModalEvent.status || '').toLowerCase() === 'cancelled' ? null : (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={async () => {
+                    try {
+                      await onStatus(actionModalEvent, 'cancelled');
+                      setActionModalEvent(null);
+                    } catch {
+                      // error handled in onStatus
+                    }
+                  }}
+                  className="w-full rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-center text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+                >
+                  {saving ? 'Processing…' : 'Cancel Event'}
+                </button>
+              )}
 
               <button
                 type="button"
-                disabled={saving}
+                disabled={saving || (String(actionModalEvent.status || '').toLowerCase() !== 'cancelled' && (actionModalEvent.hasBookings || Number(actionModalEvent.seatsTaken) > 0))}
                 onClick={async () => {
                   try {
                     await onDelete(actionModalEvent);
                     setActionModalEvent(null);
                   } catch {
-                    // error handled in onDelete
+                    // error stays in this dialog
                   }
                 }}
                 className="w-full rounded-xl bg-rose-600 px-4 py-2.5 text-center text-sm font-bold text-white hover:bg-rose-700 disabled:opacity-60"
               >
-                {saving ? 'Processing…' : 'Delete Event'}
+                {saving
+                  ? 'Processing…'
+                  : (String(actionModalEvent.status || '').toLowerCase() !== 'cancelled' && (actionModalEvent.hasBookings || Number(actionModalEvent.seatsTaken) > 0))
+                    ? 'Delete unavailable'
+                    : 'Delete Event'}
               </button>
             </div>
           </div>
         </div>
       )}
+      {reportEvent ? (
+        <EventTicketReport
+          user={user}
+          eventId={reportEvent.id}
+          eventName={reportEvent.eventName}
+          onClose={() => setReportEvent(null)}
+        />
+      ) : null}
     </div>
   );
 }
