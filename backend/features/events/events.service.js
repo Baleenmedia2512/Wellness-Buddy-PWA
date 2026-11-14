@@ -36,6 +36,9 @@ import {
 import { buildCheckInIdealWeightProgress } from './domain/check-in-ideal-weight.rules.js';
 import { buildCheckInMisuseReportEmail } from './domain/check-in-misuse-report-email.rules.js';
 import { buildCheckInVerifiedEmail } from './domain/check-in-verified-email.rules.js';
+import { buildEventTicketReport, ticketScanDecision } from './domain/event-ticket-report.rules.js';
+import { DateTime } from 'luxon';
+import { IANA_IST } from '../../shared/lib/datetime/datetime.js';
 import { getLatestWeight } from '../user/user.repository.js';
 import {
   buildRegistrationQrPayload,
@@ -46,6 +49,11 @@ import {
   selfBookingAlreadyTaken,
 } from './domain/event.rules.js';
 import { creditEventTicketRefund, debitForEventTicket } from '../wallet/data/wallet.repo.js';
+
+function istNowParts() {
+  const ist = DateTime.now().setZone(IANA_IST);
+  return { date: ist.toFormat('yyyy-MM-dd'), time: ist.toFormat('HH:mm') };
+}
 
 const STORAGE_MESSAGE = 'Events storage is not ready. Run backend/migrations/create_events_table.sql, then npm run prisma:generate in backend, and restart the API.';
 const REGISTRATION_STORAGE_MESSAGE = 'Event registration storage is not ready. Run backend/migrations/create_event_registrations_table.sql, then npm run prisma:generate in backend, and restart the API.';
@@ -525,6 +533,24 @@ export function getMyEventRegistration(input) {
   });
 }
 
+export function getEventTicketReport(input) {
+  return run(async () => {
+    const event = await repo.findActiveEventById(input.eventId);
+    if (!event) {
+      return { httpStatus: 404, body: { success: false, message: 'Event not found.' } };
+    }
+    if (!canScanEventRegistrations(event, input.userId)) {
+      return {
+        httpStatus: 403,
+        body: { success: false, message: 'Only the event creator or designated persons can view this ticket report.' },
+      };
+    }
+    const registrations = await listRegistrationsForEvent(input.eventId);
+    const report = buildEventTicketReport(event, registrations, istNowParts());
+    return { httpStatus: 200, body: { success: true, report } };
+  });
+}
+
 export function checkInEventRegistration(input) {
   return run(async () => {
     const event = await repo.findActiveEventById(input.eventId);
@@ -544,19 +570,19 @@ export function checkInEventRegistration(input) {
     }
 
     const checkInType = input.checkInType === 'food' ? 'food' : 'entry';
+    const decision = ticketScanDecision({
+      event,
+      registration,
+      checkInType,
+      now: istNowParts(),
+    });
+    if (!decision.allow) {
+      return { httpStatus: 409, body: { success: false, message: decision.message } };
+    }
     const alreadyVerified = checkInType === 'food'
       ? Boolean(registration.foodCheckedInAt)
       : Boolean(registration.checkedInAt);
     const firstVerify = Boolean(input.markCheckedIn && !alreadyVerified);
-    if (firstVerify && checkInType === 'food' && !registration.checkedInAt) {
-      return {
-        httpStatus: 409,
-        body: {
-          success: false,
-          message: 'Complete Entry check-in first. Food can be verified only after Entry is verified.',
-        },
-      };
-    }
     if (firstVerify) {
       registration = checkInType === 'food'
         ? await markRegistrationFoodCheckedIn(registration.id, input.userId)

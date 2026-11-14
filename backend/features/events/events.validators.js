@@ -141,6 +141,13 @@ export function validateEventCheckIn(body) {
   };
 }
 
+export function validateEventTicketReport(query) {
+  const userId = requireOwner(query);
+  const eventId = parseEventId(query?.eventId);
+  if (!eventId) throw new ValidationError(400, 'Event id is required.');
+  return { userId, eventId };
+}
+
 /** Entry-pass Report only — same event/code rules as check-in; never verifies. */
 export function validateEventCheckInReport(body) {
   const base = validateEventCheckIn({

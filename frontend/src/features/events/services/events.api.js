@@ -108,6 +108,11 @@ export function reportEventCheckInMisuse(payload) {
     body: JSON.stringify(payload),
   }).then(readJson);
 }
+
+export function getEventTicketReport(userId, eventId) {
+  const url = `${endpoint()}/ticket-report?userId=${encodeURIComponent(userId)}&eventId=${encodeURIComponent(eventId)}`;
+  return apiFetch(url, { cache: 'no-store' }).then(readJson);
+}
 export function formatEventTime(timeStr) {
   if (!timeStr) return '';
   const match = /^(\d{1,2}):(\d{2})/.exec(String(timeStr).trim());

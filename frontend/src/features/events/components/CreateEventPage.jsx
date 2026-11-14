@@ -17,6 +17,7 @@ import {
 } from '../services/events.api.js';
 import DesignatedPersonPicker from './DesignatedPersonPicker.jsx';
 import EventCheckInPanel from './EventCheckInPanel.jsx';
+import EventTicketReport from './EventTicketReport.jsx';
 import HostPersonPicker from './HostPersonPicker.jsx';
 
 const EMPTY_FORM = {
@@ -84,6 +85,7 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
   const [notice, setNotice] = useState('');
   const [whatsappChats, setWhatsappChats] = useState([]);
   const [actionModalEvent, setActionModalEvent] = useState(null);
+  const [reportEvent, setReportEvent] = useState(null);
   const trialEnabled = isFlagEnabled('ff.events-trial');
   const eventsAccess = useEventsAccess(trialEnabled && userId ? userId : null);
   const waitingAccess = trialEnabled && (!ready || !userId || !eventsAccess.loaded);
@@ -637,6 +639,13 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
                   <div className="mt-3 flex items-center justify-end gap-2 border-t border-gray-100 pt-2.5">
                     <button
                       type="button"
+                      onClick={() => setReportEvent(item)}
+                      className="mr-auto rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-xs font-bold text-emerald-900"
+                    >
+                      Report
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => onEdit(item)}
                       aria-label="Edit event"
                       title="Edit event"
@@ -750,6 +759,14 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
           </div>
         </div>
       )}
+      {reportEvent ? (
+        <EventTicketReport
+          user={user}
+          eventId={reportEvent.id}
+          eventName={reportEvent.eventName}
+          onClose={() => setReportEvent(null)}
+        />
+      ) : null}
     </div>
   );
 }

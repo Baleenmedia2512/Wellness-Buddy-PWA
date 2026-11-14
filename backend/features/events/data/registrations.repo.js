@@ -385,11 +385,37 @@ export async function listRegistrationsForEvent(eventId) {
     orderBy: { Id: 'asc' },
   });
   const registrations = rows.map(toRegistration);
-  const notified = await loadCancelNotifiedMap(prisma, registrations.map((row) => row.id));
+  const ids = registrations.map((row) => row.id);
+  const notified = await loadCancelNotifiedMap(prisma, ids);
+  const food = await loadFoodCheckInMap(prisma, ids);
   return registrations.map((row) => ({
     ...row,
+    ...(food.get(Number(row.id)) || { foodCheckedInAt: null, foodCheckedInByUserId: null }),
     cancelNotifiedAt: notified.get(Number(row.id)) || null,
   }));
+}
+
+async function loadFoodCheckInMap(prisma, ids) {
+  const map = new Map();
+  const clean = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
+  if (clean.length === 0) return map;
+  if (!(await columnExists(prisma, 'FoodCheckedInAt'))) return map;
+  const placeholders = clean.map(() => '?').join(', ');
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT Id, FoodCheckedInAt, FoodCheckedInByUserId
+     FROM event_registrations_table
+     WHERE Id IN (${placeholders})`,
+    ...clean,
+  );
+  for (const row of Array.isArray(rows) ? rows : []) {
+    map.set(Number(row.Id), {
+      foodCheckedInAt: row.FoodCheckedInAt || null,
+      foodCheckedInByUserId: row.FoodCheckedInByUserId != null
+        ? Number(row.FoodCheckedInByUserId)
+        : null,
+    });
+  }
+  return map;
 }
 
 export async function markRegistrationRefunded(id) {
