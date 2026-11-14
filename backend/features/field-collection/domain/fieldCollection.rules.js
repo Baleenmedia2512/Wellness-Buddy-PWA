@@ -420,7 +420,9 @@ export function planCollectionStep({
   }
 
   const profileFields = decisions
-    .filter((item) => PROFILE_INTRO_KEYS.includes(item.field.key) && item.mode === 'ask_blocking')
+    .filter((item) => item.field.phase === 'entry'
+      && PROFILE_INTRO_KEYS.includes(item.field.key)
+      && item.mode === 'ask_blocking')
     .map((item) => item.field.key);
   if (profileFields.length > 0) {
     return { step: 'profileIntro', entryFields: [], photoSlots: [], profileFields, scheduled: null };
@@ -428,10 +430,9 @@ export function planCollectionStep({
 
   const deferred = new Set(deferKeys);
   const scheduled = decisions.find((item) => {
-    // Every 0 days: skip/save only clears the field for this app visit.
-    // Honor defer even if that skip exhausted maxSkips (mode → ask_blocking).
-    const passedForNow = Number(item.field.askEveryDays) === 0
-      && deferred.has(item.field.key);
+    // A skip closes the field for this visit. The next time the app opens,
+    // an empty field can be asked again, including when no skips remain.
+    const passedForNow = deferred.has(item.field.key);
     return item.field.phase === 'scheduled'
       && (item.mode === 'ask_blocking' || item.mode === 'ask_skippable')
       && !passedForNow;

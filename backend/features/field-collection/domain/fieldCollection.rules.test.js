@@ -509,6 +509,43 @@ describe('planCollectionStep', () => {
     assert.equal(plan.step, 'done');
   });
 
+  it('closes a skipped field for this visit and asks again on the next open', () => {
+    const fields = defaultFieldPolicy().map((field) => (
+      field.key === 'herbalifeJoinedOn'
+        ? { ...field, phase: 'scheduled', askEveryDays: 0, maxSkips: 1, mustFillWithinDays: 3 }
+        : field
+    ));
+    const skipped = {
+      herbalifeJoinedOn: {
+        skipCount: 1,
+        cycleStartedAt: TODAY,
+        lastFilledAt: null,
+        lastSkippedAt: TODAY,
+      },
+    };
+    const sameVisit = planCollectionStep({
+      fields,
+      values: { ...filledEntry, herbalifeJoinedOn: '' },
+      states: settledStates(skipped),
+      deferKeys: ['herbalifeJoinedOn'],
+      role: 'member',
+      now: NOW,
+    });
+    assert.notEqual(sameVisit.step, 'profileIntro');
+    assert.notEqual(sameVisit.scheduled?.key, 'herbalifeJoinedOn');
+
+    const nextOpen = planCollectionStep({
+      fields,
+      values: { ...filledEntry, herbalifeJoinedOn: '' },
+      states: settledStates(skipped),
+      role: 'member',
+      now: NOW,
+    });
+    assert.equal(nextOpen.step, 'scheduled');
+    assert.equal(nextOpen.scheduled.key, 'herbalifeJoinedOn');
+    assert.equal(nextOpen.scheduled.mode, 'ask_blocking');
+  });
+
   it('asks profile introduction fields while entering when the admin sets that', () => {
     const fields = defaultFieldPolicy().map((field) => (
       field.key === 'professionalTitle' ? { ...field, phase: 'entry' } : field
