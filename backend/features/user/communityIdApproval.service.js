@@ -6,7 +6,7 @@ import logger from '../../shared/lib/logger.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
-import { cache, cacheKeys } from '../../utils/cache.js';
+import { clearUserProfileCache } from './profileCache.js';
 import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { assignLeadSeat, releaseLeadSeat, releaseOtherLeadSeats, resolveLeadSeatForUser } from '../../utils/coachTeamSeats.js';
 import { generateEmailOtp } from '../auth/domain/otp-length.rules.js';
@@ -29,6 +29,7 @@ import {
   communityIdOtpExpiresAt,
   formatCommunityIdPairLabel,
   isCommunityIdOtpExpired,
+  isRecentCommunityIdApproval,
   occupancyWithoutUser,
   resolveCoachTeamIdFromApprover,
   resolveConfirmedCommunityId,
@@ -45,12 +46,35 @@ function featureDisabled() {
 }
 
 function clearProfileCache({ email, userId }) {
-  if (email) {
-    try { cache.delete(cacheKeys.userProfile(String(email).toLowerCase())); } catch { /* non-fatal */ }
+  clearUserProfileCache({ email, userId });
+}
+
+async function replayRecentCommunityIdApproval(requester, otp) {
+  let recent = null;
+  try {
+    recent = await requestRepo.findLatestApprovedByRequesterId(requester.UserId);
+  } catch {
+    return null;
   }
-  if (userId != null) {
-    try { cache.delete(cacheKeys.userProfile(`id:${userId}`)); } catch { /* non-fatal */ }
-  }
+  if (!recent?.OtpHash || !isRecentCommunityIdApproval(recent.ProcessedAt)) return null;
+  const matches = await bcrypt.compare(String(otp || ''), recent.OtpHash);
+  if (!matches) return null;
+
+  const confirmedCode = normalizeTeamCodeFromCommunityId(recent.CommunityId) || recent.CommunityId;
+  const resolvedSeat = recent.RequestKind === REQUEST_KIND_CO_SPONSOR ? 'co-sponsor' : 'sponsor';
+  clearProfileCache({ email: requester.Email, userId: requester.UserId });
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      message: resolvedSeat === 'co-sponsor'
+        ? 'You are now Co-Sponsor of this Community ID.'
+        : 'Community ID confirmed. You are the Sponsor.',
+      communityId: confirmedCode,
+      teamId: confirmedCode,
+      teamSeat: resolvedSeat,
+    },
+  };
 }
 
 async function loadRequester({ email, userId }) {
@@ -413,6 +437,8 @@ export async function verifyCommunityIdOtp({ email = null, userId = null, otp })
   }
 
   if (!pending) {
+    const replay = await replayRecentCommunityIdApproval(requester, otp);
+    if (replay) return replay;
     throw new ValidationError(404, 'No pending Community ID request found.');
   }
 

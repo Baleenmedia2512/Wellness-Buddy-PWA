@@ -7,6 +7,7 @@ import {
   requestPublishOtp,
   verifyPublishOtp,
 } from '../../../features/coach-portfolio/api/submission.handler.js';
+import { assertEventsHostToolsAllowed } from '../../../features/payments/api/events-access.handler.js';
 
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET, PUT, POST, OPTIONS')) return;
@@ -18,41 +19,56 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     const action = String(req.query?.action || '').trim();
     if (action === 'list') {
-      return runService(res, () => listMyWebsites({ userId: req.query?.userId }));
+      return runService(res, async () => {
+        await assertEventsHostToolsAllowed(req, req.query?.userId);
+        return listMyWebsites({ userId: req.query?.userId });
+      });
     }
-    return runService(res, () => getMySubmission({
-      userId: req.query?.userId,
-      centerId: req.query?.centerId,
-      submissionId: req.query?.submissionId,
-      createNew: req.query?.createNew,
-    }));
+    return runService(res, async () => {
+      await assertEventsHostToolsAllowed(req, req.query?.userId);
+      return getMySubmission({
+        userId: req.query?.userId,
+        centerId: req.query?.centerId,
+        submissionId: req.query?.submissionId,
+        createNew: req.query?.createNew,
+      });
+    });
   }
   if (req.method === 'PUT') {
-    return runService(res, () => saveMySubmissionDraft({
-      userId: req.body?.userId,
-      centerId: req.body?.centerId,
-      form: req.body?.form,
-      createNew: req.body?.createNew === true,
-      submissionId: req.body?.submissionId ?? null,
-    }));
+    return runService(res, async () => {
+      await assertEventsHostToolsAllowed(req, req.body?.userId);
+      return saveMySubmissionDraft({
+        userId: req.body?.userId,
+        centerId: req.body?.centerId,
+        form: req.body?.form,
+        createNew: req.body?.createNew === true,
+        submissionId: req.body?.submissionId ?? null,
+      });
+    });
   }
   if (req.method === 'POST') {
     const action = String(req.body?.action || 'request-publish-otp').trim();
     if (action === 'verify-publish-otp') {
-      return runService(res, () => verifyPublishOtp({
+      return runService(res, async () => {
+        await assertEventsHostToolsAllowed(req, req.body?.userId);
+        return verifyPublishOtp({
+          userId: req.body?.userId,
+          centerId: req.body?.centerId,
+          otp: req.body?.otp,
+          otpKey: req.body?.otpKey,
+        });
+      });
+    }
+    return runService(res, async () => {
+      await assertEventsHostToolsAllowed(req, req.body?.userId);
+      return requestPublishOtp({
         userId: req.body?.userId,
         centerId: req.body?.centerId,
-        otp: req.body?.otp,
-        otpKey: req.body?.otpKey,
-      }));
-    }
-    return runService(res, () => requestPublishOtp({
-      userId: req.body?.userId,
-      centerId: req.body?.centerId,
-      form: req.body?.form,
-      createNew: req.body?.createNew === true,
-      submissionId: req.body?.submissionId ?? null,
-    }));
+        form: req.body?.form,
+        createNew: req.body?.createNew === true,
+        submissionId: req.body?.submissionId ?? null,
+      });
+    });
   }
   return methodNotAllowed(res);
 }

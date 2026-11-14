@@ -5,7 +5,13 @@ import React, { useEffect, useState } from 'react';
  * Optional `compact` trims chrome when embedded inside a larger pass card.
  * Existing callers that only pass eventName / entryCode / qrPayload stay unchanged.
  */
-export default function RegistrationQrCard({ qrPayload, entryCode, eventName, compact = false }) {
+export default function RegistrationQrCard({
+  qrPayload,
+  entryCode,
+  eventName,
+  compact = false,
+  onImageReady,
+}) {
   const [dataUrl, setDataUrl] = useState('');
   const [error, setError] = useState('');
 
@@ -26,6 +32,7 @@ export default function RegistrationQrCard({ qrPayload, entryCode, eventName, co
         if (!cancelled) {
           setDataUrl(url);
           setError('');
+          if (typeof onImageReady === 'function') onImageReady(url);
         }
       } catch (err) {
         if (!cancelled) {
@@ -38,7 +45,7 @@ export default function RegistrationQrCard({ qrPayload, entryCode, eventName, co
     return () => {
       cancelled = true;
     };
-  }, [qrPayload, compact]);
+  }, [qrPayload, compact, onImageReady]);
 
   if (compact) {
     return (

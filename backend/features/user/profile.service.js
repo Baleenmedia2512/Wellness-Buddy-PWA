@@ -5,6 +5,7 @@
  * Preserves response shapes byte-identical to the legacy handlers.
  */
 import { cache, cacheKeys } from '../../utils/cache.js';
+import { clearUserProfileCache } from './profileCache.js';
 import logger from '../../shared/lib/logger.js';
 import { nowUtc, addUtcDays, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { VALID_DIETS, VALID_GOAL_MODES } from './user.validators.js';
@@ -83,22 +84,7 @@ const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'Use
 
 /** Drop both email- and userId-keyed profile caches (clients often GET by userId). */
 function clearProfileCaches({ email, userId } = {}) {
-  const bases = [];
-  if (userId != null && String(userId).trim() !== '') {
-    bases.push(cacheKeys.userProfile(`id:${userId}`));
-  }
-  const emailKey = String(email || '').trim().toLowerCase();
-  if (emailKey) {
-    bases.push(cacheKeys.userProfile(emailKey));
-  }
-  for (const base of bases) {
-    try {
-      // Un-suffixed (legacy) + version-routed transformation-photo variants.
-      cache.delete(base);
-      cache.delete(`${base}:tp-r2`);
-      cache.delete(`${base}:tp-legacy`);
-    } catch { /* non-fatal */ }
-  }
+  clearUserProfileCache({ email, userId });
 }
 
 export async function getProfile({ email, userId = null, appVersion = null, bypassCache = false }) {

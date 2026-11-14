@@ -1299,6 +1299,18 @@ function MemberCard({
         : {}),
       ...(!draftBefore && usableDurationForSubmit ? { durationText: usableDurationForSubmit } : {}),
     };
+    const visibleBeforeUrl = draftBefore?.previewUrl && /^https?:\/\//i.test(draftBefore.previewUrl)
+      ? draftBefore.previewUrl
+      : testimonial?.beforeImageUrl;
+    const visibleAfterUrl = draftAfter?.previewUrl && /^https?:\/\//i.test(draftAfter.previewUrl)
+      ? draftAfter.previewUrl
+      : (testimonial?.afterImageUrl || visibleBeforeUrl);
+    if (!draftBefore?.imageBase64 && typeof visibleBeforeUrl === 'string') {
+      payload.displayedBeforeUrl = visibleBeforeUrl;
+    }
+    if (!draftAfter?.imageBase64 && typeof visibleAfterUrl === 'string') {
+      payload.displayedAfterUrl = visibleAfterUrl;
+    }
     if (
       payload.beforeWeightKg === undefined
       && (payload.afterWeightKg !== undefined || payload.durationText)

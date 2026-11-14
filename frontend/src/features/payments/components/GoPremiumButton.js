@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Crown } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { isFlagEnabled } from '../../../config/featureFlags';
+import { canAccessNavPage } from '../../nav-page-access/domain/navAccess.rules.js';
 import { openPremiumCheckout } from '../openPremiumCheckout';
 import { memberCheckoutErrorMessage } from '../domain/nativePremiumCheckout.rules';
 import { fetchPremiumQuote } from '../services/premiumApi';
@@ -16,21 +17,30 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * Header chip that opens the Premium plan page, then Cashfree on Pay Now.
  * `onPremiumCheck` asks the server whether the payment went through.
  * Members who already paid do not see this chip again, unless `renew` (expiry reminder).
+ * Visibility also follows Admin Config → Page Access (`go-premium`).
  */
 export default function GoPremiumButton({
   userId,
   isPremium = false,
   onPremiumCheck,
   renew = false,
+  /** null = fail-open until ACL loads; object = role page map from DB */
+  allowedPages = null,
+  /** Open the payment page immediately. Used when a premium feature is tapped after the trial. */
+  openOnMount = false,
+  onDismiss,
 }) {
-  const [showPlan, setShowPlan] = useState(false);
+  const checkoutAllowed = isFlagEnabled('ff.go-premium')
+    && canAccessNavPage(allowedPages, 'go-premium')
+    && !(isPremium && !renew)
+    && userId != null
+    && String(userId).trim() !== '';
+  const [showPlan, setShowPlan] = useState(() => openOnMount && checkoutAllowed);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [quote, setQuote] = useState(null);
-  const [quoteLoading, setQuoteLoading] = useState(false);
-
-  if (!isFlagEnabled('ff.go-premium')) return null;
-  if (isPremium && !renew) return null;
+  const [quoteLoading, setQuoteLoading] = useState(() => openOnMount && checkoutAllowed);
+  const openedOnMountRef = useRef(false);
 
   const checkPremium = async (attempts) => {
     if (typeof onPremiumCheck !== 'function') return false;
@@ -61,6 +71,23 @@ export default function GoPremiumButton({
     setQuoteLoading(false);
   };
 
+  const closePlan = () => {
+    if (busy) return;
+    setShowPlan(false);
+    setMessage('');
+    setQuote(null);
+    setQuoteLoading(false);
+    if (openOnMount) onDismiss?.();
+  };
+
+  useEffect(() => {
+    if (!openOnMount || openedOnMountRef.current || !checkoutAllowed) return;
+    openedOnMountRef.current = true;
+    onOpenPlan();
+    // Open once when the premium feature is entered after the trial.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openOnMount, checkoutAllowed]);
+
   const onPayNow = async () => {
     if (busy || !quote) return;
     setBusy(true);
@@ -81,6 +108,21 @@ export default function GoPremiumButton({
     }
   };
 
+  if (!checkoutAllowed) return null;
+
+  const plan = showPlan ? (
+    <PremiumPlanPage
+      busy={busy}
+      message={message}
+      quote={quote}
+      quoteLoading={quoteLoading}
+      onClose={closePlan}
+      onPayNow={onPayNow}
+    />
+  ) : null;
+
+  if (openOnMount) return plan;
+
   return (
     <div className="flex shrink-0 flex-col items-end">
       <TouchFeedbackButton
@@ -96,22 +138,7 @@ export default function GoPremiumButton({
       {!showPlan && message ? (
         <p className="mt-1 max-w-[11rem] text-right text-[11px] leading-tight text-amber-50" role="alert">{message}</p>
       ) : null}
-      {showPlan ? (
-        <PremiumPlanPage
-          busy={busy}
-          message={message}
-          quote={quote}
-          quoteLoading={quoteLoading}
-          onClose={() => {
-            if (busy) return;
-            setShowPlan(false);
-            setMessage('');
-            setQuote(null);
-            setQuoteLoading(false);
-          }}
-          onPayNow={onPayNow}
-        />
-      ) : null}
+      {plan}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { fetchWallet } from '../../../wallet/services/walletApi.js';
 import {
   createEventRegistration,
   EVENTS_UPDATED_EVENT,
+  listMyEventRegistrations,
   listOpenEvents,
   searchEventPeople,
 } from '../../services/events.api.js';
@@ -74,7 +75,9 @@ describe('EventsPage', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
     getUserId.mockResolvedValue(17);
+    window.localStorage.removeItem('wv.eventCancelSeen');
     listOpenEvents.mockResolvedValue({ events: [event] });
+    listMyEventRegistrations.mockResolvedValue({ registrations: [] });
     fetchWallet.mockResolvedValue({ balance: 500 });
     createEventRegistration.mockResolvedValue({
       success: true,
@@ -137,6 +140,26 @@ describe('EventsPage', () => {
     });
   };
 
+  const clickRegister = async () => {
+    const registerButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.trim().startsWith('Register'));
+    expect(registerButton).not.toBeNull();
+    await act(async () => {
+      registerButton.click();
+      await Promise.resolve();
+    });
+    const myselfButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.includes('Register for myself'));
+    expect(myselfButton).not.toBeNull();
+    await act(async () => {
+      myselfButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  };
+
   const pickMemberBySearch = async (inputId, queryText) => {
     const searchInput = container.querySelector(`#${inputId}`);
     expect(searchInput).not.toBeNull();
@@ -152,6 +175,35 @@ describe('EventsPage', () => {
     act(() => selectButton.click());
   };
 
+  it('shows a cancellation notice on the Events screen', async () => {
+    listMyEventRegistrations.mockResolvedValue({
+      registrations: [{
+        id: 4,
+        amountCharged: 200,
+        paymentStatus: 'refunded',
+        event: { eventName: 'Happy life', status: 'cancelled' },
+      }],
+    });
+    await renderPage();
+    expect(container.textContent).toContain('Event cancelled');
+    expect(container.textContent).toContain('Happy life is cancelled');
+    expect(container.textContent).toContain('back in your wallet');
+    const bookingsTab = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.includes('My Bookings'));
+    expect(bookingsTab.textContent).toContain('1');
+
+    await act(async () => {
+      bookingsTab.click();
+    });
+    const eventsTab = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.trim() === 'Events');
+    await act(async () => {
+      eventsTab.click();
+    });
+    expect(container.textContent).not.toContain('See My Bookings');
+    expect(container.textContent).not.toContain('Happy life is cancelled');
+  });
+
   it('loads open events and completes Next → wallet pay → Successfully Submitted + QR', async () => {
     await renderPage();
 
@@ -162,9 +214,7 @@ describe('EventsPage', () => {
     expect(getUserId).toHaveBeenCalledWith({ email: 'creator@example.com' });
     expect(listOpenEvents).toHaveBeenCalledWith(17);
 
-    const registerButton = Array.from(container.querySelectorAll('button'))
-      .find((button) => button.textContent.trim() === 'Register');
-    act(() => registerButton.click());
+    await clickRegister();
 
     const ticketInput = container.querySelector('input[name="ticketNo"]');
     const attendCitySelect = container.querySelector('select[name="attendCity"]');
@@ -233,9 +283,7 @@ describe('EventsPage', () => {
   it('returns to the loaded event list from the registration form', async () => {
     await renderPage();
 
-    const registerButton = Array.from(container.querySelectorAll('button'))
-      .find((button) => button.textContent.includes('Register'));
-    act(() => registerButton.click());
+    await clickRegister();
     expect(container.querySelector('input[name="ticketNo"]')).not.toBeNull();
 
     const backButton = Array.from(container.querySelectorAll('button'))
@@ -269,5 +317,35 @@ describe('EventsPage', () => {
     expect(listOpenEvents).toHaveBeenCalledTimes(2);
     expect(container.querySelectorAll('article')).toHaveLength(0);
     expect(container.textContent).toContain('No events have been created yet.');
+  });
+
+  it('stops on the events list when Profile fields are missing', async () => {
+    fetchProfile.mockResolvedValue({
+      success: true,
+      data: {
+        userId: 17,
+        userName: 'Logged In User',
+        phoneNumber: '9000000017',
+      },
+    });
+    await renderPage();
+    await clickRegister();
+
+    expect(container.querySelector('input[name="ticketNo"]')).toBeNull();
+    expect(container.textContent).toContain('Please fill to register');
+    expect(container.textContent).toContain('Set Translation in Profile');
+    expect(container.textContent).toContain('Set Community ID in Profile');
+    expect(container.querySelectorAll('article')).toHaveLength(1);
+  });
+
+  it('stops on the events list when the wallet cannot pay the ticket', async () => {
+    fetchWallet.mockResolvedValue({ balance: 10 });
+    await renderPage();
+    await clickRegister();
+
+    expect(container.querySelector('input[name="ticketNo"]')).toBeNull();
+    expect(container.textContent).toContain('Recharge to register');
+    expect(container.textContent).toContain('Your wallet has');
+    expect(container.querySelectorAll('article')).toHaveLength(1);
   });
 });

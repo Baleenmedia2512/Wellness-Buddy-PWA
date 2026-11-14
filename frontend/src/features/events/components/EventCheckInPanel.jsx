@@ -19,9 +19,11 @@ import { getUserId } from '../../../shared/services/getUserId.js';
 import { buildUserAvatarUrl } from '../../user/services/avatarDisplayVersion.js';
 import {
   checkInEventRegistration,
+  eventSpeakerNames,
   listOpenEvents,
   reportEventCheckInMisuse,
 } from '../services/events.api.js';
+import EventTicketReport from './EventTicketReport.jsx';
 
 const SCAN_GAP_MS = 50;
 const JSQR_MAX_WIDTH = 480;
@@ -206,7 +208,7 @@ function GuestPassScreen({
 }) {
   const isFood = checkInType === 'food';
   const eventName = registration.event?.eventName || `Event #${registration.eventId}`;
-  const hostName = registration.event?.hostName || '';
+  const hostName = eventSpeakerNames(registration.event).join(', ');
   const place = registration.event?.place || '—';
   const eventDate = registration.event?.eventDate || '—';
   const entryVerified = Boolean(registration.checkedInAt);
@@ -295,7 +297,7 @@ function GuestPassScreen({
           </h2>
           {hostName ? (
             <p className="mt-0.5 truncate text-xs text-white/90">
-              <span className="text-white/65">Host</span>
+              <span className="text-white/65">Speaker</span>
               <span className="mx-1 text-white/40">·</span>
               <span className="font-semibold text-white">{hostName}</span>
             </p>
@@ -556,6 +558,7 @@ export default function EventCheckInPanel({ user }) {
   const [result, setResult] = useState(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [codeEntryOpen, setCodeEntryOpen] = useState(false);
+  const [ticketReportOpen, setTicketReportOpen] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const scanTimerRef = useRef(null);
@@ -1024,6 +1027,9 @@ export default function EventCheckInPanel({ user }) {
           Scan for Food
         </button>
       </div>
+      <p className="text-xs leading-snug text-gray-600">
+        Entry can be scanned once. After that, scan the same QR for food. After food, or when the event ends, the QR expires.
+      </p>
 
       {error ? (
         <div
@@ -1056,6 +1062,15 @@ export default function EventCheckInPanel({ user }) {
             ))}
           </select>
         </div>
+        {eventId ? (
+          <button
+            type="button"
+            onClick={() => setTicketReportOpen(true)}
+            className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-900"
+          >
+            Ticket report
+          </button>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-2">
           <div className="min-w-0">
@@ -1220,6 +1235,14 @@ export default function EventCheckInPanel({ user }) {
             {busy ? 'Checking…' : 'Continue'}
           </button>
         </div>
+      ) : null}
+      {ticketReportOpen && eventId ? (
+        <EventTicketReport
+          user={user}
+          eventId={eventId}
+          eventName={events.find((item) => String(item.id) === String(eventId))?.eventName}
+          onClose={() => setTicketReportOpen(false)}
+        />
       ) : null}
     </section>
   );

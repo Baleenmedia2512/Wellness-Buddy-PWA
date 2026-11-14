@@ -1,4 +1,5 @@
 import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { todayInTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
 import {
   normalizeEventDraft,
   normalizeEventRegistrationDraft,
@@ -22,7 +23,7 @@ export function validateListEvents(query) {
 
 export function validateCreateEvent(body) {
   const userId = requireOwner(body);
-  const draft = normalizeEventDraft(body);
+  const draft = normalizeEventDraft(body, { today: todayInTimezone(IANA_IST) });
   if (!draft.ok) throw new ValidationError(400, draft.errors.join(' '));
   return { userId, ...draft.value };
 }
@@ -35,6 +36,7 @@ export function validateUpdateEvent(body) {
   const hasFields = body?.eventName != null
     || body?.hostName != null
     || body?.host != null
+    || body?.speakers != null
     || body?.place != null
     || body?.places != null
     || body?.venue != null
@@ -54,7 +56,7 @@ export function validateUpdateEvent(body) {
 
   const next = { userId, id };
   if (hasFields) {
-    const draft = normalizeEventDraft(body);
+    const draft = normalizeEventDraft(body, { today: todayInTimezone(IANA_IST) });
     if (!draft.ok) throw new ValidationError(400, draft.errors.join(' '));
     Object.assign(next, draft.value);
   }
@@ -95,7 +97,8 @@ export async function validateCreateEventRegistration(body) {
   const confirmPayment = body?.confirmPayment === true
     || body?.confirmPayment === 1
     || String(body?.confirmPayment || '').toLowerCase() === 'true';
-  return { userId, confirmPayment, ...draft.value };
+  const bookingFor = String(body?.bookingFor || '').trim().toLowerCase() === 'friend' ? 'friend' : 'self';
+  return { userId, confirmPayment, bookingFor, ...draft.value };
 }
 
 export function validateListOpenEvents(query) {
@@ -136,6 +139,13 @@ export function validateEventCheckIn(body) {
     checkInType,
     markCheckedIn: body?.markCheckedIn !== false,
   };
+}
+
+export function validateEventTicketReport(query) {
+  const userId = requireOwner(query);
+  const eventId = parseEventId(query?.eventId);
+  if (!eventId) throw new ValidationError(400, 'Event id is required.');
+  return { userId, eventId };
 }
 
 /** Entry-pass Report only — same event/code rules as check-in; never verifies. */

@@ -8,7 +8,7 @@ import logger from '../../shared/lib/logger.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
-import { cache, cacheKeys } from '../../utils/cache.js';
+import { clearUserProfileCache } from './profileCache.js';
 import { generateEmailOtp } from '../auth/domain/otp-length.rules.js';
 import { sendTransactionalMail } from '../../shared/lib/smtp-mail.js';
 import * as userRepo from './user.repository.js';
@@ -40,12 +40,7 @@ function featureDisabled() {
 }
 
 function clearProfileCache({ email, userId }) {
-  if (email) {
-    try { cache.delete(cacheKeys.userProfile(String(email).toLowerCase())); } catch { /* non-fatal */ }
-  }
-  if (userId != null) {
-    try { cache.delete(cacheKeys.userProfile(`id:${userId}`)); } catch { /* non-fatal */ }
-  }
+  clearUserProfileCache({ email, userId });
 }
 
 function legacyPublicPositions() {

@@ -1,5 +1,5 @@
 /**
- * Create Event / Check-in / Paid Features access.
+ * Digital Portfolio access. Create Event and Check-in are not gated here.
  * Uses the SAME centralized 14-day trial as Reports (`report_trials_table`).
  * If a member already started Reports and has days left, that window continues here.
  * Premium unlocks all gated modules.
@@ -47,7 +47,7 @@ export async function startEventsTrial(input, deps = {}) {
 }
 
 /**
- * New app versions block Create Event / Check-in unless this member is paid or in the shared trial.
+ * New app versions block Digital Portfolio unless this member is paid or in the shared trial.
  * Lookup failures block host tools. Older apps are not gated.
  * @param {object} req
  * @param {unknown} userId
@@ -72,7 +72,8 @@ export async function shouldBlockEventsHostTools(req, userId) {
 }
 
 /**
- * Throw when a gated client tries Create / Check-in without trial or Premium.
+ * Throw when a gated client opens Digital Portfolio without trial or Premium.
+ * Create Event and Check-in are not premium.
  * @param {object} req
  * @param {unknown} userId
  */
@@ -80,7 +81,7 @@ export async function assertEventsHostToolsAllowed(req, userId) {
   if (await shouldBlockEventsHostTools(req, userId)) {
     throw new ValidationError(
       403,
-      'Create Event and Check-in need a free trial or Premium.',
+      'Digital Portfolio needs a free trial or Premium.',
     );
   }
 }

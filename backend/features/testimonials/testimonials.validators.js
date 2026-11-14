@@ -456,6 +456,18 @@ export function validateTeamReport(query) {
 
 const VALID_DIRTY_SLOTS = new Set(['before', 'after', 'health', 'business', 'issues', 'duration', 'weight', 'goal']);
 
+function optionalDisplayedPhotoUrl(value) {
+  if (value == null || value === '') return undefined;
+  const text = String(value).trim();
+  if (!/^https?:\/\//i.test(text) && !/^data:image\/[a-zA-Z0-9+.-]+;base64,/i.test(text)) {
+    return undefined;
+  }
+  if (text.length > 8_000_000) {
+    throw new ValidationError(400, 'Displayed photo is too large.');
+  }
+  return text;
+}
+
 /**
  * Validate payload for POST /api/testimonials/submit-all-edits
  * Accepts all dirty slots in one payload and generates a single unified OTP.
@@ -514,6 +526,8 @@ const result = {
   userId: userIdN,
   dirtySlots: [...slots],
   submitForApproval: body.submitForApproval === true,
+  displayedBeforeUrl: optionalDisplayedPhotoUrl(body.displayedBeforeUrl),
+  displayedAfterUrl: optionalDisplayedPhotoUrl(body.displayedAfterUrl),
 };
 
   if (slots.has('before')) {

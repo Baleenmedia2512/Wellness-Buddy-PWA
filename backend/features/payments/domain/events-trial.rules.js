@@ -1,5 +1,6 @@
 /**
- * Version gate for Create Event / Check-in / Paid Features.
+ * Version gate for Digital Portfolio.
+ * Create Event and Check-in stay open.
  * Trial length and window math live in report-trial.rules.js (centralized 14-day trial).
  * Apps older than 3.5.7, and requests with no version, keep free host tools.
  */
@@ -14,7 +15,7 @@ import {
 
 /** Same length as Reports — one shared free trial. */
 export const EVENTS_TRIAL_LENGTH_DAYS = REPORT_TRIAL_LENGTH_DAYS;
-/** First app version whose Create Event / Check-in / Paid Features require trial or Premium. */
+/** First app version whose Digital Portfolio requires trial or Premium. */
 export const EVENTS_HOST_MIN_VERSION = '3.5.7';
 
 export { trialStartIstYmd, reportTrialWindow as eventsTrialWindow, resolveReportAccess as resolveEventsAccess };

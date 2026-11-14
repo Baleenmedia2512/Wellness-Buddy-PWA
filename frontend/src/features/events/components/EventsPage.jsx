@@ -7,9 +7,10 @@ import {
   MapPin,
   Users,
 } from 'lucide-react';
+import { isFlagEnabled } from '../../../config/featureFlags';
 import { getUserId } from '../../../shared/services/getUserId.js';
 import { fetchProfile } from '../../user/services/profileService.js';
-import { pickEventProfilePrefs } from '../../user/domain/eventProfilePrefs.js';
+import { pickEventProfilePrefs, EVENT_LEVEL_OPTIONS, EVENT_TRANSLATION_OPTIONS, EVENT_YOUR_CITY_OPTIONS } from '../../user/domain/eventProfilePrefs.js';
 import { getCachedProfile } from '../../user/services/user.api.js';
 import { fetchWallet } from '../../wallet/services/walletApi.js';
 import { WalletButton } from '../../wallet/index.js';
@@ -18,14 +19,20 @@ import {
   EVENTS_UPDATED_EVENT,
   formatEventPlacesSummary,
   formatEventTimeRange,
+  eventSpeakerNames,
   getEventDatesList,
+  listMyEventRegistrations,
   listOpenEvents,
   notifyEventsUpdated,
 } from '../services/events.api.js';
 import MemberSearchPicker from './MemberSearchPicker.jsx';
 import MyBookingsPanel from './MyBookingsPanel.jsx';
 import RegistrationQrCard from './RegistrationQrCard.jsx';
+import { shareTicketQrImage, ticketShareCaption } from '../utils/shareTicketQr.js';
 import RegistrationSelect from './RegistrationSelect.jsx';
+import { cancelledBookingNotes } from '../domain/eventCancelNotice.rules.js';
+import { markEventCancellationsSeen, readSeenEventCancellationIds } from '../domain/eventCancelSeen.js';
+import { selfBookingAlreadyTaken } from '../domain/registrationBooking.rules.js';
 
 const CARD_STYLES = [
   {
@@ -140,6 +147,30 @@ function toAttendCitySelectOptions(values) {
   }));
 }
 
+/** Profile fields the registration form never asks — they must already be saved. */
+function profileGapMessages(source) {
+  const text = (value) => String(value ?? '').trim();
+  const checks = [
+    [source?.eventTranslation, 'Set Translation in Profile'],
+    [source?.clubNo, 'Set Working Physical Centre in Profile'],
+    [source?.zoomEmail, 'Set Email in Profile'],
+    [source?.name, 'Set Name in Profile'],
+    [source?.idNo, 'Set Community ID in Profile'],
+    [source?.eventLevel, 'Set Community Position in Profile'],
+    [source?.phoneNumber, 'Set Phone Number in Profile'],
+    [source?.eventYourCity, 'Set Your City in Profile'],
+  ];
+  return checks
+    .filter(([value]) => !text(value))
+    .map(([, message]) => message);
+}
+
+function ticketCharge(event) {
+  const price = Number(event?.ticketPrice);
+  if (!Number.isFinite(price) || price <= 0) return 0;
+  return Math.round(price * 100) / 100;
+}
+
 function formatTicketPrice(value) {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return 'Not specified';
@@ -244,13 +275,18 @@ function buildRegistrationDefaults(profileData, user, userId) {
   };
 }
 
-function EventsPage({ user }) {
+function EventsPage({ user, initialTab = 'events' }) {
   const [events, setEvents] = useState([]);
+  const [cancelNotes, setCancelNotes] = useState([]);
+  const [myRegistrations, setMyRegistrations] = useState([]);
+  const [bookingFor, setBookingFor] = useState('self');
+  const [registerChoice, setRegisterChoice] = useState(null);
+  const [seenCancelIds, setSeenCancelIds] = useState(() => readSeenEventCancellationIds());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [viewerUserId, setViewerUserId] = useState(null);
   const [profileDefaults, setProfileDefaults] = useState(() => buildRegistrationDefaults(null, user, null));
-  const [mainTab, setMainTab] = useState('events');
+  const [mainTab, setMainTab] = useState(initialTab === 'bookings' ? 'bookings' : 'events');
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [registrationStep, setRegistrationStep] = useState('form');
   const [name, setName] = useState('');
@@ -271,11 +307,17 @@ function EventsPage({ user }) {
   const [daicyTeamIncharge, setDaicyTeamIncharge] = useState(null);
   const [submittedName, setSubmittedName] = useState('');
   const [savedRegistration, setSavedRegistration] = useState(null);
+  const [qrImage, setQrImage] = useState('');
+  const [shareNote, setShareNote] = useState('');
   const [walletBalance, setWalletBalance] = useState(null);
   const [walletLoading, setWalletLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [savingRegistration, setSavingRegistration] = useState(false);
   const [formErrors, setFormErrors] = useState({});
+  const [profileGapMessage, setProfileGapMessage] = useState('');
+  const [walletBlock, setWalletBlock] = useState(null);
+  const [registerCheckId, setRegisterCheckId] = useState(null);
+  const [walletOpenSignal, setWalletOpenSignal] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -294,10 +336,16 @@ function EventsPage({ user }) {
         }
 
         // Show events as soon as open-list returns — do not wait on profile.
-        const result = await listOpenEvents(userId);
+        const [result, bookings] = await Promise.all([
+          listOpenEvents(userId),
+          listMyEventRegistrations(userId).catch(() => ({ registrations: [] })),
+        ]);
         if (!active) return;
         setViewerUserId(userId);
         setEvents(Array.isArray(result.events) ? result.events : []);
+        const registrations = Array.isArray(bookings?.registrations) ? bookings.registrations : [];
+        setMyRegistrations(registrations);
+        setCancelNotes(cancelledBookingNotes(registrations));
         setLoading(false);
 
         // Instant defaults from shared profile cache (Home/Header often already loaded it).
@@ -332,6 +380,20 @@ function EventsPage({ user }) {
     };
   }, [user]);
 
+  useEffect(() => {
+    if (initialTab === 'bookings') setMainTab('bookings');
+  }, [initialTab]);
+
+  useEffect(() => {
+    if (mainTab !== 'bookings' || cancelNotes.length === 0) return;
+    markEventCancellationsSeen(cancelNotes.map((note) => note.id));
+    setSeenCancelIds(readSeenEventCancellationIds());
+  }, [mainTab, cancelNotes]);
+
+  const unseenCancelNotes = cancelNotes.filter(
+    (note) => !seenCancelIds.includes(String(note.id)),
+  );
+
   const applyPersonalDefaults = (defaults = profileDefaults) => {
     setName(defaults?.name || '');
     setClubNo(defaults?.clubNo || '');
@@ -346,7 +408,7 @@ function EventsPage({ user }) {
 
   // Profile often arrives after Register is already open — fill empty autofill fields only.
   useEffect(() => {
-    if (!selectedEvent || registrationStep !== 'form') return;
+    if (!selectedEvent || registrationStep !== 'form' || bookingFor === 'friend') return;
     if (profileDefaults?.name) setName((prev) => prev || profileDefaults.name);
     if (profileDefaults?.zoomEmail) setZoomEmail((prev) => prev || profileDefaults.zoomEmail);
     if (profileDefaults?.phoneNumber) setPhoneNumber((prev) => prev || profileDefaults.phoneNumber);
@@ -362,11 +424,13 @@ function EventsPage({ user }) {
     if (profileDefaults?.eventLevel) {
       setLevel((prev) => prev || profileDefaults.eventLevel);
     }
-  }, [profileDefaults, selectedEvent, registrationStep]);
+  }, [profileDefaults, selectedEvent, registrationStep, bookingFor]);
 
   const resetRegistrationForm = (options = {}) => {
-    const { keepPersonalDefaults = false } = options;
-    if (keepPersonalDefaults) {
+    const { keepPersonalDefaults = false, defaults = null } = options;
+    if (defaults) {
+      applyPersonalDefaults(defaults);
+    } else if (keepPersonalDefaults) {
       applyPersonalDefaults();
     } else {
       setName('');
@@ -387,11 +451,15 @@ function EventsPage({ user }) {
     setDaicyTeamIncharge(null);
     setSubmittedName('');
     setSavedRegistration(null);
+    setQrImage('');
+    setShareNote('');
     setRegistrationStep('form');
     setWalletBalance(null);
     setSubmitError('');
     setSavingRegistration(false);
     setFormErrors({});
+    setProfileGapMessage('');
+    setWalletBlock(null);
   };
 
   const clearFieldError = (field) => {
@@ -399,64 +467,160 @@ function EventsPage({ user }) {
   };
 
   const chargeAmount = (() => {
-    const price = Number(selectedEvent?.ticketPrice);
+    const price = ticketCharge(selectedEvent);
     const count = Number(participantCount) || 1;
-    if (!Number.isFinite(price) || price < 0) return 0;
     return Math.round(price * count * 100) / 100;
   })();
 
-  const openRegistration = (event) => {
-    if (event?.soldOut) return;
-    setSelectedEvent(event);
-    resetRegistrationForm({ keepPersonalDefaults: true });
+  const closeRegisterDialog = () => {
+    setProfileGapMessage('');
+    setWalletBlock(null);
+  };
+
+  const openWalletToRecharge = () => {
+    closeRegisterDialog();
+    setWalletOpenSignal((current) => current + 1);
+  };
+
+  const openRegisterChoice = (event) => {
+    if (event?.soldOut || registerCheckId != null) return;
+    if (!viewerUserId) {
+      setWalletBlock(null);
+      setProfileGapMessage('Could not identify your account. Try again.');
+      return;
+    }
+    const alreadySelf = myRegistrations.some((row) => (
+      Number(row.eventId) === Number(event.id) && selfBookingAlreadyTaken(row)
+    ));
+    setRegisterChoice({ event, alreadySelf });
+  };
+
+  const beginRegistration = async (event, mode) => {
+    if (event?.soldOut || registerCheckId != null) return;
+    if (!viewerUserId) {
+      setWalletBlock(null);
+      setProfileGapMessage('Could not identify your account. Try again.');
+      return;
+    }
+
+    const forFriend = mode === 'friend';
+    setRegisterChoice(null);
+    setBookingFor(forFriend ? 'friend' : 'self');
+    setRegisterCheckId(event.id);
+    setProfileGapMessage('');
+    setWalletBlock(null);
+    try {
+      const defaults = forFriend ? null : await loadFreshProfile();
+      if (!forFriend && !defaults) {
+        setProfileGapMessage('Could not load your profile. Try again.');
+        return;
+      }
+
+      const gaps = forFriend ? [] : profileGapMessages(defaults);
+      let nextWalletBlock = null;
+      const needed = ticketCharge(event);
+      if (needed > 0) {
+        try {
+          const wallet = await fetchWallet(viewerUserId);
+          const balance = Number(wallet?.balance);
+          if (!Number.isFinite(balance) || balance + 1e-9 < needed) {
+            nextWalletBlock = {
+              needed,
+              balance: Number.isFinite(balance) ? balance : 0,
+              unavailable: false,
+            };
+          }
+        } catch {
+          nextWalletBlock = { needed, balance: 0, unavailable: true };
+        }
+      }
+
+      if (gaps.length > 0 || nextWalletBlock) {
+        setProfileGapMessage(gaps.join(' · '));
+        setWalletBlock(nextWalletBlock);
+        return;
+      }
+
+      setSelectedEvent(event);
+      if (forFriend) resetRegistrationForm();
+      else resetRegistrationForm({ defaults });
+    } finally {
+      setRegisterCheckId(null);
+    }
   };
 
   const closeRegistration = () => {
     setSelectedEvent(null);
+    setBookingFor('self');
     resetRegistrationForm();
   };
 
-  const buildValidatedPayload = () => {
-    const trimmedName = name.trim();
-    const trimmedClubNo = clubNo.trim();
-    const trimmedZoomEmail = zoomEmail.trim();
-    const trimmedIdNo = idNo.trim();
-    const trimmedLevel = level.trim();
-    const trimmedPhone = phoneNumber.trim();
+  const buildValidatedPayload = (fresh = null) => {
+    const profileText = (current, fromFresh) => (
+      fresh ? String(fromFresh || '').trim() : String(current || '').trim()
+    );
+    const trimmedName = profileText(name, fresh?.name);
+    const trimmedClubNo = profileText(clubNo, fresh?.clubNo);
+    const trimmedZoomEmail = profileText(zoomEmail, fresh?.zoomEmail);
+    const trimmedIdNo = profileText(idNo, fresh?.idNo);
+    const trimmedLevel = profileText(level, fresh?.eventLevel);
+    const trimmedPhone = profileText(phoneNumber, fresh?.phoneNumber);
+    const translationValue = profileText(translation, fresh?.eventTranslation);
+    const yourCityValue = profileText(yourCity, fresh?.eventYourCity);
     const trimmedTicketNo = ticketNo.trim();
     const place = String(selectedEvent?.place || '').trim();
     const nextErrors = {};
 
-    // Autofill fields are hidden in UI — missing values mean Profile needs updating.
-    if (!translation) nextErrors.translation = 'Set Translation in Profile';
-    if (!attendCity) nextErrors.attendCity = 'This is a required question';
+    const forFriend = bookingFor === 'friend';
+    const required = 'This is a required question';
+    if (!translationValue) nextErrors.translation = forFriend ? required : 'Set Translation in Profile';
+    if (!attendCity) nextErrors.attendCity = required;
     // Online attendance has no venue meal — Food Type is hidden and not required.
     if (!isAttendOnline(attendCity) && !foodType) {
-      nextErrors.foodType = 'This is a required question';
+      nextErrors.foodType = required;
     }
-    if (!uplinePresidentTeam?.name) nextErrors.uplinePresidentTeam = 'This is a required question';
-    if (!uplineMillTeam?.name) nextErrors.uplineMillTeam = 'This is a required question';
-    if (!teamIncharge?.name) nextErrors.teamIncharge = 'This is a required question';
+    if (!uplinePresidentTeam?.name) nextErrors.uplinePresidentTeam = required;
+    if (!uplineMillTeam?.name) nextErrors.uplineMillTeam = required;
+    if (!teamIncharge?.name) nextErrors.teamIncharge = required;
     if (teamIncharge?.name && !daicyTeamIncharge?.name) {
-      nextErrors.daicyTeamIncharge = 'This is a required question';
+      nextErrors.daicyTeamIncharge = required;
     }
-    if (!trimmedClubNo) nextErrors.clubNo = 'Set Working Physical Centre in Profile';
-    if (!trimmedZoomEmail) nextErrors.zoomEmail = 'Set Email in Profile';
-    if (!trimmedName) nextErrors.name = 'Set Name in Profile';
-    if (!trimmedIdNo) nextErrors.idNo = 'Set Community ID in Profile';
-    if (!trimmedLevel) nextErrors.level = 'Set Community Position in Profile';
-    if (!trimmedPhone) nextErrors.phoneNumber = 'Set Phone Number in Profile';
+    if (!trimmedClubNo) nextErrors.clubNo = forFriend ? required : 'Set Working Physical Centre in Profile';
+    if (!trimmedZoomEmail) nextErrors.zoomEmail = forFriend ? required : 'Set Email in Profile';
+    else if (!trimmedZoomEmail.includes('@')) nextErrors.zoomEmail = 'Enter an email address';
+    if (!trimmedName) nextErrors.name = forFriend ? required : 'Set Name in Profile';
+    if (!trimmedIdNo) nextErrors.idNo = forFriend ? required : 'Set Community ID in Profile';
+    if (!trimmedLevel) nextErrors.level = forFriend ? required : 'Set Community Position in Profile';
+    if (!trimmedPhone) nextErrors.phoneNumber = forFriend ? required : 'Set Phone Number in Profile';
     if (!participantCount) nextErrors.participantCount = 'This is a required question';
     if (!trimmedTicketNo) nextErrors.ticketNo = 'This is a required question';
-    if (!yourCity) nextErrors.yourCity = 'Set Your City in Profile';
+    if (!yourCityValue) nextErrors.yourCity = 'Set Your City in Profile';
     if (attendCity && place && attendCity !== place && !isAttendOnline(attendCity)) {
       nextErrors.attendCity = 'Choose the event city or Online';
     }
     if (!viewerUserId || !selectedEvent?.id) {
-      nextErrors.name = 'Could not identify your account or event.';
+      nextErrors.name = nextErrors.name || 'Could not identify your account or event.';
     }
 
-    if (Object.keys(nextErrors).length > 0) {
+    const profileGapKeys = [
+      'translation',
+      'clubNo',
+      'zoomEmail',
+      'name',
+      'idNo',
+      'level',
+      'phoneNumber',
+      'yourCity',
+    ];
+    const profileGaps = profileGapKeys
+      .map((key) => nextErrors[key])
+      .filter((message) => message && message.startsWith('Set '));
+    profileGapKeys.forEach((key) => {
+      if (String(nextErrors[key] || '').startsWith('Set ')) delete nextErrors[key];
+    });
+    setProfileGapMessage(profileGaps.length > 0 ? profileGaps.join(' · ') : '');
+
+    if (profileGaps.length > 0 || Object.keys(nextErrors).length > 0) {
       setFormErrors(nextErrors);
       return null;
     }
@@ -465,7 +629,7 @@ function EventsPage({ user }) {
     return {
       userId: viewerUserId,
       eventId: selectedEvent.id,
-      translation,
+      translation: translationValue,
       attendCity,
       foodType: isAttendOnline(attendCity) ? '' : foodType,
       uplinePresidentTeam,
@@ -478,17 +642,39 @@ function EventsPage({ user }) {
       phoneNumber: trimmedPhone,
       participantCount: Number(participantCount),
       ticketNo: trimmedTicketNo,
-      yourCity,
+      yourCity: yourCityValue,
       teamIncharge,
       daicyTeamIncharge,
       confirmPayment: true,
+      bookingFor: forFriend ? 'friend' : 'self',
     };
+  };
+
+  const loadFreshProfile = async () => {
+    if (!viewerUserId) return null;
+    try {
+      const profileResult = await fetchProfile({ userId: viewerUserId, cacheBust: true });
+      const defaults = buildRegistrationDefaults(profileResult?.data, user, viewerUserId);
+      setProfileDefaults(defaults);
+      setName(defaults?.name || '');
+      setClubNo(defaults?.clubNo || '');
+      setZoomEmail(defaults?.zoomEmail || '');
+      setIdNo(defaults?.idNo || '');
+      setPhoneNumber(defaults?.phoneNumber || '');
+      setTranslation(defaults?.eventTranslation || '');
+      setYourCity(defaults?.eventYourCity || '');
+      setLevel(defaults?.eventLevel || '');
+      return defaults;
+    } catch {
+      return null;
+    }
   };
 
   const goToPaymentStep = async (formEvent) => {
     formEvent.preventDefault();
     if (savingRegistration) return;
-    const payload = buildValidatedPayload();
+    const fresh = bookingFor === 'friend' ? null : await loadFreshProfile();
+    const payload = buildValidatedPayload(fresh);
     if (!payload) return;
 
     setSubmitError('');
@@ -519,6 +705,13 @@ function EventsPage({ user }) {
       const data = await createEventRegistration(payload);
       setSubmittedName(payload.name);
       setSavedRegistration(data.registration || null);
+      setMyRegistrations((prev) => [...prev, {
+        id: data.registration?.id,
+        eventId: selectedEvent.id,
+        paymentStatus: 'paid',
+        entryCode: data.registration?.entryCode,
+        bookingFor: payload.bookingFor,
+      }]);
       if (data.balanceAfter != null) setWalletBalance(Number(data.balanceAfter));
       setRegistrationStep('success');
       notifyEventsUpdated();
@@ -550,7 +743,9 @@ function EventsPage({ user }) {
                 {STATUS_LABELS[selectedEvent.status] || selectedEvent.status}
               </span>
               <h1 id="event-registration-title" className="mt-3 text-xl font-bold text-white">
-                Event registration: {selectedEvent.eventName}
+                {bookingFor === 'friend'
+                  ? `Book for a friend: ${selectedEvent.eventName}`
+                  : `Event registration: ${selectedEvent.eventName}`}
               </h1>
               <p className="mt-2 text-xs font-medium text-rose-100">* Indicates required question</p>
 
@@ -565,7 +760,42 @@ function EventsPage({ user }) {
                     qrPayload={savedRegistration?.qrPayload}
                     entryCode={savedRegistration?.entryCode}
                     eventName={selectedEvent.eventName}
+                    onImageReady={setQrImage}
                   />
+                  <p className="text-sm text-gray-700">
+                    Send the QR picture on WhatsApp so they can show it at the entrance.
+                  </p>
+                  {shareNote ? (
+                    <p className="text-sm text-amber-900" role="status">{shareNote}</p>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={!qrImage}
+                    onClick={async () => {
+                      const code = savedRegistration?.entryCode || 'ticket';
+                      setShareNote('');
+                      const result = await shareTicketQrImage({
+                        dataUrl: qrImage,
+                        title: `${selectedEvent.eventName} ticket`,
+                        text: ticketShareCaption({
+                          name: submittedName,
+                          eventName: selectedEvent.eventName,
+                          entryCode: code,
+                        }),
+                        fileName: `event-ticket-${code}.png`,
+                      });
+                      if (result.saved) {
+                        setShareNote('The QR picture is saved. Open WhatsApp and attach that picture.');
+                      } else if (result.ok) {
+                        setShareNote('WhatsApp has the QR picture. Choose the chat and send. The ticket words are copied so you can paste them.');
+                      } else {
+                        setShareNote('The QR picture could not be attached. Try again.');
+                      }
+                    }}
+                    className="w-full rounded-lg bg-emerald-800 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                  >
+                    {qrImage ? 'Send QR on WhatsApp' : 'Preparing QR…'}
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -624,32 +854,95 @@ function EventsPage({ user }) {
                 </div>
               ) : (
                 <form onSubmit={goToPaymentStep} className="mt-5 min-w-0 space-y-3" noValidate>
-                  {(
-                    formErrors.translation
-                    || formErrors.foodType
-                    || formErrors.clubNo
-                    || formErrors.zoomEmail
-                    || formErrors.name
-                    || formErrors.idNo
-                    || formErrors.level
-                    || formErrors.phoneNumber
-                    || formErrors.yourCity
-                  ) ? (
-                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+                  {bookingFor === 'friend' ? (
+                    <div className="space-y-3">
+                      <p className="text-sm font-semibold text-white">
+                        Fill the friend’s details. Their entry QR is created from this.
+                      </p>
                       {[
-                        formErrors.translation,
-                        formErrors.foodType,
-                        formErrors.clubNo,
-                        formErrors.zoomEmail,
-                        formErrors.name,
-                        formErrors.idNo,
-                        formErrors.level,
-                        formErrors.phoneNumber,
-                        formErrors.yourCity,
-                      ].filter(Boolean).join(' · ')}
+                        ['event-registration-friend-name', 'Friend’s name', name, setName, formErrors.name],
+                        ['event-registration-friend-phone', 'Phone number', phoneNumber, setPhoneNumber, formErrors.phoneNumber],
+                        ['event-registration-friend-email', 'Email', zoomEmail, setZoomEmail, formErrors.zoomEmail],
+                        ['event-registration-friend-id', 'Community ID', idNo, setIdNo, formErrors.idNo],
+                        ['event-registration-friend-club', 'Club / centre', clubNo, setClubNo, formErrors.clubNo],
+                      ].map(([id, label, value, setter, error]) => (
+                        <div key={id} className={`rounded-xl border bg-white p-4 ${error ? 'border-rose-400' : 'border-white/80'}`}>
+                          <label htmlFor={id} className="block text-sm font-semibold text-gray-900">
+                            {label} <span className="text-rose-600">*</span>
+                          </label>
+                          <input
+                            id={id}
+                            type="text"
+                            value={value}
+                            onChange={(inputEvent) => {
+                              setter(inputEvent.target.value);
+                              clearFieldError(id.includes('name') ? 'name'
+                                : id.includes('phone') ? 'phoneNumber'
+                                : id.includes('email') ? 'zoomEmail'
+                                : id.includes('id') ? 'idNo'
+                                : 'clubNo');
+                            }}
+                            className={registrationInputClass(Boolean(error))}
+                          />
+                          {error ? <p className="mt-2 text-sm text-rose-600" role="alert">{error}</p> : null}
+                        </div>
+                      ))}
+                      <div className={`rounded-xl border bg-white p-4 ${formErrors.level ? 'border-rose-400' : 'border-white/80'}`}>
+                        <label htmlFor="event-registration-friend-level-trigger" className="block text-sm font-semibold text-gray-900">
+                          Community position <span className="text-rose-600">*</span>
+                        </label>
+                        <RegistrationSelect
+                          id="event-registration-friend-level"
+                          name="level"
+                          required
+                          value={level}
+                          options={EVENT_LEVEL_OPTIONS.map((value) => ({ value, label: value }))}
+                          hasError={Boolean(formErrors.level)}
+                          onChange={(next) => {
+                            setLevel(next);
+                            clearFieldError('level');
+                          }}
+                        />
+                        {formErrors.level ? <p className="mt-2 text-sm text-rose-600" role="alert">{formErrors.level}</p> : null}
+                      </div>
+                      <div className={`rounded-xl border bg-white p-4 ${formErrors.translation ? 'border-rose-400' : 'border-white/80'}`}>
+                        <label htmlFor="event-registration-friend-translation-trigger" className="block text-sm font-semibold text-gray-900">
+                          Translation <span className="text-rose-600">*</span>
+                        </label>
+                        <RegistrationSelect
+                          id="event-registration-friend-translation"
+                          name="translation"
+                          required
+                          value={translation}
+                          options={EVENT_TRANSLATION_OPTIONS.map((value) => ({ value, label: value }))}
+                          hasError={Boolean(formErrors.translation)}
+                          onChange={(next) => {
+                            setTranslation(next);
+                            clearFieldError('translation');
+                          }}
+                        />
+                        {formErrors.translation ? <p className="mt-2 text-sm text-rose-600" role="alert">{formErrors.translation}</p> : null}
+                      </div>
+                      <div className={`rounded-xl border bg-white p-4 ${formErrors.yourCity ? 'border-rose-400' : 'border-white/80'}`}>
+                        <label htmlFor="event-registration-friend-city-trigger" className="block text-sm font-semibold text-gray-900">
+                          Your city <span className="text-rose-600">*</span>
+                        </label>
+                        <RegistrationSelect
+                          id="event-registration-friend-city"
+                          name="yourCity"
+                          required
+                          value={yourCity}
+                          options={EVENT_YOUR_CITY_OPTIONS.map((value) => ({ value, label: value }))}
+                          hasError={Boolean(formErrors.yourCity)}
+                          onChange={(next) => {
+                            setYourCity(next);
+                            clearFieldError('yourCity');
+                          }}
+                        />
+                        {formErrors.yourCity ? <p className="mt-2 text-sm text-rose-600" role="alert">{formErrors.yourCity}</p> : null}
+                      </div>
                     </div>
                   ) : null}
-
                   <div
                     className={`rounded-xl border bg-white p-4 ${
                       formErrors.attendCity ? 'border-rose-400' : 'border-white/80'
@@ -747,7 +1040,7 @@ function EventsPage({ user }) {
 
                   <div className="rounded-xl border border-white/80 bg-white p-4">
                     <label htmlFor="event-registration-ticket-no" className="block text-sm font-semibold text-gray-900">
-                      Your Ticket Number <span className="text-rose-600">*</span>
+                      {bookingFor === 'friend' ? "Friend's ticket number" : 'Your Ticket Number'} <span className="text-rose-600">*</span>
                     </label>
                     <input
                       id="event-registration-ticket-no"
@@ -851,7 +1144,11 @@ function EventsPage({ user }) {
                 </h1>
                 {/* Same wallet as Profile — compact, right side only. */}
                 <div className="shrink-0">
-                  <WalletButton userId={viewerUserId} variant="events" />
+                  <WalletButton
+                    userId={viewerUserId}
+                    variant="events"
+                    openSignal={walletOpenSignal}
+                  />
                 </div>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl border border-gray-200 bg-white p-1 text-xs font-semibold">
@@ -863,15 +1160,48 @@ function EventsPage({ user }) {
                     key={tab.id}
                     type="button"
                     onClick={() => setMainTab(tab.id)}
-                    className={`rounded-lg px-2 py-2 ${
+                    className={`relative rounded-lg px-2 py-2 ${
                       mainTab === tab.id ? 'bg-emerald-800 text-white' : 'text-gray-700 hover:bg-gray-50'
                     }`}
                   >
                     {tab.label}
+                    {tab.id === 'bookings' && unseenCancelNotes.length > 0 ? (
+                      <span
+                        className={`ml-1 inline-flex min-w-[1.1rem] items-center justify-center rounded-full px-1 text-[10px] font-bold ${
+                          mainTab === tab.id ? 'bg-white text-rose-700' : 'bg-rose-600 text-white'
+                        }`}
+                      >
+                        {unseenCancelNotes.length}
+                      </span>
+                    ) : null}
                   </button>
                 ))}
               </div>
             </header>
+
+            {unseenCancelNotes.length > 0 && mainTab === 'events' ? (
+              <div
+                role="status"
+                className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-950"
+              >
+                <p className="font-bold">Event cancelled</p>
+                <ul className="mt-1 space-y-1">
+                  {unseenCancelNotes.map((note) => (
+                    <li key={note.id}>
+                      {note.name} is cancelled.
+                      {note.refunded ? ' Your ticket credit is back in your wallet.' : ''}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  onClick={() => setMainTab('bookings')}
+                  className="mt-2 text-sm font-semibold text-rose-800 underline"
+                >
+                  See My Bookings
+                </button>
+              </div>
+            ) : null}
 
             {mainTab === 'bookings' ? (
               <MyBookingsPanel user={user} />
@@ -940,8 +1270,8 @@ function EventsPage({ user }) {
                                   : ''}
                               </span>
                             )}
-                            {' · Host: '}
-                            {event.hostName} · {formatTicketPrice(event.ticketPrice)} ·{' '}
+                            {' · Speaker: '}
+                            {eventSpeakerNames(event).join(', ') || event.hostName} · {formatTicketPrice(event.ticketPrice)} ·{' '}
                             {event.seatCount} seats
                           </p>
                           {designatedNames.length > 0 && (
@@ -965,8 +1295,8 @@ function EventsPage({ user }) {
                         ) : (
                           <button
                             type="button"
-                            onClick={() => openRegistration(event)}
-                            disabled={registerDisabled}
+                            onClick={() => openRegisterChoice(event)}
+                            disabled={registerDisabled || registerCheckId != null}
                             className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-[11px] font-bold shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${style.button}`}
                           >
                             Register
@@ -982,6 +1312,107 @@ function EventsPage({ user }) {
           </>
         )}
       </div>
+      {registerChoice ? (
+        <div
+          className="fixed inset-0 z-[10080] flex items-center justify-center bg-black/50 px-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="event-register-choice-title"
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+            <h2 id="event-register-choice-title" className="text-lg font-bold text-gray-900">
+              Who is this ticket for?
+            </h2>
+            {registerChoice.alreadySelf ? (
+              <p className="mt-2 text-sm text-rose-800" role="alert">
+                You are already registered for this event.
+              </p>
+            ) : (
+              <p className="mt-2 text-sm text-gray-700">
+                Register for yourself, or book a ticket for a friend and share their QR.
+              </p>
+            )}
+            <div className="mt-5 flex flex-col gap-2">
+              <button
+                type="button"
+                disabled={registerChoice.alreadySelf || registerCheckId != null}
+                onClick={() => beginRegistration(registerChoice.event, 'self')}
+                className="w-full rounded-xl bg-emerald-700 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Register for myself
+              </button>
+              <button
+                type="button"
+                disabled={registerCheckId != null}
+                onClick={() => beginRegistration(registerChoice.event, 'friend')}
+                className="w-full rounded-xl border border-emerald-700 py-3 text-sm font-bold text-emerald-900"
+              >
+                Book for a friend
+              </button>
+              <button
+                type="button"
+                onClick={() => setRegisterChoice(null)}
+                className="w-full rounded-xl py-2 text-sm font-semibold text-gray-600"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {profileGapMessage || walletBlock ? (
+        <div
+          className="fixed inset-0 z-[10080] flex items-center justify-center bg-black/50 px-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="event-profile-gap-title"
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+            <h2 id="event-profile-gap-title" className="text-lg font-bold text-gray-900">
+              {profileGapMessage ? 'Please fill to register' : 'Recharge to register'}
+            </h2>
+            {profileGapMessage ? (
+              <>
+                <p className="mt-2 text-sm text-gray-700">{profileGapMessage}</p>
+                {profileGapMessage.includes('Set ') ? (
+                  <p className="mt-2 text-sm text-gray-500">
+                    Save these in Profile, then come back and register.
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+            {walletBlock ? (
+              <p className="mt-2 text-sm text-gray-700">
+                {walletBlock.unavailable
+                  ? 'Could not check your wallet. Try again, then register.'
+                  : `This ticket is ${formatTicketPrice(walletBlock.needed)}. Your wallet has ${formatTicketPrice(walletBlock.balance)}. Recharge, then tap Register.`}
+              </p>
+            ) : null}
+            <div className="mt-5 flex flex-col gap-2">
+              {walletBlock && !walletBlock.unavailable ? (
+                <button
+                  type="button"
+                  onClick={openWalletToRecharge}
+                  className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white"
+                >
+                  Recharge
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={closeRegisterDialog}
+                className={`w-full rounded-xl py-3 text-sm font-bold ${
+                  walletBlock && !walletBlock.unavailable
+                    ? 'border border-gray-300 text-gray-800'
+                    : 'bg-emerald-600 text-white'
+                }`}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

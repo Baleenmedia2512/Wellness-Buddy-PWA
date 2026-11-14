@@ -46,6 +46,12 @@ export async function verifyWalletOtp({ userId, otp }) {
   return readJson(response);
 }
 
+export async function resendWalletOtp({ userId, amount, approverUserId }) {
+  // Same cash request again: the live wallet API emails a new code to that person.
+  // A separate resend route is not on the test server yet, and the browser blocks it.
+  return requestWalletCash({ userId, amount, approverUserId });
+}
+
 export async function cancelWalletRequest({ userId }) {
   const response = await apiFetch('/api/wallet/cancel-request', {
     method: 'POST',

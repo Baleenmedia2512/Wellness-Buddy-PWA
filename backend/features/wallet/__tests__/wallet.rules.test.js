@@ -15,6 +15,8 @@ import {
   wellnessValleyEmail,
   walletOtpExpiresAt,
   walletOtpLockedBody,
+  walletOtpResendWaitMs,
+  WALLET_OTP_RESEND_COOLDOWN_MS,
   WALLET_OTP_LOCKED_CODE,
   WALLET_OTP_MAX_ATTEMPTS,
   WALLET_OTP_MINUTES,
@@ -78,6 +80,15 @@ describe('wallet OTP', () => {
     assert.equal(canAttemptWalletOtp(0), true);
     assert.equal(canAttemptWalletOtp(WALLET_OTP_MAX_ATTEMPTS - 1), true);
     assert.equal(canAttemptWalletOtp(WALLET_OTP_MAX_ATTEMPTS), false);
+  });
+
+  it('waits 30 seconds before another OTP email', () => {
+    const sent = new Date('2026-11-14T06:00:00.000Z');
+    const justSent = new Date(sent.getTime() + 5_000);
+    const ready = new Date(sent.getTime() + WALLET_OTP_RESEND_COOLDOWN_MS);
+    assert.equal(walletOtpResendWaitMs(null, sent), WALLET_OTP_RESEND_COOLDOWN_MS);
+    assert.equal(walletOtpResendWaitMs(sent, justSent), 25_000);
+    assert.equal(walletOtpResendWaitMs(sent, ready), 0);
   });
 
   it('returns a locked body after five failed attempts', () => {

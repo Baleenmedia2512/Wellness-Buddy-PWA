@@ -150,6 +150,18 @@ export async function ensureRegistrationPaymentColumns() {
            ADD COLUMN FoodCheckedInByUserId INT NULL AFTER FoodCheckedInAt`,
         );
       }
+      if (!(await columnExists(prisma, 'CancelNotifiedAt'))) {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE event_registrations_table
+           ADD COLUMN CancelNotifiedAt DATETIME NULL AFTER FoodCheckedInByUserId`,
+        );
+      }
+      if (!(await columnExists(prisma, 'BookingFor'))) {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE event_registrations_table
+           ADD COLUMN BookingFor VARCHAR(20) NOT NULL DEFAULT 'self' AFTER CancelNotifiedAt`,
+        );
+      }
       if (!(await indexExists(prisma, 'uq_event_reg_event_entry'))) {
         try {
           await prisma.$executeRawUnsafe(
@@ -225,6 +237,66 @@ export async function findRegistrationByEventAndUser(eventId, userId) {
   return toRegistration(row);
 }
 
+async function loadBookingForMap(prisma, ids) {
+  const map = new Map();
+  const clean = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
+  if (clean.length === 0) return map;
+  if (!(await columnExists(prisma, 'BookingFor'))) return map;
+  const placeholders = clean.map(() => '?').join(', ');
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT Id, BookingFor
+     FROM event_registrations_table
+     WHERE Id IN (${placeholders})`,
+    ...clean,
+  );
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const kind = String(row.BookingFor || '').trim().toLowerCase();
+    map.set(Number(row.Id), kind === 'friend' ? 'friend' : 'self');
+  }
+  return map;
+}
+
+function attachBookingFor(registrations, map) {
+  return registrations.map((row) => ({
+    ...row,
+    bookingFor: map.get(Number(row.id)) || 'self',
+  }));
+}
+
+/** Paid or saved self ticket for this member. Friend rows are ignored. */
+export async function hasSelfRegistration(eventId, userId) {
+  await ensureRegistrationPaymentColumns();
+  const prisma = getPrisma();
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT Id, PaymentStatus, EntryCode
+     FROM event_registrations_table
+     WHERE EventId = ? AND RegistrantUserId = ?
+       AND (BookingFor IS NULL OR BookingFor = '' OR BookingFor = 'self')
+     ORDER BY Id DESC
+     LIMIT 1`,
+    Number(eventId),
+    Number(userId),
+  );
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) return null;
+  return {
+    id: Number(row.Id),
+    paymentStatus: row.PaymentStatus || 'saved',
+    entryCode: row.EntryCode || null,
+    bookingFor: 'self',
+  };
+}
+
+export async function markRegistrationBookingFor(id, bookingFor) {
+  if (String(bookingFor || '').toLowerCase() !== 'friend') return;
+  await ensureRegistrationPaymentColumns();
+  const prisma = getPrisma();
+  await prisma.$executeRawUnsafe(
+    `UPDATE event_registrations_table SET BookingFor = 'friend' WHERE Id = ?`,
+    Number(id),
+  );
+}
+
 export async function countSeatsTaken(eventId) {
   const map = await countSeatsTakenByEventIds([eventId]);
   return map.get(Number(eventId)) || 0;
@@ -287,6 +359,98 @@ export async function insertPaidEventRegistration(input, { entryCode, amountChar
   return toRegistration(row);
 }
 
+async function loadCancelNotifiedMap(prisma, ids) {
+  const map = new Map();
+  const clean = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
+  if (clean.length === 0) return map;
+  if (!(await columnExists(prisma, 'CancelNotifiedAt'))) return map;
+  const placeholders = clean.map(() => '?').join(', ');
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT Id, CancelNotifiedAt
+     FROM event_registrations_table
+     WHERE Id IN (${placeholders})`,
+    ...clean,
+  );
+  for (const row of Array.isArray(rows) ? rows : []) {
+    map.set(Number(row.Id), row.CancelNotifiedAt || null);
+  }
+  return map;
+}
+
+export async function listRegistrationsForEvent(eventId) {
+  await ensureRegistrationPaymentColumns();
+  const prisma = getPrisma();
+  const rows = await prisma.event_registrations_table.findMany({
+    where: { EventId: Number(eventId) },
+    orderBy: { Id: 'asc' },
+  });
+  const registrations = rows.map(toRegistration);
+  const ids = registrations.map((row) => row.id);
+  const notified = await loadCancelNotifiedMap(prisma, ids);
+  const food = await loadFoodCheckInMap(prisma, ids);
+  return registrations.map((row) => ({
+    ...row,
+    ...(food.get(Number(row.id)) || { foodCheckedInAt: null, foodCheckedInByUserId: null }),
+    cancelNotifiedAt: notified.get(Number(row.id)) || null,
+  }));
+}
+
+async function loadFoodCheckInMap(prisma, ids) {
+  const map = new Map();
+  const clean = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
+  if (clean.length === 0) return map;
+  if (!(await columnExists(prisma, 'FoodCheckedInAt'))) return map;
+  const placeholders = clean.map(() => '?').join(', ');
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT Id, FoodCheckedInAt, FoodCheckedInByUserId
+     FROM event_registrations_table
+     WHERE Id IN (${placeholders})`,
+    ...clean,
+  );
+  for (const row of Array.isArray(rows) ? rows : []) {
+    map.set(Number(row.Id), {
+      foodCheckedInAt: row.FoodCheckedInAt || null,
+      foodCheckedInByUserId: row.FoodCheckedInByUserId != null
+        ? Number(row.FoodCheckedInByUserId)
+        : null,
+    });
+  }
+  return map;
+}
+
+export async function markRegistrationRefunded(id) {
+  await ensureRegistrationPaymentColumns();
+  const prisma = getPrisma();
+  await prisma.event_registrations_table.updateMany({
+    where: { Id: Number(id), PaymentStatus: 'paid' },
+    data: { PaymentStatus: 'refunded' },
+  });
+}
+
+export async function markRegistrationCancelNotified(id) {
+  await ensureRegistrationPaymentColumns();
+  const prisma = getPrisma();
+  await prisma.$executeRawUnsafe(
+    `UPDATE event_registrations_table
+     SET CancelNotifiedAt = UTC_TIMESTAMP()
+     WHERE Id = ? AND CancelNotifiedAt IS NULL`,
+    Number(id),
+  );
+}
+
+/** Profile phone for a cancellation WhatsApp. Never log the value. */
+export async function findRegistrantPhone(userId) {
+  const uid = Number(userId);
+  if (!Number.isInteger(uid) || uid <= 0) return null;
+  const prisma = getPrisma();
+  const row = await prisma.team_table.findFirst({
+    where: { UserId: uid },
+    select: { PhoneNumber: true },
+  });
+  const phone = String(row?.PhoneNumber || '').trim();
+  return phone || null;
+}
+
 export async function listRegistrationsByUser(userId) {
   await ensureRegistrationPaymentColumns();
   const prisma = getPrisma();
@@ -294,7 +458,9 @@ export async function listRegistrationsByUser(userId) {
     where: { RegistrantUserId: Number(userId) },
     orderBy: { CreatedAt: 'desc' },
   });
-  return rows.map(toRegistration);
+  const registrations = rows.map(toRegistration);
+  const kinds = await loadBookingForMap(prisma, registrations.map((row) => row.id));
+  return attachBookingFor(registrations, kinds);
 }
 
 export async function findRegistrationByIdForUser(id, userId) {

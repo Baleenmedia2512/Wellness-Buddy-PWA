@@ -698,10 +698,16 @@ export async function getEventProfilePreferences(userId) {
     );
     const row = rows?.[0];
     if (!row) return empty;
+    const cell = (name) => {
+      if (row[name] != null && String(row[name]).trim() !== '') return String(row[name]).trim();
+      const key = Object.keys(row).find((item) => item.toLowerCase() === name.toLowerCase());
+      if (!key || row[key] == null || String(row[key]).trim() === '') return null;
+      return String(row[key]).trim();
+    };
     return {
-      eventTranslation: row.EventTranslation ? String(row.EventTranslation).trim() : null,
-      eventYourCity: row.EventYourCity ? String(row.EventYourCity).trim() : null,
-      eventLevel: row.EventLevel ? String(row.EventLevel).trim() : null,
+      eventTranslation: cell('EventTranslation'),
+      eventYourCity: cell('EventYourCity'),
+      eventLevel: cell('EventLevel'),
     };
   } catch (err) {
     const msg = String(err?.message || err || '');

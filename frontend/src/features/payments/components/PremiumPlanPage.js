@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, Check, Crown } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import { requestCommunityPositionFill } from '../../user/domain/communityPositionFocus';
 import {
   PREMIUM_PLAN_NAME,
   formatPremiumPlanAmount,
@@ -15,7 +16,7 @@ const PLAN_POINTS = [
 
 /**
  * Plan page shown after Go Premium. Pay Now opens existing Cashfree checkout.
- * Price comes from the server quote (Community Position + GST).
+ * The payable total comes from the server. The level used to calculate it stays off this screen.
  */
 export default function PremiumPlanPage({
   busy,
@@ -34,10 +35,8 @@ export default function PremiumPlanPage({
   }, [busy, onClose]);
 
   const amountLabel = quote ? formatPremiumPlanAmount(quote.amount) : '';
-  const baseLabel = quote ? formatPremiumPlanAmount(quote.baseAmount) : '';
-  const gstLabel = quote ? formatPremiumPlanAmount(quote.gstAmount) : '';
-  const gstPct = quote ? Math.round(Number(quote.gstRate) * 100) : 18;
   const canPay = Boolean(quote) && !quoteLoading && !busy;
+  const needsPosition = !quoteLoading && !quote;
 
   const page = (
     <div
@@ -61,7 +60,7 @@ export default function PremiumPlanPage({
           </h1>
         </div>
         <p className="mt-3 ml-1 text-green-50 text-sm">
-          30-day plan. Price is based on your Community Position, plus GST.
+          30-day Premium plan.
         </p>
       </div>
 
@@ -78,20 +77,15 @@ export default function PremiumPlanPage({
             </div>
             <p className="mt-4 text-sm font-semibold text-gray-500">{PREMIUM_PLAN_NAME} · 30 days</p>
             {quoteLoading ? (
-              <p className="mt-1 text-sm text-gray-500">Loading your price…</p>
+              <p className="mt-1 text-sm text-gray-500">Loading your plan…</p>
             ) : quote ? (
-              <>
-                <p className="mt-1 flex items-baseline gap-1">
-                  <span className="text-4xl font-bold text-gray-900">₹{amountLabel}</span>
-                  <span className="text-sm text-gray-400">/ 30 days · incl. GST</span>
-                </p>
-                <p className="mt-2 text-sm text-gray-600">
-                  {quote.positionCode}: ₹{baseLabel} + {gstPct}% GST (₹{gstLabel})
-                </p>
-              </>
+              <p className="mt-1 flex items-baseline gap-1">
+                <span className="text-4xl font-bold text-gray-900">₹{amountLabel}</span>
+                <span className="text-sm text-gray-400">/ 30 days</span>
+              </p>
             ) : (
-              <p className="mt-1 text-sm text-gray-600">
-                Set Community Position on your profile to see your price.
+              <p className="mt-1 text-sm text-gray-700">
+                Fill Community Position on your profile.
               </p>
             )}
           </div>
@@ -108,20 +102,20 @@ export default function PremiumPlanPage({
           </ul>
         </div>
 
-        {message ? (
+        {message && !needsPosition ? (
           <p className="text-xs text-red-600 mt-4 px-1" role="alert">{message}</p>
-        ) : (
+        ) : quote ? (
           <p className="text-xs text-gray-400 mt-4 px-1">
             Pay Now opens a secure payment page.
           </p>
-        )}
+        ) : null}
       </div>
 
       <div className="p-4 bg-white border-t border-gray-100">
         <TouchFeedbackButton
-          onClick={onPayNow}
-          disabled={!canPay}
-          ariaLabel="Pay Now"
+          onClick={needsPosition ? () => { requestCommunityPositionFill(); onClose?.(); } : onPayNow}
+          disabled={busy || quoteLoading || (!canPay && !needsPosition)}
+          ariaLabel={needsPosition ? 'Fill Community Position' : 'Pay Now'}
           className="w-full rounded-xl bg-gradient-to-r from-green-600 to-green-700 text-white py-3.5 text-sm font-semibold shadow-md disabled:opacity-60"
         >
           {busy
@@ -130,7 +124,7 @@ export default function PremiumPlanPage({
               ? 'Loading price...'
               : amountLabel
                 ? `Pay Now · ₹${amountLabel}`
-                : 'Set Community Position to pay'}
+                : 'Fill Community Position'}
         </TouchFeedbackButton>
       </div>
     </div>

@@ -189,6 +189,18 @@ export async function insertCashRequest({
   return findPendingByRequesterId(uid);
 }
 
+export async function replacePendingOtp({ id, otpHash }) {
+  await ensureTables();
+  await getPrisma().$executeRawUnsafe(
+    `UPDATE wallet_cash_requests_table
+     SET OtpHash = ?, OtpAttempts = 0
+     WHERE Id = ? AND Status = ?`,
+    String(otpHash),
+    Number(id),
+    REQUEST_STATUS_PENDING,
+  );
+}
+
 export async function markOtpEmailSent(id) {
   await ensureTables();
   await getPrisma().$executeRawUnsafe(
@@ -290,6 +302,7 @@ export async function approveAndCredit({ requestId, requesterId, amount }) {
 
 const LEDGER_ENTRY_CASH_IN = 'cash_in';
 const LEDGER_ENTRY_EVENT_TICKET = 'event_ticket';
+const LEDGER_ENTRY_EVENT_REFUND = 'event_refund';
 
 let ledgerSpendEnsurePromise = null;
 
@@ -424,8 +437,93 @@ export async function debitForEventTicket({
   });
 }
 
+/**
+ * Return a paid event ticket to the same wallet, once per registration.
+ * A second call for the same registration does not add the credit again.
+ * @returns {Promise<{ balance: number, ledgerId: number|null, alreadyRefunded: boolean }>}
+ */
+export async function creditEventTicketRefund({ userId, amount, registrationId }) {
+  await ensureLedgerSupportsSpends();
+  const prisma = getPrisma();
+  const uid = Number(userId);
+  const cash = Math.round(Number(amount) * 100) / 100;
+  const refId = Number(registrationId);
+  if (!Number.isInteger(uid) || uid <= 0) throw new Error('WALLET_INVALID_REFUND_USER');
+  if (!Number.isInteger(refId) || refId <= 0) throw new Error('WALLET_INVALID_REFUND_REF');
+  if (!Number.isFinite(cash) || cash <= 0) throw new Error('WALLET_INVALID_REFUND_AMOUNT');
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(
+      `INSERT INTO wallets_table (UserId, Balance, CreatedAt, UpdatedAt)
+       VALUES (?, 0.00, UTC_TIMESTAMP(), UTC_TIMESTAMP())
+       ON DUPLICATE KEY UPDATE UserId = UserId`,
+      uid,
+    );
+
+    await tx.$queryRawUnsafe(
+      `SELECT Balance FROM wallets_table WHERE UserId = ? LIMIT 1 FOR UPDATE`,
+      uid,
+    );
+
+    const existing = await tx.$queryRawUnsafe(
+      `SELECT Id, BalanceAfter FROM wallet_ledger_table
+       WHERE EntryType = ? AND ReferenceType = 'event_registration' AND ReferenceId = ?
+       LIMIT 1`,
+      LEDGER_ENTRY_EVENT_REFUND,
+      refId,
+    );
+    if (Array.isArray(existing) && existing[0]) {
+      return {
+        balance: toNumber(existing[0].BalanceAfter),
+        ledgerId: toNumber(existing[0].Id, null),
+        alreadyRefunded: true,
+      };
+    }
+
+    await tx.$executeRawUnsafe(
+      `UPDATE wallets_table
+       SET Balance = ROUND(Balance + ?, 2), UpdatedAt = UTC_TIMESTAMP()
+       WHERE UserId = ?`,
+      cash,
+      uid,
+    );
+
+    const afterRows = await tx.$queryRawUnsafe(
+      `SELECT Balance FROM wallets_table WHERE UserId = ? LIMIT 1`,
+      uid,
+    );
+    const balance = toNumber(Array.isArray(afterRows) ? afterRows[0]?.Balance : 0);
+
+    await tx.$executeRawUnsafe(
+      `INSERT INTO wallet_ledger_table
+        (WalletUserId, RequestId, EntryType, ReferenceType, ReferenceId, Amount, BalanceAfter, CreatedAt)
+       VALUES (?, NULL, ?, 'event_registration', ?, ?, ?, UTC_TIMESTAMP())`,
+      uid,
+      LEDGER_ENTRY_EVENT_REFUND,
+      refId,
+      cash,
+      balance,
+    );
+
+    const ledgerRows = await tx.$queryRawUnsafe(
+      `SELECT Id FROM wallet_ledger_table
+       WHERE EntryType = ? AND ReferenceType = 'event_registration' AND ReferenceId = ?
+       ORDER BY Id DESC LIMIT 1`,
+      LEDGER_ENTRY_EVENT_REFUND,
+      refId,
+    );
+
+    return {
+      balance,
+      ledgerId: toNumber(Array.isArray(ledgerRows) ? ledgerRows[0]?.Id : null, null),
+      alreadyRefunded: false,
+    };
+  });
+}
+
 export const WALLET_LEDGER_ENTRY = {
   CASH_IN: LEDGER_ENTRY_CASH_IN,
   EVENT_TICKET: LEDGER_ENTRY_EVENT_TICKET,
+  EVENT_REFUND: LEDGER_ENTRY_EVENT_REFUND,
 };
 

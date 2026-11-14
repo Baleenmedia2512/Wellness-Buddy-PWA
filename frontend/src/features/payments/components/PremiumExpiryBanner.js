@@ -10,6 +10,7 @@ export default function PremiumExpiryBanner({
   expiresAtDisplay = null,
   userId,
   onPremiumCheck,
+  allowedPages = null,
 }) {
   const label = buildPremiumExpiryBannerLabel({ daysLeft, expiresAtDisplay });
 
@@ -25,6 +26,7 @@ export default function PremiumExpiryBanner({
         isPremium={false}
         renew
         onPremiumCheck={onPremiumCheck}
+        allowedPages={allowedPages}
       />
     </div>
   );

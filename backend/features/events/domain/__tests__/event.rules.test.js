@@ -6,6 +6,9 @@ import assert from 'node:assert/strict';
 import {
   buildRegistrationQrPayload,
   computeRegistrationCharge,
+  eventDeleteBlockedByBookings,
+  normalizeBookingFor,
+  selfBookingAlreadyTaken,
   generateEntryCode,
   normalizeEventDraft,
   normalizeEventRegistrationDraft,
@@ -37,6 +40,7 @@ describe('normalizeEventDraft', () => {
     assert.deepEqual(result.value, {
       eventName: 'Morning Walk',
       hostName: 'Anita',
+      speakers: [{ name: 'Anita', userId: null }],
       place: 'Club hall',
       venue: null,
       places: [
@@ -144,7 +148,7 @@ describe('normalizeEventDraft', () => {
     });
     assert.equal(result.ok, false);
     assert.ok(result.errors.some((line) => line.includes('Event name')));
-    assert.ok(result.errors.some((line) => line.includes('Host')));
+    assert.ok(result.errors.some((line) => line.includes('speaker')));
     assert.ok(result.errors.some((line) => line.includes('City')));
     assert.ok(result.errors.some((line) => line.includes('Date')));
     assert.ok(result.errors.some((line) => line.includes('Ticket price')));
@@ -167,6 +171,72 @@ describe('normalizeEventDraft', () => {
   it('rejects a fractional seat count', () => {
     const result = normalizeEventDraft({ ...validDraft, seatCount: 1.5 });
     assert.equal(result.ok, false);
+  });
+
+  it('accepts several speakers, including a name that is not an account', () => {
+    const result = normalizeEventDraft({
+      ...validDraft,
+      speakers: [
+        { userId: 4, name: 'Anita' },
+        { name: 'Guest Doctor' },
+        { name: 'anita' },
+      ],
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.value.hostName, 'Anita · Guest Doctor');
+    assert.deepEqual(result.value.speakers, [
+      { name: 'Anita', userId: 4 },
+      { name: 'Guest Doctor', userId: null },
+    ]);
+  });
+
+  it('rejects a date before today', () => {
+    const result = normalizeEventDraft(
+      { ...validDraft, eventDate: '2026-11-10' },
+      { today: '2026-11-14' },
+    );
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.some((line) => line.includes('today or a later date')));
+  });
+
+  it('accepts today when the past-date check is on', () => {
+    const result = normalizeEventDraft(
+      { ...validDraft, eventDate: '2026-11-14' },
+      { today: '2026-11-14' },
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.value.eventDate, '2026-11-14');
+  });
+});
+
+describe('eventDeleteBlockedByBookings', () => {
+  it('blocks delete after the first booking', () => {
+    assert.equal(eventDeleteBlockedByBookings(1), true);
+    assert.equal(eventDeleteBlockedByBookings(1, 'scheduled'), true);
+    assert.equal(eventDeleteBlockedByBookings(0), false);
+    assert.equal(eventDeleteBlockedByBookings(null), false);
+  });
+
+  it('allows delete once the event is cancelled', () => {
+    assert.equal(eventDeleteBlockedByBookings(3, 'cancelled'), false);
+    assert.equal(eventDeleteBlockedByBookings(3, 'Cancelled'), false);
+  });
+});
+
+describe('selfBookingAlreadyTaken', () => {
+  it('blocks a second self ticket after a paid booking', () => {
+    assert.equal(selfBookingAlreadyTaken({ paymentStatus: 'paid', entryCode: 'A1' }), true);
+    assert.equal(selfBookingAlreadyTaken({ paymentStatus: 'saved', entryCode: null }), false);
+  });
+
+  it('lets a friend booking sit beside the member ticket', () => {
+    assert.equal(normalizeBookingFor('friend'), 'friend');
+    assert.equal(normalizeBookingFor(undefined), 'self');
+    assert.equal(selfBookingAlreadyTaken({
+      paymentStatus: 'paid',
+      entryCode: 'B2',
+      bookingFor: 'friend',
+    }), false);
   });
 });
 

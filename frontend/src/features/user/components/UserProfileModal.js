@@ -5,6 +5,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile } from '../services/profileService';
+import { communityPositionFromProfile } from '../domain/communityPosition';
+import { overlayProfileOtpConfirmation } from '../domain/profileOtpHold';
 import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import { loadProfileMarathonWeightComparison } from '../../marathon';
 import UserProfileHeader from './profile/UserProfileHeader';
@@ -25,10 +27,20 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   const [hasSaved, setHasSaved] = useState(false);
   const [communityPositionRequest, setCommunityPositionRequest] = useState(null);
 
-  const loadProfile = useCallback(async () => {
-    setIsLoading(true); setError('');
+  const loadProfile = useCallback(async (options = {}) => {
+    const cacheBust = options?.cacheBust === true;
+    if (!cacheBust) setIsLoading(true);
+    setError('');
     try {
-      const { data } = await fetchProfile(user.email);
+      const { data: loaded } = await fetchProfile({
+        email: user?.email,
+        userId: user?.id || user?.UserId || user?.userId,
+        cacheBust,
+      });
+      const data = overlayProfileOtpConfirmation(
+        loaded,
+        user?.id || user?.UserId || user?.userId,
+      );
       if (data) {
         form.reload({
           name: data.userName || user.name || '',
@@ -50,7 +62,10 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
             : '',
           eventTranslation: data.eventTranslation || '',
           eventYourCity: data.eventYourCity || '',
-          eventLevel: data.eventLevel || '',
+          eventLevel: communityPositionFromProfile(
+            data,
+            user?.id || user?.UserId || user?.userId,
+          ),
           professionalTitle: data.professionalTitle || '',
           instagram: data.instagram || '',
           youtube: data.youtube || '',
@@ -149,18 +164,9 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           marathonWeightComparison={marathonWeightComparison}
           userId={user?.id || user?.UserId || user?.userId || null}
           communityPositionRequest={communityPositionRequest}
-          onCommunityPositionSettled={(result) => {
-            const code = String(result?.eventLevel || result?.positionCode || '').trim();
-            if (code) form.setEventLevel(code);
+          onCommunityPositionSettled={() => {
             setCommunityPositionRequest(null);
-            // Soft sync — keep the form visible (no loading flash on mobile).
-            fetchProfile(user?.email || form.email)
-              .then(({ data }) => {
-                if (!data) return;
-                if (data.eventLevel) form.setEventLevel(data.eventLevel);
-                setCommunityPositionRequest(data.communityPositionRequest || null);
-              })
-              .catch(() => {});
+            loadProfile({ cacheBust: true });
           }}
           error={error} successMessage={successMessage}
         />

@@ -55,7 +55,16 @@ import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardin
 import { hasValidProfileName } from '../domain/profileCompleteness';
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
-import { COMMUNITY_POSITION_OTP_FLAG } from '../domain/communityPosition';
+import {
+  COMMUNITY_POSITION_OTP_FLAG,
+  communityPositionFromProfile,
+  rememberConfirmedCommunityPosition,
+} from '../domain/communityPosition';
+import { consumeCommunityPositionFill } from '../domain/communityPositionFocus';
+import {
+  overlayProfileOtpConfirmation,
+  rememberProfileOtpConfirmation,
+} from '../domain/profileOtpHold';
 import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked, validateHeightCm } from '../domain/heightChange';
 import { looksLikeEmail } from '../domain/onboardingEmail';
 import GoPremiumButton from '../../payments/components/GoPremiumButton';
@@ -85,9 +94,17 @@ function resolveAccountEmail(user, formEmail) {
   return '';
 }
 
-const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', user: 'Customer' };
+const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', system_admin: 'System Admin', user: 'Customer' };
 
-const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfileUpdate }) => {
+const UserProfilePage = ({
+  user,
+  userRole = 'user',
+  onBack,
+  onSignOut,
+  onProfileUpdate,
+  /** null = fail-open; object = Admin Config page-access map */
+  allowedPages = null,
+}) => {
   const form = useProfileForm();
   const resolvedUserId = user?.id ?? user?._id ?? user?.UserId ?? user?.userId ?? form.userId ?? Session.getDbUserId() ?? null;
   const premiumUserId = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
@@ -120,6 +137,22 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     if (!email && !uid) return false;
     return !getCachedProfile({ email, userId: uid })?.data;
   });
+  useEffect(() => {
+    if (isLoading || !consumeCommunityPositionFill()) return undefined;
+    let tries = 0;
+    const timer = setInterval(() => {
+      const field = document.getElementById('profile-community-position');
+      tries += 1;
+      if (field) {
+        field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        field.focus?.();
+        clearInterval(timer);
+      } else if (tries > 20) {
+        clearInterval(timer);
+      }
+    }, 200);
+    return () => clearInterval(timer);
+  }, [isLoading]);
   const [isSaving, setIsSaving] = useState(false);
   const [isInviting, setIsInviting] = useState(false);
   const [error, setError] = useState('');
@@ -135,6 +168,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [leadPreFilled, setLeadPreFilled] = useState(false); // true once we've pre-filled from lead
   const leadPreFilledRef = useRef(false);
   const profileLoadGenRef = useRef(0);
+  const heightVerifyFlightRef = useRef(false);
+  const communityIdVerifyFlightRef = useRef(false);
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(
     () => isAutoCameraOnResumeEnabled()
   );
@@ -166,7 +201,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     const loadGen = ++profileLoadGenRef.current;
     setError('');
 
-    const applyProfileData = (data) => {
+    const applyProfileData = (incoming) => {
+      const data = overlayProfileOtpConfirmation(incoming, uid);
       const profileData = {
         name: data?.userName || '',
         height: data?.height ? String(data.height) : '',
@@ -194,7 +230,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           : '',
         eventTranslation: data?.eventTranslation || '',
         eventYourCity: data?.eventYourCity || '',
-        eventLevel: data?.eventLevel || '',
+        eventLevel: communityPositionFromProfile(data, uid),
         professionalTitle: data?.professionalTitle || '',
         instagram: data?.instagram || '',
         youtube: data?.youtube || '',
@@ -463,6 +499,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   }, [sessionUserId, accountEmail]);
 
   const handleHeightVerifyOtp = useCallback(async (otp) => {
+    if (heightVerifyFlightRef.current) return;
+    heightVerifyFlightRef.current = true;
     setHeightOtpError('');
     setSuccessMessage('');
     setHeightOtpBusy(true);
@@ -481,6 +519,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         otp,
       });
       const saved = data.height != null ? String(data.height) : String(heightValue);
+      rememberProfileOtpConfirmation(sessionUserId, { height: saved });
       form.setHeight(saved);
       setLockedHeight(saved);
       setHeightOtpPending(false);
@@ -495,6 +534,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     } catch (e) {
       setHeightOtpError(e.message || 'That verification code did not match.');
     } finally {
+      heightVerifyFlightRef.current = false;
       setHeightOtpBusy(false);
     }
   }, [
@@ -520,6 +560,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       // Already confirmed on the server — lock field to pencil mode (no OTP).
       if (data.alreadyOwned) {
         const seat = data.teamSeat || 'sponsor';
+        if (data.communityId) {
+          rememberProfileOtpConfirmation(sessionUserId, {
+            communityId: data.communityId,
+            teamSeat: seat,
+          });
+        }
         setCommunityIdRequest(null);
         if (data.communityId) form.setCommunityId(String(data.communityId));
         setTeamSeat(seat);
@@ -550,6 +596,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   }, [sessionUserId, accountEmail, form, loadProfile, onProfileUpdate]);
 
   const handleCommunityIdVerify = useCallback(async (otp) => {
+    if (communityIdVerifyFlightRef.current) return;
+    communityIdVerifyFlightRef.current = true;
     setCommunityIdError('');
     setSuccessMessage('');
     setCommunityIdBusy(true);
@@ -560,6 +608,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         otp,
       });
       const confirmedSeat = data.teamSeat || null;
+      if (data.communityId) {
+        rememberProfileOtpConfirmation(sessionUserId, {
+          communityId: data.communityId,
+          teamSeat: confirmedSeat,
+        });
+      }
       setCommunityIdRequest(null);
       if (data.communityId) form.setCommunityId(String(data.communityId));
       // Lock the field to pencil mode immediately — do not wait on profile reload.
@@ -576,8 +630,34 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         setTeamSeat(confirmedSeat);
       }
     } catch (e) {
-      setCommunityIdError(e.message || 'That approval code did not match.');
+      const message = e.message || 'That approval code did not match.';
+      const pendingCode = String(form.communityId || '').trim();
+      if (/no pending community id request/i.test(message) && pendingCode) {
+        try {
+          const fresh = await fetchProfile({
+            userId: sessionUserId || undefined,
+            email: accountEmail || undefined,
+            cacheBust: true,
+          });
+          const saved = String(fresh?.data?.communityId || '').trim();
+          if (saved && saved.toLowerCase() === pendingCode.toLowerCase()) {
+            const seat = fresh.data.teamSeat || 'sponsor';
+            rememberProfileOtpConfirmation(sessionUserId, {
+              communityId: saved,
+              teamSeat: seat,
+            });
+            setCommunityIdRequest(null);
+            form.setCommunityId(saved);
+            setTeamSeat(seat);
+            setSuccessMessage(fresh.data.message || 'Community ID confirmed.');
+            setHasSaved(true);
+            return;
+          }
+        } catch { /* show the original error */ }
+      }
+      setCommunityIdError(message);
     } finally {
+      communityIdVerifyFlightRef.current = false;
       setCommunityIdBusy(false);
     }
   }, [sessionUserId, accountEmail, form, onProfileUpdate, loadProfile]);
@@ -587,6 +667,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     const adoptedUserId = result?.adopted && result?.userId ? result.userId : null;
     const nextPhone = String(result?.phone || '').trim();
     if (nextEmail) {
+      rememberProfileOtpConfirmation(adoptedUserId || sessionUserId, { email: nextEmail });
       form.setEmail(nextEmail);
       Session.setUserEmail(nextEmail);
     }
@@ -621,7 +702,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       userId: adoptedUserId || undefined,
       email: adoptedUserId ? undefined : (nextEmail || undefined),
     });
-  }, [form, onProfileUpdate, loadProfile, accountEmail]);
+  }, [form, onProfileUpdate, loadProfile, accountEmail, sessionUserId]);
 
   const handlePhotoUploaded = useCallback(async (uploadedImage) => {
     // Optimistic preview — keep previous photo if refresh fails.
@@ -747,6 +828,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
             userId={premiumUserId}
             isPremium={isPremiumMember}
             onPremiumCheck={refreshPremium}
+            allowedPages={allowedPages}
           />
         </div>
 
@@ -934,14 +1016,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   pendingRequest={communityPositionRequest}
                   otpEnabled={isFlagEnabled(COMMUNITY_POSITION_OTP_FLAG)}
                   disabled={isSaving || isUploadingPhoto}
-                  onChange={form.setEventLevel}
-                  onSettled={(result) => {
-                    const code = String(result?.eventLevel || result?.positionCode || '').trim();
-                    if (code) form.setEventLevel(code);
+                  onChange={(code) => {
+                    rememberConfirmedCommunityPosition(resolvedUserId, code);
+                    form.setEventLevel(code);
                     setCommunityPositionRequest(null);
-                    // Background sync only — UI already shows the new level.
-                    loadProfile({ cacheBust: true }).catch(() => {});
                   }}
+                  onSettled={() => loadProfile({ cacheBust: true })}
                 />
                 <WorkingPhysicalCentreField
                   userId={resolvedUserId}

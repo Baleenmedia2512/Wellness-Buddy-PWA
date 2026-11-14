@@ -18,6 +18,7 @@ export default function PaidFeaturesPage({ userId, onClose }) {
 
   const accessBanner = trialEnabled && eventsAccess.loaded ? (
     <ReportAccessBanner
+      featureName="Digital Portfolio"
       centered={hostLocked}
       access={eventsAccess.access}
       daysLeft={eventsAccess.daysLeft}
@@ -31,6 +32,7 @@ export default function PaidFeaturesPage({ userId, onClose }) {
         const next = await eventsAccess.refresh();
         return next?.access === 'premium';
       }}
+      onLeave={onClose}
     />
   ) : null;
 
@@ -54,10 +56,31 @@ export default function PaidFeaturesPage({ userId, onClose }) {
     );
   }
 
+  if (waitingAccess) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-6">
+        <p className="text-sm text-gray-500">Loading…</p>
+      </div>
+    );
+  }
+
+  if (hostLocked) {
+    return (
+      <div className="mx-auto flex min-h-[70vh] max-w-lg items-center justify-center bg-gradient-to-b from-emerald-50 via-white to-white px-4 py-6">
+        {accessBanner}
+      </div>
+    );
+  }
+
   return (
-    <CoachWebsitePage
-      userId={userId}
-      onClose={typeof onClose === 'function' ? onClose : () => {}}
-    />
+    <div className="mx-auto max-w-lg">
+      {eventsAccess.access === 'trial' ? (
+        <div className="px-4 pt-4">{accessBanner}</div>
+      ) : null}
+      <CoachWebsitePage
+        userId={userId}
+        onClose={typeof onClose === 'function' ? onClose : () => {}}
+      />
+    </div>
   );
 }

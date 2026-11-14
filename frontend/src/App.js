@@ -81,6 +81,7 @@ import {
 } from "./features/marathon";
 import { EducationLogCard } from "./features/education";
 import { EventsPage } from "./features/events";
+import EventCancelledHomeNotice from "./features/events/components/EventCancelledHomeNotice.jsx";
 import { WatchActivityCard } from "./features/activity";
 import LoadingSpinner from "./shared/components/LoadingSpinner";
 import { Login, ConsentForm } from "./features/user";
@@ -266,6 +267,7 @@ import LocationGuard from "./shared/components/LocationGuard";
 import { ADMIN_CONFIG_TABS } from "./shell/domain/adminConfigSetupTabs";
 import { isAdminLikeRole, normalizeAppRole, ROLE_USER } from "./shared/constants/roles";
 import { canAccessReportsModule } from "./features/reports/domain/reportsAccess.rules.js";
+import { OPEN_COMMUNITY_POSITION_EVENT } from "./features/user/domain/communityPositionFocus";
 import {
   fetchNavAccessForMe,
   resolveNavTargetOrFallback,
@@ -1098,7 +1100,11 @@ function WellnessValleyApp() {
   const [showPaidFeatures, setShowPaidFeatures] = useState(false);
   const [showMapBusiness, setShowMapBusiness] = useState(false);
   const [createEventTab, setCreateEventTab] = useState('manage');
+  const [eventsInitialTab, setEventsInitialTab] = useState('events');
   const [showEvents, setShowEvents] = useState(false);
+  useEffect(() => {
+    if (!showEvents) setEventsInitialTab('events');
+  }, [showEvents]);
   // Reports page — common module (Ideal Weight, Wellness Score, Nutrition, Trend).
   const [showReports, setShowReports] = useState(false);
   const [reportsDashboardTab, setReportsDashboardTab] = useState(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
@@ -3133,6 +3139,12 @@ function WellnessValleyApp() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- setters/refs stable; showDashboardPage stable
   }, [showDashboardPage, userRole, bumpTabVisitKey, refreshOnTabFocus]);
+
+  useEffect(() => {
+    const openProfile = () => navigateTo('profile');
+    window.addEventListener(OPEN_COMMUNITY_POSITION_EVENT, openProfile);
+    return () => window.removeEventListener(OPEN_COMMUNITY_POSITION_EVENT, openProfile);
+  }, [navigateTo]);
   // -- Permission flow ------------------------------------------------------
   //
   // Design: zero custom screens before OS dialogs. Permissions are requested
@@ -8187,6 +8199,7 @@ function WellnessValleyApp() {
           <UserProfilePage
             user={user}
             userRole={userRole}
+            allowedPages={navAccessPages}
             onBack={() => navigateTo('home')}
             onSignOut={handleSignOut}
             onProfileUpdate={(profileData) => {
@@ -8669,7 +8682,7 @@ function WellnessValleyApp() {
           profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
-          <EventsPage user={user} />
+          <EventsPage user={user} initialTab={eventsInitialTab} />
         </div>
       </div>
     );
@@ -8986,6 +8999,7 @@ function WellnessValleyApp() {
               tabVisitKey={tabVisitKeys.reports ?? 0}
               teamSearchRefreshKey={teamSearchRefreshKey}
               initialTab={reportsDashboardTab}
+              onLeave={() => navigateTo('home')}
             />
           </Suspense>
         </div>
@@ -9441,6 +9455,13 @@ function WellnessValleyApp() {
                       <span className="text-sm font-bold text-emerald-700">Gallery</span>
                     </button>
                   </div>
+                  <EventCancelledHomeNotice
+                    user={user}
+                    onOpenBookings={() => {
+                      setEventsInitialTab('bookings');
+                      navigateTo('events');
+                    }}
+                  />
                   <DetoxDayReminder user={user} />
                 </div>
               </div>

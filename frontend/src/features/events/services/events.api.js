@@ -108,6 +108,11 @@ export function reportEventCheckInMisuse(payload) {
     body: JSON.stringify(payload),
   }).then(readJson);
 }
+
+export function getEventTicketReport(userId, eventId) {
+  const url = `${endpoint()}/ticket-report?userId=${encodeURIComponent(userId)}&eventId=${encodeURIComponent(eventId)}`;
+  return apiFetch(url, { cache: 'no-store' }).then(readJson);
+}
 export function formatEventTime(timeStr) {
   if (!timeStr) return '';
   const match = /^(\d{1,2}):(\d{2})/.exec(String(timeStr).trim());
@@ -126,6 +131,18 @@ export function formatEventTimeRange(start, end) {
   if (s) return s;
   if (e) return e;
   return '';
+}
+
+export function eventSpeakerNames(event) {
+  if (Array.isArray(event?.speakers) && event.speakers.length > 0) {
+    return event.speakers
+      .map((speaker) => String(speaker?.name || '').trim())
+      .filter(Boolean);
+  }
+  return String(event?.hostName || '')
+    .split(' · ')
+    .map((name) => name.trim())
+    .filter(Boolean);
 }
 
 export function getEventDatesList(event) {

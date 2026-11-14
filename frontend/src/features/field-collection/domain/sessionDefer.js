@@ -1,7 +1,6 @@
 /**
- * A field set to every 0 days is due again the same day.
- * Remember a skip or save for this visit so the next field can show,
- * then ask again the next time the app is opened today.
+ * Remember a skip for this visit so the screen can close.
+ * The next time the app is opened, an empty field can be asked again.
  */
 
 function storageKey(userId) {

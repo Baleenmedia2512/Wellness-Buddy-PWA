@@ -457,7 +457,7 @@ registerFlag({
   owner:          '@principal-eng',
   createdAt:      '2026-11-12',
   removeBy:       '2027-05-12',
-  description:    'Create Event, Check-in, Paid Features gate. Shares Reports 14-day trial (report_trials_table); remaining days continue. Kill switch. Version routing: app 3.5.7+ gated; older/missing versions keep free host tools.',
+  description:    'Digital Portfolio gate. Shares Reports 14-day trial (report_trials_table); remaining days continue. Create Event and Check-in stay open. Kill switch. Version routing: app 3.5.7+ gated; older/missing versions keep Digital Portfolio open.',
   defaultEnabled: true,
 });
 

@@ -280,12 +280,12 @@ const REGISTRY = Object.freeze({
     description:    'Unpaid report details stay hidden until a 14-day trial or Premium.',
   },
 
-  // Host tools gate (Create Event + Check-in + Paid Features). Same shared 14-day trial as Reports.
+  // Digital Portfolio gate. Same shared 14-day trial as Reports. Create Event and Check-in stay open.
   'ff.events-trial': {
     envKey:         'REACT_APP_FF_EVENTS_TRIAL',
     storageKey:     'ff.events-trial',
     defaultEnabled: true,
-    description:    'Gates Create Event / Check-in / Paid Features using the shared Reports 14-day trial (remaining days continue).',
+    description:    'Gates Digital Portfolio with the shared Reports 14-day trial. Create Event and Check-in stay open.',
   },
 });
 

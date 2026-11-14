@@ -11,7 +11,7 @@ const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', '
 const initialOf = (name, email) => (name || email || 'U').charAt(0).toUpperCase();
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
 
-const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', user: 'Customer' };
+const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', system_admin: 'System Admin', user: 'Customer' };
 
 const UserProfileHeader = ({
   user, name, userRole, profileImagePreview,

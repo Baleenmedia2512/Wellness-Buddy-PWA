@@ -11,10 +11,11 @@ import {
   uniqueWalletIdentity,
   WALLET_FLAG,
   WALLET_OTP_BCRYPT_COST,
+  walletOtpResendWaitMs,
 } from '../domain/wallet.rules.js';
 import * as walletRepo from '../data/wallet.repo.js';
 import { findActivePersonByUserId } from '../data/people.repo.js';
-import { validateRequestCash } from '../validation/wallet.schema.js';
+import { validateRequestCash, validateResendOtp } from '../validation/wallet.schema.js';
 import { scheduleWalletOtpMail } from './deferred-mail.js';
 
 async function sendWalletOtpMail({
@@ -106,6 +107,87 @@ export async function requestWalletCash(body) {
           approverEmail: approver.Email,
         }),
         message: `Enter the code. We are emailing it to ${approver.UserName || 'the selected person'}.`,
+      },
+    },
+  };
+}
+
+export async function resendWalletOtp(body) {
+  if (!isEnabled(WALLET_FLAG)) {
+    throw new ValidationError(404, 'Wallet is not available');
+  }
+  const { userId } = validateResendOtp(body);
+  const identity = uniqueWalletIdentity(userId);
+  const requester = await findActivePersonByUserId(identity.userId);
+  if (!requester) {
+    throw new ValidationError(404, 'Account not found');
+  }
+
+  const pending = await walletRepo.findPendingByRequesterId(identity.userId);
+  if (!pending) {
+    throw new ValidationError(404, 'No pending wallet request found');
+  }
+  if (!pending.OtpSentAt) {
+    throw new ValidationError(429, 'The code is still being sent. Wait a moment, then resend.');
+  }
+  const waitMs = walletOtpResendWaitMs(pending.OtpSentAt);
+  if (waitMs > 0) {
+    const seconds = Math.max(1, Math.ceil(waitMs / 1000));
+    throw new ValidationError(429, `Wait ${seconds}s before resending the code.`);
+  }
+
+  const approver = await findActivePersonByUserId(pending.ApproverId);
+  if (!approver?.Email) {
+    throw new ValidationError(
+      422,
+      'That person has no Wellness Valley email, so we cannot send the code',
+    );
+  }
+
+  const otp = generateEmailOtp();
+  const otpHash = await bcrypt.hash(otp, WALLET_OTP_BCRYPT_COST);
+  await walletRepo.replacePendingOtp({ id: pending.Id, otpHash });
+
+  const mail = buildWalletCashOtpEmail({
+    otp,
+    requesterName: requester.UserName,
+    amountLabel: formatWalletAmount(pending.Amount),
+    requesterPhone: requester.PhoneNumber,
+  });
+
+  try {
+    await sendTransactionalMail({
+      to: approver.Email,
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
+    });
+  } catch (err) {
+    logger.warn('[wallet] cash OTP resend failed', {
+      requesterId: identity.userId,
+      requestId: pending.Id,
+      message: err?.message,
+    });
+    throw new ValidationError(502, 'Could not resend the code. Try again.');
+  }
+
+  await walletRepo.markOtpEmailSent(pending.Id);
+  const refreshed = await walletRepo.findPendingByRequesterId(identity.userId);
+  logger.info('[wallet] cash OTP resent', {
+    requesterId: identity.userId,
+    requestId: pending.Id,
+  });
+
+  return {
+    httpStatus: 200,
+    body: {
+      ok: true,
+      data: {
+        pendingRequest: toPublicCashRequest(refreshed || pending, {
+          approverName: approver.UserName || null,
+          approverEmail: approver.Email,
+        }),
+        message: 'Code sent again.',
       },
     },
   };

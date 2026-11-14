@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Wallet } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { isFlagEnabled } from '../../../config/featureFlags';
@@ -11,10 +11,16 @@ import WalletPage from './WalletPage';
  * @param {number|string|null|undefined} props.userId
  * @param {'row'|'events'} [props.variant='row'] — row = Profile Account list; events = Upcoming Events header chip
  */
-export default function WalletButton({ userId, variant = 'row' }) {
+export default function WalletButton({ userId, variant = 'row', openSignal = 0 }) {
   const [open, setOpen] = useState(false);
   // Events card needs balance while closed; profile row keeps lazy load on open.
   const wallet = useWallet(variant === 'events' || open ? userId : null);
+
+  useEffect(() => {
+    if (!openSignal) return;
+    if (userId == null || String(userId).trim() === '') return;
+    setOpen(true);
+  }, [openSignal, userId]);
 
   if (!isFlagEnabled(WALLET_FLAG)) return null;
 
