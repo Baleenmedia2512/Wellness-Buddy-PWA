@@ -81,7 +81,7 @@ describe('normalizeFieldPolicy', () => {
     assert.equal(position.locked, false);
   });
 
-  it('asks again the same day when every days is 0', () => {
+  it('asks again the same day when every days is 0 and the value is still empty', () => {
     const fields = normalizeFieldPolicy([{
       key: 'currentWeight',
       phase: 'scheduled',
@@ -92,7 +92,25 @@ describe('normalizeFieldPolicy', () => {
     const weight = fields.find((field) => field.key === 'currentWeight');
     assert.equal(weight.askEveryDays, 0);
 
-    const plan = planCollectionStep({
+    const empty = planCollectionStep({
+      fields,
+      values: { ...filledEntry, currentWeight: '', weightRecordedAt: null },
+      states: {
+        currentWeight: {
+          skipCount: 1,
+          cycleStartedAt: TODAY,
+          lastFilledAt: null,
+          lastSkippedAt: TODAY,
+        },
+      },
+      role: 'member',
+      now: NOW,
+    });
+    assert.equal(empty.step, 'scheduled');
+    assert.equal(empty.scheduled.key, 'currentWeight');
+    assert.equal(empty.scheduled.mode, 'ask_skippable');
+
+    const filled = planCollectionStep({
       fields,
       values: { ...filledEntry, currentWeight: 70, weightRecordedAt: TODAY },
       states: {
@@ -106,9 +124,7 @@ describe('normalizeFieldPolicy', () => {
       role: 'member',
       now: NOW,
     });
-    assert.equal(plan.step, 'scheduled');
-    assert.equal(plan.scheduled.key, 'currentWeight');
-    assert.equal(plan.scheduled.mode, 'ask_skippable');
+    assert.notEqual(filled.scheduled?.key, 'currentWeight');
   });
 
   it('moves past a same-day field after it was handled in this visit', () => {
@@ -301,6 +317,23 @@ describe('planCollectionStep', () => {
     assert.deepEqual(plan.entryFields, ['gender']);
   });
 
+  it('does not ask community position again when the profile already has one', () => {
+    const fields = defaultFieldPolicy().map((field) => (
+      field.key === 'communityPosition'
+        ? { ...field, phase: 'scheduled', askEveryDays: 0, maxSkips: 2, mustFillWithinDays: 3 }
+        : field
+    ));
+    const plan = planCollectionStep({
+      fields,
+      values: { ...filledEntry, communityPosition: 'ASSOCIATE' },
+      states: settledStates(),
+      role: 'member',
+      now: NOW,
+    });
+    assert.notEqual(plan.step, 'communityPosition');
+    assert.notEqual(plan.scheduled?.key, 'communityPosition');
+  });
+
   it('asks a later community position with a skip', () => {
     const fields = defaultFieldPolicy().map((field) => (
       field.key === 'communityPosition'
@@ -392,44 +425,45 @@ describe('planCollectionStep', () => {
     assert.equal(plan.step, 'done');
   });
 
-  it('asks current weight the next IST day, and allows a skip until the limit', () => {
-    const due = planCollectionStep({
+  it('does not ask a filled weight again, and still asks an empty weight', () => {
+    const filledYesterday = planCollectionStep({
       fields: defaultFieldPolicy(),
       values: { ...filledEntry, currentWeight: 70, weightRecordedAt: YESTERDAY },
       states: settledStates(),
       role: 'member',
       now: NOW,
     });
-    assert.equal(due.step, 'scheduled');
-    assert.equal(due.scheduled.key, 'currentWeight');
-    assert.equal(due.scheduled.mode, 'ask_skippable');
+    assert.notEqual(filledYesterday.scheduled?.key, 'currentWeight');
 
-    const fresh = planCollectionStep({
+    const empty = planCollectionStep({
       fields: defaultFieldPolicy(),
-      values: { ...filledEntry, currentWeight: 70, weightRecordedAt: TODAY },
+      values: { ...filledEntry, currentWeight: '', weightRecordedAt: null },
       states: settledStates(),
       role: 'member',
       now: NOW,
     });
-    assert.equal(fresh.step, 'done');
+    assert.equal(empty.step, 'scheduled');
+    assert.equal(empty.scheduled.key, 'currentWeight');
+    assert.equal(empty.scheduled.mode, 'ask_skippable');
 
     const blocked = planCollectionStep({
       fields: defaultFieldPolicy(),
-      values: { ...filledEntry, currentWeight: 70, weightRecordedAt: YESTERDAY },
+      values: { ...filledEntry, currentWeight: '', weightRecordedAt: null },
       states: settledStates({
         currentWeight: { skipCount: 2, cycleStartedAt: YESTERDAY, lastFilledAt: null, lastSkippedAt: YESTERDAY },
       }),
       role: 'member',
       now: NOW,
     });
+    assert.equal(blocked.scheduled.key, 'currentWeight');
     assert.equal(blocked.scheduled.mode, 'ask_blocking');
     assert.equal(blocked.scheduled.skipsRemaining, 0);
   });
 
-  it('blocks a later field once the must-fill day has passed', () => {
+  it('blocks an empty later field once the must-fill day has passed', () => {
     const plan = planCollectionStep({
       fields: defaultFieldPolicy(),
-      values: filledEntry,
+      values: { ...filledEntry, fatPercent: '' },
       states: settledStates({
         fatPercent: {
           skipCount: 0,
@@ -444,6 +478,22 @@ describe('planCollectionStep', () => {
     assert.equal(plan.step, 'scheduled');
     assert.equal(plan.scheduled.key, 'fatPercent');
     assert.equal(plan.scheduled.mode, 'ask_blocking');
+
+    const filled = planCollectionStep({
+      fields: defaultFieldPolicy(),
+      values: filledEntry,
+      states: settledStates({
+        fatPercent: {
+          skipCount: 0,
+          cycleStartedAt: '2026-11-01T04:30:00.000Z',
+          lastFilledAt: null,
+          lastSkippedAt: null,
+        },
+      }),
+      role: 'member',
+      now: NOW,
+    });
+    assert.notEqual(filled.scheduled?.key, 'fatPercent');
   });
 
   it('keeps profile introduction fields off the gate until an admin asks for them', () => {
