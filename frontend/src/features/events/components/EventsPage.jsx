@@ -18,7 +18,9 @@ import {
   EVENTS_UPDATED_EVENT,
   formatEventPlacesSummary,
   formatEventTimeRange,
+  eventSpeakerNames,
   getEventDatesList,
+  listMyEventRegistrations,
   listOpenEvents,
   notifyEventsUpdated,
 } from '../services/events.api.js';
@@ -268,8 +270,23 @@ function buildRegistrationDefaults(profileData, user, userId) {
   };
 }
 
+function cancelledBookingNotes(registrations) {
+  return (Array.isArray(registrations) ? registrations : [])
+    .filter((row) => {
+      const status = String(row?.event?.status || '').toLowerCase();
+      return status === 'cancelled' || !row?.event;
+    })
+    .map((row) => ({
+      id: row.id,
+      name: row.event?.eventName || 'An event you booked',
+      refunded: String(row.paymentStatus || '').toLowerCase() === 'refunded'
+        && Number(row.amountCharged) > 0,
+    }));
+}
+
 function EventsPage({ user }) {
   const [events, setEvents] = useState([]);
+  const [cancelNotes, setCancelNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [viewerUserId, setViewerUserId] = useState(null);
@@ -322,10 +339,14 @@ function EventsPage({ user }) {
         }
 
         // Show events as soon as open-list returns — do not wait on profile.
-        const result = await listOpenEvents(userId);
+        const [result, bookings] = await Promise.all([
+          listOpenEvents(userId),
+          listMyEventRegistrations(userId).catch(() => ({ registrations: [] })),
+        ]);
         if (!active) return;
         setViewerUserId(userId);
         setEvents(Array.isArray(result.events) ? result.events : []);
+        setCancelNotes(cancelledBookingNotes(bookings?.registrations));
         setLoading(false);
 
         // Instant defaults from shared profile cache (Home/Header often already loaded it).
@@ -970,15 +991,48 @@ function EventsPage({ user }) {
                     key={tab.id}
                     type="button"
                     onClick={() => setMainTab(tab.id)}
-                    className={`rounded-lg px-2 py-2 ${
+                    className={`relative rounded-lg px-2 py-2 ${
                       mainTab === tab.id ? 'bg-emerald-800 text-white' : 'text-gray-700 hover:bg-gray-50'
                     }`}
                   >
                     {tab.label}
+                    {tab.id === 'bookings' && cancelNotes.length > 0 ? (
+                      <span
+                        className={`ml-1 inline-flex min-w-[1.1rem] items-center justify-center rounded-full px-1 text-[10px] font-bold ${
+                          mainTab === tab.id ? 'bg-white text-rose-700' : 'bg-rose-600 text-white'
+                        }`}
+                      >
+                        {cancelNotes.length}
+                      </span>
+                    ) : null}
                   </button>
                 ))}
               </div>
             </header>
+
+            {cancelNotes.length > 0 && mainTab === 'events' ? (
+              <div
+                role="status"
+                className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-950"
+              >
+                <p className="font-bold">Event cancelled</p>
+                <ul className="mt-1 space-y-1">
+                  {cancelNotes.map((note) => (
+                    <li key={note.id}>
+                      {note.name} is cancelled.
+                      {note.refunded ? ' Your ticket credit is back in your wallet.' : ''}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  onClick={() => setMainTab('bookings')}
+                  className="mt-2 text-sm font-semibold text-rose-800 underline"
+                >
+                  See My Bookings
+                </button>
+              </div>
+            ) : null}
 
             {mainTab === 'bookings' ? (
               <MyBookingsPanel user={user} />
@@ -1047,8 +1101,8 @@ function EventsPage({ user }) {
                                   : ''}
                               </span>
                             )}
-                            {' · Host: '}
-                            {event.hostName} · {formatTicketPrice(event.ticketPrice)} ·{' '}
+                            {' · Speaker: '}
+                            {eventSpeakerNames(event).join(', ') || event.hostName} · {formatTicketPrice(event.ticketPrice)} ·{' '}
                             {event.seatCount} seats
                           </p>
                           {designatedNames.length > 0 && (

@@ -150,6 +150,12 @@ export async function ensureRegistrationPaymentColumns() {
            ADD COLUMN FoodCheckedInByUserId INT NULL AFTER FoodCheckedInAt`,
         );
       }
+      if (!(await columnExists(prisma, 'CancelNotifiedAt'))) {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE event_registrations_table
+           ADD COLUMN CancelNotifiedAt DATETIME NULL AFTER FoodCheckedInByUserId`,
+        );
+      }
       if (!(await indexExists(prisma, 'uq_event_reg_event_entry'))) {
         try {
           await prisma.$executeRawUnsafe(
@@ -285,6 +291,72 @@ export async function insertPaidEventRegistration(input, { entryCode, amountChar
     },
   });
   return toRegistration(row);
+}
+
+async function loadCancelNotifiedMap(prisma, ids) {
+  const map = new Map();
+  const clean = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
+  if (clean.length === 0) return map;
+  if (!(await columnExists(prisma, 'CancelNotifiedAt'))) return map;
+  const placeholders = clean.map(() => '?').join(', ');
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT Id, CancelNotifiedAt
+     FROM event_registrations_table
+     WHERE Id IN (${placeholders})`,
+    ...clean,
+  );
+  for (const row of Array.isArray(rows) ? rows : []) {
+    map.set(Number(row.Id), row.CancelNotifiedAt || null);
+  }
+  return map;
+}
+
+export async function listRegistrationsForEvent(eventId) {
+  await ensureRegistrationPaymentColumns();
+  const prisma = getPrisma();
+  const rows = await prisma.event_registrations_table.findMany({
+    where: { EventId: Number(eventId) },
+    orderBy: { Id: 'asc' },
+  });
+  const registrations = rows.map(toRegistration);
+  const notified = await loadCancelNotifiedMap(prisma, registrations.map((row) => row.id));
+  return registrations.map((row) => ({
+    ...row,
+    cancelNotifiedAt: notified.get(Number(row.id)) || null,
+  }));
+}
+
+export async function markRegistrationRefunded(id) {
+  await ensureRegistrationPaymentColumns();
+  const prisma = getPrisma();
+  await prisma.event_registrations_table.updateMany({
+    where: { Id: Number(id), PaymentStatus: 'paid' },
+    data: { PaymentStatus: 'refunded' },
+  });
+}
+
+export async function markRegistrationCancelNotified(id) {
+  await ensureRegistrationPaymentColumns();
+  const prisma = getPrisma();
+  await prisma.$executeRawUnsafe(
+    `UPDATE event_registrations_table
+     SET CancelNotifiedAt = UTC_TIMESTAMP()
+     WHERE Id = ? AND CancelNotifiedAt IS NULL`,
+    Number(id),
+  );
+}
+
+/** Profile phone for a cancellation WhatsApp. Never log the value. */
+export async function findRegistrantPhone(userId) {
+  const uid = Number(userId);
+  if (!Number.isInteger(uid) || uid <= 0) return null;
+  const prisma = getPrisma();
+  const row = await prisma.team_table.findFirst({
+    where: { UserId: uid },
+    select: { PhoneNumber: true },
+  });
+  const phone = String(row?.PhoneNumber || '').trim();
+  return phone || null;
 }
 
 export async function listRegistrationsByUser(userId) {

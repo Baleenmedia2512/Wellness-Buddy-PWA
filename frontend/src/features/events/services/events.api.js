@@ -128,6 +128,18 @@ export function formatEventTimeRange(start, end) {
   return '';
 }
 
+export function eventSpeakerNames(event) {
+  if (Array.isArray(event?.speakers) && event.speakers.length > 0) {
+    return event.speakers
+      .map((speaker) => String(speaker?.name || '').trim())
+      .filter(Boolean);
+  }
+  return String(event?.hostName || '')
+    .split(' · ')
+    .map((name) => name.trim())
+    .filter(Boolean);
+}
+
 export function getEventDatesList(event) {
   if (Array.isArray(event?.eventDates) && event.eventDates.length > 0) {
     return event.eventDates.map((item) => {

@@ -5,6 +5,7 @@ import { getUserId } from '../../../shared/services/getUserId.js';
 import {
   formatEventScheduleSummary,
   formatEventTimeRange,
+  eventSpeakerNames,
   listMyEventRegistrations,
 } from '../services/events.api.js';
 import RegistrationQrCard from './RegistrationQrCard.jsx';
@@ -29,12 +30,29 @@ function statusLabel(value) {
   const status = String(value || 'saved').toLowerCase();
   if (status === 'paid') return 'Paid';
   if (status === 'saved') return 'Saved';
+  if (status === 'refunded') return 'Credit returned';
   return status;
+}
+
+function bookingCancelled(row) {
+  const status = String(row?.event?.status || '').toLowerCase();
+  if (status === 'cancelled') return true;
+  return !row?.event;
+}
+
+function bookingCreditNote(row) {
+  if (!bookingCancelled(row)) return '';
+  const amount = Number(row?.amountCharged);
+  const refunded = String(row?.paymentStatus || '').toLowerCase() === 'refunded';
+  if (refunded && Number.isFinite(amount) && amount > 0) {
+    return `This event is cancelled. ${formatMoney(amount)} is back in your wallet.`;
+  }
+  return 'This event is cancelled.';
 }
 
 function BookingPassCard({ booking, onBack }) {
   const eventName = booking.event?.eventName || `Event #${booking.eventId}`;
-  const hostName = booking.event?.hostName || '';
+  const hostName = eventSpeakerNames(booking.event).join(', ');
   const place = booking.event?.place || '—';
   const eventDate = formatEventScheduleSummary(booking.event) || booking.event?.eventDate || '—';
   return (
@@ -62,7 +80,7 @@ function BookingPassCard({ booking, onBack }) {
               </h3>
               {hostName ? (
                 <p className="mt-2 text-[13px] font-medium text-emerald-50/85">
-                  Hosted by {hostName}
+                  Speaker · {hostName}
                 </p>
               ) : null}
             </div>
@@ -174,30 +192,39 @@ export default function MyBookingsPanel({ user }) {
         <ul className="space-y-3">
           {rows.map((row, index) => {
             const eventName = row.event?.eventName || `Event #${row.eventId}`;
-            const hostName = row.event?.hostName || '';
+            const hostName = eventSpeakerNames(row.event).join(', ');
             const place = row.event?.place || '—';
             const eventDate = formatEventScheduleSummary(row.event) || row.event?.eventDate || '—';
             const checkedIn = Boolean(row.checkedInAt);
+            const cancelled = bookingCancelled(row);
+            const creditNote = bookingCreditNote(row);
+            const locked = checkedIn || cancelled;
             const gradient = LIST_CARD_STYLES[index % LIST_CARD_STYLES.length];
             return (
               <li key={row.id}>
                 <button
                   type="button"
-                  disabled={checkedIn}
-                  aria-disabled={checkedIn}
+                  disabled={locked}
+                  aria-disabled={locked}
                   onClick={() => {
-                    if (checkedIn) return;
+                    if (locked) return;
                     setSelected(row);
                   }}
                   className={`w-full overflow-hidden rounded-2xl border text-left shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${
-                    checkedIn
-                      ? 'cursor-not-allowed border-gray-200 bg-gray-100 opacity-70 grayscale'
-                      : 'border-emerald-100 bg-white transition hover:-translate-y-0.5 hover:shadow-lg'
+                    cancelled
+                      ? 'cursor-default border-rose-200 bg-white'
+                      : checkedIn
+                        ? 'cursor-not-allowed border-gray-200 bg-gray-100 opacity-70 grayscale'
+                        : 'border-emerald-100 bg-white transition hover:-translate-y-0.5 hover:shadow-lg'
                   }`}
                 >
                   <div
                     className={`px-4 py-3.5 text-white ${
-                      checkedIn ? 'bg-gradient-to-br from-gray-500 via-gray-600 to-gray-700' : `bg-gradient-to-br ${gradient}`
+                      cancelled
+                        ? 'bg-gradient-to-br from-rose-800 via-rose-700 to-rose-900'
+                        : checkedIn
+                          ? 'bg-gradient-to-br from-gray-500 via-gray-600 to-gray-700'
+                          : `bg-gradient-to-br ${gradient}`
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -207,11 +234,11 @@ export default function MyBookingsPanel({ user }) {
                         </p>
                         <p className="mt-1 truncate text-lg font-bold leading-tight">{eventName}</p>
                         {hostName ? (
-                          <p className="mt-1 truncate text-xs text-white/90">Host · {hostName}</p>
+                          <p className="mt-1 truncate text-xs text-white/90">Speaker · {hostName}</p>
                         ) : null}
                       </div>
                       <span className="shrink-0 rounded-full bg-white/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide">
-                        {checkedIn ? 'Checked in' : statusLabel(row.paymentStatus)}
+                        {cancelled ? 'Cancelled' : checkedIn ? 'Checked in' : statusLabel(row.paymentStatus)}
                       </span>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
@@ -239,10 +266,14 @@ export default function MyBookingsPanel({ user }) {
                         {row.entryCode || '—'}
                       </p>
                       <p className="mt-1 text-xs text-gray-600">
-                        Paid {formatMoney(row.amountCharged)}
+                        {creditNote || `Paid ${formatMoney(row.amountCharged)}`}
                       </p>
                     </div>
-                    {checkedIn ? (
+                    {cancelled ? (
+                      <span className="inline-flex items-center rounded-lg bg-rose-100 px-3 py-2 text-xs font-semibold text-rose-900">
+                        Event cancelled
+                      </span>
+                    ) : checkedIn ? (
                       <span className="inline-flex items-center rounded-lg bg-gray-200 px-3 py-2 text-xs font-semibold text-gray-600">
                         Used · locked
                       </span>

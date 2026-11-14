@@ -19,6 +19,7 @@ import { getUserId } from '../../../shared/services/getUserId.js';
 import { buildUserAvatarUrl } from '../../user/services/avatarDisplayVersion.js';
 import {
   checkInEventRegistration,
+  eventSpeakerNames,
   listOpenEvents,
   reportEventCheckInMisuse,
 } from '../services/events.api.js';
@@ -206,7 +207,7 @@ function GuestPassScreen({
 }) {
   const isFood = checkInType === 'food';
   const eventName = registration.event?.eventName || `Event #${registration.eventId}`;
-  const hostName = registration.event?.hostName || '';
+  const hostName = eventSpeakerNames(registration.event).join(', ');
   const place = registration.event?.place || '—';
   const eventDate = registration.event?.eventDate || '—';
   const entryVerified = Boolean(registration.checkedInAt);
@@ -295,7 +296,7 @@ function GuestPassScreen({
           </h2>
           {hostName ? (
             <p className="mt-0.5 truncate text-xs text-white/90">
-              <span className="text-white/65">Host</span>
+              <span className="text-white/65">Speaker</span>
               <span className="mx-1 text-white/40">·</span>
               <span className="font-semibold text-white">{hostName}</span>
             </p>

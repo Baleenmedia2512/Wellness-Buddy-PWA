@@ -8,6 +8,7 @@ import { fetchWallet } from '../../../wallet/services/walletApi.js';
 import {
   createEventRegistration,
   EVENTS_UPDATED_EVENT,
+  listMyEventRegistrations,
   listOpenEvents,
   searchEventPeople,
 } from '../../services/events.api.js';
@@ -75,6 +76,7 @@ describe('EventsPage', () => {
     jest.useFakeTimers();
     getUserId.mockResolvedValue(17);
     listOpenEvents.mockResolvedValue({ events: [event] });
+    listMyEventRegistrations.mockResolvedValue({ registrations: [] });
     fetchWallet.mockResolvedValue({ balance: 500 });
     createEventRegistration.mockResolvedValue({
       success: true,
@@ -164,6 +166,24 @@ describe('EventsPage', () => {
     expect(selectButton).not.toBeNull();
     act(() => selectButton.click());
   };
+
+  it('shows a cancellation notice on the Events screen', async () => {
+    listMyEventRegistrations.mockResolvedValue({
+      registrations: [{
+        id: 4,
+        amountCharged: 200,
+        paymentStatus: 'refunded',
+        event: { eventName: 'Happy life', status: 'cancelled' },
+      }],
+    });
+    await renderPage();
+    expect(container.textContent).toContain('Event cancelled');
+    expect(container.textContent).toContain('Happy life is cancelled');
+    expect(container.textContent).toContain('back in your wallet');
+    const bookingsTab = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.includes('My Bookings'));
+    expect(bookingsTab.textContent).toContain('1');
+  });
 
   it('loads open events and completes Next → wallet pay → Successfully Submitted + QR', async () => {
     await renderPage();

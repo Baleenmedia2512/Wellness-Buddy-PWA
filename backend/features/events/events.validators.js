@@ -1,4 +1,5 @@
 import { ValidationError } from '../../shared/lib/ValidationError.js';
+import { todayInTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
 import {
   normalizeEventDraft,
   normalizeEventRegistrationDraft,
@@ -22,7 +23,7 @@ export function validateListEvents(query) {
 
 export function validateCreateEvent(body) {
   const userId = requireOwner(body);
-  const draft = normalizeEventDraft(body);
+  const draft = normalizeEventDraft(body, { today: todayInTimezone(IANA_IST) });
   if (!draft.ok) throw new ValidationError(400, draft.errors.join(' '));
   return { userId, ...draft.value };
 }
@@ -35,6 +36,7 @@ export function validateUpdateEvent(body) {
   const hasFields = body?.eventName != null
     || body?.hostName != null
     || body?.host != null
+    || body?.speakers != null
     || body?.place != null
     || body?.places != null
     || body?.venue != null
@@ -54,7 +56,7 @@ export function validateUpdateEvent(body) {
 
   const next = { userId, id };
   if (hasFields) {
-    const draft = normalizeEventDraft(body);
+    const draft = normalizeEventDraft(body, { today: todayInTimezone(IANA_IST) });
     if (!draft.ok) throw new ValidationError(400, draft.errors.join(' '));
     Object.assign(next, draft.value);
   }

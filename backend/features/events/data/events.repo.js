@@ -57,6 +57,12 @@ export async function ensureEventsColumns() {
              ADD COLUMN Places JSON NULL AFTER EventDates`,
           );
         }
+        if (!(await columnExists(prisma, 'Speakers'))) {
+          await prisma.$executeRawUnsafe(
+            `ALTER TABLE events_table
+             ADD COLUMN Speakers JSON NULL AFTER Places`,
+          );
+        }
         eventColumnsReady = true;
         return true;
       } catch (error) {
@@ -112,6 +118,45 @@ function parseEventDatesJson(value) {
   return [];
 }
 
+function parseSpeakersJson(value) {
+  if (!value) return [];
+  const list = Array.isArray(value)
+    ? value
+    : (typeof value === 'string'
+      ? (() => {
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      })()
+      : []);
+  return list
+    .map((item) => {
+      if (typeof item === 'string') {
+        const name = String(item).trim();
+        return name ? { name, userId: null } : null;
+      }
+      const name = String(item?.name || '').trim();
+      if (!name) return null;
+      const userId = Number(item?.userId);
+      return {
+        name,
+        userId: Number.isInteger(userId) && userId > 0 ? userId : null,
+      };
+    })
+    .filter(Boolean);
+}
+
+function speakersFromHostName(hostName) {
+  return String(hostName || '')
+    .split(' · ')
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .map((name) => ({ name, userId: null }));
+}
+
 function parsePlacesJson(value) {
   if (!value) return [];
   if (Array.isArray(value)) return value;
@@ -153,6 +198,9 @@ function toEvent(row, detailsById = null) {
     createdByUserId: Number(row.CreatedByUserId) || undefined,
     eventName: row.EventName,
     hostName: row.HostName,
+    speakers: Array.isArray(details.speakers) && details.speakers.length > 0
+      ? details.speakers
+      : speakersFromHostName(row.HostName),
     place,
     city: place,
     venue,
@@ -208,14 +256,21 @@ async function loadEventDetailsByIds(ids) {
     let rows;
     try {
       rows = await prisma.$queryRawUnsafe(
-        `SELECT Id, Venue, StartTime, EndTime, EventDates, Places FROM events_table WHERE Id IN (${placeholders})`,
+        `SELECT Id, Venue, StartTime, EndTime, EventDates, Places, Speakers FROM events_table WHERE Id IN (${placeholders})`,
         ...list,
       );
     } catch {
-      rows = await prisma.$queryRawUnsafe(
-        `SELECT Id, Venue, StartTime, EndTime, EventDates FROM events_table WHERE Id IN (${placeholders})`,
-        ...list,
-      );
+      try {
+        rows = await prisma.$queryRawUnsafe(
+          `SELECT Id, Venue, StartTime, EndTime, EventDates, Places FROM events_table WHERE Id IN (${placeholders})`,
+          ...list,
+        );
+      } catch {
+        rows = await prisma.$queryRawUnsafe(
+          `SELECT Id, Venue, StartTime, EndTime, EventDates FROM events_table WHERE Id IN (${placeholders})`,
+          ...list,
+        );
+      }
     }
     for (const row of rows || []) {
       const id = Number(row.Id);
@@ -224,7 +279,8 @@ async function loadEventDetailsByIds(ids) {
       const endTime = String(row.EndTime || '').trim() || null;
       const eventDates = parseEventDatesJson(row.EventDates);
       const places = parsePlacesJson(row.Places);
-      map.set(id, { venue, startTime, endTime, eventDates, places });
+      const speakers = parseSpeakersJson(row.Speakers);
+      map.set(id, { venue, startTime, endTime, eventDates, places, speakers });
     }
   } catch (error) {
     logger.warn('events details load failed', { message: error?.message || String(error) });
@@ -232,7 +288,7 @@ async function loadEventDetailsByIds(ids) {
   return map;
 }
 
-async function saveEventDetails(id, { venue, startTime, endTime, eventDates, places } = {}) {
+async function saveEventDetails(id, { venue, startTime, endTime, eventDates, places, speakers } = {}) {
   const eventId = Number(id);
   if (!Number.isInteger(eventId) || eventId <= 0) return;
   if (
@@ -241,6 +297,7 @@ async function saveEventDetails(id, { venue, startTime, endTime, eventDates, pla
     && endTime === undefined
     && eventDates === undefined
     && places === undefined
+    && speakers === undefined
   ) return;
   const hasColumns = await ensureEventsColumns();
   if (!hasColumns) return;
@@ -267,6 +324,10 @@ async function saveEventDetails(id, { venue, startTime, endTime, eventDates, pla
     if (places !== undefined) {
       updates.push('Places = ?');
       params.push(Array.isArray(places) && places.length > 0 ? JSON.stringify(places) : null);
+    }
+    if (speakers !== undefined) {
+      updates.push('Speakers = ?');
+      params.push(Array.isArray(speakers) && speakers.length > 0 ? JSON.stringify(speakers) : null);
     }
     if (updates.length === 0) return;
     params.push(eventId);
@@ -313,6 +374,7 @@ export async function insertEvent(input) {
     endTime: input.endTime,
     eventDates: input.eventDates,
     places: input.places,
+    speakers: input.speakers,
   });
   const [event] = await withEventDetails([row]);
   return event;
@@ -380,6 +442,7 @@ export async function updateOwnedEvent(id, userId, patch) {
     || patch.endTime !== undefined
     || patch.eventDates !== undefined
     || patch.places !== undefined
+    || patch.speakers !== undefined
   ) {
     await saveEventDetails(id, {
       venue: patch.venue,
@@ -387,6 +450,7 @@ export async function updateOwnedEvent(id, userId, patch) {
       endTime: patch.endTime,
       eventDates: patch.eventDates,
       places: patch.places,
+      speakers: patch.speakers,
     });
   }
   return findOwnedEvent(id, userId);

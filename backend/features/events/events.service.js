@@ -2,11 +2,14 @@ import * as repo from './data/events.repo.js';
 import { searchActivePeople } from './data/people.repo.js';
 import logger from '../../shared/lib/logger.js';
 import { sendTransactionalMail } from '../../shared/lib/smtp-mail.js';
+import { buildWhatsAppShareUrl } from '../../shared/lib/whatsapp-share.rules.js';
+import { isWhatsAppCloudConfigured, sendWhatsAppCloudText } from '../../shared/lib/whatsapp-cloud.client.js';
 import {
   countSeatsTaken,
   countSeatsTakenByEventIds,
   findCommunityIdForUser,
   findGuestCoachContacts,
+  findRegistrantPhone,
   findRegistrationByEventAndEntryCode,
   findRegistrationByEventAndUser,
   findRegistrationByIdForUser,
@@ -16,9 +19,19 @@ import {
   insertPaidEventRegistration,
   listEntryCodesForEvent,
   listRegistrationsByUser,
+  listRegistrationsForEvent,
+  markRegistrationCancelNotified,
   markRegistrationCheckedIn,
   markRegistrationFoodCheckedIn,
+  markRegistrationRefunded,
 } from './data/registrations.repo.js';
+import {
+  buildEventCancelledNotice,
+  cancellationNoticeEmails,
+  cancelledTicketCreditAmount,
+  describeCancellationSettlement,
+  refundableEventTicketAmount,
+} from './domain/event-cancelled-notice.rules.js';
 import { buildCheckInIdealWeightProgress } from './domain/check-in-ideal-weight.rules.js';
 import { buildCheckInMisuseReportEmail } from './domain/check-in-misuse-report-email.rules.js';
 import { buildCheckInVerifiedEmail } from './domain/check-in-verified-email.rules.js';
@@ -27,9 +40,10 @@ import {
   buildRegistrationQrPayload,
   canScanEventRegistrations,
   computeRegistrationCharge,
+  eventDeleteBlockedByBookings,
   parseEntryCode,
 } from './domain/event.rules.js';
-import { debitForEventTicket } from '../wallet/data/wallet.repo.js';
+import { creditEventTicketRefund, debitForEventTicket } from '../wallet/data/wallet.repo.js';
 
 const STORAGE_MESSAGE = 'Events storage is not ready. Run backend/migrations/create_events_table.sql, then npm run prisma:generate in backend, and restart the API.';
 const REGISTRATION_STORAGE_MESSAGE = 'Event registration storage is not ready. Run backend/migrations/create_event_registrations_table.sql, then npm run prisma:generate in backend, and restart the API.';
@@ -83,6 +97,7 @@ function withEventSummary(registration, event) {
           id: event.id,
           eventName: event.eventName,
           hostName: event.hostName,
+          speakers: event.speakers,
           place: event.place,
           venue: event.venue,
           places: event.places,
@@ -97,10 +112,169 @@ function withEventSummary(registration, event) {
   };
 }
 
+async function deliverCancellationNotice(event, registration, refundAmount) {
+  const contacts = await findGuestCoachContacts(registration.registrantUserId);
+  const guestName = registration.name || contacts.guestName || 'Guest';
+  const notice = buildEventCancelledNotice({
+    guestName,
+    eventName: event.eventName,
+    eventDate: event.eventDate,
+    place: event.place,
+    refundAmount,
+    ticketNumber: registration.entryCode || registration.ticketNo || '',
+  });
+  const emails = cancellationNoticeEmails(registration.zoomEmail, contacts.guestEmail);
+  let emailed = false;
+  for (const email of emails) {
+    try {
+      await sendTransactionalMail({
+        to: email,
+        subject: notice.subject,
+        text: notice.text,
+        html: notice.html,
+      });
+      emailed = true;
+    } catch (err) {
+      logger.warn('[events] cancellation email failed', {
+        registrationId: registration.id,
+        message: err?.message || String(err),
+      });
+    }
+  }
+
+  const phone = String(registration.phoneNumber || '').trim()
+    || await findRegistrantPhone(registration.registrantUserId);
+  let whatsappSent = false;
+  let whatsappUrl = '';
+  if (phone && isWhatsAppCloudConfigured()) {
+    try {
+      await sendWhatsAppCloudText({ to: phone, text: notice.whatsappText });
+      whatsappSent = true;
+    } catch (err) {
+      if (err?.code !== 'WHATSAPP_NOT_CONFIGURED') {
+        logger.warn('[events] cancellation WhatsApp failed', {
+          registrationId: registration.id,
+          message: err?.message || String(err),
+        });
+      }
+    }
+  }
+  if (phone && !whatsappSent) {
+    whatsappUrl = buildWhatsAppShareUrl({ phone, text: notice.whatsappText });
+  }
+  return { emailed, whatsappSent, whatsappUrl, guestName };
+}
+
+/**
+ * Return paid ticket credit and tell each booker the event is cancelled.
+ * Safe to run again: a registration is credited once, and the email is sent once.
+ */
+async function settleCancelledEventBookings(event) {
+  const summary = {
+    refunded: 0,
+    emailed: 0,
+    whatsappSent: 0,
+    whatsappChats: [],
+  };
+  if (!event || String(event.status || '').toLowerCase() !== 'cancelled') return summary;
+
+  const rows = await listRegistrationsForEvent(event.id);
+  for (const registration of rows) {
+    const status = String(registration.paymentStatus || '').toLowerCase();
+    if (status !== 'paid' && status !== 'saved' && status !== 'refunded') continue;
+    try {
+      const refundAmount = refundableEventTicketAmount(registration);
+      if (refundAmount > 0) {
+        await creditEventTicketRefund({
+          userId: registration.registrantUserId,
+          amount: refundAmount,
+          registrationId: registration.id,
+        });
+        await markRegistrationRefunded(registration.id);
+        summary.refunded += 1;
+      }
+      if (registration.cancelNotifiedAt) continue;
+      const credit = refundAmount > 0
+        ? refundAmount
+        : cancelledTicketCreditAmount(registration);
+      const delivery = await deliverCancellationNotice(event, registration, credit);
+      if (delivery.emailed) summary.emailed += 1;
+      if (delivery.whatsappSent) summary.whatsappSent += 1;
+      if (delivery.whatsappUrl) {
+        summary.whatsappChats.push({
+          name: delivery.guestName,
+          url: delivery.whatsappUrl,
+        });
+      }
+      if (delivery.emailed || delivery.whatsappSent) {
+        await markRegistrationCancelNotified(registration.id);
+      }
+    } catch (err) {
+      logger.warn('[events] cancellation settlement failed', {
+        eventId: event.id,
+        registrationId: registration.id,
+        message: err?.message || String(err),
+      });
+    }
+  }
+  return summary;
+}
+
+function cancellationBody(summary) {
+  const notice = describeCancellationSettlement({
+    refunded: summary.refunded,
+    emailed: summary.emailed,
+    whatsappSent: summary.whatsappSent,
+    whatsappReady: summary.whatsappChats.length,
+  });
+  return {
+    notice,
+    whatsappChats: summary.whatsappChats,
+  };
+}
+
 export function listEvents(input) {
   return run(async () => {
     const events = await repo.listEventsByOwner(input.userId);
-    return { httpStatus: 200, body: { success: true, events } };
+    const settlement = {
+      refunded: 0,
+      emailed: 0,
+      whatsappSent: 0,
+      whatsappChats: [],
+    };
+    for (const event of events) {
+      if (String(event.status || '').toLowerCase() !== 'cancelled') continue;
+      try {
+        const part = await settleCancelledEventBookings(event);
+        settlement.refunded += part.refunded;
+        settlement.emailed += part.emailed;
+        settlement.whatsappSent += part.whatsappSent;
+        settlement.whatsappChats.push(...part.whatsappChats);
+      } catch (err) {
+        logger.warn('[events] cancellation settlement failed', {
+          eventId: event.id,
+          message: err?.message || String(err),
+        });
+      }
+    }
+    const takenMap = await countSeatsTakenByEventIds(events.map((event) => event.id));
+    const withBookings = events.map((event) => {
+      const seatsTaken = takenMap.get(Number(event.id)) || 0;
+      return {
+        ...event,
+        seatsTaken,
+        hasBookings: eventDeleteBlockedByBookings(seatsTaken),
+      };
+    });
+    const settled = cancellationBody(settlement);
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        events: withBookings,
+        ...(settled.notice ? { notice: settled.notice, whatsappChats: settled.whatsappChats } : {}),
+      },
+    };
   });
 }
 
@@ -137,12 +311,35 @@ export function updateEvent(input) {
     if (!event) {
       return { httpStatus: 404, body: { success: false, message: 'Event not found.' } };
     }
-    return { httpStatus: 200, body: { success: true, event } };
+    const settlement = await settleCancelledEventBookings(event);
+    const settled = cancellationBody(settlement);
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        event,
+        ...(settled.notice ? { notice: settled.notice, whatsappChats: settled.whatsappChats } : {}),
+      },
+    };
   });
 }
 
 export function deleteEvent(input) {
   return run(async () => {
+    const event = await repo.findOwnedEvent(input.id, input.userId);
+    if (!event) {
+      return { httpStatus: 404, body: { success: false, message: 'Event not found.' } };
+    }
+    const seatsTaken = await countSeatsTaken(input.id);
+    if (eventDeleteBlockedByBookings(seatsTaken, event.status)) {
+      return {
+        httpStatus: 409,
+        body: {
+          success: false,
+          message: 'This event already has bookings, so it cannot be deleted. You can cancel it instead.',
+        },
+      };
+    }
     const removed = await repo.softDeleteOwnedEvent(input.id, input.userId);
     if (!removed) {
       return { httpStatus: 404, body: { success: false, message: 'Event not found.' } };
@@ -282,13 +479,24 @@ export function listMyEventRegistrations(input) {
   return run(async () => {
     const rows = await listRegistrationsByUser(input.userId);
     const eventsById = new Map();
-    const registrations = [];
     for (const row of rows) {
       if (!eventsById.has(row.eventId)) {
         eventsById.set(row.eventId, await repo.findActiveEventById(row.eventId));
       }
-      registrations.push(withEventSummary(row, eventsById.get(row.eventId)));
     }
+    for (const event of eventsById.values()) {
+      if (String(event?.status || '').toLowerCase() !== 'cancelled') continue;
+      try {
+        await settleCancelledEventBookings(event);
+      } catch (err) {
+        logger.warn('[events] cancellation settlement failed', {
+          eventId: event?.id,
+          message: err?.message || String(err),
+        });
+      }
+    }
+    const fresh = await listRegistrationsByUser(input.userId);
+    const registrations = fresh.map((row) => withEventSummary(row, eventsById.get(row.eventId)));
     return { httpStatus: 200, body: { success: true, registrations } };
   });
 }
