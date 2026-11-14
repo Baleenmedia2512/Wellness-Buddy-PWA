@@ -10,7 +10,6 @@ import {
   getMyEventRegistration,
   listMyEventRegistrations,
 } from '../../../features/events/events.service.js';
-import { listActivePositionCodes } from '../../../features/user/communityPosition.service.js';
 
 function flagOff() {
   return {
@@ -35,8 +34,11 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     return runService(res, async () => {
-      const levelOptions = await listActivePositionCodes();
-      return createEventRegistration(validateCreateEventRegistration(req.body, levelOptions));
+      // validateCreateEventRegistration is async (loads level options itself).
+      // Must await — a bare Promise makes createEventRegistration treat confirmPayment
+      // as missing and crash in formData on undefined.*.userId (500).
+      const validated = await validateCreateEventRegistration(req.body);
+      return createEventRegistration(validated);
     });
   }
   if (req.method === 'GET') {
