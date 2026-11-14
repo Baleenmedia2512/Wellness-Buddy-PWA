@@ -15,7 +15,7 @@ export function getPremiumQuote(input) {
   if (!quote) {
     throw new ValidationError(
       422,
-      'Set Community Position on your profile before paying',
+      'Fill Community Position on your profile.',
     );
   }
   return {

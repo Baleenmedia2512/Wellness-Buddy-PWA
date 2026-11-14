@@ -15,6 +15,7 @@ import {
   findReportTrialStart,
   insertReportTrialStart,
 } from '../data/report-trial.repository.js';
+import { getEventProfilePreferences } from '../../user/user.repository.js';
 import { cashfreeCheckoutMode } from '../domain/premium.rules.js';
 import {
   canSeeReportDetails,
@@ -22,6 +23,13 @@ import {
   shouldGateReportDetails,
   trialStartIstYmd,
 } from '../domain/report-trial.rules.js';
+
+export const COMMUNITY_POSITION_REQUIRED_MESSAGE = 'Fill Community Position on your profile.';
+
+async function readStoredCommunityPosition(userId) {
+  const prefs = await getEventProfilePreferences(userId);
+  return prefs?.eventLevel;
+}
 
 function parseUserId(raw) {
   const userId = Number.parseInt(String(raw ?? ''), 10);
@@ -105,6 +113,7 @@ export async function getReportAccess(input, deps = {}) {
  *   hasEverPaid?: Function,
  *   readStart?: Function,
  *   saveStart?: Function,
+ *   readCommunityPosition?: Function,
  *   todayYmd?: string,
  * }} [deps]
  */
@@ -113,6 +122,7 @@ export async function startReportTrial(input, deps = {}) {
   const hasEverPaid = deps.hasEverPaid || hasEverPaidPremium;
   const readStart = deps.readStart || findReportTrialStart;
   const saveStart = deps.saveStart || insertReportTrialStart;
+  const readCommunityPosition = deps.readCommunityPosition || readStoredCommunityPosition;
   const userId = parseUserId(input.userId);
   if (!userId) throw new ValidationError(400, 'userId is required');
 
@@ -155,6 +165,10 @@ export async function startReportTrial(input, deps = {}) {
 
   let startedAt = await readStart(userId);
   if (!startedAt) {
+    const position = await readCommunityPosition(userId);
+    if (!String(position || '').trim()) {
+      throw new ValidationError(422, COMMUNITY_POSITION_REQUIRED_MESSAGE);
+    }
     startedAt = await saveStart(userId);
   }
   if (!startedAt) {

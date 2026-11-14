@@ -46,12 +46,12 @@ describe('events trial shares Reports window', () => {
 });
 
 describe('events host version gate', () => {
-  it('leaves older and missing versions on free Create/Check-in', () => {
+  it('leaves older and missing versions with Digital Portfolio open', () => {
     assert.equal(shouldGateEventsHostTools({ flagEnabled: true, appVersion: '3.5.6' }), false);
     assert.equal(shouldGateEventsHostTools({ flagEnabled: true, appVersion: null }), false);
   });
 
-  it('gates 3.5.7 and newer while the flag is on', () => {
+  it('gates Digital Portfolio on 3.5.7 and newer while the flag is on', () => {
     assert.equal(shouldGateEventsHostTools({ flagEnabled: true, appVersion: '3.5.7' }), true);
   });
 

@@ -14,6 +14,7 @@ export const NAV_PAGE_KEYS = Object.freeze([
   'reports',
   'broadcast',
   'create-event',
+  'event-check-in',
   'paid-features',
   'map-business',
   'go-premium',
@@ -44,16 +45,29 @@ const CUSTOMER_DEFAULT = Object.freeze({
   reports: false,
   broadcast: true,
   'create-event': true,
+  'event-check-in': false,
   'paid-features': true,
   'map-business': true,
   'go-premium': false,
 });
 
-/** Default matrix when DB row is missing. System Admin starts with the Customer screens. */
+/** Sponsor keeps every existing page. Check-in stays off until an admin turns it on. */
+const SPONSOR_DEFAULT = Object.freeze({
+  ...ALL_PAGES_ON,
+  'event-check-in': false,
+});
+
+/** System Admin matches Customer, plus Check-in. */
+const SYSTEM_ADMIN_DEFAULT = Object.freeze({
+  ...CUSTOMER_DEFAULT,
+  'event-check-in': true,
+});
+
+/** Default matrix when DB row is missing. Check-in starts on for System Admin, Admin, and Developer. */
 export const DEFAULT_NAV_ACCESS_MATRIX = Object.freeze({
   user: { ...CUSTOMER_DEFAULT },
-  coach: { ...ALL_PAGES_ON },
-  system_admin: { ...CUSTOMER_DEFAULT },
+  coach: { ...SPONSOR_DEFAULT },
+  system_admin: { ...SYSTEM_ADMIN_DEFAULT },
   admin: { ...ALL_PAGES_ON },
   developer: { ...ALL_PAGES_ON },
 });
@@ -187,6 +201,35 @@ export function mergeOmittedSystemAdmin(incoming, validatedMatrix, storedMatrix)
   if (sent) return validatedMatrix;
   const kept = storedMatrix?.system_admin ?? validatedMatrix.system_admin;
   return { ...validatedMatrix, system_admin: normalizePageMap(kept) };
+}
+
+/**
+ * Older Admin Config saves omit `event-check-in`. Keep the stored value
+ * (or the role default) instead of turning the new page off.
+ *
+ * @param {unknown} incoming
+ * @param {Record<string, Record<string, boolean>>} validatedMatrix
+ * @param {Record<string, Record<string, boolean>>|null|undefined} storedMatrix
+ * @returns {Record<string, Record<string, boolean>>}
+ */
+export function mergeOmittedCheckInPage(incoming, validatedMatrix, storedMatrix) {
+  const out = { ...validatedMatrix };
+  for (const role of MATRIX_ROLES) {
+    const incomingRole = incoming?.[role];
+    const sent = incomingRole
+      && typeof incomingRole === 'object'
+      && !Array.isArray(incomingRole)
+      && Object.prototype.hasOwnProperty.call(incomingRole, 'event-check-in');
+    if (sent) continue;
+    const kept = storedMatrix?.[role]?.['event-check-in'];
+    out[role] = {
+      ...out[role],
+      'event-check-in': kept == null
+        ? Boolean(DEFAULT_NAV_ACCESS_MATRIX[role]?.['event-check-in'])
+        : Boolean(kept),
+    };
+  }
+  return out;
 }
 
 /**
