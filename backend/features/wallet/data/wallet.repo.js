@@ -189,6 +189,18 @@ export async function insertCashRequest({
   return findPendingByRequesterId(uid);
 }
 
+export async function replacePendingOtp({ id, otpHash }) {
+  await ensureTables();
+  await getPrisma().$executeRawUnsafe(
+    `UPDATE wallet_cash_requests_table
+     SET OtpHash = ?, OtpAttempts = 0
+     WHERE Id = ? AND Status = ?`,
+    String(otpHash),
+    Number(id),
+    REQUEST_STATUS_PENDING,
+  );
+}
+
 export async function markOtpEmailSent(id) {
   await ensureTables();
   await getPrisma().$executeRawUnsafe(

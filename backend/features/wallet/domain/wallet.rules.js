@@ -11,6 +11,8 @@ export const WALLET_OTP_MINUTES = 30;
 /** Sentinel stored in OtpExpiresAt — time-based expiry is disabled. */
 export const WALLET_OTP_NO_EXPIRY_AT = '2099-12-31 23:59:59';
 export const WALLET_OTP_MAX_ATTEMPTS = 5;
+/** Minimum gap between OTP emails for the same cash request. */
+export const WALLET_OTP_RESEND_COOLDOWN_MS = 30 * 1000;
 export const WALLET_OTP_LOCKED_CODE = 'WALLET_OTP_LOCKED';
 export const WALLET_OTP_LOCKED_MESSAGE = '5 attempts used. Send a new request.';
 export const WALLET_OTP_BCRYPT_COST = 12;
@@ -113,6 +115,28 @@ export function canAttemptWalletOtp(attempts, max = WALLET_OTP_MAX_ATTEMPTS) {
   const n = Number(attempts);
   if (!Number.isFinite(n) || n < 0) return false;
   return n < max;
+}
+
+/**
+ * Milliseconds until another OTP email is allowed.
+ * A code that has not been sent yet must not be resent.
+ * @param {unknown} sentAt
+ * @param {Date} [now]
+ * @param {number} [cooldownMs]
+ * @returns {number}
+ */
+export function walletOtpResendWaitMs(
+  sentAt,
+  now = new Date(),
+  cooldownMs = WALLET_OTP_RESEND_COOLDOWN_MS,
+) {
+  if (!sentAt) return cooldownMs;
+  const at = new Date(sentAt).getTime();
+  if (!Number.isFinite(at)) return cooldownMs;
+  const age = now.getTime() - at;
+  if (age >= cooldownMs) return 0;
+  if (age < 0) return cooldownMs;
+  return cooldownMs - age;
 }
 
 /**

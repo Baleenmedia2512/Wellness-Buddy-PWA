@@ -21,10 +21,13 @@ import {
   cancelWalletRequest,
   fetchWallet,
   requestWalletCash,
+  resendWalletOtp,
   searchWalletPeople,
   verifyWalletOtp,
 } from '../services/walletApi';
 import WalletCashAddedAnimation from './WalletCashAddedAnimation';
+
+const WALLET_OTP_RESEND_WAIT_MS = 30 * 1000;
 
 function prefersReducedMotion() {
   try {
@@ -50,6 +53,9 @@ export default function WalletPage({
   const [selected, setSelected] = useState(null);
   const [otp, setOtp] = useState('');
   const [busy, setBusy] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendNote, setResendNote] = useState('');
+  const [resendSeconds, setResendSeconds] = useState(0);
   const [message, setMessage] = useState('');
   const [success, setSuccess] = useState('');
   const [addedAmount, setAddedAmount] = useState(null);
@@ -68,6 +74,26 @@ export default function WalletPage({
   const pending = pendingRequest;
   const pendingId = pending?.id;
   const emailSent = Boolean(pending?.emailSent);
+  const resendLocked = resendSeconds > 0;
+
+  useEffect(() => {
+    if (!pendingId) {
+      setResendSeconds(0);
+      return undefined;
+    }
+    const sentAt = new Date(pending?.requestedAt || Date.now()).getTime();
+    const anchor = Number.isFinite(sentAt) ? sentAt : Date.now();
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((WALLET_OTP_RESEND_WAIT_MS - (Date.now() - anchor)) / 1000));
+      setResendSeconds(left);
+      return left;
+    };
+    if (tick() <= 0) return undefined;
+    const timer = setInterval(() => {
+      if (tick() <= 0) clearInterval(timer);
+    }, 250);
+    return () => clearInterval(timer);
+  }, [pendingId, pending?.requestedAt]);
 
   const displayBalance = animatedBalance != null
     ? animatedBalance
@@ -413,6 +439,30 @@ export default function WalletPage({
     const extracted = extractWalletOtp(raw);
     setOtp(extracted ?? String(raw ?? '').replace(/\D/g, '').slice(0, WALLET_OTP_LENGTH));
     setMessage('');
+    setResendNote('');
+  };
+
+  const onResendOtp = async () => {
+    if (busy || !emailSent || resendSeconds > 0) return;
+    setBusy(true);
+    setResending(true);
+    setMessage('');
+    setResendNote('');
+    try {
+      const data = await resendWalletOtp({
+        userId,
+        amount: pending?.amount,
+        approverUserId: pending?.approverId,
+      });
+      if (data?.pendingRequest) onPendingChange?.(data.pendingRequest);
+      setOtp('');
+      setResendNote('Code sent again.');
+    } catch (err) {
+      setMessage(err?.message || 'Could not resend the code');
+    } finally {
+      setResending(false);
+      setBusy(false);
+    }
   };
 
   const page = (
@@ -548,13 +598,29 @@ export default function WalletPage({
               {message ? (
                 <p className="text-sm font-medium text-red-600" role="alert">{message}</p>
               ) : null}
+              {resendNote ? (
+                <p className="text-sm font-medium text-emerald-700" role="status">{resendNote}</p>
+              ) : null}
               <TouchFeedbackButton
                 onClick={onVerify}
                 disabled={busy || otp.length !== WALLET_OTP_LENGTH}
                 ariaLabel="Approve and add cash"
                 className="w-full rounded-xl bg-gradient-to-r from-green-600 to-green-700 text-white py-3.5 text-sm font-semibold shadow-md disabled:opacity-60"
               >
-                {busy ? 'Checking...' : 'Add to my wallet'}
+                {busy && !resending ? 'Checking...' : 'Add to my wallet'}
+              </TouchFeedbackButton>
+              <TouchFeedbackButton
+                type="button"
+                onClick={onResendOtp}
+                disabled={busy || !emailSent || resendLocked}
+                ariaLabel={resendLocked ? `Resend OTP in ${resendSeconds} seconds` : 'Resend OTP'}
+                className="w-full rounded-xl border border-green-200 bg-white py-3 text-sm font-semibold text-green-700 disabled:opacity-60"
+              >
+                {resending
+                  ? 'Sending...'
+                  : resendLocked
+                    ? `Resend OTP in ${resendSeconds}s`
+                    : 'Resend OTP'}
               </TouchFeedbackButton>
               <TouchFeedbackButton
                 onClick={onCancelPending}
