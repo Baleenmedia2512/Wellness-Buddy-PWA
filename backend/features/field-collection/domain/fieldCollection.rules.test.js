@@ -267,6 +267,24 @@ describe('planCollectionStep', () => {
     assert.notEqual(plan.step, 'communityPosition');
   });
 
+  it('treats Fat % as independent of weight (not hidden without weight)', () => {
+    const fatField = defaultFieldPolicy().find((field) => field.key === 'fatPercent');
+    const decision = decideField({
+      field: fatField,
+      values: { ...filledEntry, currentWeight: '', fatPercent: '', weightRecordedAt: null },
+      state: {
+        skipCount: 0,
+        cycleStartedAt: '2026-11-01T04:30:00.000Z',
+        lastFilledAt: null,
+        lastSkippedAt: TODAY,
+      },
+      role: 'member',
+      now: NOW,
+    });
+    assert.notEqual(decision, 'hidden');
+    assert.ok(decision === 'ask_skippable' || decision === 'ask_blocking');
+  });
+
   it('asks entry fields while community position is set to ask later', () => {
     const fields = defaultFieldPolicy().map((field) => (
       field.key === 'communityPosition'

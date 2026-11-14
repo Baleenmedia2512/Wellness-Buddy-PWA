@@ -352,8 +352,10 @@ const CompleteProfilePage = ({
         height: heightNum,
         dietType,
       };
+      // Prefer userId only — sending email alongside can resolve a different
+      // account on older backends and make Fat % look like it never saved.
       if (uid) payload.userId = uid;
-      if (accountEmail) payload.email = accountEmail;
+      else if (accountEmail) payload.email = accountEmail;
       if (showGender && gender) payload.gender = gender;
       if (showPictureSection && profileImage) payload.profileImage = profileImage;
       if (showCurrentWeight && isValidCurrentWeight(currentWeight)) {
@@ -379,7 +381,18 @@ const CompleteProfilePage = ({
       // Persist BCM/BPC review on the server (survives APK reinstall).
       payload.bcmProfileReviewed = true;
 
-      await saveProfile(payload);
+      const saved = await saveProfile(payload);
+      if (fatPercentValid) {
+        const persisted = saved?.data?.bodyFat;
+        const okFat = persisted != null && Number.isFinite(Number(persisted));
+        if (!okFat) {
+          setError(
+            saved?.data?.bodyFatError
+            || 'Could not save Fat %. Please try again.',
+          );
+          return;
+        }
+      }
 
       onComplete({
         email: accountEmail || undefined,

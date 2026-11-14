@@ -211,9 +211,13 @@ export async function getProfile({ email, userId = null, appVersion = null, bypa
     cardFatPercent: latestBodyMetricsCard?.fat_percent,
     cardBmr: latestBodyMetricsCard?.bmr,
   });
+  const resolvedProfileBodyFat = hasValidBodyFatPercent(bodyMetrics?.fatPercent)
+    ? Number(bodyMetrics.fatPercent)
+    : resolvedWeightBodyFat;
   const needsBodyFat = !hasValidBodyFatSource({
     latestWeightBodyFat: resolvedWeightBodyFat,
     bodyMetrics,
+    bodyFat: resolvedProfileBodyFat,
   });
   const physicalActivityLevel = user.PhysicalActivityLevel || null;
   const calorieTarget = resolveCalorieTargetFromProfile({
@@ -372,7 +376,7 @@ export async function getProfile({ email, userId = null, appVersion = null, bypa
           bodyMetrics,
           profileImage,
           latestWeightBodyFat: resolvedWeightBodyFat,
-          // Body fat lives on weight rows; only require it once a weight exists (or will be collected with weight).
+          bodyFat: resolvedProfileBodyFat,
           bodyFatRequired: true,
         }),
         needsName: !nameComplete,
@@ -396,7 +400,7 @@ export async function getProfile({ email, userId = null, appVersion = null, bypa
         initialWeight: Number.isFinite(initialWeightKg) ? initialWeightKg : null,
         initialWeightDate: initialWeightRow?.CreatedAt || null,
         latestWeightBodyFat: resolvedWeightBodyFat,
-        bodyFat: resolvedWeightBodyFat,
+        bodyFat: resolvedProfileBodyFat,
         latestBmr,
         physicalActivityLevel,
         communityId: user.CommunityId ?? null,
@@ -581,19 +585,20 @@ export async function updateProfile(input) {
   const photoCols = '"UserId", "Email", "Height", transformation_photos';
   const idCols = '"UserId", "Email", "Height"';
   try {
-    // Prefer email when present (legacy clients); userId for phone / BCM without email.
-    if (email) {
-      user = await repo.findByEmail(email, photoCols);
-    } else {
+    // Prefer userId when present (matches GET profile). Email alone is for
+    // legacy clients; email+userId used to resolve the wrong account and drop Fat %.
+    if (inputUserId) {
       user = await repo.findByUserId(inputUserId, photoCols);
+    } else if (email) {
+      user = await repo.findByEmail(email, photoCols);
     }
   } catch (err) {
     const msg = String(err?.message || err || '');
     if (!/transformation_photos/i.test(msg)) throw err;
-    if (email) {
-      user = await repo.findByEmail(email, idCols);
-    } else {
+    if (inputUserId) {
       user = await repo.findByUserId(inputUserId, idCols);
+    } else if (email) {
+      user = await repo.findByEmail(email, idCols);
     }
   }
   if (!user) return notFound();
@@ -764,7 +769,8 @@ export async function updateProfile(input) {
   let latestWeightRow = await repo.getLatestWeight(userId);
   const latestBodyMetricsCard = await findLatestLinkedBodyMetricsCard(userId);
 
-  // Body fat + current weight both live on weight_records_table (same row). Never team_table.
+  // Fat % is an independent profile field on team_table.BodyFat (already existed).
+  // When a weight row exists (or is created), Fat % is also mirrored for BMR/history.
   const incomingBodyFat = bodyFat !== undefined && hasValidBodyFatPercent(bodyFat)
     ? parseFloat(bodyFat)
     : null;
@@ -772,8 +778,46 @@ export async function updateProfile(input) {
     ? parseFloat(currentWeight)
     : null;
 
-  let savedBodyFat = incomingBodyFat;
+  let savedBodyFat = null;
+  let bodyFatError = null;
   let savedCurrentWeight = null;
+
+  if (incomingBodyFat != null) {
+    try {
+      await repo.updateUserById(userId, { BodyFat: incomingBodyFat });
+      savedBodyFat = incomingBodyFat;
+      logger.info('[profile/update] saved BodyFat on team_table', {
+        userId,
+        bodyFat: incomingBodyFat,
+      });
+    } catch (fatErr) {
+      const msg = String(fatErr?.message || fatErr || '');
+      if (/BodyFat|column/i.test(msg)) {
+        bodyFatError = 'Could not save Fat %. Please try again.';
+        logger.error('[profile/update] team_table.BodyFat update failed', {
+          userId,
+          message: msg,
+        });
+      } else {
+        throw fatErr;
+      }
+    }
+  }
+
+  let existingTeamFat = savedBodyFat;
+  if (existingTeamFat == null) {
+    try {
+      const fatRow = await repo.findByUserId(userId, '"BodyFat"');
+      if (hasValidBodyFatPercent(fatRow?.BodyFat)) {
+        existingTeamFat = parseFloat(fatRow.BodyFat);
+      }
+    } catch (fatReadErr) {
+      logger.warn('[profile/update] team BodyFat read skipped', {
+        userId,
+        message: fatReadErr?.message || String(fatReadErr),
+      });
+    }
+  }
 
   if (incomingWeight != null && !latestWeightRow?.ID) {
     const profileHeightRow = appliedHeight == null
@@ -783,14 +827,15 @@ export async function updateProfile(input) {
       ? parseFloat(appliedHeight)
       : (profileHeightRow?.Height ? parseFloat(profileHeightRow.Height) : null);
     const bmi = computeBmiFromHeightWeight(effectiveHeightForBmi, incomingWeight);
-    const weightBmr = computeKatchMcArdleBmr(incomingWeight, incomingBodyFat);
+    const fatForWeight = incomingBodyFat ?? existingTeamFat;
+    const weightBmr = computeKatchMcArdleBmr(incomingWeight, fatForWeight);
     const wallNow = utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST);
     try {
       const inserted = await weightRepo.insertEntry({
         UserId: parseInt(userId, 10),
         Weight: incomingWeight,
         Bmi: bmi,
-        BodyFat: incomingBodyFat,
+        BodyFat: fatForWeight,
         Bmr: weightBmr,
         CreatedAt: wallNow,
         UpdatedAt: wallNow,
@@ -798,13 +843,15 @@ export async function updateProfile(input) {
       latestWeightRow = {
         ID: inserted?.ID,
         Weight: incomingWeight,
-        BodyFat: incomingBodyFat,
+        BodyFat: fatForWeight,
         Bmi: bmi,
         Bmr: weightBmr,
         CreatedAt: wallNow,
       };
       savedCurrentWeight = incomingWeight;
-      savedBodyFat = incomingBodyFat;
+      if (fatForWeight != null && savedBodyFat == null) {
+        savedBodyFat = fatForWeight;
+      }
       if (weightBmr != null) {
         await repo.updateUserById(userId, { Bmr: weightBmr });
       }
@@ -812,7 +859,7 @@ export async function updateProfile(input) {
         userId,
         weightId: inserted?.ID,
         weightKg: incomingWeight,
-        bodyFat: incomingBodyFat,
+        bodyFat: fatForWeight,
       });
     } catch (weightErr) {
       logger.error('[profile/update] failed to save weight record', {
@@ -821,15 +868,14 @@ export async function updateProfile(input) {
       });
       throw weightErr;
     }
-  } else if (incomingBodyFat != null && latestWeightRow?.ID) {
-    // Weight already exists — attach body fat onto that same latest record.
+  } else if (incomingBodyFat != null && latestWeightRow?.ID && savedBodyFat != null) {
+    // Mirror profile Fat % onto the latest weight row for BMR (non-fatal if it fails).
     const weightKg = latestWeightRow.Weight ? parseFloat(latestWeightRow.Weight) : null;
     const weightBmr = weightKg != null
       ? computeKatchMcArdleBmr(weightKg, incomingBodyFat)
       : null;
     const updated = await repo.updateLatestWeightBodyFat(userId, incomingBodyFat, weightBmr);
     if (updated) {
-      savedBodyFat = incomingBodyFat;
       latestWeightRow = {
         ...latestWeightRow,
         BodyFat: incomingBodyFat,
@@ -838,9 +884,15 @@ export async function updateProfile(input) {
       if (weightBmr != null) {
         await repo.updateUserById(userId, { Bmr: weightBmr });
       }
-      logger.info('[profile/update] saved BodyFat on existing weight record', {
+      logger.info('[profile/update] mirrored team BodyFat onto weight record', {
         userId,
         weightId: updated.ID,
+        bodyFat: incomingBodyFat,
+      });
+    } else {
+      logger.warn('[profile/update] BodyFat saved on profile; weight mirror returned no row', {
+        userId,
+        weightId: latestWeightRow.ID,
         bodyFat: incomingBodyFat,
       });
     }
@@ -851,15 +903,13 @@ export async function updateProfile(input) {
         existingWeightId: latestWeightRow.ID,
       });
     }
-  } else if (incomingBodyFat != null && !latestWeightRow?.ID) {
-    logger.warn('[profile/update] bodyFat ignored; no weight record to attach it to', {
-      userId,
-      bodyFat: incomingBodyFat,
-    });
-    savedBodyFat = null;
-  } else if (latestWeightRow?.BodyFat != null) {
-    const existing = parseFloat(latestWeightRow.BodyFat);
-    if (hasValidBodyFatPercent(existing)) savedBodyFat = existing;
+  } else if (savedBodyFat == null) {
+    if (hasValidBodyFatPercent(existingTeamFat)) {
+      savedBodyFat = existingTeamFat;
+    } else if (latestWeightRow?.BodyFat != null) {
+      const existing = parseFloat(latestWeightRow.BodyFat);
+      if (hasValidBodyFatPercent(existing)) savedBodyFat = existing;
+    }
   }
 
   let savedBmr = null;
@@ -903,11 +953,11 @@ export async function updateProfile(input) {
     try {
       dbProfile = await repo.findByUserId(
         userId,
-        '"UserName", "Height", "Bmr", "Gender", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues',
+        '"UserName", "Height", "Bmr", "Gender", "Age", "BodyFat", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues',
       );
     } catch (colErr) {
       const msg = String(colErr?.message || colErr || '');
-      if (!/column|Age|VisceralFat|recovered_health/i.test(msg)) throw colErr;
+      if (!/column|Age|BodyFat|VisceralFat|recovered_health/i.test(msg)) throw colErr;
       dbProfile = await repo.findByUserId(
         userId,
         '"UserName", "Height", "Bmr", "Gender"',
@@ -927,6 +977,7 @@ export async function updateProfile(input) {
         bmr: savedBmr ?? (dbProfile?.Bmr != null ? parseFloat(dbProfile.Bmr) : bmr),
         gender: gender ?? dbProfile?.Gender ?? null,
         age: numOrNull(dbProfile?.Age),
+        fatPercent: savedBodyFat ?? numOrNull(dbProfile?.BodyFat),
         visceralFat: numOrNull(dbProfile?.VisceralFat),
         bodyAge: numOrNull(dbProfile?.BodyAge),
         chestCm: numOrNull(dbProfile?.ChestCm),
@@ -1056,6 +1107,8 @@ export async function updateProfile(input) {
           && transformationPhotos.front)
       ),
       bodyFat: savedBodyFat || undefined,
+      bodyFatSaved: incomingBodyFat != null ? savedBodyFat != null : undefined,
+      bodyFatError: bodyFatError || undefined,
       currentWeight: savedCurrentWeight || undefined,
       teamId: teamCodeSync?.teamId || undefined,
       teamSeat: teamCodeSync?.teamSeat || undefined,

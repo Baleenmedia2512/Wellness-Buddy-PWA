@@ -373,6 +373,16 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         payload.userId = user.id;
       }
       const data = await saveProfile(payload);
+      if (payload.bodyFat != null) {
+        const persisted = data?.data?.bodyFat;
+        if (persisted == null || !Number.isFinite(Number(persisted))) {
+          setError(
+            data?.data?.bodyFatError
+            || 'Could not save Fat %. Please try again.',
+          );
+          return;
+        }
+      }
       // Profile Left → Transformation Before (Centre/Right stay profile-only).
       const leftPending = photoExtras.transformationPhotos?.left || null;
       if (user?.id && leftPending) {
