@@ -148,15 +148,22 @@ export function buildCoachPlaceLabel(page = {}) {
 }
 
 /**
- * Primary on-page heading: coach name + place (matches meta intent).
- * @param {{ displayName?: string, fullName?: string, locality?: string, city?: string }} page
+ * Visible hero lined label: "Coach {FirstName}" (no city/area; role title lives in About kicker).
+ * SEO title/description still carry name + place via buildCoachPageSeo.
+ * @param {{ displayName?: string, fullName?: string }} page
  */
 export function buildCoachVisibleHeading(page = {}) {
-  const name = String(page?.displayName || page?.fullName || 'Wellness Coach').trim()
-    || 'Wellness Coach';
-  const place = buildCoachPlaceLabel(page);
-  if (place) return `${name} — Wellness Coach in ${place}`;
-  return `${name} — Wellness Coach`;
+  const raw = String(page?.displayName || page?.fullName || '').trim();
+  const first = raw.split(/\s+/).filter(Boolean)[0] || '';
+  if (first) {
+    const alreadyPrefixed = /^coach$/i.test(first);
+    if (alreadyPrefixed) {
+      const rest = raw.split(/\s+/).slice(1).join(' ').trim();
+      return rest ? `Coach ${rest.split(/\s+/)[0]}` : 'Coach';
+    }
+    return `Coach ${first}`;
+  }
+  return 'Coach';
 }
 
 /**

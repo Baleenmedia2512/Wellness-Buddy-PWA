@@ -51,14 +51,20 @@ describe('coach-portfolio public-page.rules', () => {
     assert.match(seo.seoTitle, /Madurai|Avaniyapuram/);
     assert.ok(seo.seoDescription.length <= 160);
     assert.ok(seo.seoKeywords.some((k) => /Madurai/i.test(k)));
-    assert.match(
+    assert.equal(
       buildCoachVisibleHeading({
-        displayName: 'Avinash',
+        displayName: 'Avinash Kumar',
+        title: 'Nutrition Coach',
         city: 'Madurai',
         locality: 'Avaniyapuram',
       }),
-      /Avinash — Wellness Coach in Avaniyapuram, Madurai/,
+      'Coach Avinash',
     );
+    assert.equal(
+      buildCoachVisibleHeading({ displayName: 'Coach Priya', city: 'Madurai' }),
+      'Coach Priya',
+    );
+    assert.equal(buildCoachVisibleHeading({}), 'Coach');
     const faqs = buildCoachPageFaqs({
       displayName: 'Avinash',
       city: 'Madurai',

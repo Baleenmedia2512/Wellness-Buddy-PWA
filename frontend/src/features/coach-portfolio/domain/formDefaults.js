@@ -4,7 +4,7 @@ export function emptyPortfolioForm() {
   return {
     personal: {
       fullName: '',
-      professionalTitle: 'Wellness Coach',
+      professionalTitle: '',
       professionalTitleOther: '',
       yearsExperience: '',
       background: '',
@@ -93,24 +93,21 @@ export function emptyPortfolioForm() {
   };
 }
 
-/** About step — all fields required before Next / Publish. */
+/** Profile-hydrated About fields required before Publish. */
 export function validateAboutForm(form) {
   const errors = [];
   const personal = form?.personal || {};
-  if (!String(personal.yearsExperience || '').trim()) errors.push('Years of experience is required');
-  if (!String(personal.background || '').trim()) {
-    errors.push('Who are you as a Wellness Professional is required');
+  if (!String(personal.yearsExperience || '').trim()) {
+    errors.push('Set Date of joining Herbalife in Profile');
   }
-  if (!String(personal.uniqueApproach || '').trim()) {
-    errors.push('What do you believe in is required');
+  if (!String(personal.background || '').trim()) {
+    errors.push('Complete About me in Profile');
   }
   if (!Array.isArray(personal.languages) || personal.languages.length === 0) {
-    errors.push('Languages is required');
-  } else if (
-    personal.languages.includes('Other')
-    && !String(personal.languagesOther || '').trim()
-  ) {
-    errors.push('Other language is required');
+    errors.push('Select Languages in Profile');
+  }
+  if (!String(personal.professionalTitle || '').trim()) {
+    errors.push('Complete Professional title in Profile');
   }
   return errors;
 }

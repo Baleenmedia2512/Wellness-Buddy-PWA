@@ -160,38 +160,43 @@ export async function getServerSideProps({ params, req }) {
     /* keep FormJson photo if profile lookup fails */
   }
 
-  // Map: club GPS when owned center exists; else City/Area Google Maps search (freestyle).
+  // Map: only the submission's linked club — never the owner's primary club fallback.
+  // Freestyle (CenterId NULL) keeps FormJson City/Area and must not show Demo center 1.
   let hasClub = false;
   page.geoLatitude = null;
   page.geoLongitude = null;
+  const linkedCenterId = row.centerId != null ? Number(row.centerId) : null;
   try {
-    const club = await getAppWorkingClubForPortfolio(row.userId);
-    hasClub = Boolean(club?.hasClub);
-    if (hasClub) {
-      page.centerName = club.centerName || '';
-      page.mapsLink = club.mapsLink || '';
-      // Clear form locality/city so hero never shows e.g. slug "RS Puram, Coimbatore".
-      page.locality = '';
-      page.city = '';
-      page.address = club.centerName || '';
-      const lat = Number(club.latitude);
-      const lng = Number(club.longitude);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        page.geoLatitude = lat;
-        page.geoLongitude = lng;
-        try {
-          const place = await fetchCityVillage(lat, lng);
-          const locality = String(place?.village || '').trim();
-          const city = String(place?.city || '').trim();
-          page.locality = locality;
-          page.city = city;
-          const label = [locality, city].filter(Boolean).join(', ');
-          if (label) page.address = label;
-        } catch {
-          /* keep empty locality/city — map still works via GPS */
+    if (Number.isFinite(linkedCenterId) && linkedCenterId > 0) {
+      const club = await getAppWorkingClubForPortfolio(row.userId, linkedCenterId);
+      hasClub = Boolean(club?.hasClub)
+        && Number(club.centerId) === linkedCenterId;
+      if (hasClub) {
+        page.centerName = club.centerName || '';
+        page.mapsLink = club.mapsLink || '';
+        page.locality = '';
+        page.city = '';
+        page.address = club.centerName || '';
+        const lat = Number(club.latitude);
+        const lng = Number(club.longitude);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          page.geoLatitude = lat;
+          page.geoLongitude = lng;
+          try {
+            const place = await fetchCityVillage(lat, lng);
+            const locality = String(place?.village || '').trim();
+            const city = String(place?.city || '').trim();
+            page.locality = locality;
+            page.city = city;
+            const label = [locality, city].filter(Boolean).join(', ');
+            if (label) page.address = label;
+          } catch {
+            /* keep empty locality/city — map still works via GPS */
+          }
         }
       }
-    } else {
+    }
+    if (!hasClub) {
       page.centerName = '';
       // Keep FormJson city/area (SEO + freestyle place); map searches that query.
       const placeLabel = [page.locality, page.city].filter(Boolean).join(', ');
@@ -439,8 +444,10 @@ export default function CoachPortfolioPage({
   const whatWeDo = Array.isArray(teamMedia?.whatWeDo) ? teamMedia.whatWeDo : [];
   const hasWhatWeSay = whatWeSay.length > 0;
   const hasWhatWeDo = whatWeDo.length > 0;
-  const bizTitle = String(page.centerName || '').trim()
-    || String(page.displayName || page.fullName || heroName || '').trim();
+  // Club site → centre name. Freestyle (no centre) → "Coach {Name}".
+  const bizTitle = hasClubProp && String(page.centerName || '').trim()
+    ? String(page.centerName).trim()
+    : buildCoachVisibleHeading(page);
   const introVideoSrcs = uniqueMediaUrls(
     (Array.isArray(page.introVideos) && page.introVideos.length
       ? page.introVideos
@@ -485,7 +492,6 @@ export default function CoachPortfolioPage({
   ].filter(Boolean);
 
   const FAQS = buildCoachPageFaqs(page, { heroName, basedIn });
-  const visibleHeading = buildCoachVisibleHeading(page);
   const placeAlt = [page.locality, page.city].filter(Boolean).join(', ');
   const profileAlt = [page.fullName || page.displayName || heroName, placeAlt]
     .filter(Boolean)
@@ -500,12 +506,20 @@ export default function CoachPortfolioPage({
 
   // yearsExperience / title / about copy are FormJson-only — reflect the CMS form.
   const coachTitle = String(page.title || '').trim();
+  const coachDisplayName = String(page.displayName || page.fullName || heroName || '').trim() || 'Coach';
+  const centerLabel = String(page.centerName || '').trim();
+  // Hero dashed line = form Professional Title (Other → professionalTitleOther via page.title).
+  const heroRoleLabel = coachTitle || 'Wellness Coach';
   const aboutKicker = coachTitle
     ? `Meet Your ${coachTitle}`
     : 'Meet Your Coach';
+  // About copy = Profile About me; years = Profile Date of joining (hydrated).
+  const yearsLine = String(page.yearsExperience || '').trim();
   const aboutBullets = [
-    String(page.yearsExperience || '').trim() || null,
-    page.qualifications || coachTitle || null,
+    yearsLine
+      ? (/experience/i.test(yearsLine) ? yearsLine : `${yearsLine} of experience`)
+      : null,
+    page.qualifications || null,
     page.languages?.length ? `Languages: ${page.languages.slice(0, 3).join(', ')}` : null,
   ].filter(Boolean).slice(0, 3);
 
@@ -518,7 +532,7 @@ export default function CoachPortfolioPage({
   const heroSupport = page.highlight
     || [
       'Get personalized wellness guidance from',
-      page.displayName || heroName,
+      centerLabel || coachDisplayName,
       basedIn ? `in ${basedIn}` : null,
       '— simple habits, clear support, lasting results.',
     ].filter(Boolean).join(' ');
@@ -882,36 +896,76 @@ export default function CoachPortfolioPage({
           <div className="hero-wash" aria-hidden="true" />
           <div className="hero-wave" aria-hidden="true" />
           <div className="shell hero-grid">
-            <div className="hero-copy">
-              {hasClub && (bizTitle || heroPlace) ? (
-                <div className="biz-listing" aria-label="Center listing">
-                  {bizTitle ? (
-                    <p className="biz-listing-name">{bizTitle}</p>
-                  ) : null}
-                  {heroPlace ? (
-                    <p className="biz-listing-place" title={basedIn || heroPlace}>
-                      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
-                        <path
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M12 21s7-5.4 7-11a7 7 0 1 0-14 0c0 5.6 7 11 7 11z"
-                        />
-                        <circle cx="12" cy="10" r="2.5" fill="none" stroke="currentColor" strokeWidth="2" />
-                      </svg>
-                      <span className="biz-listing-place-text">{heroPlace}</span>
-                    </p>
-                  ) : null}
+            <div className="hero-brand" aria-label="Center listing">
+              {bizTitle ? (
+                <div className="biz-listing-title-row">
+                  <span className="biz-leaf-mark" aria-hidden="true">
+                    <svg viewBox="0 0 32 32" width="28" height="28" fill="none">
+                      <path d="M16 28c-1.2-6.5-4.8-11.2-10.5-14.2C9.8 8.2 14 6.4 18.5 6.2 17.2 11.8 17 18.5 16 28z" fill="#2d6a4f" />
+                      <path d="M16 28c1-7.2 5.2-12.4 12-15.2-3.8-4.2-8.4-6-13.2-6.2C15.4 13.2 15.6 20 16 28z" fill="#3d8f68" />
+                      <path d="M16 28V8.5" stroke="#1b4d3e" strokeWidth="1.4" strokeLinecap="round" />
+                    </svg>
+                  </span>
+                  <p className="biz-listing-name">{bizTitle}</p>
                 </div>
               ) : null}
-              <h1 className="hero-seo-heading">{visibleHeading}</h1>
-              <p className="hero-tagline" aria-hidden="false">
+              {heroPlace ? (
+                <p className="biz-listing-place" title={basedIn || heroPlace}>
+                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                    <path
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 21s7-5.4 7-11a7 7 0 1 0-14 0c0 5.6 7 11 7 11z"
+                    />
+                    <circle cx="12" cy="10" r="2.5" fill="none" stroke="currentColor" strokeWidth="2" />
+                  </svg>
+                  <span className="biz-listing-place-text">{heroPlace}</span>
+                </p>
+              ) : null}
+            </div>
+
+            <div className={photo ? 'hero-visual' : 'hero-visual empty'}>
+              <div className={photo ? 'hero-photo-wrap' : 'hero-photo-wrap placeholder'}>
+                {photo ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={photo}
+                    alt={profileAlt}
+                    className="hero-photo"
+                    decoding="async"
+                    fetchPriority="high"
+                  />
+                ) : (
+                  <span className="hero-mono" aria-hidden="true">{nameInitials(page.displayName || page.fullName || heroName)}</span>
+                )}
+              </div>
+            </div>
+
+            <div className="hero-copy">
+              <p className="hero-role-line">{heroRoleLabel}</p>
+              <h1 className="hero-tagline">
                 <span className="hero-h1-main">Your Journey to a Healthier &amp; Happier You</span>
                 <span className="hero-h1-script">Starts Here</span>
-              </p>
+              </h1>
               <p className="hero-lead">{heroSupport}</p>
+              {coachDisplayName ? (
+                <div className="hero-coach-chip">
+                  <span className="hero-coach-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+                      <circle cx="12" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.8" />
+                      <path d="M5 19.5c1.6-3.2 4-4.8 7-4.8s5.4 1.6 7 4.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                    </svg>
+                  </span>
+                  <p className="hero-coach-text">
+                    Coach:
+                    {' '}
+                    <strong>{coachDisplayName}</strong>
+                  </p>
+                </div>
+              ) : null}
               <div className="hero-actions">
                 {wa ? (
                   <a className="btn btn-whatsapp" href={wa} target="_blank" rel="noreferrer">
@@ -933,127 +987,134 @@ export default function CoachPortfolioPage({
                 ))}
               </div>
             </div>
-            <div className={photo ? 'hero-visual' : 'hero-visual empty'}>
-              <div className={photo ? 'hero-photo-wrap' : 'hero-photo-wrap placeholder'}>
-                {photo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={photo}
-                    alt={profileAlt}
-                    className="hero-photo"
-                    decoding="async"
-                    fetchPriority="high"
-                  />
-                ) : (
-                  <span className="hero-mono" aria-hidden="true">{nameInitials(page.displayName || page.fullName || heroName)}</span>
-                )}
-              </div>
-            </div>
           </div>
         </section>
 
         <main>
-          {(hasAbout || (page.offeringCards || []).length) ? (
-            <section id="about" className="section about-services-section">
-              <div className="shell about-services-grid">
-                {hasAbout ? (
-                  <div className="about-col">
-                    <div className="about-photo-wrap">
-                      <div className="about-media">
-                        {aboutPhoto ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={aboutPhoto} alt={profileAlt} />
-                        ) : (
-                          <span className="about-fallback">{nameInitials(page.displayName || heroName)}</span>
-                        )}
+          {(hasAbout || (page.offeringCards || []).length || (hasMedia && photosPreview.length)) ? (
+            <div className="mid-botany-band">
+              <div className="page-botany" aria-hidden="true">
+                <svg className="page-leaf page-leaf-tl" viewBox="0 0 120 140" fill="none">
+                  <path d="M58 132c-18-28-34-52-38-86 22 8 40 28 52 52-8 12-12 24-14 34z" fill="#2f6b4f" opacity="0.34" />
+                  <path d="M62 128c8-30 28-54 52-74-6 34-22 58-40 78-4-2-8-2-12-4z" fill="#3d8f68" opacity="0.38" />
+                  <path d="M54 118c-4-36 6-64 28-96-26 18-40 48-36 88-4 4-4 6 8 8z" fill="#1f5a42" opacity="0.28" />
+                </svg>
+                <svg className="page-leaf page-leaf-tr" viewBox="0 0 120 140" fill="none">
+                  <path d="M58 132c-18-28-34-52-38-86 22 8 40 28 52 52-8 12-12 24-14 34z" fill="#2f6b4f" opacity="0.30" />
+                  <path d="M62 128c8-30 28-54 52-74-6 34-22 58-40 78-4-2-8-2-12-4z" fill="#3d8f68" opacity="0.34" />
+                  <path d="M54 118c-4-36 6-64 28-96-26 18-40 48-36 88-4 4-4 6 8 8z" fill="#1f5a42" opacity="0.24" />
+                </svg>
+                <svg className="page-leaf page-leaf-bl" viewBox="0 0 120 140" fill="none">
+                  <path d="M58 132c-18-28-34-52-38-86 22 8 40 28 52 52-8 12-12 24-14 34z" fill="#2f6b4f" opacity="0.28" />
+                  <path d="M62 128c8-30 28-54 52-74-6 34-22 58-40 78-4-2-8-2-12-4z" fill="#3d8f68" opacity="0.32" />
+                </svg>
+                <div className="page-glow" />
+                <div className="page-wave-foot" />
+              </div>
+
+              {(hasAbout || (page.offeringCards || []).length) ? (
+                <section id="about" className="section about-services-section">
+                  <div className="shell about-services-grid">
+                    {hasAbout ? (
+                      <div className="about-col">
+                        <div className="about-photo-wrap">
+                          <div className="about-media">
+                            {aboutPhoto ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={aboutPhoto} alt={profileAlt} />
+                            ) : (
+                              <span className="about-fallback">{nameInitials(page.displayName || heroName)}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="about-intro">
+                          <p className="lined-kicker"><span>{aboutKicker}</span></p>
+                          <h2>Hi, I’m {page.displayName || page.fullName || heroName}</h2>
+                        </div>
+                        <p className="about-text">{aboutText}</p>
+                        {aboutBullets.length ? (
+                          <ul className="about-bullets">
+                            {aboutBullets.map((b) => (
+                              <li key={b}><span className="check" aria-hidden="true">✓</span>{b}</li>
+                            ))}
+                          </ul>
+                        ) : null}
                       </div>
-                    </div>
-                    <div className="about-intro">
-                      <p className="lined-kicker"><span>{aboutKicker}</span></p>
-                      <h2>Hi, I’m {page.displayName || page.fullName || heroName}</h2>
-                    </div>
-                    <p className="about-text">{aboutText}</p>
-                    {aboutBullets.length ? (
-                      <ul className="about-bullets">
-                        {aboutBullets.map((b) => (
-                          <li key={b}><span className="check" aria-hidden="true">✓</span>{b}</li>
-                        ))}
-                      </ul>
+                    ) : null}
+
+                    {(page.offeringCards || []).length ? (
+                      <div id="services" className={`services-panel${!hasAbout ? ' services-panel-solo' : ''}`}>
+                        <h2>Our Services</h2>
+                        <p className="panel-sub">Comprehensive guidance for a healthier you</p>
+                        <div className="services-grid">
+                          {(page.offeringCards || [])
+                            .slice(0, servicesExpanded ? undefined : 3)
+                            .map((item) => (
+                            <article key={item.label} className="service-card">
+                              <span className="service-icon-wrap" aria-hidden="true">
+                                <span className="service-emoji">{item.emoji}</span>
+                              </span>
+                              <h3>{item.label}</h3>
+                            </article>
+                          ))}
+                        </div>
+                        {(page.offeringCards || []).length > 3 ? (
+                          <div className="panel-cta">
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              onClick={() => setServicesExpanded((v) => !v)}
+                            >
+                              {servicesExpanded ? 'Show less' : 'Show more'}
+                              {' '}
+                              <span aria-hidden="true">{servicesExpanded ? '↑' : '→'}</span>
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
-                ) : null}
+                </section>
+              ) : null}
 
-                {(page.offeringCards || []).length ? (
-                  <div id="services" className={`services-panel${!hasAbout ? ' services-panel-solo' : ''}`}>
-                    <h2>Our Services</h2>
-                    <p className="panel-sub">Comprehensive guidance for a healthier you</p>
-                    <div className="services-grid">
-                      {(page.offeringCards || [])
-                        .slice(0, servicesExpanded ? undefined : 3)
-                        .map((item) => (
-                        <article key={item.label} className="service-card">
-                          <span className="service-icon-wrap" aria-hidden="true">
-                            <span className="service-emoji">{item.emoji}</span>
+              {hasMedia && photosPreview.length ? (
+                <section id="gallery" className="section gallery-section">
+                  <div className="shell">
+                    <div className="section-head center">
+                      <h2>Our Wellness Center</h2>
+                      <p className="panel-sub">A calm and welcoming space for your wellness journey</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="photos-preview"
+                      onClick={() => openGallery('all')}
+                      aria-label={`Open photo gallery, ${photosPreviewCount} items`}
+                    >
+                      <span
+                        className="photos-preview-row"
+                        style={{ gridTemplateColumns: `repeat(${Math.min(3, photosPreview.length)}, minmax(0, 1fr))` }}
+                      >
+                        {photosPreview.map((src, idx) => (
+                          <span key={`${src}-${idx}`} className="photos-preview-tile">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={src}
+                              alt={`${page.centerName || page.displayName || 'Wellness'} center photo${placeAlt ? ` in ${placeAlt}` : ''}`}
+                              loading="lazy"
+                            />
                           </span>
-                          <h3>{item.label}</h3>
-                        </article>
-                      ))}
-                    </div>
-                    {(page.offeringCards || []).length > 3 ? (
-                      <div className="panel-cta">
-                        <button
-                          type="button"
-                          className="btn btn-primary"
-                          onClick={() => setServicesExpanded((v) => !v)}
-                        >
-                          {servicesExpanded ? 'Show less' : 'Show more'}
-                          {' '}
-                          <span aria-hidden="true">{servicesExpanded ? '↑' : '→'}</span>
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            </section>
-          ) : null}
-
-          {hasMedia && photosPreview.length ? (
-            <section id="gallery" className="section gallery-section">
-              <div className="shell">
-                <div className="section-head center">
-                  <h2>Our Wellness Center</h2>
-                  <p className="panel-sub">A calm and welcoming space for your wellness journey</p>
-                </div>
-                <button
-                  type="button"
-                  className="photos-preview"
-                  onClick={() => openGallery('all')}
-                  aria-label={`Open photo gallery, ${photosPreviewCount} items`}
-                >
-                  <span
-                    className="photos-preview-row"
-                    style={{ gridTemplateColumns: `repeat(${Math.min(3, photosPreview.length)}, minmax(0, 1fr))` }}
-                  >
-                    {photosPreview.map((src, idx) => (
-                      <span key={`${src}-${idx}`} className="photos-preview-tile">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={src}
-                          alt={`${page.centerName || page.displayName || 'Wellness'} center photo${placeAlt ? ` in ${placeAlt}` : ''}`}
-                          loading="lazy"
-                        />
+                        ))}
                       </span>
-                    ))}
-                  </span>
-                </button>
-                <div className="section-cta">
-                  <button type="button" className="btn btn-primary" onClick={() => openGallery('all')}>
-                    View Gallery <span aria-hidden="true">→</span>
-                  </button>
-                </div>
-              </div>
-            </section>
+                    </button>
+                    <div className="section-cta">
+                      <button type="button" className="btn btn-primary" onClick={() => openGallery('all')}>
+                        View Gallery <span aria-hidden="true">→</span>
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              ) : null}
+            </div>
           ) : null}
 
           {hasWhatWeSay ? (
@@ -1322,7 +1383,17 @@ export default function CoachPortfolioPage({
                 </label>
                 <label className="book-field">
                   <span>Phone / WhatsApp</span>
-                  <input type="tel" required maxLength={20} value={bookPhone} onChange={(e) => setBookPhone(e.target.value)} placeholder="10-digit mobile" />
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    required
+                    maxLength={15}
+                    value={bookPhone}
+                    onChange={(e) => setBookPhone(e.target.value.replace(/\D/g, ''))}
+                    placeholder="10-digit mobile"
+                    autoComplete="tel"
+                  />
                 </label>
                 <label className="book-field">
                   <span>Message (optional)</span>
@@ -1580,10 +1651,68 @@ img { max-width: 100%; }
   margin: 0 auto;
 }
 .page {
+  position: relative;
   min-width: 0;
   overflow-x: clip;
   background: var(--offwhite);
   padding-top: var(--header-h);
+}
+.mid-botany-band {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: linear-gradient(180deg, #f4efe3 0%, #eef6f0 48%, #e5f0e9 100%);
+}
+.mid-botany-band > .section {
+  position: relative;
+  z-index: 1;
+}
+.page-botany {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.page-leaf {
+  position: absolute;
+  width: min(28vw, 200px);
+  height: auto;
+  opacity: 1;
+}
+.page-leaf-tl { top: 4%; left: 0; }
+.page-leaf-tr {
+  top: 8%;
+  right: 0;
+  transform: scaleX(-1);
+  width: min(24vw, 170px);
+}
+.page-leaf-bl {
+  bottom: 8%;
+  left: 0;
+  width: min(26vw, 180px);
+  opacity: 0.85;
+}
+.page-glow {
+  position: absolute;
+  top: 10%;
+  left: 6%;
+  width: min(56vw, 480px);
+  height: min(48vw, 400px);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(45, 106, 79, 0.16) 0%, rgba(45, 106, 79, 0) 72%);
+  filter: blur(2px);
+}
+.page-wave-foot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 72px;
+  background:
+    radial-gradient(120% 90% at 10% 100%, rgba(47, 107, 79, 0.18) 0%, transparent 55%),
+    radial-gradient(100% 80% at 70% 120%, rgba(61, 143, 104, 0.14) 0%, transparent 50%),
+    linear-gradient(180deg, transparent 0%, rgba(47, 107, 79, 0.10) 100%);
 }
 
 .site-header {
@@ -1660,10 +1789,11 @@ img { max-width: 100%; }
   backdrop-filter: blur(2px);
 }
 .side-menu {
-  position: fixed;
+  position: fixed !important;
   top: 0;
   right: 0;
   bottom: 0;
+  left: auto;
   z-index: 80;
   width: min(300px, 86vw);
   background: #fff;
@@ -1674,8 +1804,20 @@ img { max-width: 100%; }
   display: flex;
   flex-direction: column;
   gap: 8px;
+  visibility: hidden;
+  pointer-events: none;
 }
-.side-menu.open { transform: translateX(0); }
+.side-menu.open {
+  transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
+}
+@media (min-width: 720px) {
+  .side-menu,
+  .menu-backdrop {
+    display: none !important;
+  }
+}
 .side-menu-top {
   display: flex;
   align-items: center;
@@ -1794,8 +1936,9 @@ img { max-width: 100%; }
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 55% 70% at 78% 42%, rgba(232, 240, 234, 0.95) 0%, transparent 68%),
-    linear-gradient(105deg, #f7f4ec 0%, #f7f4ec 46%, rgba(247,244,236,0.55) 62%, rgba(232,240,234,0.35) 100%);
+    radial-gradient(ellipse 55% 70% at 78% 42%, rgba(232, 240, 234, 0.75) 0%, transparent 68%),
+    radial-gradient(ellipse 40% 50% at 18% 35%, rgba(45, 106, 79, 0.08) 0%, transparent 70%),
+    linear-gradient(105deg, transparent 0%, transparent 46%, rgba(247,244,236,0.35) 62%, rgba(232,240,234,0.25) 100%);
 }
 .hero-wave {
   position: absolute;
@@ -1815,45 +1958,58 @@ img { max-width: 100%; }
 .hero-grid {
   position: relative;
   z-index: 1;
-  display: grid;
-  gap: 8px;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: stretch;
   min-height: 0;
 }
-.hero-copy {
+.hero-brand {
   position: relative;
   z-index: 3;
-  padding: 18px 0 36px;
-}
-.biz-listing {
   display: grid;
-  gap: 8px;
-  margin: 0 0 20px;
-  text-align: left;
-  max-width: 38rem;
+  gap: 10px;
+  padding-top: 10px;
+  max-width: 40rem;
+}
+.biz-listing-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.biz-leaf-mark {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--botanical);
 }
 .biz-listing-name {
   position: relative;
   margin: 0;
-  display: inline-block;
-  font-family: var(--script);
-  font-size: clamp(40px, 6.8vw, 58px);
-  font-weight: 400;
-  line-height: 1.02;
-  letter-spacing: 0.02em;
-  color: var(--botanical);
+  min-width: 0;
+  font-family: var(--serif);
+  font-size: clamp(28px, 6vw, 42px);
+  font-weight: 600;
+  font-style: italic;
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+  color: var(--forest-deep);
   text-wrap: balance;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 .biz-listing-name::after {
   content: "";
   display: block;
-  width: min(72%, 9.5rem);
-  height: 10px;
-  margin: 2px auto 0;
+  width: min(56%, 8.5rem);
+  height: 8px;
+  margin: 4px 0 0;
   background:
-    radial-gradient(ellipse at center, rgba(45, 106, 79, 0.35) 0%, rgba(45, 106, 79, 0) 72%);
+    radial-gradient(ellipse at center, rgba(45, 106, 79, 0.38) 0%, rgba(45, 106, 79, 0) 72%);
   border-radius: 999px;
+}
+.hero-copy {
+  position: relative;
+  z-index: 3;
+  padding: 4px 0 36px;
 }
 .biz-listing-review {
   margin: 0;
@@ -1923,15 +2079,26 @@ img { max-width: 100%; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.hero-seo-heading {
+.hero-role-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
   margin: 0 0 10px;
-  font-family: var(--sans);
-  font-size: clamp(15px, 2.4vw, 18px);
-  font-weight: 700;
-  line-height: 1.35;
-  letter-spacing: -0.01em;
+  font-family: var(--serif);
+  font-size: clamp(14px, 2.2vw, 16px);
+  font-weight: 600;
+  letter-spacing: 0.02em;
   color: var(--forest-deep);
-  max-width: 36ch;
+  line-height: 1.3;
+}
+.hero-role-line::before,
+.hero-role-line::after {
+  content: "–";
+  font-family: var(--serif);
+  font-size: 0.95em;
+  font-weight: 500;
+  color: rgba(45, 106, 79, 0.45);
+  line-height: 1;
 }
 .hero-tagline {
   margin: 0;
@@ -1958,10 +2125,45 @@ img { max-width: 100%; }
   color: var(--muted);
   font-size: 15px;
   line-height: 1.6;
-  max-width: 42ch;
+  max-width: 44ch;
+}
+.hero-coach-chip {
+  margin-top: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  padding: 8px 14px 8px 8px;
+  border-radius: 999px;
+  background: rgba(45, 106, 79, 0.10);
+  border: 1px solid rgba(45, 106, 79, 0.22);
+  box-shadow: 0 6px 16px rgba(27, 67, 50, 0.06);
+}
+.hero-coach-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--botanical);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+.hero-coach-text {
+  margin: 0;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--forest-deep);
+  line-height: 1.3;
+}
+.hero-coach-text strong {
+  font-weight: 800;
+  color: var(--forest-deep);
 }
 .hero-actions {
-  margin-top: 20px;
+  margin-top: 18px;
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
@@ -2030,10 +2232,13 @@ img { max-width: 100%; }
   width: 100%;
   /* Same frame on mobile + desktop so the crop matches. */
   aspect-ratio: 4 / 5;
-  background: transparent;
+  background: #fff;
   border-radius: 28px;
   overflow: hidden;
-  box-shadow: 0 12px 28px rgba(27, 67, 50, 0.12);
+  border: 3px solid rgba(255, 255, 255, 0.95);
+  box-shadow:
+    0 18px 40px rgba(27, 67, 50, 0.16),
+    0 0 0 1px rgba(45, 106, 79, 0.08);
 }
 .hero-photo-wrap.placeholder {
   display: grid;
@@ -2116,7 +2321,16 @@ img { max-width: 100%; }
 }
 .lined-kicker span { white-space: nowrap; }
 
-.about-services-section { background: var(--offwhite); }
+.about-services-section { background: transparent; }
+.about-photo-wrap::before {
+  content: "";
+  position: absolute;
+  inset: -18px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(45, 106, 79, 0.16) 0%, rgba(45, 106, 79, 0) 70%);
+  z-index: 0;
+  pointer-events: none;
+}
 .about-services-grid {
   display: grid;
   gap: 22px;
@@ -2265,7 +2479,7 @@ img { max-width: 100%; }
   color: var(--forest-deep);
 }
 
-.gallery-section { background: var(--offwhite); }
+.gallery-section { background: transparent; }
 .gallery-section .section-head.center { margin-bottom: 22px; }
 .gallery-section .panel-sub {
   margin: 8px auto 0;
@@ -3046,22 +3260,34 @@ img { max-width: 100%; }
   .menu-btn { display: none; }
   .hero { padding: 20px 0 0; }
   .hero-grid {
+    display: grid;
     grid-template-columns: minmax(0, 1.05fr) minmax(260px, 320px);
-    gap: 28px;
-    align-items: center;
+    grid-template-areas:
+      "brand visual"
+      "copy visual";
+    gap: 12px 36px;
+    align-items: start;
     min-height: 460px;
   }
-  .hero-copy { padding: 28px 0 48px; }
+  .hero-brand {
+    grid-area: brand;
+    padding-top: 28px;
+  }
+  .hero-copy {
+    grid-area: copy;
+    padding: 8px 0 48px;
+  }
   .hero-visual {
+    grid-area: visual;
     width: 100%;
-    max-width: 280px;
-    margin: 0 auto;
+    max-width: 300px;
+    margin: 28px auto 48px;
     justify-self: center;
     align-self: center;
   }
   .hero-photo-wrap {
     aspect-ratio: 4 / 5;
-    max-height: 360px;
+    max-height: 380px;
     border-radius: 32px;
   }
   .hero-wave {
@@ -3075,10 +3301,19 @@ img { max-width: 100%; }
   }
   .trust-row {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 16px;
+    gap: 0;
     align-items: center;
   }
-  .trust-item { gap: 10px; }
+  .trust-item {
+    gap: 10px;
+    padding: 0 14px;
+    border-right: 1px solid rgba(45, 106, 79, 0.14);
+  }
+  .trust-item:first-child { padding-left: 0; }
+  .trust-item:last-child {
+    padding-right: 0;
+    border-right: 0;
+  }
   /* Keep About + Services stacked until wide desktop — tablet side-by-side was too tight */
   .about-services-grid {
     grid-template-columns: 1fr;

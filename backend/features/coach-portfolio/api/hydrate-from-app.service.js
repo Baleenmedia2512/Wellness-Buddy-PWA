@@ -1,7 +1,7 @@
 /**
  * Load app profile + working club, then hydrate empty FormJson fields.
  */
-import { findByUserId } from '../../user/user.repository.js';
+import { findByUserId, getProfileIntro } from '../../user/user.repository.js';
 import { avatarUrlForKey, r2AvatarsEnabled } from '../../user/avatar-storage.service.js';
 import {
   findActiveCentersByOwnerIds,
@@ -256,6 +256,21 @@ export async function hydrateFormWithAppData(userId, form, { centerId = null } =
   let longitude = null;
   let city = null;
   let locality = null;
+  let intro = {
+    professionalTitle: '',
+    aboutMe: '',
+    qualification: '',
+    herbalifeJoinedOn: '',
+    languages: [],
+    instagram: '',
+    youtube: '',
+    linkedin: '',
+  };
+  try {
+    intro = await getProfileIntro(userId);
+  } catch {
+    // Intro columns may be missing on older DBs — never block portfolio.
+  }
   try {
     // Freestyle (no CenterId): keep typed City/Area — do not overwrite from primary club GPS.
     if (centerId != null) {
@@ -286,5 +301,13 @@ export async function hydrateFormWithAppData(userId, form, { centerId = null } =
     longitude,
     city,
     locality,
+    professionalTitle: intro.professionalTitle,
+    aboutMe: intro.aboutMe,
+    qualification: intro.qualification,
+    herbalifeJoinedOn: intro.herbalifeJoinedOn,
+    languages: intro.languages,
+    instagram: intro.instagram,
+    youtube: intro.youtube,
+    linkedin: intro.linkedin,
   });
 }

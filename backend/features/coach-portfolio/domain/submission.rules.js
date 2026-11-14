@@ -302,47 +302,38 @@ export function validateFormForSubmit(form, { hasClub = false } = {}) {
   // Profile / club / contact / default programs hydrate from the app.
   // Only require fields that still need a human or a successful hydrate.
   requireText(f.personal.fullName, 'Full name (from your app profile)', errors);
-  requireText(f.personal.professionalTitle, 'Professional title', errors);
-  // About step — all mandatory for publish.
-  requireText(f.personal.yearsExperience, 'Years of experience', errors);
-  requireText(f.personal.background, 'Who are you as a Wellness Professional', errors);
-  requireText(f.personal.uniqueApproach, 'What do you believe in', errors);
+  requireText(f.personal.professionalTitle, 'Professional title (complete in Profile)', errors);
+  // About / years / languages / social hydrate from Profile — not collected on this form.
+  requireText(f.personal.yearsExperience, 'Years of experience (set Date of joining in Profile)', errors);
+  requireText(f.personal.background, 'About me (complete in Profile)', errors);
   if (!Array.isArray(f.personal.languages) || f.personal.languages.length === 0) {
-    errors.push('Languages is required');
-  } else if (
-    f.personal.languages.includes('Other')
-    && !String(f.personal.languagesOther || '').trim()
-  ) {
-    errors.push('Other language is required');
+    errors.push('Languages (complete in Profile)');
   }
   if (hasClub) {
     requireText(f.center.centerName, 'Wellness center name (from your club)', errors);
   }
   requireText(f.center.businessPhone, 'Contact number (from your app profile)', errors);
-  requireText(f.mediaBrand.websiteDisplayName, 'Website display name', errors);
+  // Public slug name = Coach profile name (UI no longer collects a separate display name).
+  requireText(
+    f.mediaBrand.websiteDisplayName || f.personal.fullName,
+    'Coach profile name (used as website name)',
+    errors,
+  );
   if (f.goalsConsent.accuracyConfirmed !== true) {
     errors.push('Confirm that the information is accurate');
   }
-  if (String(f.goalsConsent.publishAuthorized || '') !== 'yes') {
-    errors.push('Authorize use of submitted content for website publication');
-  }
+  // Publish authorization UI removed — accuracy confirm implies publication consent.
   return errors;
 }
 
-/** About-step completeness for form Next / Publish UX. */
+/** Profile-sourced About completeness (no dedicated About CMS step). */
 export function validateAboutStep(form) {
   const errors = [];
   const f = normalizeFormJson(form);
-  requireText(f.personal.yearsExperience, 'Years of experience', errors);
-  requireText(f.personal.background, 'Who are you as a Wellness Professional', errors);
-  requireText(f.personal.uniqueApproach, 'What do you believe in', errors);
+  requireText(f.personal.yearsExperience, 'Years of experience (set Date of joining in Profile)', errors);
+  requireText(f.personal.background, 'About me (complete in Profile)', errors);
   if (!Array.isArray(f.personal.languages) || f.personal.languages.length === 0) {
-    errors.push('Languages is required');
-  } else if (
-    f.personal.languages.includes('Other')
-    && !String(f.personal.languagesOther || '').trim()
-  ) {
-    errors.push('Other language is required');
+    errors.push('Languages (complete in Profile)');
   }
   return errors;
 }

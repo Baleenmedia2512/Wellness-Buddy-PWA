@@ -13,7 +13,10 @@ export default async function handler(req, res) {
     return runService(res, () => checkDisplayNameAvailability({
       userId: req.query?.userId,
       centerId: req.query?.centerId,
+      submissionId: req.query?.submissionId,
       name: req.query?.name,
+      city: req.query?.city,
+      locality: req.query?.locality,
     }));
   }
   return methodNotAllowed(res);

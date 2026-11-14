@@ -20,6 +20,7 @@ export default function CoachWebsitePage({
   const [createMode, setCreateMode] = useState(false);
   const [activeCenterId, setActiveCenterId] = useState(null);
   const [activeCenterName, setActiveCenterName] = useState('');
+  const [activeSubmissionId, setActiveSubmissionId] = useState(null);
 
   const load = useCallback(async () => {
     if (userId == null) return;
@@ -45,6 +46,7 @@ export default function CoachWebsitePage({
     setCreateMode(false);
     setActiveCenterId(null);
     setActiveCenterName('');
+    setActiveSubmissionId(null);
     setMessage(typeof opts?.message === 'string' ? opts.message : '');
     load();
   };
@@ -55,6 +57,7 @@ export default function CoachWebsitePage({
         userId={userId}
         centerId={createMode ? null : activeCenterId}
         centerName={createMode ? '' : activeCenterName}
+        submissionId={createMode ? null : activeSubmissionId}
         createMode={createMode}
         availableCenters={websites}
         onClose={closeForm}
@@ -96,6 +99,7 @@ export default function CoachWebsitePage({
               setCreateMode(true);
               setActiveCenterId(null);
               setActiveCenterName('');
+              setActiveSubmissionId(null);
               setFormOpen(true);
             }}
             className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white"
@@ -132,7 +136,9 @@ export default function CoachWebsitePage({
                   </p>
                   <p className="mt-0.5 text-xs text-gray-500">
                     {[row.city, row.locality].filter(Boolean).join(' · ')
-                      || (row.legacy ? 'Previously saved form' : 'Place from center GPS')}
+                      || (row.freestyle || row.legacy
+                        ? 'No center — place from map'
+                        : 'Place from center GPS')}
                   </p>
                   <p className="mt-0.5 text-xs text-gray-500">
                     {row.isPublished
@@ -155,6 +161,11 @@ export default function CoachWebsitePage({
                       setCreateMode(false);
                       setActiveCenterId(row.centerId);
                       setActiveCenterName(row.centerName || '');
+                      setActiveSubmissionId(
+                        row.centerId == null
+                          ? (row.submissionId ?? row.submission?.id ?? null)
+                          : null,
+                      );
                       setFormOpen(true);
                     }}
                     className="mt-3 w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white"
