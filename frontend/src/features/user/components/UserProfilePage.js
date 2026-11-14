@@ -925,7 +925,13 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   otpEnabled={isFlagEnabled(COMMUNITY_POSITION_OTP_FLAG)}
                   disabled={isSaving || isUploadingPhoto}
                   onChange={form.setEventLevel}
-                  onSettled={() => loadProfile({ cacheBust: true })}
+                  onSettled={(result) => {
+                    const code = String(result?.eventLevel || result?.positionCode || '').trim();
+                    if (code) form.setEventLevel(code);
+                    setCommunityPositionRequest(null);
+                    // Background sync only — UI already shows the new level.
+                    loadProfile({ cacheBust: true }).catch(() => {});
+                  }}
                 />
                 <WorkingPhysicalCentreField
                   userId={resolvedUserId}
