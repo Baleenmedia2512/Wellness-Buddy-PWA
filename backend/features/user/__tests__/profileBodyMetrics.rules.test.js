@@ -73,6 +73,7 @@ describe('profileBodyMetrics.rules', () => {
     it('maps PascalCase team_table columns', () => {
       const mapped = mapTeamRowToProfileBodyMetrics({
         Age: 28,
+        BodyFat: 22.5,
         BodyAge: 26,
         ChestCm: 90,
         WaistCm: 75,
@@ -80,12 +81,12 @@ describe('profileBodyMetrics.rules', () => {
         Gender: 'Female',
       });
       assert.equal(mapped.age, 28);
+      assert.equal(mapped.fatPercent, 22.5);
       assert.equal(mapped.bodyAge, 26);
       assert.equal(mapped.chestCm, 90);
       assert.equal(mapped.waistCm, 75);
       assert.equal(mapped.hipCm, 95);
       assert.equal(mapped.gender, 'Female');
-      assert.equal(mapped.fatPercent, null);
     });
 
     it('returns empty metrics when user is missing', () => {

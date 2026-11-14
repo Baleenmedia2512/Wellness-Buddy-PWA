@@ -7,8 +7,10 @@ import {
   collectionRoleFromAppRole,
   decideField,
   defaultFieldPolicy,
+  hasFieldValue,
   normalizeFieldPolicy,
   planCollectionStep,
+  valuesFromProfile,
 } from './fieldCollection.rules.js';
 
 const NOW = new Date('2026-11-12T04:30:00.000Z'); // 10:00 IST
@@ -133,6 +135,70 @@ describe('normalizeFieldPolicy', () => {
     assert.notEqual(plan.scheduled?.key, 'currentWeight');
   });
 
+  it('honors session defer after the last remaining skip when every days is 0', () => {
+    const fields = defaultFieldPolicy().map((field) => (
+      field.key === 'fatPercent'
+        ? { ...field, askEveryDays: 0, maxSkips: 1, mustFillWithinDays: 1 }
+        : field
+    ));
+    const plan = planCollectionStep({
+      fields,
+      values: { ...filledEntry, fatPercent: '' },
+      states: settledStates({
+        fatPercent: {
+          skipCount: 1,
+          cycleStartedAt: TODAY,
+          lastFilledAt: null,
+          lastSkippedAt: TODAY,
+        },
+      }),
+      deferKeys: ['fatPercent'],
+      role: 'member',
+      now: NOW,
+    });
+    assert.notEqual(plan.scheduled?.key, 'fatPercent');
+  });
+
+  it('keeps the last skip dismissed until the next ask window', () => {
+    const fields = defaultFieldPolicy().map((field) => (
+      field.key === 'fatPercent'
+        ? { ...field, askEveryDays: 1, maxSkips: 1, mustFillWithinDays: 3 }
+        : field
+    ));
+    const afterLastSkip = planCollectionStep({
+      fields,
+      values: { ...filledEntry, fatPercent: '' },
+      states: settledStates({
+        fatPercent: {
+          skipCount: 1,
+          cycleStartedAt: TODAY,
+          lastFilledAt: null,
+          lastSkippedAt: TODAY,
+        },
+      }),
+      role: 'member',
+      now: NOW,
+    });
+    assert.notEqual(afterLastSkip.scheduled?.key, 'fatPercent');
+
+    const nextDay = planCollectionStep({
+      fields,
+      values: { ...filledEntry, fatPercent: '' },
+      states: settledStates({
+        fatPercent: {
+          skipCount: 1,
+          cycleStartedAt: YESTERDAY,
+          lastFilledAt: null,
+          lastSkippedAt: YESTERDAY,
+        },
+      }),
+      role: 'member',
+      now: NOW,
+    });
+    assert.equal(nextDay.scheduled?.key, 'fatPercent');
+    assert.equal(nextDay.scheduled.mode, 'ask_blocking');
+  });
+
   it('keeps later-field schedule numbers inside bounds', () => {
     const fields = normalizeFieldPolicy([{
       key: 'fatPercent',
@@ -152,6 +218,32 @@ describe('normalizeFieldPolicy', () => {
   });
 });
 
+describe('hasFieldValue communityPosition', () => {
+  it('accepts legacy codes', () => {
+    assert.equal(hasFieldValue('communityPosition', { communityPosition: 'PC' }), true);
+    assert.equal(hasFieldValue('communityPosition', { communityPosition: 'associate' }), true);
+  });
+
+  it('accepts catalog codes outside the legacy list', () => {
+    assert.equal(hasFieldValue('communityPosition', { communityPosition: 'WORLD TEAM' }), true);
+  });
+
+  it('rejects empty or invalid codes', () => {
+    assert.equal(hasFieldValue('communityPosition', { communityPosition: '' }), false);
+    assert.equal(hasFieldValue('communityPosition', { communityPosition: '!!!' }), false);
+  });
+});
+
+describe('valuesFromProfile communityPosition', () => {
+  it('falls back to communityPosition.code when eventLevel is empty', () => {
+    const values = valuesFromProfile({
+      eventLevel: '',
+      communityPosition: { code: 'WORLD TEAM', label: 'World Team' },
+    });
+    assert.equal(values.communityPosition, 'WORLD TEAM');
+  });
+});
+
 describe('planCollectionStep', () => {
   it('asks community position before any other field', () => {
     const plan = planCollectionStep({
@@ -162,6 +254,35 @@ describe('planCollectionStep', () => {
     });
     assert.equal(plan.step, 'communityPosition');
     assert.deepEqual(plan.entryFields, []);
+  });
+
+  it('does not re-ask when a catalog community position is already saved', () => {
+    const plan = planCollectionStep({
+      fields: defaultFieldPolicy(),
+      values: { ...filledEntry, communityPosition: 'WORLD TEAM' },
+      role: 'member',
+      now: NOW,
+      states: settledStates(),
+    });
+    assert.notEqual(plan.step, 'communityPosition');
+  });
+
+  it('treats Fat % as independent of weight (not hidden without weight)', () => {
+    const fatField = defaultFieldPolicy().find((field) => field.key === 'fatPercent');
+    const decision = decideField({
+      field: fatField,
+      values: { ...filledEntry, currentWeight: '', fatPercent: '', weightRecordedAt: null },
+      state: {
+        skipCount: 0,
+        cycleStartedAt: '2026-11-01T04:30:00.000Z',
+        lastFilledAt: null,
+        lastSkippedAt: TODAY,
+      },
+      role: 'member',
+      now: NOW,
+    });
+    assert.notEqual(decision, 'hidden');
+    assert.ok(decision === 'ask_skippable' || decision === 'ask_blocking');
   });
 
   it('asks entry fields while community position is set to ask later', () => {

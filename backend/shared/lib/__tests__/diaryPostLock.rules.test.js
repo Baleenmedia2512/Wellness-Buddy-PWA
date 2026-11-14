@@ -10,6 +10,14 @@ describe('diaryPostLock.rules', () => {
     assert.equal(isDiaryPostToday(todayTimestamp, IANA_IST), true);
   });
 
+  it('allows today evening timestamps even when Prisma adds a fake Z', () => {
+    // Legacy IST wall 22:30 re-emitted as ...T22:30:00.000Z must stay on today,
+    // not shift to tomorrow 04:00 IST.
+    const todayYmd = todayInTimezone(IANA_IST);
+    const fakeUtcZ = `${todayYmd}T22:30:00.000Z`;
+    assert.equal(isDiaryPostToday(fakeUtcZ, IANA_IST), true);
+  });
+
   it('rejects yesterday timestamps', () => {
     const todayYmd = todayInTimezone(IANA_IST);
     const yesterdayYmd = shiftDateYmd(todayYmd, -1, IANA_IST);

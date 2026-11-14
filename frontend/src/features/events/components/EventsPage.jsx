@@ -520,7 +520,10 @@ function EventsPage({ user }) {
     // Autofill fields are hidden in UI — missing values mean Profile needs updating.
     if (!translationValue) nextErrors.translation = 'Set Translation in Profile';
     if (!attendCity) nextErrors.attendCity = 'This is a required question';
-    if (!foodType) nextErrors.foodType = 'This is a required question';
+    // Online attendance has no venue meal — Food Type is hidden and not required.
+    if (!isAttendOnline(attendCity) && !foodType) {
+      nextErrors.foodType = 'This is a required question';
+    }
     if (!uplinePresidentTeam?.name) nextErrors.uplinePresidentTeam = 'This is a required question';
     if (!uplineMillTeam?.name) nextErrors.uplineMillTeam = 'This is a required question';
     if (!teamIncharge?.name) nextErrors.teamIncharge = 'This is a required question';
@@ -572,7 +575,7 @@ function EventsPage({ user }) {
       eventId: selectedEvent.id,
       translation: translationValue,
       attendCity,
-      foodType,
+      foodType: isAttendOnline(attendCity) ? '' : foodType,
       uplinePresidentTeam,
       uplineMillTeam,
       clubNo: trimmedClubNo,
@@ -767,7 +770,11 @@ function EventsPage({ user }) {
                       hasError={Boolean(formErrors.attendCity)}
                       onChange={(next) => {
                         setAttendCity(next);
-                        setFormErrors((prev) => ({ ...prev, attendCity: undefined }));
+                        setFormErrors((prev) => ({
+                          ...prev,
+                          attendCity: undefined,
+                          ...(isAttendOnline(next) ? { foodType: undefined } : {}),
+                        }));
                       }}
                     />
                     {formErrors.attendCity ? (
@@ -777,33 +784,35 @@ function EventsPage({ user }) {
                     ) : null}
                   </div>
 
-                  <div
-                    className={`rounded-xl border bg-white p-4 ${
-                      formErrors.foodType ? 'border-rose-400' : 'border-white/80'
-                    }`}
-                  >
-                    <label htmlFor="event-registration-food-type-trigger" className="block text-sm font-semibold text-gray-900">
-                      Food Type <span className="text-rose-600">*</span>
-                    </label>
-                    <RegistrationSelect
-                      id="event-registration-food-type"
-                      name="foodType"
-                      required
-                      placeholder="Choose food type"
-                      value={foodType}
-                      options={FOOD_TYPE_SELECT_OPTIONS}
-                      hasError={Boolean(formErrors.foodType)}
-                      onChange={(next) => {
-                        setFoodType(next);
-                        setFormErrors((prev) => ({ ...prev, foodType: undefined }));
-                      }}
-                    />
-                    {formErrors.foodType ? (
-                      <p className="mt-2 text-sm text-rose-600" role="alert">
-                        {formErrors.foodType}
-                      </p>
-                    ) : null}
-                  </div>
+                  {!isAttendOnline(attendCity) ? (
+                    <div
+                      className={`rounded-xl border bg-white p-4 ${
+                        formErrors.foodType ? 'border-rose-400' : 'border-white/80'
+                      }`}
+                    >
+                      <label htmlFor="event-registration-food-type-trigger" className="block text-sm font-semibold text-gray-900">
+                        Food Type <span className="text-rose-600">*</span>
+                      </label>
+                      <RegistrationSelect
+                        id="event-registration-food-type"
+                        name="foodType"
+                        required
+                        placeholder="Choose food type"
+                        value={foodType}
+                        options={FOOD_TYPE_SELECT_OPTIONS}
+                        hasError={Boolean(formErrors.foodType)}
+                        onChange={(next) => {
+                          setFoodType(next);
+                          setFormErrors((prev) => ({ ...prev, foodType: undefined }));
+                        }}
+                      />
+                      {formErrors.foodType ? (
+                        <p className="mt-2 text-sm text-rose-600" role="alert">
+                          {formErrors.foodType}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   <div className="rounded-xl border border-white/80 bg-white p-4">
                     <p className="text-sm font-extrabold uppercase tracking-wide text-gray-900">

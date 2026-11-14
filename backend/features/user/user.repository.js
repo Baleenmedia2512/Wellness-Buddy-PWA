@@ -100,14 +100,14 @@ export async function findByUsername(username) {
 
 export async function getProfile(email) {
   // Consent / optional body-metric columns are optional until migrations are applied.
-  // Body fat is stored on weight_records_table, not team_table.
+  // Fat % lives on team_table.BodyFat (independent) and is mirrored to weight rows when present.
   const withPhotos =
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues, transformation_photos';
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "BodyFat", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues, transformation_photos';
   const withKeyAndPhotos = `"ProfileImageKey", ${withPhotos}`;
   const fullCols =
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "BodyFat", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
   const withMetricsNoHealth =
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm"';
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "BodyFat", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm"';
   const withConsentNoMetrics =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion"';
   const noConsentCols =
@@ -149,7 +149,7 @@ export async function getProfile(email) {
       }
     }
     const msg2 = String(current?.message || current || '');
-    const missingMetrics = /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg2);
+    const missingMetrics = /Age|BodyFat|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg2);
     if (missingMetrics) {
       try {
         return await load(withConsentNoMetrics);
@@ -168,12 +168,12 @@ export async function getProfile(email) {
 /** Same columns as getProfile, resolved by UserId (phone / pre-email onboarding). */
 export async function getProfileByUserId(userId) {
   const withPhotos =
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues, transformation_photos';
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "BodyFat", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues, transformation_photos';
   const withKeyAndPhotos = `"ProfileImageKey", ${withPhotos}`;
   const fullCols =
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "BodyFat", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
   const withMetricsNoHealth =
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm"';
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "BodyFat", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm"';
   const withConsentNoMetrics =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion"';
   const noConsentCols =
@@ -215,7 +215,7 @@ export async function getProfileByUserId(userId) {
       }
     }
     const msg2 = String(current?.message || current || '');
-    const missingMetrics = /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg2);
+    const missingMetrics = /Age|BodyFat|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg2);
     if (missingMetrics) {
       try {
         return await load(withConsentNoMetrics);
@@ -559,7 +559,19 @@ export async function updateLatestWeightBodyFat(userId, bodyFat, bmr = null) {
     ({ data, error } = await runUpdate(false));
   }
   if (error) throw error;
-  return data || null;
+  // Some MySQL bridges return no row from UPDATE … RETURNING; verify via re-read.
+  if (!data?.ID) {
+    const refreshed = await getLatestWeight(uid);
+    if (
+      refreshed?.ID === latest.ID
+      && refreshed.BodyFat != null
+      && Number(refreshed.BodyFat) === Number(bodyFat)
+    ) {
+      return refreshed;
+    }
+    return null;
+  }
+  return data;
 }
 
 export async function updateUserByEmail(email, updateData) {

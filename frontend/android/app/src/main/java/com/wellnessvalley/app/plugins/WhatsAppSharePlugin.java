@@ -86,10 +86,11 @@ public class WhatsAppSharePlugin extends Plugin {
             
             // Add the image URI as stream
             shareIntent.putExtra(Intent.EXTRA_STREAM, imageUri);
-            
-            // Add text caption (helps WhatsApp treat as document attachment)
-            if (text != null && !text.isEmpty()) {
-                shareIntent.putExtra(Intent.EXTRA_TEXT, text);
+
+            // Do NOT set EXTRA_TEXT with EXTRA_STREAM. WhatsApp Android often
+            // sends the same image twice (once with caption, once without).
+            // Caption is copied to the clipboard by the JS share helpers instead.
+            if (title != null && !title.isEmpty()) {
                 shareIntent.putExtra(Intent.EXTRA_SUBJECT, title);
             }
             
@@ -182,11 +183,8 @@ public class WhatsAppSharePlugin extends Plugin {
             whatsappIntent.setPackage("com.whatsapp");
             
             whatsappIntent.putExtra(Intent.EXTRA_STREAM, imageUri);
-            
-            if (text != null && !text.isEmpty()) {
-                whatsappIntent.putExtra(Intent.EXTRA_TEXT, text);
-            }
-            
+            // No EXTRA_TEXT — avoids WhatsApp duplicate-image bug (see shareImage).
+
             whatsappIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             whatsappIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             

@@ -13,11 +13,16 @@
  */
 import { EVENT_LEVEL_OPTIONS } from '../../user/domain/eventProfilePrefs.rules.js';
 import {
+  canonicalizePositionCode,
+  isValidPositionCode,
+} from '../../user/domain/communityPosition.rules.js';
+import {
   PROFILE_INTRO_KEYS,
   PROFILE_INTRO_LABELS,
   profileIntroHasValue,
 } from '../../user/domain/profileIntro.rules.js';
 
+/** Legacy codes used by admin “positions” filters on other fields. */
 export const FIELD_COLLECTION_POSITIONS = EVENT_LEVEL_OPTIONS;
 
 const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
@@ -130,7 +135,10 @@ export function istDaysSince(earlier, later) {
 
 export function hasFieldValue(key, values = {}) {
   if (key === 'communityPosition') {
-    return FIELD_COLLECTION_POSITIONS.includes(String(values.communityPosition || '').trim().toUpperCase());
+    // Catalog roles (e.g. WORLD TEAM) are valid profile values — do not
+    // require the legacy hard-coded list or field collection keeps asking.
+    const code = canonicalizePositionCode(values.communityPosition);
+    return Boolean(code) && isValidPositionCode(code);
   }
   if (key === 'gender') {
     const g = String(values.gender || '').trim();
@@ -347,10 +355,14 @@ export function decideField({
     && istDaysSince(row.cycleStartedAt, now) >= field.mustFillWithinDays,
   );
   const skipsHit = row.skipCount >= (field.maxSkips || 0);
+  // A skip covers the current ask window — including the last remaining skip.
+  // Exhausted skips become blocking only on the *next* due ask, not immediately
+  // after the user taps Skip (that felt like skip was broken).
+  // Must-fill deadline still wins over a recent skip.
   const skippedRecently = askEveryDays > 0 && Boolean(
     row.lastSkippedAt && istDaysSince(row.lastSkippedAt, now) < askEveryDays,
   );
-  if (skippedRecently && !deadlineHit && !skipsHit) return 'satisfied';
+  if (skippedRecently && !deadlineHit) return 'satisfied';
   if (deadlineHit || skipsHit) return 'ask_blocking';
   return 'ask_skippable';
 }
@@ -418,12 +430,10 @@ export function planCollectionStep({
 
   const deferred = new Set(deferKeys);
   const scheduled = decisions.find((item) => {
+    // Every 0 days: skip/save only clears the field for this app visit.
+    // Honor defer even if that skip exhausted maxSkips (mode → ask_blocking).
     const passedForNow = Number(item.field.askEveryDays) === 0
-      && deferred.has(item.field.key)
-      && (
-        item.mode === 'ask_skippable'
-        || istDaysSince(states[item.field.key]?.lastFilledAt, now) === 0
-      );
+      && deferred.has(item.field.key);
     return item.field.phase === 'scheduled'
       && (item.mode === 'ask_blocking' || item.mode === 'ask_skippable')
       && !passedForNow;
@@ -455,7 +465,10 @@ export function valuesFromProfile(data = {}) {
   const photos = data?.transformationPhotos || {};
   const issues = data?.recoveredHealthIssues;
   return {
-    communityPosition: data?.eventLevel || '',
+    communityPosition: data?.eventLevel
+      || data?.communityPosition?.code
+      || data?.CommunityPosition?.code
+      || '',
     gender: data?.gender || metrics.gender || '',
     age: metrics.age ?? '',
     height: data?.height ?? '',

@@ -370,10 +370,19 @@ export function normalizeEventRegistrationDraft(raw, options = {}) {
     : LEVEL_OPTIONS;
   const errors = [];
 
+  const attendOnline = attendCity.trim().toLowerCase() === 'online';
+
   if (!eventId) errors.push('Event is required.');
   if (!TRANSLATION_OPTIONS.includes(translation)) errors.push('Translation is required.');
   if (!attendCity || attendCity.length > PLACE_MAX) errors.push('Attending City is required.');
-  if (!FOOD_TYPE_OPTIONS.includes(foodType)) errors.push('Food Type is required.');
+  // Online attendance has no venue meal — Food Type may be omitted (stored empty).
+  if (attendOnline) {
+    if (foodType && !FOOD_TYPE_OPTIONS.includes(foodType)) {
+      errors.push('Food Type is required.');
+    }
+  } else if (!FOOD_TYPE_OPTIONS.includes(foodType)) {
+    errors.push('Food Type is required.');
+  }
   if (uplinePresident.error) errors.push(uplinePresident.error);
   if (uplineMill.error) errors.push(uplineMill.error);
   if (!clubNo || clubNo.length > 80) errors.push('Club No is required.');
@@ -405,7 +414,7 @@ export function normalizeEventRegistrationDraft(raw, options = {}) {
       eventId,
       translation,
       attendCity,
-      foodType,
+      foodType: attendOnline && !FOOD_TYPE_OPTIONS.includes(foodType) ? '' : foodType,
       uplinePresidentTeam: uplinePresident.person,
       uplineMillTeam: uplineMill.person,
       clubNo,

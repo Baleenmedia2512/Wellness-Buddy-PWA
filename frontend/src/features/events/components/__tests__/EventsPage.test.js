@@ -179,12 +179,11 @@ describe('EventsPage', () => {
 
     const ticketInput = container.querySelector('input[name="ticketNo"]');
     const attendCitySelect = container.querySelector('select[name="attendCity"]');
-    const foodTypeSelect = container.querySelector('select[name="foodType"]');
     expect(ticketInput).not.toBeNull();
     expect(attendCitySelect).not.toBeNull();
-    expect(foodTypeSelect).not.toBeNull();
     expect(attendCitySelect.value).toBe('online');
-    expect(foodTypeSelect.value).toBe('VEG');
+    // Online attendance hides Food Type (no venue meal).
+    expect(container.querySelector('select[name="foodType"]')).toBeNull();
     // Autofill fields stay out of the UI but still go to the backend.
     expect(container.querySelector('select[name="translation"]')).toBeNull();
     expect(container.querySelector('select[name="yourCity"]')).toBeNull();
@@ -193,8 +192,11 @@ describe('EventsPage', () => {
     expect(container.querySelector('input[name="clubNo"]')).toBeNull();
     expect(container.querySelector('input[name="idNo"]')).toBeNull();
 
-    // Event place remains selectable; Online is the default.
+    // Event place remains selectable; Online is the default. In-person shows Food Type.
     act(() => Simulate.change(attendCitySelect, { target: { value: 'Community Hall' } }));
+    const foodTypeSelect = container.querySelector('select[name="foodType"]');
+    expect(foodTypeSelect).not.toBeNull();
+    expect(foodTypeSelect.value).toBe('VEG');
     await pickMemberBySearch('event-registration-upline-president', 'President');
     await pickMemberBySearch('event-registration-upline-mill', 'Mill');
     await pickMemberBySearch('event-registration-team-incharge', 'Incharge');

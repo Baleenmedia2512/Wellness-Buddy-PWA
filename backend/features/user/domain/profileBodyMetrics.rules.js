@@ -3,10 +3,11 @@
  *
  * Sources (priority):
  *   1. Latest linked body_parameters_cards (coach BCM) when present
- *   2. team_table self-entered optional columns
- *   3. Latest weight_records BodyFat / Bmi for fat% and BMI
+ *   2. team_table self-entered optional columns (incl. BodyFat)
+ *   3. Latest weight_records BodyFat / Bmi for fat% and BMI when team/card empty
  *
  * Profile may write team_table columns; coach BPC sync can update them too.
+ * Fat % is independent of weight — team_table.BodyFat is the profile source.
  */
 
 export const PROFILE_BODY_METRIC_KEYS = [
@@ -94,6 +95,7 @@ export function mapTeamRowToProfileBodyMetrics(user) {
   };
 
   fields.age = numOrNull(user.Age);
+  fields.fatPercent = numOrNull(user.BodyFat);
   fields.bodyAge = numOrNull(user.BodyAge);
   fields.chestCm = numOrNull(user.ChestCm);
   fields.waistCm = numOrNull(user.WaistCm);
