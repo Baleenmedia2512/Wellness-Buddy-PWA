@@ -57,6 +57,31 @@ describe('DEFAULT_NAV_ACCESS_MATRIX', () => {
     assert.equal(pages.counselling, false);
     assert.equal(pages['physical-club'], false);
     assert.equal(pages.reports, false);
+    assert.equal(pages['go-premium'], false);
+  });
+
+  it('fills Go Premium from defaults when an older matrix omits it', () => {
+    const older = {
+      user: {
+        home: true,
+        dashboard: true,
+        enrollment: true,
+        testimonials: true,
+        'activity-report': false,
+        counselling: false,
+        'physical-club': false,
+        reports: false,
+        broadcast: true,
+      },
+      coach: { home: true },
+      admin: { home: true },
+      developer: { home: true },
+    };
+    const filled = matrixWithDefaultsForNewPages(older);
+    assert.equal(filled.user['go-premium'], false);
+    assert.equal(filled.coach['go-premium'], true);
+    assert.equal(filled.admin['go-premium'], true);
+    assert.equal(filled.developer['go-premium'], true);
   });
 
   it('seeds sponsor/admin/developer with all pages on', () => {

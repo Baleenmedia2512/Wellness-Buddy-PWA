@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Crown } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { isFlagEnabled } from '../../../config/featureFlags';
+import { canAccessNavPage } from '../../nav-page-access/domain/navAccess.rules.js';
 import { openPremiumCheckout } from '../openPremiumCheckout';
 import { memberCheckoutErrorMessage } from '../domain/nativePremiumCheckout.rules';
 import { fetchPremiumQuote } from '../services/premiumApi';
@@ -16,12 +17,15 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * Header chip that opens the Premium plan page, then Cashfree on Pay Now.
  * `onPremiumCheck` asks the server whether the payment went through.
  * Members who already paid do not see this chip again, unless `renew` (expiry reminder).
+ * Visibility also follows Admin Config → Page Access (`go-premium`).
  */
 export default function GoPremiumButton({
   userId,
   isPremium = false,
   onPremiumCheck,
   renew = false,
+  /** null = fail-open until ACL loads; object = role page map from DB */
+  allowedPages = null,
 }) {
   const [showPlan, setShowPlan] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -30,6 +34,7 @@ export default function GoPremiumButton({
   const [quoteLoading, setQuoteLoading] = useState(false);
 
   if (!isFlagEnabled('ff.go-premium')) return null;
+  if (!canAccessNavPage(allowedPages, 'go-premium')) return null;
   if (isPremium && !renew) return null;
 
   const checkPremium = async (attempts) => {

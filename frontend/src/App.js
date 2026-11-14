@@ -8192,6 +8192,7 @@ function WellnessValleyApp() {
           <UserProfilePage
             user={user}
             userRole={userRole}
+            allowedPages={navAccessPages}
             onBack={() => navigateTo('home')}
             onSignOut={handleSignOut}
             onProfileUpdate={(profileData) => {
