@@ -147,6 +147,13 @@ describe('EventsPage', () => {
     await act(async () => {
       registerButton.click();
       await Promise.resolve();
+    });
+    const myselfButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.includes('Register for myself'));
+    expect(myselfButton).not.toBeNull();
+    await act(async () => {
+      myselfButton.click();
+      await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();

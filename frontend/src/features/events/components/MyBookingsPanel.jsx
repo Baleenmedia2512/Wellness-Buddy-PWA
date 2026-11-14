@@ -9,6 +9,7 @@ import {
   listMyEventRegistrations,
 } from '../services/events.api.js';
 import RegistrationQrCard from './RegistrationQrCard.jsx';
+import { shareTicketQrImage, ticketShareCaption } from '../utils/shareTicketQr.js';
 
 const LIST_CARD_STYLES = [
   'from-emerald-600 via-teal-600 to-cyan-700',
@@ -55,6 +56,9 @@ function BookingPassCard({ booking, onBack }) {
   const hostName = eventSpeakerNames(booking.event).join(', ');
   const place = booking.event?.place || '—';
   const eventDate = formatEventScheduleSummary(booking.event) || booking.event?.eventDate || '—';
+  const cancelled = bookingCancelled(booking);
+  const [qrImage, setQrImage] = useState('');
+  const [shareNote, setShareNote] = useState('');
   return (
     <div className="space-y-3">
       <button
@@ -120,13 +124,48 @@ function BookingPassCard({ booking, onBack }) {
             </div>
           </div>
 
-          <div className="mt-5">
+          <div className="mt-5 space-y-3">
             <RegistrationQrCard
               qrPayload={booking.qrPayload}
               entryCode={booking.entryCode}
               eventName={eventName}
               compact
+              onImageReady={setQrImage}
             />
+            {cancelled ? null : (
+              <>
+                {shareNote ? (
+                  <p className="text-sm text-emerald-950" role="status">{shareNote}</p>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={!qrImage}
+                  onClick={async () => {
+                    setShareNote('');
+                    const result = await shareTicketQrImage({
+                      dataUrl: qrImage,
+                      title: `${eventName} ticket`,
+                      text: ticketShareCaption({
+                        name: booking.name,
+                        eventName,
+                        entryCode: booking.entryCode,
+                      }),
+                      fileName: `event-ticket-${booking.entryCode || 'ticket'}.png`,
+                    });
+                    if (result.saved) {
+                      setShareNote('The QR picture is saved. Open WhatsApp and attach that picture.');
+                    } else if (result.ok) {
+                      setShareNote('WhatsApp has the QR picture. Choose the chat and send. The ticket words are copied so you can paste them.');
+                    } else {
+                      setShareNote('The QR picture could not be attached. Try again.');
+                    }
+                  }}
+                  className="w-full rounded-lg bg-emerald-800 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {qrImage ? 'Send QR on WhatsApp' : 'Preparing QR…'}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </article>

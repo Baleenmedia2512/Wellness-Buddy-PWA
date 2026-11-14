@@ -11,7 +11,6 @@ import {
   findGuestCoachContacts,
   findRegistrantPhone,
   findRegistrationByEventAndEntryCode,
-  findRegistrationByEventAndUser,
   findRegistrationByIdForUser,
   hasSelfRegistration,
   findTeamUserBrief,
