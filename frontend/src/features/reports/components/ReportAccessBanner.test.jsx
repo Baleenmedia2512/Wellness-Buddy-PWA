@@ -50,10 +50,27 @@ describe('ReportAccessBanner', () => {
     view.unmount();
   });
 
-  it('shows Please recharge after the trial or Premium ends', () => {
+  it('opens the payment page after the trial ends', () => {
     const view = renderBanner({ access: 'ended', userId: '42', onPremiumCheck: async () => false });
-    expect(view.container.textContent).toMatch(/Please recharge/);
-    expect(view.container.querySelector('button[aria-label="Recharge Premium"]')).not.toBeNull();
+    expect(document.body.textContent).toMatch(/Premium plan/);
+    expect(document.body.textContent).not.toMatch(/Please recharge/);
+    expect(view.container.querySelector('button[aria-label="Recharge Premium"]')).toBeNull();
+    view.unmount();
+  });
+
+  it('asks to fill Community Position and opens profile', () => {
+    const view = renderBanner({
+      centered: true,
+      access: 'none',
+      featureName: 'Reports',
+      error: 'Fill Community Position on your profile.',
+    });
+    expect(view.container.textContent).toMatch(/Fill Community Position on your profile/);
+    expect(view.container.textContent).toMatch(/Community Position/);
+    const button = view.container.querySelector('button[aria-label="Fill Community Position"]');
+    expect(button).not.toBeNull();
+    expect(button.textContent).toMatch(/Fill Community Position/);
+    expect(view.container.querySelector('button[aria-label="Try again"]')).toBeNull();
     view.unmount();
   });
 

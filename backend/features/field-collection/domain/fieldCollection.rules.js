@@ -4,9 +4,11 @@
  *
  * Every field, including Community Position, follows the admin row:
  * who, which positions, while entering or ask later, and the skip schedule.
- * While entering, a missing field blocks. Ask later can be skipped until
- * the skip limit or the must-fill day, then it blocks.
- * Every (days) is the gap before the next ask. 0 asks again the same day.
+ * A saved value closes the field. Skips left and time left do not show it again.
+ * While entering, a missing field blocks. An empty later field can be skipped
+ * until the skip limit or the must-fill day, then it blocks.
+ * Every (days) is the gap before the next ask while the value is still empty.
+ * 0 asks again the same day only when the field is still empty.
  * A field limited to specific positions stays hidden until a position is saved.
  *
  * Mirrors frontend/src/features/field-collection/domain/fieldCollection.rules.js
@@ -335,30 +337,15 @@ export function decideField({
   if (field.key !== 'communityPosition' && !positionAllows(field.positions, position)) return 'hidden';
 
   if (field.phase === 'profile') return 'satisfied';
-  if (field.phase === 'entry') {
-    return hasFieldValue(field.key, values) ? 'satisfied' : 'ask_blocking';
-  }
+  // A stored value closes every configured field. Skip count and the ask
+  // clock apply only while that value is still empty.
+  if (hasFieldValue(field.key, values)) return 'satisfied';
+  if (field.phase === 'entry') return 'ask_blocking';
 
   const row = state || emptyState();
   const configuredEvery = Number(field.askEveryDays);
   const askEveryDays = Number.isFinite(configuredEvery) ? configuredEvery : 1;
-  // Profile-intro facts (joining date, title, …) stay on the profile once saved.
-  // Every 0 days must not re-block after the value is already stored — that loop
-  // was showing About you again right after Continue. Interval > 0 still nudges
-  // via lastFilledAt below (loadContext stamps it when the value exists).
-  if (
-    PROFILE_INTRO_KEYS.includes(field.key)
-    && hasFieldValue(field.key, values)
-    && askEveryDays <= 0
-  ) {
-    return 'satisfied';
-  }
-  const filledAnchor = field.key === 'currentWeight'
-    ? (values.weightRecordedAt || row.lastFilledAt)
-    : row.lastFilledAt;
-  const daysSinceFill = istDaysSince(filledAnchor, now);
-  // 0 means the same day is already due, including after a skip or a fill today.
-  if (askEveryDays > 0 && filledAnchor && daysSinceFill < askEveryDays) return 'satisfied';
+  // 0 means an empty field is due again the same day, including after a skip.
 
   const deadlineHit = Boolean(
     row.cycleStartedAt
@@ -435,11 +422,9 @@ export function planCollectionStep({
   // Only while-entering intro fields use the About you page. Ask-later intro
   // fields stay on the scheduled prompt (skip / session defer / mark filled).
   const profileFields = decisions
-    .filter((item) => (
-      item.field.phase === 'entry'
+    .filter((item) => item.field.phase === 'entry'
       && PROFILE_INTRO_KEYS.includes(item.field.key)
-      && item.mode === 'ask_blocking'
-    ))
+      && item.mode === 'ask_blocking')
     .map((item) => item.field.key);
   if (profileFields.length > 0) {
     return { step: 'profileIntro', entryFields: [], photoSlots: [], profileFields, scheduled: null };
@@ -447,10 +432,9 @@ export function planCollectionStep({
 
   const deferred = new Set(deferKeys);
   const scheduled = decisions.find((item) => {
-    // Every 0 days: skip/save only clears the field for this app visit.
-    // Honor defer even if that skip exhausted maxSkips (mode → ask_blocking).
-    const passedForNow = Number(item.field.askEveryDays) === 0
-      && deferred.has(item.field.key);
+    // A skip closes the field for this visit. The next time the app opens,
+    // an empty field can be asked again, including when no skips remain.
+    const passedForNow = deferred.has(item.field.key);
     return item.field.phase === 'scheduled'
       && (item.mode === 'ask_blocking' || item.mode === 'ask_skippable')
       && !passedForNow;

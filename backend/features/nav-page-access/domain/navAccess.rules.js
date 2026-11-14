@@ -14,13 +14,21 @@ export const NAV_PAGE_KEYS = Object.freeze([
   'reports',
   'broadcast',
   'create-event',
+  'event-check-in',
   'paid-features',
   'map-business',
   'go-premium',
 ]);
 
-/** Roles stored in the matrix (UI labels Customer / Sponsor / Admin / Developer). */
-export const MATRIX_ROLES = Object.freeze(['user', 'coach', 'admin', 'developer']);
+/**
+ * Roles stored in the matrix.
+ * UI labels: Customer / Sponsor / System Admin / Admin / Developer.
+ * `system_admin` is a normal account column. Admin and Developer still own this screen.
+ */
+export const MATRIX_ROLES = Object.freeze(['user', 'coach', 'system_admin', 'admin', 'developer']);
+
+/** Roles a released app already sends. `system_admin` may be omitted. */
+const REQUIRED_MATRIX_ROLES = Object.freeze(['user', 'coach', 'admin', 'developer']);
 
 const ALL_PAGES_ON = Object.freeze(
   Object.fromEntries(NAV_PAGE_KEYS.map((k) => [k, true])),
@@ -37,15 +45,29 @@ const CUSTOMER_DEFAULT = Object.freeze({
   reports: false,
   broadcast: true,
   'create-event': true,
+  'event-check-in': false,
   'paid-features': true,
   'map-business': true,
   'go-premium': false,
 });
 
-/** Default matrix when DB row is missing. */
+/** Sponsor keeps every existing page. Check-in stays off until an admin turns it on. */
+const SPONSOR_DEFAULT = Object.freeze({
+  ...ALL_PAGES_ON,
+  'event-check-in': false,
+});
+
+/** System Admin matches Customer, plus Check-in. */
+const SYSTEM_ADMIN_DEFAULT = Object.freeze({
+  ...CUSTOMER_DEFAULT,
+  'event-check-in': true,
+});
+
+/** Default matrix when DB row is missing. Check-in starts on for System Admin, Admin, and Developer. */
 export const DEFAULT_NAV_ACCESS_MATRIX = Object.freeze({
   user: { ...CUSTOMER_DEFAULT },
-  coach: { ...ALL_PAGES_ON },
+  coach: { ...SPONSOR_DEFAULT },
+  system_admin: { ...SYSTEM_ADMIN_DEFAULT },
   admin: { ...ALL_PAGES_ON },
   developer: { ...ALL_PAGES_ON },
 });
@@ -53,18 +75,20 @@ export const DEFAULT_NAV_ACCESS_MATRIX = Object.freeze({
 /**
  * Map account Role → matrix key.
  * `upline` shares the Sponsor (`coach`) row.
+ * `system_admin` keeps its own row, including when that account has downline members.
  * A Customer (`user`) who has own downline members (CoachId = them) uses the
  * Sponsor row — Community ID / joint coach-team seat alone does not.
  * Unknown / empty → `user` (Customer).
  *
  * @param {string|null|undefined} role
  * @param {{ hasSponsorTeam?: boolean }} [extras]
- * @returns {'user'|'coach'|'admin'|'developer'}
+ * @returns {'user'|'coach'|'system_admin'|'admin'|'developer'}
  */
 export function resolveMatrixRole(role, extras = {}) {
   const r = String(role || '').trim().toLowerCase();
   if (r === 'admin') return 'admin';
   if (r === 'developer') return 'developer';
+  if (r === 'system_admin' || r === 'system admin' || r === 'systemadmin') return 'system_admin';
   if (r === 'coach' || r === 'upline') return 'coach';
   if (extras.hasSponsorTeam) return 'coach';
   return 'user';
@@ -143,7 +167,7 @@ export function validateMatrixInput(matrix) {
   if (!matrix || typeof matrix !== 'object' || Array.isArray(matrix)) {
     return { ok: false, message: 'matrix must be an object keyed by role' };
   }
-  for (const role of MATRIX_ROLES) {
+  for (const role of REQUIRED_MATRIX_ROLES) {
     if (matrix[role] == null) {
       return { ok: false, message: `matrix missing role: ${role}` };
     }
@@ -151,7 +175,61 @@ export function validateMatrixInput(matrix) {
       return { ok: false, message: `matrix.${role} must be an object of pageKey → boolean` };
     }
   }
+  if (
+    matrix.system_admin != null
+    && (typeof matrix.system_admin !== 'object' || Array.isArray(matrix.system_admin))
+  ) {
+    return { ok: false, message: 'matrix.system_admin must be an object of pageKey → boolean' };
+  }
   return { ok: true, matrix: normalizeMatrix(matrix) };
+}
+
+/**
+ * Older Admin Config saves omit `system_admin`. Keep the stored column.
+ * A save that includes the key replaces it.
+ *
+ * @param {unknown} incoming
+ * @param {Record<string, Record<string, boolean>>} validatedMatrix
+ * @param {Record<string, Record<string, boolean>>|null|undefined} storedMatrix
+ * @returns {Record<string, Record<string, boolean>>}
+ */
+export function mergeOmittedSystemAdmin(incoming, validatedMatrix, storedMatrix) {
+  const sent = incoming
+    && typeof incoming === 'object'
+    && !Array.isArray(incoming)
+    && Object.prototype.hasOwnProperty.call(incoming, 'system_admin');
+  if (sent) return validatedMatrix;
+  const kept = storedMatrix?.system_admin ?? validatedMatrix.system_admin;
+  return { ...validatedMatrix, system_admin: normalizePageMap(kept) };
+}
+
+/**
+ * Older Admin Config saves omit `event-check-in`. Keep the stored value
+ * (or the role default) instead of turning the new page off.
+ *
+ * @param {unknown} incoming
+ * @param {Record<string, Record<string, boolean>>} validatedMatrix
+ * @param {Record<string, Record<string, boolean>>|null|undefined} storedMatrix
+ * @returns {Record<string, Record<string, boolean>>}
+ */
+export function mergeOmittedCheckInPage(incoming, validatedMatrix, storedMatrix) {
+  const out = { ...validatedMatrix };
+  for (const role of MATRIX_ROLES) {
+    const incomingRole = incoming?.[role];
+    const sent = incomingRole
+      && typeof incomingRole === 'object'
+      && !Array.isArray(incomingRole)
+      && Object.prototype.hasOwnProperty.call(incomingRole, 'event-check-in');
+    if (sent) continue;
+    const kept = storedMatrix?.[role]?.['event-check-in'];
+    out[role] = {
+      ...out[role],
+      'event-check-in': kept == null
+        ? Boolean(DEFAULT_NAV_ACCESS_MATRIX[role]?.['event-check-in'])
+        : Boolean(kept),
+    };
+  }
+  return out;
 }
 
 /**

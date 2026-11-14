@@ -3,7 +3,12 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { getReportAccess, startReportTrial } from '../api/report-access.handler.js';
+import {
+  COMMUNITY_POSITION_REQUIRED_MESSAGE,
+  getReportAccess,
+  startReportTrial,
+} from '../api/report-access.handler.js';
+import { ValidationError } from '../../../shared/lib/ValidationError.js';
 
 describe('startReportTrial', () => {
   it('saves the start once and keeps that window on a second tap', async () => {
@@ -16,6 +21,7 @@ describe('startReportTrial', () => {
         return stored;
       },
       todayYmd: '2026-11-05',
+      readCommunityPosition: async () => 'ASSOCIATE',
     };
     const first = await startReportTrial({ userId: 42 }, deps);
     const second = await startReportTrial({ userId: 42 }, deps);
@@ -83,5 +89,26 @@ describe('startReportTrial after Premium', () => {
     assert.equal(saved, false);
     assert.equal(result.body.data.access, 'ended');
     assert.equal(result.body.data.canSeeDetails, false);
+  });
+
+  it('does not start a trial until Community Position is filled', async () => {
+    let saved = false;
+    await assert.rejects(
+      () => startReportTrial({ userId: 42 }, {
+        hasPaid: async () => false,
+        hasEverPaid: async () => false,
+        readStart: async () => null,
+        readCommunityPosition: async () => '',
+        saveStart: async () => {
+          saved = true;
+          return '2026-11-05T02:00:00.000Z';
+        },
+        todayYmd: '2026-11-05',
+      }),
+      (error) => error instanceof ValidationError
+        && error.status === 422
+        && error.message === COMMUNITY_POSITION_REQUIRED_MESSAGE,
+    );
+    assert.equal(saved, false);
   });
 });

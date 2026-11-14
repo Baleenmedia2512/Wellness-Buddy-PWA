@@ -31,8 +31,9 @@ describe('PremiumPlanPage', () => {
     const text = document.body.textContent;
     expect(text).toMatch(/Premium plan/);
     expect(text).toMatch(/₹352\.82/);
-    expect(text).toMatch(/SV/);
-    expect(text).toMatch(/18% GST/);
+    expect(text).not.toMatch(/SV/);
+    expect(text).not.toMatch(/GST/);
+    expect(text).not.toMatch(/Community Position/);
     expect(text).toMatch(/Pay Now/);
     act(() => root.unmount());
     container.remove();
@@ -47,7 +48,10 @@ describe('PremiumPlanPage', () => {
         <PremiumPlanPage busy={false} message="" quote={null} onClose={() => {}} onPayNow={() => {}} />,
       );
     });
-    expect(document.body.textContent).toMatch(/Community Position/);
+    const text = document.body.textContent;
+    expect(text).toMatch(/Fill Community Position on your profile/);
+    expect(text).not.toMatch(/price/i);
+    expect(text).not.toMatch(/GST/);
     act(() => root.unmount());
     container.remove();
   });

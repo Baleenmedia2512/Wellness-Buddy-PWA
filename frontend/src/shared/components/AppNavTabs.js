@@ -229,7 +229,7 @@ export default function AppNavTabs({
           ariaLabel="Google Map Business"
         />
       )}
-      {createEventEnabled && allow('create-event') && (
+      {createEventEnabled && allow('event-check-in') && (
         <NavTabButton
           onClick={onShowEventCheckIn ?? onShowCreateEvent ?? (() => {})}
           active={activePage === 'event-check-in'}

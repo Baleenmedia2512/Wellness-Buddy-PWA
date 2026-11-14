@@ -156,7 +156,7 @@ export default function FieldCollectionPrompt({ user, prompt, apiBaseUrl, onDone
         action: 'skip',
         apiBaseUrl,
       });
-      if (Number(prompt.askEveryDays) === 0) deferFieldForSession(userId, prompt.key);
+      deferFieldForSession(userId, prompt.key);
       await onDone?.();
     } catch (err) {
       setError(err?.message || 'Could not skip.');

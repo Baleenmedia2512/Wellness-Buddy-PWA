@@ -43,7 +43,7 @@ export async function createPremiumOrder(input) {
   if (!quote) {
     throw new ValidationError(
       422,
-      'Set Community Position on your profile before paying',
+      'Fill Community Position on your profile.',
     );
   }
 
@@ -62,7 +62,7 @@ export async function createPremiumOrder(input) {
     returnUrl: sanitizeReturnUrl(input.returnUrl),
     nowMs: input.nowMs ?? Date.now(),
   });
-  payload.order_note = `Wellness Valley Premium (${quote.positionCode})`;
+  payload.order_note = 'Wellness Valley Premium';
 
   const created = await createCashfreeOrder({
     apiBase: cashfreeApiBase(envName),

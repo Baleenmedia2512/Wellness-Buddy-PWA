@@ -55,6 +55,7 @@ export default function ReportsDashboard({
   tabVisitKey = 0,
   teamSearchRefreshKey = 0,
   initialTab = REPORT_DASHBOARD_TABS.IDEAL_WEIGHT,
+  onLeave,
 }) {
   const wellnessScoreEnabled = isFlagEnabled('ff.wellness-score-sheet');
   const trialEnabled = isFlagEnabled('ff.report-trial');
@@ -281,9 +282,10 @@ export default function ReportsDashboard({
       )}
 
       {detailsLocked && trialEnabled && reportAccess.loaded ? (
-        <div className="flex flex-1 items-center justify-center px-6 min-h-[70vh]">
+        <div className="flex flex-1 items-center justify-center bg-gradient-to-b from-emerald-50 via-white to-white px-6 min-h-[70vh]">
           <ReportAccessBanner
             centered
+            featureName="Reports"
             access={reportAccess.access}
             daysLeft={reportAccess.daysLeft}
             error={reportAccess.error}
@@ -295,6 +297,7 @@ export default function ReportsDashboard({
               const next = await reportAccess.refresh();
               return next?.access === 'premium';
             }}
+            onLeave={onLeave}
           />
         </div>
       ) : null}

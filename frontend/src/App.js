@@ -267,6 +267,7 @@ import LocationGuard from "./shared/components/LocationGuard";
 import { ADMIN_CONFIG_TABS } from "./shell/domain/adminConfigSetupTabs";
 import { isAdminLikeRole, normalizeAppRole, ROLE_USER } from "./shared/constants/roles";
 import { canAccessReportsModule } from "./features/reports/domain/reportsAccess.rules.js";
+import { OPEN_COMMUNITY_POSITION_EVENT } from "./features/user/domain/communityPositionFocus";
 import {
   fetchNavAccessForMe,
   resolveNavTargetOrFallback,
@@ -3138,6 +3139,12 @@ function WellnessValleyApp() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- setters/refs stable; showDashboardPage stable
   }, [showDashboardPage, userRole, bumpTabVisitKey, refreshOnTabFocus]);
+
+  useEffect(() => {
+    const openProfile = () => navigateTo('profile');
+    window.addEventListener(OPEN_COMMUNITY_POSITION_EVENT, openProfile);
+    return () => window.removeEventListener(OPEN_COMMUNITY_POSITION_EVENT, openProfile);
+  }, [navigateTo]);
   // -- Permission flow ------------------------------------------------------
   //
   // Design: zero custom screens before OS dialogs. Permissions are requested
@@ -8992,6 +8999,7 @@ function WellnessValleyApp() {
               tabVisitKey={tabVisitKeys.reports ?? 0}
               teamSearchRefreshKey={teamSearchRefreshKey}
               initialTab={reportsDashboardTab}
+              onLeave={() => navigateTo('home')}
             />
           </Suspense>
         </div>

@@ -1,6 +1,7 @@
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import { getPortfolioStatus } from '../../../features/coach-portfolio/api/status.handler.js';
+import { assertEventsHostToolsAllowed } from '../../../features/payments/api/events-access.handler.js';
 
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET, OPTIONS')) return;
@@ -9,5 +10,8 @@ export default async function handler(req, res) {
   }
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   if (req.method !== 'GET') return methodNotAllowed(res);
-  return runService(res, () => getPortfolioStatus({ userId: req.query?.userId }));
+  return runService(res, async () => {
+    await assertEventsHostToolsAllowed(req, req.query?.userId);
+    return getPortfolioStatus({ userId: req.query?.userId });
+  });
 }

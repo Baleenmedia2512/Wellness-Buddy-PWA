@@ -126,7 +126,8 @@ async function loadContext(userId, appVersion) {
   const nowIso = nowUtc();
   const states = stateMapFromRows(rows);
 
-  // People who already have a later field should not be asked again until its interval.
+  // A stored later field is already closed by its value. Record the fill so
+  // the prompt state matches the profile, without opening another ask.
   for (const field of fields) {
     if (field.phase !== 'scheduled' || field.key === 'currentWeight') continue;
     if (!hasFieldValue(field.key, values)) continue;

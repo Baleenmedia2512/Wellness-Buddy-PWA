@@ -14,12 +14,13 @@ export const NAV_PAGE_KEYS = Object.freeze([
   'reports',
   'broadcast',
   'create-event',
+  'event-check-in',
   'paid-features',
   'map-business',
   'go-premium',
 ]);
 
-export const MATRIX_ROLES = Object.freeze(['user', 'coach', 'admin', 'developer']);
+export const MATRIX_ROLES = Object.freeze(['user', 'coach', 'system_admin', 'admin', 'developer']);
 
 export const NAV_PAGE_LABELS = Object.freeze({
   home: 'Home',
@@ -32,6 +33,7 @@ export const NAV_PAGE_LABELS = Object.freeze({
   reports: 'Reports',
   broadcast: 'BroadCast',
   'create-event': 'Create Event',
+  'event-check-in': 'Check-in',
   'paid-features': 'Digital Portfolio',
   'map-business': 'Google Map Business',
   'go-premium': 'Go Premium',
@@ -40,6 +42,7 @@ export const NAV_PAGE_LABELS = Object.freeze({
 export const MATRIX_ROLE_LABELS = Object.freeze({
   user: 'Customer',
   coach: 'Sponsor',
+  system_admin: 'System Admin',
   admin: 'Admin',
   developer: 'Developer',
 });

@@ -90,6 +90,15 @@ export function shouldHydratePhotosFromProfile(row = null) {
   return !hasRealBeforePhoto(row);
 }
 
+/** The card is showing Before, and After is still empty or the same file. */
+export function displayedPairNeedsAfterCopy(row = null) {
+  if (!row || !hasRealBeforePhoto(row)) return false;
+  const before = row.before_image_path ?? row.beforeImagePath;
+  const after = row.after_image_path ?? row.afterImagePath;
+  if (!after || isPlaceholderImagePath(after)) return true;
+  return after === before;
+}
+
 /**
  * Health-issue edits attach OTP to the member's latest photo or video entry.
  * A visible before+after card (including a seeded clone) uses the photo channel.

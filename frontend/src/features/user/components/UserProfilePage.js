@@ -60,6 +60,7 @@ import {
   communityPositionFromProfile,
   rememberConfirmedCommunityPosition,
 } from '../domain/communityPosition';
+import { consumeCommunityPositionFill } from '../domain/communityPositionFocus';
 import {
   overlayProfileOtpConfirmation,
   rememberProfileOtpConfirmation,
@@ -93,7 +94,7 @@ function resolveAccountEmail(user, formEmail) {
   return '';
 }
 
-const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', user: 'Customer' };
+const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', system_admin: 'System Admin', user: 'Customer' };
 
 const UserProfilePage = ({
   user,
@@ -136,6 +137,22 @@ const UserProfilePage = ({
     if (!email && !uid) return false;
     return !getCachedProfile({ email, userId: uid })?.data;
   });
+  useEffect(() => {
+    if (isLoading || !consumeCommunityPositionFill()) return undefined;
+    let tries = 0;
+    const timer = setInterval(() => {
+      const field = document.getElementById('profile-community-position');
+      tries += 1;
+      if (field) {
+        field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        field.focus?.();
+        clearInterval(timer);
+      } else if (tries > 20) {
+        clearInterval(timer);
+      }
+    }, 200);
+    return () => clearInterval(timer);
+  }, [isLoading]);
   const [isSaving, setIsSaving] = useState(false);
   const [isInviting, setIsInviting] = useState(false);
   const [error, setError] = useState('');

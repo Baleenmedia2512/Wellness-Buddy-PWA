@@ -16,6 +16,7 @@ describe('startEventsTrial (shared report trial)', () => {
         return stored;
       },
       todayYmd: '2026-11-12',
+      readCommunityPosition: async () => 'ASSOCIATE',
     };
     const first = await startEventsTrial({ userId: 42 }, deps);
     const second = await startEventsTrial({ userId: 42 }, deps);
