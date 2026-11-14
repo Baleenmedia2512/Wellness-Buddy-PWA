@@ -340,12 +340,23 @@ export function decideField({
   }
 
   const row = state || emptyState();
+  const configuredEvery = Number(field.askEveryDays);
+  const askEveryDays = Number.isFinite(configuredEvery) ? configuredEvery : 1;
+  // Profile-intro facts (joining date, title, …) stay on the profile once saved.
+  // Every 0 days must not re-block after the value is already stored — that loop
+  // was showing About you again right after Continue. Interval > 0 still nudges
+  // via lastFilledAt below (loadContext stamps it when the value exists).
+  if (
+    PROFILE_INTRO_KEYS.includes(field.key)
+    && hasFieldValue(field.key, values)
+    && askEveryDays <= 0
+  ) {
+    return 'satisfied';
+  }
   const filledAnchor = field.key === 'currentWeight'
     ? (values.weightRecordedAt || row.lastFilledAt)
     : row.lastFilledAt;
   const daysSinceFill = istDaysSince(filledAnchor, now);
-  const configuredEvery = Number(field.askEveryDays);
-  const askEveryDays = Number.isFinite(configuredEvery) ? configuredEvery : 1;
   // 0 means the same day is already due, including after a skip or a fill today.
   if (askEveryDays > 0 && filledAnchor && daysSinceFill < askEveryDays) return 'satisfied';
 
@@ -421,8 +432,14 @@ export function planCollectionStep({
     return { step: 'lifestyle', entryFields: [], photoSlots: [], profileFields: [], scheduled: null };
   }
 
+  // Only while-entering intro fields use the About you page. Ask-later intro
+  // fields stay on the scheduled prompt (skip / session defer / mark filled).
   const profileFields = decisions
-    .filter((item) => PROFILE_INTRO_KEYS.includes(item.field.key) && item.mode === 'ask_blocking')
+    .filter((item) => (
+      item.field.phase === 'entry'
+      && PROFILE_INTRO_KEYS.includes(item.field.key)
+      && item.mode === 'ask_blocking'
+    ))
     .map((item) => item.field.key);
   if (profileFields.length > 0) {
     return { step: 'profileIntro', entryFields: [], photoSlots: [], profileFields, scheduled: null };
