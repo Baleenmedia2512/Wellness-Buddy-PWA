@@ -34,6 +34,32 @@ export function splitHerbalifeDate(raw) {
   return { day, month, year };
 }
 
+/** dd/mm/yyyy → yyyy-MM-dd for `<input type="date">`. Incomplete dates return ''. */
+export function herbalifeDateToIso(raw) {
+  const text = String(raw ?? '').trim();
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const { day, month, year } = splitHerbalifeDate(text);
+  if (day.length !== 2 || month.length !== 2 || year.length !== 4) return '';
+  return `${year}-${month}-${day}`;
+}
+
+/** yyyy-MM-dd → dd/mm/yyyy for profile storage. */
+export function isoToHerbalifeDate(iso) {
+  const match = String(iso ?? '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return '';
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
+/** Today as yyyy-MM-dd in IST (UTC+5:30), matching backend join-date max. */
+export function herbalifeDateMaxIso(now = new Date()) {
+  const ist = new Date(now.getTime() + (5 * 60 + 30) * 60 * 1000);
+  const yyyy = ist.getUTCFullYear();
+  const mm = String(ist.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(ist.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export const PROFILE_INTRO_KEYS = Object.freeze([
   'professionalTitle',
   'instagram',

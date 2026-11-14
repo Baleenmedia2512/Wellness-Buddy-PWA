@@ -8,7 +8,9 @@ import {
   ABOUT_ME_MAX,
   PROFESSIONAL_TITLE_MAX,
   QUALIFICATION_MAX,
-  splitHerbalifeDate,
+  herbalifeDateMaxIso,
+  herbalifeDateToIso,
+  isoToHerbalifeDate,
 } from '../../domain/profileIntro';
 
 const inputClass =
@@ -106,84 +108,31 @@ function LanguagePicker({ value, onChange }) {
   );
 }
 
-function DatePart({ value, max, placeholder, inputRef, onChange, onFilled, ariaLabel }) {
-  return (
-    <input
-      ref={inputRef}
-      type="text"
-      inputMode="numeric"
-      pattern="[0-9]*"
-      autoComplete="off"
-      maxLength={max}
-      placeholder={placeholder}
-      aria-label={ariaLabel}
-      value={value}
-      onChange={(event) => {
-        const next = event.target.value.replace(/\D/g, '').slice(0, max);
-        onChange(next);
-        if (next.length === max) onFilled?.();
-      }}
-      onBlur={() => {
-        if (max === 2 && value.length === 1) onChange(`0${value}`);
-      }}
-      className="box-border h-11 w-full min-w-0 px-1 border border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none bg-white text-gray-900"
-      style={{ fontSize: '16px' }}
-    />
-  );
-}
-
 function HerbalifeDateFields({ value, onChange }) {
-  const monthRef = useRef(null);
-  const yearRef = useRef(null);
-  const parts = splitHerbalifeDate(value);
-  const write = (day, month, year) => {
-    if (!day && !month && !year) {
-      onChange('');
-      return;
-    }
-    if (!month && !year) {
-      onChange(day);
-      return;
-    }
-    if (!year) {
-      onChange(`${day}/${month}`);
-      return;
-    }
-    onChange(`${day}/${month}/${year}`);
-  };
+  const isoValue = herbalifeDateToIso(value);
+  const maxIso = herbalifeDateMaxIso();
 
   return (
     <div>
-      <FieldLabel hint="Day, month, then year. Numbers only.">Date of joining Herbalife</FieldLabel>
-      <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-2">
-        <DatePart
-          value={parts.day}
-          max={2}
-          placeholder="DD"
-          ariaLabel="Day"
-          onChange={(day) => write(day, parts.month, parts.year)}
-          onFilled={() => monthRef.current?.focus()}
-        />
-        <span className="text-gray-400 font-semibold leading-none">/</span>
-        <DatePart
-          inputRef={monthRef}
-          value={parts.month}
-          max={2}
-          placeholder="MM"
-          ariaLabel="Month"
-          onChange={(month) => write(parts.day, month, parts.year)}
-          onFilled={() => yearRef.current?.focus()}
-        />
-        <span className="text-gray-400 font-semibold leading-none">/</span>
-        <DatePart
-          inputRef={yearRef}
-          value={parts.year}
-          max={4}
-          placeholder="YYYY"
-          ariaLabel="Year"
-          onChange={(year) => write(parts.day, parts.month, year)}
-        />
-      </div>
+      <FieldLabel hint="Open the calendar and pick the day you joined.">
+        Date of joining Herbalife
+      </FieldLabel>
+      <input
+        type="date"
+        value={isoValue}
+        min="1980-01-01"
+        max={maxIso}
+        aria-label="Date of joining Herbalife"
+        onChange={(event) => {
+          const next = event.target.value;
+          onChange(next ? isoToHerbalifeDate(next) : '');
+        }}
+        className={inputClass}
+        style={{ fontSize: '16px' }}
+      />
+      {isoValue ? (
+        <p className="mt-1 text-xs text-gray-500">Saved as {isoToHerbalifeDate(isoValue)} (day / month / year).</p>
+      ) : null}
     </div>
   );
 }
