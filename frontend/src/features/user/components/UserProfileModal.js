@@ -149,7 +149,19 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           marathonWeightComparison={marathonWeightComparison}
           userId={user?.id || user?.UserId || user?.userId || null}
           communityPositionRequest={communityPositionRequest}
-          onCommunityPositionSettled={loadProfile}
+          onCommunityPositionSettled={(result) => {
+            const code = String(result?.eventLevel || result?.positionCode || '').trim();
+            if (code) form.setEventLevel(code);
+            setCommunityPositionRequest(null);
+            // Soft sync — keep the form visible (no loading flash on mobile).
+            fetchProfile(user?.email || form.email)
+              .then(({ data }) => {
+                if (!data) return;
+                if (data.eventLevel) form.setEventLevel(data.eventLevel);
+                setCommunityPositionRequest(data.communityPositionRequest || null);
+              })
+              .catch(() => {});
+          }}
           error={error} successMessage={successMessage}
         />
         {!isLoading && (

@@ -230,6 +230,31 @@ describe('normalizeEventRegistrationDraft', () => {
     assert.equal(result.value.daicyTeamIncharge.uplineLabel, 'Incharge Arun / President Ravi');
   });
 
+  it('allows empty Food Type when Attending City is Online', () => {
+    const result = normalizeEventRegistrationDraft({
+      eventId: 8,
+      translation: 'tamil',
+      attendCity: 'online',
+      foodType: '',
+      uplinePresidentTeam: { userId: 21, name: 'President Ravi' },
+      uplineMillTeam: { userId: 22, name: 'Mill Meena' },
+      clubNo: 'CLUB-17',
+      zoomEmail: 'creator@example.com',
+      name: 'Logged In User',
+      idNo: '17',
+      level: 'ASSOCIATE',
+      phoneNumber: '9000000017',
+      participantCount: 1,
+      ticketNo: 'T-55',
+      yourCity: 'CHENNAI',
+      teamIncharge: { userId: 23, name: 'Incharge Arun' },
+      daicyTeamIncharge: { userId: 24, name: 'Daicy Devi' },
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.value.attendCity, 'online');
+    assert.equal(result.value.foodType, '');
+  });
+
   it('accepts NO PREFERENCE and normalizes non-veg food types', () => {
     const res1 = normalizeEventRegistrationDraft({
       eventId: 8,

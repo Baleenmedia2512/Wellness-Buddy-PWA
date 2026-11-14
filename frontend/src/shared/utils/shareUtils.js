@@ -28,6 +28,30 @@ export {
 const PROFILE_USER_NAME_KEY = 'wv.profileUserName';
 
 /**
+ * Android WhatsApp sends the image twice when ACTION_SEND includes both
+ * EXTRA_STREAM (file) and EXTRA_TEXT (caption). Share the file only, and put
+ * the caption on the clipboard so the user can paste once if needed.
+ */
+function isAndroidNative() {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+}
+
+async function prepareAndroidImageShareCaption(text) {
+  const caption = String(text || '').trim();
+  if (!caption || !isAndroidNative()) return undefined;
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(caption);
+      debugLog('📋 Share caption copied to clipboard (Android image-only share)');
+    }
+  } catch (err) {
+    console.warn('⚠️ Could not copy share caption to clipboard:', err?.message || err);
+  }
+  // Omit text from the share intent — prevents the WhatsApp duplicate image.
+  return undefined;
+}
+
+/**
  * Brand line (Name · Wellness Valley v X.Y.Z) + activity suffix.
  * Resolves the display name from savedUserName / user / cached profile.
  */
@@ -322,9 +346,14 @@ export const shareViaCapacitorAPI = async (dataUrl, options = {}) => {
       writtenPath = fileName;
       debugLog("📤 [CapacitorShare] file written:", writeResult.uri);
 
+      // Android WhatsApp duplicates the photo when files + text are both set.
+      const shareText = isAndroidNative()
+        ? await prepareAndroidImageShareCaption(text)
+        : text;
+
       await Share.share({
         title,
-        text,
+        text: shareText,
         files: [writeResult.uri],
         dialogTitle: title,
       });
@@ -406,11 +435,12 @@ export const shareCachedDataUrl = async (dataUrl, options = {}) => {
       if (!WhatsAppShare) return false;
 
       const start = performance.now();
+      const shareText = await prepareAndroidImageShareCaption(text);
       await WhatsAppShare.shareImage({
         base64Data: dataUrl,
         fileName: finalFileName,
         title,
-        text,
+        text: shareText || '',
         mimeType,
       });
       debugLog(
@@ -786,11 +816,12 @@ const shareNative = async (
         );
 
         const pluginStart = performance.now();
+        const shareText = await prepareAndroidImageShareCaption(text);
         const result = await WhatsAppShare.shareImage({
           base64Data: base64Data,
           fileName: fileName,
           title: title,
-          text: text,
+          text: shareText || '',
           mimeType: mimeType,
         });
         debugLog(
@@ -857,11 +888,14 @@ const shareNative = async (
           fileUri.startsWith("file://"),
         );
 
-        // When shareAsDocument is true, include text to trigger document mode in WhatsApp
-        // This prevents automatic compression and maintains full image quality
+        // Android WhatsApp duplicates the image when files + EXTRA_TEXT are both set.
+        // iOS can keep caption text with the file.
+        const shareText = isAndroidNative()
+          ? await prepareAndroidImageShareCaption(text)
+          : (shareAsDocument ? text : undefined);
         const shareOptions = {
           title: title,
-          text: shareAsDocument ? text : undefined, // Include text for document mode
+          text: shareText,
           files: [fileUri],
           dialogTitle: "Share via",
         };
@@ -1188,9 +1222,12 @@ export const shareImageWithLink = async (dataUrl, shareUrl, options = {}) => {
         data: base64String,
         directory: Directory.Cache,
       });
+      const shareText = isAndroidNative()
+        ? await prepareAndroidImageShareCaption(textWithLink)
+        : textWithLink;
       await Share.share({
         title,
-        text: textWithLink,
+        text: shareText,
         files: [writeResult.uri],
         dialogTitle: "Share Meal Analysis",
       });

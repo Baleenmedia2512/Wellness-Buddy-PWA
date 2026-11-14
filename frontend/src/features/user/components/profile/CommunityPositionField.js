@@ -3,7 +3,7 @@
  * Choosing a role does not email anyone. Send verification code emails the
  * coach. The role is saved after the member enters the code the coach shares.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { EMAIL_OTP_LENGTH } from '../../domain/otpLength';
 import { positionUsageLine } from '../../domain/communityPosition';
 import useOtpInput from '../../hooks/useOtpInput';
@@ -34,6 +34,8 @@ export default function CommunityPositionField({
   const [pending, setPending] = useState(pendingRequest);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // After OTP verify, ignore stale parent pendingRequest until confirmedCode catches up.
+  const optimisticCodeRef = useRef('');
 
   useEffect(() => {
     let cancelled = false;
@@ -48,6 +50,16 @@ export default function CommunityPositionField({
   }, []);
 
   useEffect(() => {
+    const optimistic = optimisticCodeRef.current;
+    if (optimistic) {
+      if (String(confirmedCode || '') === optimistic) {
+        optimisticCodeRef.current = '';
+      } else {
+        setPending(null);
+        setDraft(optimistic);
+        return;
+      }
+    }
     setPending(pendingRequest || null);
     setDraft(pendingRequest?.positionCode || confirmedCode || '');
   }, [pendingRequest, confirmedCode, pendingRequest?.id, pendingRequest?.positionCode]);
@@ -56,6 +68,20 @@ export default function CommunityPositionField({
     otpCtl.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when a new request arrives
   }, [pending?.id]);
+
+  const applyConfirmed = (code, settlePayload = null) => {
+    const saved = String(code || '').trim();
+    if (!saved) return;
+    optimisticCodeRef.current = saved;
+    setPending(null);
+    setDraft(saved);
+    onChange?.(saved);
+    onSettled?.(settlePayload || {
+      positionCode: saved,
+      eventLevel: saved,
+      communityPositionRequest: null,
+    });
+  };
 
   const selected = positions.find((row) => row.code === draft) || null;
   const usage = positionUsageLine(selected);
@@ -89,12 +115,15 @@ export default function CommunityPositionField({
         positionCode: code,
       });
       if (data.alreadyHeld) {
-        setPending(null);
-        setDraft(data.positionCode || code);
-        onChange?.(data.positionCode || code);
-        onSettled?.();
+        applyConfirmed(data.positionCode || code, {
+          positionCode: data.positionCode || code,
+          eventLevel: data.eventLevel || data.positionCode || code,
+          communityPosition: data.communityPosition || null,
+          communityPositionRequest: null,
+        });
         return;
       }
+      optimisticCodeRef.current = '';
       setPending(data.communityPositionRequest || null);
       if (data.communityPositionRequest?.positionCode) {
         setDraft(data.communityPositionRequest.positionCode);
@@ -117,11 +146,12 @@ export default function CommunityPositionField({
         email: email || undefined,
         otp,
       });
-      const saved = data.positionCode || draft;
-      setPending(null);
-      setDraft(saved);
-      onChange?.(saved);
-      onSettled?.();
+      applyConfirmed(data.positionCode || data.eventLevel || draft, {
+        positionCode: data.positionCode || data.eventLevel || draft,
+        eventLevel: data.eventLevel || data.positionCode || draft,
+        communityPosition: data.communityPosition || null,
+        communityPositionRequest: null,
+      });
     } catch (err) {
       setError(err?.message || 'That approval code did not match.');
     } finally {

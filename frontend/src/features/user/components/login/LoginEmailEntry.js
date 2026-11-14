@@ -58,6 +58,12 @@ const LoginEmailEntry = ({
     restorePhoneKeyboard();
   };
 
+  const handleCountryChange = (nextDial) => {
+    setCountryDial?.(nextDial);
+    // Country <select> steals focus and closes the pad — put it back.
+    restorePhoneKeyboard();
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!termsAccepted) return;
@@ -105,7 +111,8 @@ const LoginEmailEntry = ({
             <select
               aria-label="Country code"
               value={countryDial}
-              onChange={(e) => setCountryDial && setCountryDial(e.target.value)}
+              onChange={(e) => handleCountryChange(e.target.value)}
+              onBlur={restorePhoneKeyboard}
               className="bg-transparent px-2 py-3 text-sm text-gray-700 focus:outline-none cursor-pointer"
               style={{ minWidth: ios ? '72px' : '90px' }}
             >
@@ -125,6 +132,7 @@ const LoginEmailEntry = ({
             autoComplete="off"
             autoFocus
             name="tel"
+            enterKeyHint="done"
             value={email}
             onChange={(e) => {
               // Strip any non-numeric characters (except leading +) so only
@@ -182,6 +190,9 @@ const LoginEmailEntry = ({
           <button
             type="button"
             className="inline compact-touch p-0 align-baseline font-medium text-[#2563eb] underline underline-offset-2"
+            onMouseDown={keepPhoneKeyboard}
+            onPointerDown={keepPhoneKeyboard}
+            onTouchStart={keepPhoneKeyboard}
             onClick={(e) => openDoc(e, onOpenTerms)}
           >
             Terms of Service
@@ -190,6 +201,9 @@ const LoginEmailEntry = ({
           <button
             type="button"
             className="inline compact-touch p-0 align-baseline font-medium text-[#2563eb] underline underline-offset-2"
+            onMouseDown={keepPhoneKeyboard}
+            onPointerDown={keepPhoneKeyboard}
+            onTouchStart={keepPhoneKeyboard}
             onClick={(e) => openDoc(e, onOpenPrivacy)}
           >
             Privacy Policy

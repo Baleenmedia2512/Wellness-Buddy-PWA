@@ -54,6 +54,10 @@ export default function FieldCollectionPrompt({ user, prompt, apiBaseUrl, onDone
         return false;
       }
       payload.bodyFat = n;
+      if (!userId && !email) {
+        setError('Sign in again, then save Fat %.');
+        return false;
+      }
     } else if (prompt.key === 'bodyAge') {
       const n = parseFloat(value);
       if (!(n >= 1 && n <= 120)) {
@@ -106,7 +110,19 @@ export default function FieldCollectionPrompt({ user, prompt, apiBaseUrl, onDone
       setError('This field cannot be saved here.');
       return false;
     }
-    if (prompt.key !== 'currentWeight') await saveProfile(payload);
+    if (prompt.key !== 'currentWeight') {
+      const saved = await saveProfile(payload);
+      if (prompt.key === 'fatPercent') {
+        const persisted = saved?.data?.bodyFat;
+        const okFat = persisted != null && Number.isFinite(Number(persisted));
+        if (!okFat) {
+          throw new Error(
+            saved?.data?.bodyFatError
+            || 'Could not save Fat %. Please try again.',
+          );
+        }
+      }
+    }
     await recordFieldCollectionAction({
       userId,
       fieldKey: prompt.key,
