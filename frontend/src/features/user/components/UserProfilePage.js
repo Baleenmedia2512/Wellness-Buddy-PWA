@@ -60,6 +60,10 @@ import {
   communityPositionFromProfile,
   rememberConfirmedCommunityPosition,
 } from '../domain/communityPosition';
+import {
+  overlayProfileOtpConfirmation,
+  rememberProfileOtpConfirmation,
+} from '../domain/profileOtpHold';
 import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked, validateHeightCm } from '../domain/heightChange';
 import { looksLikeEmail } from '../domain/onboardingEmail';
 import GoPremiumButton from '../../payments/components/GoPremiumButton';
@@ -139,6 +143,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [leadPreFilled, setLeadPreFilled] = useState(false); // true once we've pre-filled from lead
   const leadPreFilledRef = useRef(false);
   const profileLoadGenRef = useRef(0);
+  const heightVerifyFlightRef = useRef(false);
+  const communityIdVerifyFlightRef = useRef(false);
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(
     () => isAutoCameraOnResumeEnabled()
   );
@@ -170,7 +176,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     const loadGen = ++profileLoadGenRef.current;
     setError('');
 
-    const applyProfileData = (data) => {
+    const applyProfileData = (incoming) => {
+      const data = overlayProfileOtpConfirmation(incoming, uid);
       const profileData = {
         name: data?.userName || '',
         height: data?.height ? String(data.height) : '',
@@ -457,6 +464,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   }, [sessionUserId, accountEmail]);
 
   const handleHeightVerifyOtp = useCallback(async (otp) => {
+    if (heightVerifyFlightRef.current) return;
+    heightVerifyFlightRef.current = true;
     setHeightOtpError('');
     setSuccessMessage('');
     setHeightOtpBusy(true);
@@ -475,6 +484,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         otp,
       });
       const saved = data.height != null ? String(data.height) : String(heightValue);
+      rememberProfileOtpConfirmation(sessionUserId, { height: saved });
       form.setHeight(saved);
       setLockedHeight(saved);
       setHeightOtpPending(false);
@@ -489,6 +499,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     } catch (e) {
       setHeightOtpError(e.message || 'That verification code did not match.');
     } finally {
+      heightVerifyFlightRef.current = false;
       setHeightOtpBusy(false);
     }
   }, [
@@ -514,6 +525,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       // Already confirmed on the server — lock field to pencil mode (no OTP).
       if (data.alreadyOwned) {
         const seat = data.teamSeat || 'sponsor';
+        if (data.communityId) {
+          rememberProfileOtpConfirmation(sessionUserId, {
+            communityId: data.communityId,
+            teamSeat: seat,
+          });
+        }
         setCommunityIdRequest(null);
         if (data.communityId) form.setCommunityId(String(data.communityId));
         setTeamSeat(seat);
@@ -544,6 +561,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   }, [sessionUserId, accountEmail, form, loadProfile, onProfileUpdate]);
 
   const handleCommunityIdVerify = useCallback(async (otp) => {
+    if (communityIdVerifyFlightRef.current) return;
+    communityIdVerifyFlightRef.current = true;
     setCommunityIdError('');
     setSuccessMessage('');
     setCommunityIdBusy(true);
@@ -554,6 +573,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         otp,
       });
       const confirmedSeat = data.teamSeat || null;
+      if (data.communityId) {
+        rememberProfileOtpConfirmation(sessionUserId, {
+          communityId: data.communityId,
+          teamSeat: confirmedSeat,
+        });
+      }
       setCommunityIdRequest(null);
       if (data.communityId) form.setCommunityId(String(data.communityId));
       // Lock the field to pencil mode immediately — do not wait on profile reload.
@@ -570,8 +595,34 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         setTeamSeat(confirmedSeat);
       }
     } catch (e) {
-      setCommunityIdError(e.message || 'That approval code did not match.');
+      const message = e.message || 'That approval code did not match.';
+      const pendingCode = String(form.communityId || '').trim();
+      if (/no pending community id request/i.test(message) && pendingCode) {
+        try {
+          const fresh = await fetchProfile({
+            userId: sessionUserId || undefined,
+            email: accountEmail || undefined,
+            cacheBust: true,
+          });
+          const saved = String(fresh?.data?.communityId || '').trim();
+          if (saved && saved.toLowerCase() === pendingCode.toLowerCase()) {
+            const seat = fresh.data.teamSeat || 'sponsor';
+            rememberProfileOtpConfirmation(sessionUserId, {
+              communityId: saved,
+              teamSeat: seat,
+            });
+            setCommunityIdRequest(null);
+            form.setCommunityId(saved);
+            setTeamSeat(seat);
+            setSuccessMessage(fresh.data.message || 'Community ID confirmed.');
+            setHasSaved(true);
+            return;
+          }
+        } catch { /* show the original error */ }
+      }
+      setCommunityIdError(message);
     } finally {
+      communityIdVerifyFlightRef.current = false;
       setCommunityIdBusy(false);
     }
   }, [sessionUserId, accountEmail, form, onProfileUpdate, loadProfile]);
@@ -581,6 +632,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     const adoptedUserId = result?.adopted && result?.userId ? result.userId : null;
     const nextPhone = String(result?.phone || '').trim();
     if (nextEmail) {
+      rememberProfileOtpConfirmation(adoptedUserId || sessionUserId, { email: nextEmail });
       form.setEmail(nextEmail);
       Session.setUserEmail(nextEmail);
     }
@@ -615,7 +667,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       userId: adoptedUserId || undefined,
       email: adoptedUserId ? undefined : (nextEmail || undefined),
     });
-  }, [form, onProfileUpdate, loadProfile, accountEmail]);
+  }, [form, onProfileUpdate, loadProfile, accountEmail, sessionUserId]);
 
   const handlePhotoUploaded = useCallback(async (uploadedImage) => {
     // Optimistic preview — keep previous photo if refresh fails.

@@ -2,6 +2,8 @@
  * Community Position is a profile role.
  * The dropdown is loaded from the catalog API — do not hard-code role names here.
  */
+import { rememberProfileOtpConfirmation } from './profileOtpHold.js';
+
 export const COMMUNITY_POSITION_OTP_FLAG = 'ff.community-position-otp';
 
 export function communityPositionStorageKey(userId) {
@@ -28,6 +30,7 @@ export function rememberConfirmedCommunityPosition(userId, code, storage = brows
     storage.setItem(key, saved);
     storage.setItem(`${key}.hold`, saved);
   } catch { /* private mode */ }
+  rememberProfileOtpConfirmation(userId, { eventLevel: saved });
 }
 
 export function readHeldCommunityPosition(userId, storage = browserSession()) {

@@ -5,6 +5,7 @@ import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import {
   REQUEST_KIND_CREATE,
+  REQUEST_STATUS_APPROVED,
   REQUEST_STATUS_CANCELLED,
   REQUEST_STATUS_EXPIRED,
   REQUEST_STATUS_PENDING,
@@ -48,6 +49,21 @@ export async function findPendingByRequesterId(requesterId) {
     .eq('RequesterId', uid)
     .eq('Status', REQUEST_STATUS_PENDING)
     .order('RequestedAt', { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  return data?.[0] || null;
+}
+
+export async function findLatestApprovedByRequesterId(requesterId) {
+  const uid = Number(requesterId);
+  if (!Number.isFinite(uid)) return null;
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from(TABLE)
+    .select(`${PUBLIC_COLS}, ProcessedAt`)
+    .eq('RequesterId', uid)
+    .eq('Status', REQUEST_STATUS_APPROVED)
+    .order('ProcessedAt', { ascending: false })
     .limit(1);
   if (error) throw error;
   return data?.[0] || null;

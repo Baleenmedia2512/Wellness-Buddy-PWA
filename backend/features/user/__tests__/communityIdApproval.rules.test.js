@@ -18,6 +18,7 @@ import {
   classifyCommunityIdRequest,
   communityIdOtpExpiresAt,
   isCommunityIdOtpExpired,
+  isRecentCommunityIdApproval,
   formatCommunityIdPairLabel,
   occupancyWithoutUser,
   resolveCoachTeamIdFromApprover,
@@ -370,6 +371,24 @@ describe('resolveCoachTeamIdFromApprover', () => {
         existingCoachTeamId: 'KEEPME01',
       }),
       'KEEPME01',
+    );
+  });
+});
+
+describe('isRecentCommunityIdApproval', () => {
+  const now = new Date('2026-11-14T06:00:00.000Z');
+
+  it('accepts a code that was confirmed moments ago', () => {
+    assert.equal(
+      isRecentCommunityIdApproval('2026-11-14T05:59:10.000Z', now),
+      true,
+    );
+  });
+
+  it('rejects a confirmation from an earlier request', () => {
+    assert.equal(
+      isRecentCommunityIdApproval('2026-11-14T05:50:00.000Z', now),
+      false,
     );
   });
 });

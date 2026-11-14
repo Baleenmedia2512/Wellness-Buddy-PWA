@@ -8,7 +8,7 @@ import logger from '../../shared/lib/logger.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
-import { cache, cacheKeys } from '../../utils/cache.js';
+import { clearUserProfileCache } from './profileCache.js';
 import { generateEmailOtp } from '../auth/domain/otp-length.rules.js';
 import { sendTransactionalMail } from '../../shared/lib/smtp-mail.js';
 import * as userRepo from './user.repository.js';
@@ -40,21 +40,7 @@ function featureDisabled() {
 }
 
 function clearProfileCache({ email, userId }) {
-  // getProfile stores the row under :tp-r2 / :tp-legacy, not the bare key.
-  // Deleting only the bare key left the next Profile read on the pre-OTP role.
-  const bases = [];
-  if (userId != null && String(userId).trim() !== '') {
-    bases.push(cacheKeys.userProfile(`id:${userId}`));
-  }
-  const emailKey = String(email || '').trim().toLowerCase();
-  if (emailKey) bases.push(cacheKeys.userProfile(emailKey));
-  for (const base of bases) {
-    try {
-      cache.delete(base);
-      cache.delete(`${base}:tp-r2`);
-      cache.delete(`${base}:tp-legacy`);
-    } catch { /* non-fatal */ }
-  }
+  clearUserProfileCache({ email, userId });
 }
 
 function legacyPublicPositions() {

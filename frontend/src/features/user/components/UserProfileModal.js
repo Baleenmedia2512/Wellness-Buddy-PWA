@@ -6,6 +6,7 @@ import { getUserContext } from '../../../shared/services/userIdentity';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile } from '../services/profileService';
 import { communityPositionFromProfile } from '../domain/communityPosition';
+import { overlayProfileOtpConfirmation } from '../domain/profileOtpHold';
 import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import { loadProfileMarathonWeightComparison } from '../../marathon';
 import UserProfileHeader from './profile/UserProfileHeader';
@@ -31,11 +32,15 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
     if (!cacheBust) setIsLoading(true);
     setError('');
     try {
-      const { data } = await fetchProfile({
+      const { data: loaded } = await fetchProfile({
         email: user?.email,
         userId: user?.id || user?.UserId || user?.userId,
         cacheBust,
       });
+      const data = overlayProfileOtpConfirmation(
+        loaded,
+        user?.id || user?.UserId || user?.userId,
+      );
       if (data) {
         form.reload({
           name: data.userName || user.name || '',
