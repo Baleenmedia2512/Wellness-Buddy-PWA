@@ -9,6 +9,7 @@ import {
   pagesForRole,
   canAccessPage,
   validateMatrixInput,
+  mergeOmittedSystemAdmin,
   normalizeMatrix,
   matrixWithDefaultsForNewPages,
   DEFAULT_NAV_ACCESS_MATRIX,
@@ -33,6 +34,12 @@ describe('resolveMatrixRole', () => {
   it('maps admin and developer', () => {
     assert.equal(resolveMatrixRole('admin'), 'admin');
     assert.equal(resolveMatrixRole('developer'), 'developer');
+  });
+
+  it('keeps system admin on its own row, even with a downline', () => {
+    assert.equal(resolveMatrixRole('system_admin'), 'system_admin');
+    assert.equal(resolveMatrixRole('System Admin'), 'system_admin');
+    assert.equal(resolveMatrixRole('system_admin', { hasSponsorTeam: true }), 'system_admin');
   });
 
   it('elevates a customer with downline (hasSponsorTeam) to Sponsor pages', () => {
@@ -157,6 +164,32 @@ describe('validateMatrixInput', () => {
     const r = validateMatrixInput({ user: {}, coach: {}, admin: {} });
     assert.equal(r.ok, false);
     assert.match(r.message, /developer/);
+  });
+
+  it('fills System Admin from Customer defaults when an older save omits the column', () => {
+    const older = {
+      user: { home: true },
+      coach: { home: true },
+      admin: { home: true },
+      developer: { home: true },
+    };
+    const r = validateMatrixInput(older);
+    assert.equal(r.ok, true);
+    assert.equal(r.matrix.system_admin.home, true);
+    assert.equal(r.matrix.system_admin.reports, false);
+    const stored = {
+      system_admin: { home: true, reports: true, dashboard: false },
+    };
+    const merged = mergeOmittedSystemAdmin(older, r.matrix, stored);
+    assert.equal(merged.system_admin.reports, true);
+    assert.equal(merged.system_admin.home, true);
+    const replaced = mergeOmittedSystemAdmin(
+      { ...older, system_admin: { home: false, reports: false } },
+      validateMatrixInput({ ...older, system_admin: { home: false } }).matrix,
+      stored,
+    );
+    assert.equal(replaced.system_admin.home, false);
+    assert.equal(replaced.system_admin.reports, false);
   });
 
   it('accepts full matrix and normalizes', () => {

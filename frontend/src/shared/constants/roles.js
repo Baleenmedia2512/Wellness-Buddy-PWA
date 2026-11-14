@@ -3,11 +3,13 @@
  * Centralizing these prevents typos and stringly-typed role checks
  * scattered across features.
  *
- * DB / product roles (CLAUDE.md): user | coach | upline | admin | developer.
- * UI label for `user` is "Customer".
+ * DB / product roles (CLAUDE.md): user | coach | upline | system_admin | admin | developer.
+ * UI label for `user` is "Customer". UI label for `system_admin` is "System Admin".
+ * System Admin is a normal account role, same tier as Customer and Coach.
+ * Admin and Developer are the only roles that open config screens.
  */
 
-/** @typedef {'admin'|'developer'|'coach'|'upline'|'user'|'member'|'guest'} Role */
+/** @typedef {'admin'|'developer'|'coach'|'upline'|'system_admin'|'user'|'member'|'guest'} Role */
 
 /** Administrative super-user. */
 export const ROLE_ADMIN = 'admin';
@@ -20,6 +22,12 @@ export const ROLE_COACH = 'coach';
 
 /** Hierarchy manager above coaches. */
 export const ROLE_UPLINE = 'upline';
+
+/**
+ * System-level account. Same tier as Customer and Coach.
+ * No Admin Config and no page-access setup.
+ */
+export const ROLE_SYSTEM_ADMIN = 'system_admin';
 
 /** Default end-user (UI: Customer). Canonical DB value. */
 export const ROLE_USER = 'user';
@@ -35,6 +43,7 @@ export const KNOWN_APP_ROLES = [
   ROLE_USER,
   ROLE_COACH,
   ROLE_UPLINE,
+  ROLE_SYSTEM_ADMIN,
   ROLE_ADMIN,
   ROLE_DEVELOPER,
 ];
@@ -53,6 +62,7 @@ export const ROLE_RANK = {
   [ROLE_GUEST]: 0,
   [ROLE_MEMBER]: 1,
   [ROLE_USER]: 1,
+  [ROLE_SYSTEM_ADMIN]: 1,
   [ROLE_COACH]: 2,
   [ROLE_UPLINE]: 2,
   [ROLE_ADMIN]: 3,
@@ -68,6 +78,7 @@ export const ROLE_RANK = {
 export function normalizeAppRole(role) {
   const r = String(role || '').trim().toLowerCase();
   if (r === 'member' || r === 'customer') return ROLE_USER;
+  if (r === 'system admin' || r === 'systemadmin') return ROLE_SYSTEM_ADMIN;
   if (KNOWN_APP_ROLES.includes(r)) return r;
   return ROLE_USER;
 }

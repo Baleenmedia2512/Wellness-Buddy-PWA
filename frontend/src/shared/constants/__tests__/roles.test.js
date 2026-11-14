@@ -12,6 +12,7 @@ import {
   ROLE_DEVELOPER,
   ROLE_COACH,
   ROLE_UPLINE,
+  ROLE_SYSTEM_ADMIN,
 } from '../roles.js';
 
 describe('normalizeAppRole', () => {
@@ -33,6 +34,8 @@ describe('normalizeAppRole', () => {
     assert.equal(normalizeAppRole('developer'), ROLE_DEVELOPER);
     assert.equal(normalizeAppRole('COACH'), ROLE_COACH);
     assert.equal(normalizeAppRole('upline'), ROLE_UPLINE);
+    assert.equal(normalizeAppRole('system_admin'), ROLE_SYSTEM_ADMIN);
+    assert.equal(normalizeAppRole('System Admin'), ROLE_SYSTEM_ADMIN);
   });
 });
 
@@ -44,5 +47,7 @@ describe('isAdminLikeRole', () => {
     assert.equal(isAdminLikeRole(''), false);
     assert.equal(isAdminLikeRole(null), false);
     assert.equal(isAdminLikeRole('coach'), false);
+    assert.equal(isAdminLikeRole('system_admin'), false);
+    assert.equal(isAdminLikeRole('System Admin'), false);
   });
 });

@@ -147,14 +147,14 @@ export default function NavPageAccessSetup({
             )}
 
             <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-              <table className="w-full min-w-[28rem] border-collapse text-left text-xs">
+              <table className="w-full min-w-[40rem] border-collapse text-left text-xs">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
                     <th className="px-3 py-2.5 font-semibold text-gray-700">Page</th>
                     {MATRIX_ROLES.map((role) => (
                       <th
                         key={role}
-                        className="px-2 py-2.5 text-center font-semibold text-gray-700"
+                        className="whitespace-nowrap px-2 py-2.5 text-center font-semibold text-gray-700"
                       >
                         {MATRIX_ROLE_LABELS[role]}
                       </th>

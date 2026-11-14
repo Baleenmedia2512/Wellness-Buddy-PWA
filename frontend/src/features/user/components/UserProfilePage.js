@@ -93,7 +93,7 @@ function resolveAccountEmail(user, formEmail) {
   return '';
 }
 
-const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', user: 'Customer' };
+const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', system_admin: 'System Admin', user: 'Customer' };
 
 const UserProfilePage = ({
   user,
