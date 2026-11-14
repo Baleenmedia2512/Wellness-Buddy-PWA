@@ -16,6 +16,7 @@ export const NAV_PAGE_KEYS = Object.freeze([
   'create-event',
   'paid-features',
   'map-business',
+  'go-premium',
 ]);
 
 export const MATRIX_ROLES = Object.freeze(['user', 'coach', 'admin', 'developer']);
@@ -33,6 +34,7 @@ export const NAV_PAGE_LABELS = Object.freeze({
   'create-event': 'Create Event',
   'paid-features': 'Digital Portfolio',
   'map-business': 'Google Map Business',
+  'go-premium': 'Go Premium',
 });
 
 export const MATRIX_ROLE_LABELS = Object.freeze({

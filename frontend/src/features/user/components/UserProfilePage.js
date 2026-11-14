@@ -87,7 +87,15 @@ function resolveAccountEmail(user, formEmail) {
 
 const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', user: 'Customer' };
 
-const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfileUpdate }) => {
+const UserProfilePage = ({
+  user,
+  userRole = 'user',
+  onBack,
+  onSignOut,
+  onProfileUpdate,
+  /** null = fail-open; object = Admin Config page-access map */
+  allowedPages = null,
+}) => {
   const form = useProfileForm();
   const resolvedUserId = user?.id ?? user?._id ?? user?.UserId ?? user?.userId ?? form.userId ?? Session.getDbUserId() ?? null;
   const premiumUserId = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
@@ -747,6 +755,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
             userId={premiumUserId}
             isPremium={isPremiumMember}
             onPremiumCheck={refreshPremium}
+            allowedPages={allowedPages}
           />
         </div>
 

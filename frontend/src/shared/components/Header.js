@@ -265,6 +265,7 @@ const Header = ({
           expiresAtDisplay={premiumExpiresAtDisplay}
           userId={premiumUserId}
           onPremiumCheck={refreshPremium}
+          allowedPages={allowedPages}
         />
       ) : null}
 

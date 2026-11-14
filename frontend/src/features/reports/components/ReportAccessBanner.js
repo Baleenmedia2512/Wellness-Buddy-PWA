@@ -23,6 +23,7 @@ export default function ReportAccessBanner({
   onPremiumCheck,
   centered = false,
   trialLengthDays = 14,
+  allowedPages = null,
 }) {
   const row = centered
     ? 'flex flex-col items-center justify-center gap-4 text-center'
@@ -62,6 +63,7 @@ export default function ReportAccessBanner({
           isPremium={false}
           renew
           onPremiumCheck={onPremiumCheck}
+          allowedPages={allowedPages}
         />
       </div>
     );

@@ -189,7 +189,8 @@ export default function NavPageAccessSetup({
               A customer gets Sponsor pages only after they have downline members
               (CoachId = them) — Community ID / joint coaching seat alone does not.
               Their account role may still be Customer. Reports also needs the
-              Reports feature flag.
+              Reports feature flag. Go Premium also needs the Go Premium feature
+              flag (profile chip / recharge — not a main nav tab).
             </p>
 
             <div className="mt-4 flex items-center gap-3">
