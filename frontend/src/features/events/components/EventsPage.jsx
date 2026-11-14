@@ -140,6 +140,30 @@ function toAttendCitySelectOptions(values) {
   }));
 }
 
+/** Profile fields the registration form never asks — they must already be saved. */
+function profileGapMessages(source) {
+  const text = (value) => String(value ?? '').trim();
+  const checks = [
+    [source?.eventTranslation, 'Set Translation in Profile'],
+    [source?.clubNo, 'Set Working Physical Centre in Profile'],
+    [source?.zoomEmail, 'Set Email in Profile'],
+    [source?.name, 'Set Name in Profile'],
+    [source?.idNo, 'Set Community ID in Profile'],
+    [source?.eventLevel, 'Set Community Position in Profile'],
+    [source?.phoneNumber, 'Set Phone Number in Profile'],
+    [source?.eventYourCity, 'Set Your City in Profile'],
+  ];
+  return checks
+    .filter(([value]) => !text(value))
+    .map(([, message]) => message);
+}
+
+function ticketCharge(event) {
+  const price = Number(event?.ticketPrice);
+  if (!Number.isFinite(price) || price <= 0) return 0;
+  return Math.round(price * 100) / 100;
+}
+
 function formatTicketPrice(value) {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return 'Not specified';
@@ -276,6 +300,10 @@ function EventsPage({ user }) {
   const [submitError, setSubmitError] = useState('');
   const [savingRegistration, setSavingRegistration] = useState(false);
   const [formErrors, setFormErrors] = useState({});
+  const [profileGapMessage, setProfileGapMessage] = useState('');
+  const [walletBlock, setWalletBlock] = useState(null);
+  const [registerCheckId, setRegisterCheckId] = useState(null);
+  const [walletOpenSignal, setWalletOpenSignal] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -365,8 +393,10 @@ function EventsPage({ user }) {
   }, [profileDefaults, selectedEvent, registrationStep]);
 
   const resetRegistrationForm = (options = {}) => {
-    const { keepPersonalDefaults = false } = options;
-    if (keepPersonalDefaults) {
+    const { keepPersonalDefaults = false, defaults = null } = options;
+    if (defaults) {
+      applyPersonalDefaults(defaults);
+    } else if (keepPersonalDefaults) {
       applyPersonalDefaults();
     } else {
       setName('');
@@ -392,6 +422,8 @@ function EventsPage({ user }) {
     setSubmitError('');
     setSavingRegistration(false);
     setFormErrors({});
+    setProfileGapMessage('');
+    setWalletBlock(null);
   };
 
   const clearFieldError = (field) => {
@@ -399,16 +431,69 @@ function EventsPage({ user }) {
   };
 
   const chargeAmount = (() => {
-    const price = Number(selectedEvent?.ticketPrice);
+    const price = ticketCharge(selectedEvent);
     const count = Number(participantCount) || 1;
-    if (!Number.isFinite(price) || price < 0) return 0;
     return Math.round(price * count * 100) / 100;
   })();
 
-  const openRegistration = (event) => {
-    if (event?.soldOut) return;
-    setSelectedEvent(event);
-    resetRegistrationForm({ keepPersonalDefaults: true });
+  const closeRegisterDialog = () => {
+    setProfileGapMessage('');
+    setWalletBlock(null);
+  };
+
+  const openWalletToRecharge = () => {
+    closeRegisterDialog();
+    setWalletOpenSignal((current) => current + 1);
+  };
+
+  const beginRegistration = async (event) => {
+    if (event?.soldOut || registerCheckId != null) return;
+    if (!viewerUserId) {
+      setWalletBlock(null);
+      setProfileGapMessage('Could not identify your account. Try again.');
+      return;
+    }
+
+    setRegisterCheckId(event.id);
+    setProfileGapMessage('');
+    setWalletBlock(null);
+    try {
+      const defaults = await loadFreshProfile();
+      if (!defaults) {
+        setProfileGapMessage('Could not load your profile. Try again.');
+        return;
+      }
+
+      const gaps = profileGapMessages(defaults);
+      let nextWalletBlock = null;
+      const needed = ticketCharge(event);
+      if (needed > 0) {
+        try {
+          const wallet = await fetchWallet(viewerUserId);
+          const balance = Number(wallet?.balance);
+          if (!Number.isFinite(balance) || balance + 1e-9 < needed) {
+            nextWalletBlock = {
+              needed,
+              balance: Number.isFinite(balance) ? balance : 0,
+              unavailable: false,
+            };
+          }
+        } catch {
+          nextWalletBlock = { needed, balance: 0, unavailable: true };
+        }
+      }
+
+      if (gaps.length > 0 || nextWalletBlock) {
+        setProfileGapMessage(gaps.join(' · '));
+        setWalletBlock(nextWalletBlock);
+        return;
+      }
+
+      setSelectedEvent(event);
+      resetRegistrationForm({ defaults });
+    } finally {
+      setRegisterCheckId(null);
+    }
   };
 
   const closeRegistration = () => {
@@ -416,19 +501,24 @@ function EventsPage({ user }) {
     resetRegistrationForm();
   };
 
-  const buildValidatedPayload = () => {
-    const trimmedName = name.trim();
-    const trimmedClubNo = clubNo.trim();
-    const trimmedZoomEmail = zoomEmail.trim();
-    const trimmedIdNo = idNo.trim();
-    const trimmedLevel = level.trim();
-    const trimmedPhone = phoneNumber.trim();
+  const buildValidatedPayload = (fresh = null) => {
+    const profileText = (current, fromFresh) => (
+      fresh ? String(fromFresh || '').trim() : String(current || '').trim()
+    );
+    const trimmedName = profileText(name, fresh?.name);
+    const trimmedClubNo = profileText(clubNo, fresh?.clubNo);
+    const trimmedZoomEmail = profileText(zoomEmail, fresh?.zoomEmail);
+    const trimmedIdNo = profileText(idNo, fresh?.idNo);
+    const trimmedLevel = profileText(level, fresh?.eventLevel);
+    const trimmedPhone = profileText(phoneNumber, fresh?.phoneNumber);
+    const translationValue = profileText(translation, fresh?.eventTranslation);
+    const yourCityValue = profileText(yourCity, fresh?.eventYourCity);
     const trimmedTicketNo = ticketNo.trim();
     const place = String(selectedEvent?.place || '').trim();
     const nextErrors = {};
 
     // Autofill fields are hidden in UI — missing values mean Profile needs updating.
-    if (!translation) nextErrors.translation = 'Set Translation in Profile';
+    if (!translationValue) nextErrors.translation = 'Set Translation in Profile';
     if (!attendCity) nextErrors.attendCity = 'This is a required question';
     if (!foodType) nextErrors.foodType = 'This is a required question';
     if (!uplinePresidentTeam?.name) nextErrors.uplinePresidentTeam = 'This is a required question';
@@ -445,15 +535,33 @@ function EventsPage({ user }) {
     if (!trimmedPhone) nextErrors.phoneNumber = 'Set Phone Number in Profile';
     if (!participantCount) nextErrors.participantCount = 'This is a required question';
     if (!trimmedTicketNo) nextErrors.ticketNo = 'This is a required question';
-    if (!yourCity) nextErrors.yourCity = 'Set Your City in Profile';
+    if (!yourCityValue) nextErrors.yourCity = 'Set Your City in Profile';
     if (attendCity && place && attendCity !== place && !isAttendOnline(attendCity)) {
       nextErrors.attendCity = 'Choose the event city or Online';
     }
     if (!viewerUserId || !selectedEvent?.id) {
-      nextErrors.name = 'Could not identify your account or event.';
+      nextErrors.name = nextErrors.name || 'Could not identify your account or event.';
     }
 
-    if (Object.keys(nextErrors).length > 0) {
+    const profileGapKeys = [
+      'translation',
+      'clubNo',
+      'zoomEmail',
+      'name',
+      'idNo',
+      'level',
+      'phoneNumber',
+      'yourCity',
+    ];
+    const profileGaps = profileGapKeys
+      .map((key) => nextErrors[key])
+      .filter((message) => message && message.startsWith('Set '));
+    profileGapKeys.forEach((key) => {
+      if (String(nextErrors[key] || '').startsWith('Set ')) delete nextErrors[key];
+    });
+    setProfileGapMessage(profileGaps.length > 0 ? profileGaps.join(' · ') : '');
+
+    if (profileGaps.length > 0 || Object.keys(nextErrors).length > 0) {
       setFormErrors(nextErrors);
       return null;
     }
@@ -462,7 +570,7 @@ function EventsPage({ user }) {
     return {
       userId: viewerUserId,
       eventId: selectedEvent.id,
-      translation,
+      translation: translationValue,
       attendCity,
       foodType,
       uplinePresidentTeam,
@@ -475,17 +583,38 @@ function EventsPage({ user }) {
       phoneNumber: trimmedPhone,
       participantCount: Number(participantCount),
       ticketNo: trimmedTicketNo,
-      yourCity,
+      yourCity: yourCityValue,
       teamIncharge,
       daicyTeamIncharge,
       confirmPayment: true,
     };
   };
 
+  const loadFreshProfile = async () => {
+    if (!viewerUserId) return null;
+    try {
+      const profileResult = await fetchProfile({ userId: viewerUserId, cacheBust: true });
+      const defaults = buildRegistrationDefaults(profileResult?.data, user, viewerUserId);
+      setProfileDefaults(defaults);
+      setName(defaults?.name || '');
+      setClubNo(defaults?.clubNo || '');
+      setZoomEmail(defaults?.zoomEmail || '');
+      setIdNo(defaults?.idNo || '');
+      setPhoneNumber(defaults?.phoneNumber || '');
+      setTranslation(defaults?.eventTranslation || '');
+      setYourCity(defaults?.eventYourCity || '');
+      setLevel(defaults?.eventLevel || '');
+      return defaults;
+    } catch {
+      return null;
+    }
+  };
+
   const goToPaymentStep = async (formEvent) => {
     formEvent.preventDefault();
     if (savingRegistration) return;
-    const payload = buildValidatedPayload();
+    const fresh = await loadFreshProfile();
+    const payload = buildValidatedPayload(fresh);
     if (!payload) return;
 
     setSubmitError('');
@@ -621,32 +750,6 @@ function EventsPage({ user }) {
                 </div>
               ) : (
                 <form onSubmit={goToPaymentStep} className="mt-5 min-w-0 space-y-3" noValidate>
-                  {(
-                    formErrors.translation
-                    || formErrors.foodType
-                    || formErrors.clubNo
-                    || formErrors.zoomEmail
-                    || formErrors.name
-                    || formErrors.idNo
-                    || formErrors.level
-                    || formErrors.phoneNumber
-                    || formErrors.yourCity
-                  ) ? (
-                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
-                      {[
-                        formErrors.translation,
-                        formErrors.foodType,
-                        formErrors.clubNo,
-                        formErrors.zoomEmail,
-                        formErrors.name,
-                        formErrors.idNo,
-                        formErrors.level,
-                        formErrors.phoneNumber,
-                        formErrors.yourCity,
-                      ].filter(Boolean).join(' · ')}
-                    </div>
-                  ) : null}
-
                   <div
                     className={`rounded-xl border bg-white p-4 ${
                       formErrors.attendCity ? 'border-rose-400' : 'border-white/80'
@@ -842,7 +945,11 @@ function EventsPage({ user }) {
                 </h1>
                 {/* Same wallet as Profile — compact, right side only. */}
                 <div className="shrink-0">
-                  <WalletButton userId={viewerUserId} variant="events" />
+                  <WalletButton
+                    userId={viewerUserId}
+                    variant="events"
+                    openSignal={walletOpenSignal}
+                  />
                 </div>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl border border-gray-200 bg-white p-1 text-xs font-semibold">
@@ -956,8 +1063,8 @@ function EventsPage({ user }) {
                         ) : (
                           <button
                             type="button"
-                            onClick={() => openRegistration(event)}
-                            disabled={registerDisabled}
+                            onClick={() => beginRegistration(event)}
+                            disabled={registerDisabled || registerCheckId != null}
                             className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-[11px] font-bold shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${style.button}`}
                           >
                             Register
@@ -973,6 +1080,59 @@ function EventsPage({ user }) {
           </>
         )}
       </div>
+      {profileGapMessage || walletBlock ? (
+        <div
+          className="fixed inset-0 z-[10080] flex items-center justify-center bg-black/50 px-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="event-profile-gap-title"
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+            <h2 id="event-profile-gap-title" className="text-lg font-bold text-gray-900">
+              {profileGapMessage ? 'Please fill to register' : 'Recharge to register'}
+            </h2>
+            {profileGapMessage ? (
+              <>
+                <p className="mt-2 text-sm text-gray-700">{profileGapMessage}</p>
+                {profileGapMessage.includes('Set ') ? (
+                  <p className="mt-2 text-sm text-gray-500">
+                    Save these in Profile, then come back and register.
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+            {walletBlock ? (
+              <p className="mt-2 text-sm text-gray-700">
+                {walletBlock.unavailable
+                  ? 'Could not check your wallet. Try again, then register.'
+                  : `This ticket is ${formatTicketPrice(walletBlock.needed)}. Your wallet has ${formatTicketPrice(walletBlock.balance)}. Recharge, then tap Register.`}
+              </p>
+            ) : null}
+            <div className="mt-5 flex flex-col gap-2">
+              {walletBlock && !walletBlock.unavailable ? (
+                <button
+                  type="button"
+                  onClick={openWalletToRecharge}
+                  className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white"
+                >
+                  Recharge
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={closeRegisterDialog}
+                className={`w-full rounded-xl py-3 text-sm font-bold ${
+                  walletBlock && !walletBlock.unavailable
+                    ? 'border border-gray-300 text-gray-800'
+                    : 'bg-emerald-600 text-white'
+                }`}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

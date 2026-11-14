@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile } from '../services/profileService';
+import { communityPositionFromProfile } from '../domain/communityPosition';
 import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import { loadProfileMarathonWeightComparison } from '../../marathon';
 import UserProfileHeader from './profile/UserProfileHeader';
@@ -25,10 +26,16 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   const [hasSaved, setHasSaved] = useState(false);
   const [communityPositionRequest, setCommunityPositionRequest] = useState(null);
 
-  const loadProfile = useCallback(async () => {
-    setIsLoading(true); setError('');
+  const loadProfile = useCallback(async (options = {}) => {
+    const cacheBust = options?.cacheBust === true;
+    if (!cacheBust) setIsLoading(true);
+    setError('');
     try {
-      const { data } = await fetchProfile(user.email);
+      const { data } = await fetchProfile({
+        email: user?.email,
+        userId: user?.id || user?.UserId || user?.userId,
+        cacheBust,
+      });
       if (data) {
         form.reload({
           name: data.userName || user.name || '',
@@ -50,7 +57,10 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
             : '',
           eventTranslation: data.eventTranslation || '',
           eventYourCity: data.eventYourCity || '',
-          eventLevel: data.eventLevel || '',
+          eventLevel: communityPositionFromProfile(
+            data,
+            user?.id || user?.UserId || user?.userId,
+          ),
           professionalTitle: data.professionalTitle || '',
           instagram: data.instagram || '',
           youtube: data.youtube || '',
@@ -149,7 +159,10 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           marathonWeightComparison={marathonWeightComparison}
           userId={user?.id || user?.UserId || user?.userId || null}
           communityPositionRequest={communityPositionRequest}
-          onCommunityPositionSettled={loadProfile}
+          onCommunityPositionSettled={() => {
+            setCommunityPositionRequest(null);
+            loadProfile({ cacheBust: true });
+          }}
           error={error} successMessage={successMessage}
         />
         {!isLoading && (

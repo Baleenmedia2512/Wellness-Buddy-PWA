@@ -137,6 +137,19 @@ describe('EventsPage', () => {
     });
   };
 
+  const clickRegister = async () => {
+    const registerButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.trim().startsWith('Register'));
+    expect(registerButton).not.toBeNull();
+    await act(async () => {
+      registerButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  };
+
   const pickMemberBySearch = async (inputId, queryText) => {
     const searchInput = container.querySelector(`#${inputId}`);
     expect(searchInput).not.toBeNull();
@@ -162,9 +175,7 @@ describe('EventsPage', () => {
     expect(getUserId).toHaveBeenCalledWith({ email: 'creator@example.com' });
     expect(listOpenEvents).toHaveBeenCalledWith(17);
 
-    const registerButton = Array.from(container.querySelectorAll('button'))
-      .find((button) => button.textContent.trim() === 'Register');
-    act(() => registerButton.click());
+    await clickRegister();
 
     const ticketInput = container.querySelector('input[name="ticketNo"]');
     const attendCitySelect = container.querySelector('select[name="attendCity"]');
@@ -231,9 +242,7 @@ describe('EventsPage', () => {
   it('returns to the loaded event list from the registration form', async () => {
     await renderPage();
 
-    const registerButton = Array.from(container.querySelectorAll('button'))
-      .find((button) => button.textContent.includes('Register'));
-    act(() => registerButton.click());
+    await clickRegister();
     expect(container.querySelector('input[name="ticketNo"]')).not.toBeNull();
 
     const backButton = Array.from(container.querySelectorAll('button'))
@@ -267,5 +276,35 @@ describe('EventsPage', () => {
     expect(listOpenEvents).toHaveBeenCalledTimes(2);
     expect(container.querySelectorAll('article')).toHaveLength(0);
     expect(container.textContent).toContain('No events have been created yet.');
+  });
+
+  it('stops on the events list when Profile fields are missing', async () => {
+    fetchProfile.mockResolvedValue({
+      success: true,
+      data: {
+        userId: 17,
+        userName: 'Logged In User',
+        phoneNumber: '9000000017',
+      },
+    });
+    await renderPage();
+    await clickRegister();
+
+    expect(container.querySelector('input[name="ticketNo"]')).toBeNull();
+    expect(container.textContent).toContain('Please fill to register');
+    expect(container.textContent).toContain('Set Translation in Profile');
+    expect(container.textContent).toContain('Set Community ID in Profile');
+    expect(container.querySelectorAll('article')).toHaveLength(1);
+  });
+
+  it('stops on the events list when the wallet cannot pay the ticket', async () => {
+    fetchWallet.mockResolvedValue({ balance: 10 });
+    await renderPage();
+    await clickRegister();
+
+    expect(container.querySelector('input[name="ticketNo"]')).toBeNull();
+    expect(container.textContent).toContain('Recharge to register');
+    expect(container.textContent).toContain('Your wallet has');
+    expect(container.querySelectorAll('article')).toHaveLength(1);
   });
 });

@@ -55,7 +55,11 @@ import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardin
 import { hasValidProfileName } from '../domain/profileCompleteness';
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
-import { COMMUNITY_POSITION_OTP_FLAG } from '../domain/communityPosition';
+import {
+  COMMUNITY_POSITION_OTP_FLAG,
+  communityPositionFromProfile,
+  rememberConfirmedCommunityPosition,
+} from '../domain/communityPosition';
 import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked, validateHeightCm } from '../domain/heightChange';
 import { looksLikeEmail } from '../domain/onboardingEmail';
 import GoPremiumButton from '../../payments/components/GoPremiumButton';
@@ -194,7 +198,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           : '',
         eventTranslation: data?.eventTranslation || '',
         eventYourCity: data?.eventYourCity || '',
-        eventLevel: data?.eventLevel || '',
+        eventLevel: communityPositionFromProfile(data, uid),
         professionalTitle: data?.professionalTitle || '',
         instagram: data?.instagram || '',
         youtube: data?.youtube || '',
@@ -924,7 +928,11 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   pendingRequest={communityPositionRequest}
                   otpEnabled={isFlagEnabled(COMMUNITY_POSITION_OTP_FLAG)}
                   disabled={isSaving || isUploadingPhoto}
-                  onChange={form.setEventLevel}
+                  onChange={(code) => {
+                    rememberConfirmedCommunityPosition(resolvedUserId, code);
+                    form.setEventLevel(code);
+                    setCommunityPositionRequest(null);
+                  }}
                   onSettled={() => loadProfile({ cacheBust: true })}
                 />
                 <WorkingPhysicalCentreField

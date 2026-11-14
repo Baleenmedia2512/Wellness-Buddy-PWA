@@ -3,9 +3,9 @@
  * Choosing a role does not email anyone. Send verification code emails the
  * coach. The role is saved after the member enters the code the coach shares.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { EMAIL_OTP_LENGTH } from '../../domain/otpLength';
-import { positionUsageLine } from '../../domain/communityPosition';
+import { communityPositionDraftAfterSync, positionUsageLine, readHeldCommunityPosition, rememberConfirmedCommunityPosition } from '../../domain/communityPosition';
 import useOtpInput from '../../hooks/useOtpInput';
 import OtpInputCells from '../../../../shared/components/OtpInputCells.jsx';
 import {
@@ -28,9 +28,13 @@ export default function CommunityPositionField({
   onSettled,
 }) {
   const otpCtl = useOtpInput(EMAIL_OTP_LENGTH);
+  const settledCodeRef = useRef('');
+  const choosingRef = useRef(false);
   const [positions, setPositions] = useState([]);
   const [loadError, setLoadError] = useState('');
-  const [draft, setDraft] = useState(pendingRequest?.positionCode || confirmedCode || '');
+  const [draft, setDraft] = useState(
+    pendingRequest?.positionCode || confirmedCode || readHeldCommunityPosition(userId) || '',
+  );
   const [pending, setPending] = useState(pendingRequest);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -48,9 +52,16 @@ export default function CommunityPositionField({
   }, []);
 
   useEffect(() => {
-    setPending(pendingRequest || null);
-    setDraft(pendingRequest?.positionCode || confirmedCode || '');
-  }, [pendingRequest, confirmedCode, pendingRequest?.id, pendingRequest?.positionCode]);
+    if (choosingRef.current) return;
+    const next = communityPositionDraftAfterSync({
+      settledCode: settledCodeRef.current || readHeldCommunityPosition(userId),
+      confirmedCode,
+      pendingRequest,
+    });
+    if (next.clearSettled) settledCodeRef.current = '';
+    setPending(next.pending);
+    setDraft(next.draft);
+  }, [pendingRequest, confirmedCode, pendingRequest?.id, pendingRequest?.positionCode, userId]);
 
   useEffect(() => {
     otpCtl.reset();
@@ -62,11 +73,12 @@ export default function CommunityPositionField({
   const pendingForDraft = Boolean(
     otpEnabled && pending && pending.status === 'pending' && pending.positionCode === draft,
   );
+  const heldCode = readHeldCommunityPosition(userId);
   const needsSend = Boolean(
-    otpEnabled && draft && draft !== (confirmedCode || '') && !pendingForDraft,
+    otpEnabled && draft && draft !== (confirmedCode || '') && draft !== heldCode && !pendingForDraft,
   );
   const options = [...positions];
-  [confirmedCode, pending?.positionCode].forEach((code) => {
+  [confirmedCode, pending?.positionCode, draft].forEach((code) => {
     if (code && !options.some((row) => row.code === code)) {
       options.push({ code, label: code, featureKey: '', usageNote: '' });
     }
@@ -89,9 +101,13 @@ export default function CommunityPositionField({
         positionCode: code,
       });
       if (data.alreadyHeld) {
+        const saved = data.positionCode || code;
+        rememberConfirmedCommunityPosition(userId, saved);
+        choosingRef.current = false;
+        settledCodeRef.current = saved;
         setPending(null);
-        setDraft(data.positionCode || code);
-        onChange?.(data.positionCode || code);
+        setDraft(saved);
+        onChange?.(saved);
         onSettled?.();
         return;
       }
@@ -118,6 +134,9 @@ export default function CommunityPositionField({
         otp,
       });
       const saved = data.positionCode || draft;
+        rememberConfirmedCommunityPosition(userId, saved);
+      choosingRef.current = false;
+      settledCodeRef.current = saved;
       setPending(null);
       setDraft(saved);
       onChange?.(saved);
@@ -148,6 +167,10 @@ export default function CommunityPositionField({
             return;
           }
           setError('');
+          choosingRef.current = Boolean(next && next !== (confirmedCode || readHeldCommunityPosition(userId)));
+          if (settledCodeRef.current && next !== settledCodeRef.current) {
+            settledCodeRef.current = '';
+          }
           setDraft(next);
           if (!otpEnabled) onChange?.(next);
         }}

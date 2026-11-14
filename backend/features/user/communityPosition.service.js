@@ -40,11 +40,20 @@ function featureDisabled() {
 }
 
 function clearProfileCache({ email, userId }) {
-  if (email) {
-    try { cache.delete(cacheKeys.userProfile(String(email).toLowerCase())); } catch { /* non-fatal */ }
+  // getProfile stores the row under :tp-r2 / :tp-legacy, not the bare key.
+  // Deleting only the bare key left the next Profile read on the pre-OTP role.
+  const bases = [];
+  if (userId != null && String(userId).trim() !== '') {
+    bases.push(cacheKeys.userProfile(`id:${userId}`));
   }
-  if (userId != null) {
-    try { cache.delete(cacheKeys.userProfile(`id:${userId}`)); } catch { /* non-fatal */ }
+  const emailKey = String(email || '').trim().toLowerCase();
+  if (emailKey) bases.push(cacheKeys.userProfile(emailKey));
+  for (const base of bases) {
+    try {
+      cache.delete(base);
+      cache.delete(`${base}:tp-r2`);
+      cache.delete(`${base}:tp-legacy`);
+    } catch { /* non-fatal */ }
   }
 }
 
