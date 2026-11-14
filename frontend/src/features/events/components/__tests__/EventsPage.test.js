@@ -75,6 +75,7 @@ describe('EventsPage', () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
     getUserId.mockResolvedValue(17);
+    window.localStorage.removeItem('wv.eventCancelSeen');
     listOpenEvents.mockResolvedValue({ events: [event] });
     listMyEventRegistrations.mockResolvedValue({ registrations: [] });
     fetchWallet.mockResolvedValue({ balance: 500 });
@@ -183,6 +184,17 @@ describe('EventsPage', () => {
     const bookingsTab = Array.from(container.querySelectorAll('button'))
       .find((button) => button.textContent.includes('My Bookings'));
     expect(bookingsTab.textContent).toContain('1');
+
+    await act(async () => {
+      bookingsTab.click();
+    });
+    const eventsTab = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.trim() === 'Events');
+    await act(async () => {
+      eventsTab.click();
+    });
+    expect(container.textContent).not.toContain('See My Bookings');
+    expect(container.textContent).not.toContain('Happy life is cancelled');
   });
 
   it('loads open events and completes Next → wallet pay → Successfully Submitted + QR', async () => {

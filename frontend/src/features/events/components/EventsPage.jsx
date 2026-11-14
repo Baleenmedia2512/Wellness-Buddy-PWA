@@ -7,6 +7,7 @@ import {
   MapPin,
   Users,
 } from 'lucide-react';
+import { isFlagEnabled } from '../../../config/featureFlags';
 import { getUserId } from '../../../shared/services/getUserId.js';
 import { fetchProfile } from '../../user/services/profileService.js';
 import { pickEventProfilePrefs } from '../../user/domain/eventProfilePrefs.js';
@@ -28,6 +29,8 @@ import MemberSearchPicker from './MemberSearchPicker.jsx';
 import MyBookingsPanel from './MyBookingsPanel.jsx';
 import RegistrationQrCard from './RegistrationQrCard.jsx';
 import RegistrationSelect from './RegistrationSelect.jsx';
+import { cancelledBookingNotes } from '../domain/eventCancelNotice.rules.js';
+import { markEventCancellationsSeen, readSeenEventCancellationIds } from '../domain/eventCancelSeen.js';
 
 const CARD_STYLES = [
   {
@@ -270,28 +273,15 @@ function buildRegistrationDefaults(profileData, user, userId) {
   };
 }
 
-function cancelledBookingNotes(registrations) {
-  return (Array.isArray(registrations) ? registrations : [])
-    .filter((row) => {
-      const status = String(row?.event?.status || '').toLowerCase();
-      return status === 'cancelled' || !row?.event;
-    })
-    .map((row) => ({
-      id: row.id,
-      name: row.event?.eventName || 'An event you booked',
-      refunded: String(row.paymentStatus || '').toLowerCase() === 'refunded'
-        && Number(row.amountCharged) > 0,
-    }));
-}
-
-function EventsPage({ user }) {
+function EventsPage({ user, initialTab = 'events' }) {
   const [events, setEvents] = useState([]);
   const [cancelNotes, setCancelNotes] = useState([]);
+  const [seenCancelIds, setSeenCancelIds] = useState(() => readSeenEventCancellationIds());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [viewerUserId, setViewerUserId] = useState(null);
   const [profileDefaults, setProfileDefaults] = useState(() => buildRegistrationDefaults(null, user, null));
-  const [mainTab, setMainTab] = useState('events');
+  const [mainTab, setMainTab] = useState(initialTab === 'bookings' ? 'bookings' : 'events');
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [registrationStep, setRegistrationStep] = useState('form');
   const [name, setName] = useState('');
@@ -380,6 +370,20 @@ function EventsPage({ user }) {
       window.removeEventListener(EVENTS_UPDATED_EVENT, onEventsUpdated);
     };
   }, [user]);
+
+  useEffect(() => {
+    if (initialTab === 'bookings') setMainTab('bookings');
+  }, [initialTab]);
+
+  useEffect(() => {
+    if (mainTab !== 'bookings' || cancelNotes.length === 0) return;
+    markEventCancellationsSeen(cancelNotes.map((note) => note.id));
+    setSeenCancelIds(readSeenEventCancellationIds());
+  }, [mainTab, cancelNotes]);
+
+  const unseenCancelNotes = cancelNotes.filter(
+    (note) => !seenCancelIds.includes(String(note.id)),
+  );
 
   const applyPersonalDefaults = (defaults = profileDefaults) => {
     setName(defaults?.name || '');
@@ -996,13 +1000,13 @@ function EventsPage({ user }) {
                     }`}
                   >
                     {tab.label}
-                    {tab.id === 'bookings' && cancelNotes.length > 0 ? (
+                    {tab.id === 'bookings' && unseenCancelNotes.length > 0 ? (
                       <span
                         className={`ml-1 inline-flex min-w-[1.1rem] items-center justify-center rounded-full px-1 text-[10px] font-bold ${
                           mainTab === tab.id ? 'bg-white text-rose-700' : 'bg-rose-600 text-white'
                         }`}
                       >
-                        {cancelNotes.length}
+                        {unseenCancelNotes.length}
                       </span>
                     ) : null}
                   </button>
@@ -1010,14 +1014,14 @@ function EventsPage({ user }) {
               </div>
             </header>
 
-            {cancelNotes.length > 0 && mainTab === 'events' ? (
+            {unseenCancelNotes.length > 0 && mainTab === 'events' ? (
               <div
                 role="status"
                 className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-950"
               >
                 <p className="font-bold">Event cancelled</p>
                 <ul className="mt-1 space-y-1">
-                  {cancelNotes.map((note) => (
+                  {unseenCancelNotes.map((note) => (
                     <li key={note.id}>
                       {note.name} is cancelled.
                       {note.refunded ? ' Your ticket credit is back in your wallet.' : ''}

@@ -7,6 +7,8 @@ import {
   buildRegistrationQrPayload,
   computeRegistrationCharge,
   eventDeleteBlockedByBookings,
+  normalizeBookingFor,
+  selfBookingAlreadyTaken,
   generateEntryCode,
   normalizeEventDraft,
   normalizeEventRegistrationDraft,
@@ -218,6 +220,23 @@ describe('eventDeleteBlockedByBookings', () => {
   it('allows delete once the event is cancelled', () => {
     assert.equal(eventDeleteBlockedByBookings(3, 'cancelled'), false);
     assert.equal(eventDeleteBlockedByBookings(3, 'Cancelled'), false);
+  });
+});
+
+describe('selfBookingAlreadyTaken', () => {
+  it('blocks a second self ticket after a paid booking', () => {
+    assert.equal(selfBookingAlreadyTaken({ paymentStatus: 'paid', entryCode: 'A1' }), true);
+    assert.equal(selfBookingAlreadyTaken({ paymentStatus: 'saved', entryCode: null }), false);
+  });
+
+  it('lets a friend booking sit beside the member ticket', () => {
+    assert.equal(normalizeBookingFor('friend'), 'friend');
+    assert.equal(normalizeBookingFor(undefined), 'self');
+    assert.equal(selfBookingAlreadyTaken({
+      paymentStatus: 'paid',
+      entryCode: 'B2',
+      bookingFor: 'friend',
+    }), false);
   });
 });
 

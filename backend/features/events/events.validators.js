@@ -97,7 +97,8 @@ export async function validateCreateEventRegistration(body) {
   const confirmPayment = body?.confirmPayment === true
     || body?.confirmPayment === 1
     || String(body?.confirmPayment || '').toLowerCase() === 'true';
-  return { userId, confirmPayment, ...draft.value };
+  const bookingFor = String(body?.bookingFor || '').trim().toLowerCase() === 'friend' ? 'friend' : 'self';
+  return { userId, confirmPayment, bookingFor, ...draft.value };
 }
 
 export function validateListOpenEvents(query) {

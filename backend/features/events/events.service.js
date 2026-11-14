@@ -13,6 +13,7 @@ import {
   findRegistrationByEventAndEntryCode,
   findRegistrationByEventAndUser,
   findRegistrationByIdForUser,
+  hasSelfRegistration,
   findTeamUserBrief,
   findTeamUserHeightCm,
   insertEventRegistration,
@@ -23,6 +24,7 @@ import {
   markRegistrationCancelNotified,
   markRegistrationCheckedIn,
   markRegistrationFoodCheckedIn,
+  markRegistrationBookingFor,
   markRegistrationRefunded,
 } from './data/registrations.repo.js';
 import {
@@ -42,6 +44,7 @@ import {
   computeRegistrationCharge,
   eventDeleteBlockedByBookings,
   parseEntryCode,
+  selfBookingAlreadyTaken,
 } from './domain/event.rules.js';
 import { creditEventTicketRefund, debitForEventTicket } from '../wallet/data/wallet.repo.js';
 
@@ -375,12 +378,15 @@ export function createEventRegistration(input) {
       return { httpStatus: 201, body: { success: true, registration } };
     }
 
-    const existing = await findRegistrationByEventAndUser(input.eventId, input.userId);
-    if (existing && (existing.paymentStatus === 'paid' || existing.entryCode)) {
-      return {
-        httpStatus: 409,
-        body: { success: false, message: 'You are already registered for this event.' },
-      };
+    const bookingFor = input.bookingFor === 'friend' ? 'friend' : 'self';
+    if (bookingFor !== 'friend') {
+      const existing = await hasSelfRegistration(input.eventId, input.userId);
+      if (selfBookingAlreadyTaken(existing)) {
+        return {
+          httpStatus: 409,
+          body: { success: false, message: 'You are already registered for this event.' },
+        };
+      }
     }
 
     const seatsTaken = await countSeatsTaken(input.eventId);
@@ -461,6 +467,11 @@ export function createEventRegistration(input) {
         };
       }
       throw error;
+    }
+
+    if (bookingFor === 'friend') {
+      await markRegistrationBookingFor(registration.id, 'friend');
+      registration = { ...registration, bookingFor: 'friend' };
     }
 
     return {

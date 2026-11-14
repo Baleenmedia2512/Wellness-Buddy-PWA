@@ -337,6 +337,22 @@ export function eventDeleteBlockedByBookings(seatsTaken, status) {
   return Number.isFinite(taken) && taken > 0;
 }
 
+/** Missing or unknown booking target stays a self booking for older apps. */
+export function normalizeBookingFor(value) {
+  return String(value || '').trim().toLowerCase() === 'friend' ? 'friend' : 'self';
+}
+
+/**
+ * A paid self booking blocks another ticket for the same person.
+ * A friend booking does not.
+ */
+export function selfBookingAlreadyTaken(registration) {
+  if (!registration) return false;
+  if (normalizeBookingFor(registration.bookingFor) === 'friend') return false;
+  const paid = String(registration.paymentStatus || '').toLowerCase() === 'paid';
+  return paid || Boolean(registration.entryCode);
+}
+
 export const EVENT_PEOPLE_LIMIT = 30;
 
 const TRANSLATION_OPTIONS = Object.freeze([

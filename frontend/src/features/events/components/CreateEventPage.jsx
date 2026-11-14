@@ -673,7 +673,9 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
           <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
             <div className="flex items-start justify-between gap-3">
               <h3 className="text-base font-bold text-gray-900">
-                Cancel or Delete Event
+                {String(actionModalEvent.status || '').toLowerCase() === 'cancelled'
+                  ? 'Delete Event'
+                  : 'Cancel or Delete Event'}
               </h3>
               <button
                 type="button"
@@ -707,21 +709,23 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
             ) : null}
 
             <div className="mt-5 space-y-2">
-              <button
-                type="button"
-                disabled={saving}
-                onClick={async () => {
-                  try {
-                    await onStatus(actionModalEvent, 'cancelled');
-                    setActionModalEvent(null);
-                  } catch {
-                    // error handled in onStatus
-                  }
-                }}
-                className="w-full rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-center text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
-              >
-                {saving ? 'Processing…' : 'Cancel Event'}
-              </button>
+              {String(actionModalEvent.status || '').toLowerCase() === 'cancelled' ? null : (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={async () => {
+                    try {
+                      await onStatus(actionModalEvent, 'cancelled');
+                      setActionModalEvent(null);
+                    } catch {
+                      // error handled in onStatus
+                    }
+                  }}
+                  className="w-full rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-center text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+                >
+                  {saving ? 'Processing…' : 'Cancel Event'}
+                </button>
+              )}
 
               <button
                 type="button"

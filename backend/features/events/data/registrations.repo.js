@@ -156,6 +156,12 @@ export async function ensureRegistrationPaymentColumns() {
            ADD COLUMN CancelNotifiedAt DATETIME NULL AFTER FoodCheckedInByUserId`,
         );
       }
+      if (!(await columnExists(prisma, 'BookingFor'))) {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE event_registrations_table
+           ADD COLUMN BookingFor VARCHAR(20) NOT NULL DEFAULT 'self' AFTER CancelNotifiedAt`,
+        );
+      }
       if (!(await indexExists(prisma, 'uq_event_reg_event_entry'))) {
         try {
           await prisma.$executeRawUnsafe(
@@ -229,6 +235,66 @@ export async function findRegistrationByEventAndUser(eventId, userId) {
     orderBy: { Id: 'desc' },
   });
   return toRegistration(row);
+}
+
+async function loadBookingForMap(prisma, ids) {
+  const map = new Map();
+  const clean = [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
+  if (clean.length === 0) return map;
+  if (!(await columnExists(prisma, 'BookingFor'))) return map;
+  const placeholders = clean.map(() => '?').join(', ');
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT Id, BookingFor
+     FROM event_registrations_table
+     WHERE Id IN (${placeholders})`,
+    ...clean,
+  );
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const kind = String(row.BookingFor || '').trim().toLowerCase();
+    map.set(Number(row.Id), kind === 'friend' ? 'friend' : 'self');
+  }
+  return map;
+}
+
+function attachBookingFor(registrations, map) {
+  return registrations.map((row) => ({
+    ...row,
+    bookingFor: map.get(Number(row.id)) || 'self',
+  }));
+}
+
+/** Paid or saved self ticket for this member. Friend rows are ignored. */
+export async function hasSelfRegistration(eventId, userId) {
+  await ensureRegistrationPaymentColumns();
+  const prisma = getPrisma();
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT Id, PaymentStatus, EntryCode
+     FROM event_registrations_table
+     WHERE EventId = ? AND RegistrantUserId = ?
+       AND (BookingFor IS NULL OR BookingFor = '' OR BookingFor = 'self')
+     ORDER BY Id DESC
+     LIMIT 1`,
+    Number(eventId),
+    Number(userId),
+  );
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) return null;
+  return {
+    id: Number(row.Id),
+    paymentStatus: row.PaymentStatus || 'saved',
+    entryCode: row.EntryCode || null,
+    bookingFor: 'self',
+  };
+}
+
+export async function markRegistrationBookingFor(id, bookingFor) {
+  if (String(bookingFor || '').toLowerCase() !== 'friend') return;
+  await ensureRegistrationPaymentColumns();
+  const prisma = getPrisma();
+  await prisma.$executeRawUnsafe(
+    `UPDATE event_registrations_table SET BookingFor = 'friend' WHERE Id = ?`,
+    Number(id),
+  );
 }
 
 export async function countSeatsTaken(eventId) {
@@ -366,7 +432,9 @@ export async function listRegistrationsByUser(userId) {
     where: { RegistrantUserId: Number(userId) },
     orderBy: { CreatedAt: 'desc' },
   });
-  return rows.map(toRegistration);
+  const registrations = rows.map(toRegistration);
+  const kinds = await loadBookingForMap(prisma, registrations.map((row) => row.id));
+  return attachBookingFor(registrations, kinds);
 }
 
 export async function findRegistrationByIdForUser(id, userId) {
