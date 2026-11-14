@@ -419,6 +419,8 @@ export function planCollectionStep({
     return { step: 'lifestyle', entryFields: [], photoSlots: [], profileFields: [], scheduled: null };
   }
 
+  // Only while-entering intro fields use the About you page. Ask-later intro
+  // fields stay on the scheduled prompt (skip / session defer / mark filled).
   const profileFields = decisions
     .filter((item) => item.field.phase === 'entry'
       && PROFILE_INTRO_KEYS.includes(item.field.key)

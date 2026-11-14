@@ -131,7 +131,7 @@ function HerbalifeDateFields({ value, onChange }) {
         style={{ fontSize: '16px' }}
       />
       {isoValue ? (
-        <p className="mt-1 text-xs text-gray-500">Saved as {isoToHerbalifeDate(isoValue)} (day / month / year).</p>
+        <p className="mt-1 text-xs text-gray-500">As {isoToHerbalifeDate(isoValue)} (day / month / year).</p>
       ) : null}
     </div>
   );

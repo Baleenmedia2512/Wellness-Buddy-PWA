@@ -560,4 +560,81 @@ describe('planCollectionStep', () => {
     assert.equal(plan.step, 'profileIntro');
     assert.deepEqual(plan.profileFields, ['professionalTitle']);
   });
+
+  it('does not reopen About you after a joining date is already stored (ask later every 0 days)', () => {
+    const fields = defaultFieldPolicy().map((field) => (
+      field.key === 'herbalifeJoinedOn'
+        ? {
+          ...field,
+          phase: 'scheduled',
+          askEveryDays: 0,
+          maxSkips: 2,
+          mustFillWithinDays: 3,
+        }
+        : field
+    ));
+    const values = { ...filledEntry, herbalifeJoinedOn: '07/07/2026' };
+    assert.equal(
+      decideField({
+        field: fields.find((field) => field.key === 'herbalifeJoinedOn'),
+        values,
+        state: {
+          skipCount: 2,
+          cycleStartedAt: '2026-11-01T04:30:00.000Z',
+          lastFilledAt: TODAY,
+          lastSkippedAt: null,
+        },
+        role: 'member',
+        now: NOW,
+      }),
+      'satisfied',
+    );
+    const plan = planCollectionStep({
+      fields,
+      values,
+      states: settledStates({
+        herbalifeJoinedOn: {
+          skipCount: 2,
+          cycleStartedAt: '2026-11-01T04:30:00.000Z',
+          lastFilledAt: TODAY,
+          lastSkippedAt: null,
+        },
+      }),
+      role: 'member',
+      now: NOW,
+    });
+    assert.notEqual(plan.step, 'profileIntro');
+    assert.notEqual(plan.scheduled?.key, 'herbalifeJoinedOn');
+  });
+
+  it('keeps ask-later joining date on the scheduled prompt, not About you', () => {
+    const fields = defaultFieldPolicy().map((field) => (
+      field.key === 'herbalifeJoinedOn'
+        ? {
+          ...field,
+          phase: 'scheduled',
+          askEveryDays: 0,
+          maxSkips: 0,
+          mustFillWithinDays: 3,
+        }
+        : field
+    ));
+    const plan = planCollectionStep({
+      fields,
+      values: filledEntry,
+      states: settledStates({
+        herbalifeJoinedOn: {
+          skipCount: 0,
+          cycleStartedAt: '2026-11-01T04:30:00.000Z',
+          lastFilledAt: null,
+          lastSkippedAt: null,
+        },
+      }),
+      role: 'member',
+      now: NOW,
+    });
+    assert.equal(plan.step, 'scheduled');
+    assert.equal(plan.scheduled?.key, 'herbalifeJoinedOn');
+    assert.deepEqual(plan.profileFields || [], []);
+  });
 });
