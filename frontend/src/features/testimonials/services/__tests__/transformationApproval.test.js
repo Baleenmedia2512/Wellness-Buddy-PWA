@@ -88,13 +88,13 @@ describe('approval-ready Transformation photos', () => {
     }), true);
   });
 
-  it('requires draft Before bytes when Mine is only profile-seeded', () => {
+  it('accepts the photo already showing on the card', () => {
     const seeded = {
       photosFromProfileSeed: true,
       beforeImageUrl: 'https://cdn.example/left.jpg',
       afterImageUrl: 'https://cdn.example/left.jpg',
     };
-    assert.equal(hasApprovalReadyBeforePhoto({ testimonial: seeded }), false);
+    assert.equal(hasApprovalReadyBeforePhoto({ testimonial: seeded }), true);
     assert.equal(hasApprovalReadyBeforePhoto({
       testimonial: seeded,
       draftBefore: { imageBase64: 'abc' },

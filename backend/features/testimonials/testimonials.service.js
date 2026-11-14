@@ -13,6 +13,8 @@ import {
   resolveHealthIssueOtpChannel,
   shouldHydratePhotosFromProfile,
   shouldSendPhotoApprovalOtp,
+  displayedPairNeedsAfterCopy,
+  hasRealBeforePhoto,
 } from './domain/photoCompleteness.rules.js';
 import {
   previousEmailCardPaths,
@@ -1846,6 +1848,68 @@ async function sendUnifiedCoachEmail({
   });
 }
 
+async function bytesFromDisplayedImage(ref) {
+  const text = String(ref || '').trim();
+  if (/^data:image\//i.test(text)) {
+    return Buffer.from(text.replace(/^data:[^;]+;base64,/, ''), 'base64');
+  }
+  if (/^https?:\/\//i.test(text)) {
+    const response = await fetch(text);
+    if (!response.ok) return null;
+    return Buffer.from(await response.arrayBuffer());
+  }
+  return null;
+}
+
+async function storeDisplayedTransformationPhotos({
+  userId,
+  existing,
+  coachId,
+  beforeUrl,
+  afterUrl,
+}) {
+  const beforeBytes = await bytesFromDisplayedImage(beforeUrl);
+  if (!beforeBytes || beforeBytes.length < 32) return existing ?? null;
+  const ts = Date.now();
+  const beforePath = `${userId}/before_${ts}.jpg`;
+  await repo.uploadImage(beforeBytes.toString('base64'), beforePath);
+  const afterBytes = await bytesFromDisplayedImage(afterUrl);
+  const afterSource = afterBytes && afterBytes.length >= 32 ? afterBytes : beforeBytes;
+  const afterPath = `${userId}/after_${ts}.jpg`;
+  await repo.uploadImage(afterSource.toString('base64'), afterPath);
+  if (!existing) {
+    if (!coachId) return null;
+    return repo.insertTestimonial({
+      userId,
+      coachId,
+      beforeImagePath: beforePath,
+      afterImagePath: afterPath,
+      beforeWeightKg: 0,
+      afterWeightKg: 0,
+      goalType: 'loss',
+      durationText: '1 days',
+      status: 'incomplete',
+      otpHash: null,
+      otpExpiresAt: null,
+    });
+  }
+  await repo.updateTestimonial(existing.id, {
+    beforeImagePath: beforePath,
+    afterImagePath: afterPath,
+    status: existing.status === 'verified' ? existing.status : 'incomplete',
+  });
+  return repo.findByUserId(userId);
+}
+
+async function copyBeforePhotoToAfter(existing, userId) {
+  if (!displayedPairNeedsAfterCopy(existing)) return existing;
+  const bytes = await repo.downloadBuffer(existing.before_image_path);
+  const afterPath = `${userId}/after_${Date.now()}.jpg`;
+  await repo.uploadImage(bytes.toString('base64'), afterPath);
+  await repo.updateTestimonial(existing.id, { afterImagePath: afterPath });
+  return repo.findByUserId(userId);
+}
+
 /**
  * Member submits multiple edited slots in one request; generates a single unified OTP.
  *
@@ -1888,35 +1952,48 @@ export async function submitAllEdits(rawBody) {
     if (hydrated) existing = hydrated;
   }
 
+  if (
+    payload.submitForApproval
+    && !hasPhotoBytes
+    && (payload.displayedBeforeUrl || payload.displayedAfterUrl)
+  ) {
+    const stored = await storeDisplayedTransformationPhotos({
+      userId: payload.userId,
+      existing,
+      coachId: userInfo.coachId,
+      beforeUrl: payload.displayedBeforeUrl,
+      afterUrl: payload.displayedAfterUrl || payload.displayedBeforeUrl,
+    });
+    if (stored) existing = stored;
+  }
+
+  if (payload.submitForApproval && existing && displayedPairNeedsAfterCopy(existing)) {
+    const copied = await copyBeforePhotoToAfter(existing, payload.userId);
+    if (copied) existing = copied;
+  }
+
+  const photosReady = Boolean(existing && hasRealBeforePhoto(existing) && !displayedPairNeedsAfterCopy(existing));
+
   // Unified Transformation UI keeps photos as local drafts until Submit.
-  // First submit must create the row — never 404 when validation already passed.
-  if (!existing) {
-    if ((hasPhotoDirty || payload.submitForApproval) && !hasPhotoBytes) {
+  // A card that already shows Before and After is ready without a new upload.
+  if (!existing || !photosReady) {
+    if ((hasPhotoDirty || payload.submitForApproval) && !hasPhotoBytes && !photosReady) {
       throw new ValidationError(
         422,
         'Add before and after photos before submitting for coach approval.',
       );
     }
+  }
+  if (!existing) {
     existing = await repo.insertVideoOnlyTestimonial({
-      userId:  payload.userId,
+      userId: payload.userId,
       coachId: userInfo.coachId,
     });
     logger.info('[testimonials.service] Created testimonial stub for first unified submit', {
       userId: payload.userId,
       testimonialId: existing.id,
       dirtySlots: payload.dirtySlots,
-      hasBeforeImage: Boolean(payload.beforeImageBase64),
-      hasAfterImage: Boolean(payload.afterImageBase64),
     });
-  } else if (
-    (hasPhotoDirty || payload.submitForApproval)
-    && shouldHydratePhotosFromProfile(existing)
-    && !hasPhotoBytes
-  ) {
-    throw new ValidationError(
-      422,
-      'Add before and after photos before submitting for coach approval.',
-    );
   }
   // When the issues slot is dirty we replace with the exact incoming list so removals are honoured.
   const mergedIssues = hasIssuesDirty
