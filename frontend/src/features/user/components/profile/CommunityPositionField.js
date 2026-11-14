@@ -4,7 +4,6 @@
  * coach. The role is saved after the member enters the code the coach shares.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import React, { useEffect, useRef, useState } from 'react';
 import { EMAIL_OTP_LENGTH } from '../../domain/otpLength';
 import { communityPositionDraftAfterSync, positionUsageLine, readHeldCommunityPosition, rememberConfirmedCommunityPosition } from '../../domain/communityPosition';
 import useOtpInput from '../../hooks/useOtpInput';
