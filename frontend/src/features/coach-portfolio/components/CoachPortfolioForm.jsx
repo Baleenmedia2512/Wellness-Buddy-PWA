@@ -32,6 +32,7 @@ import {
 import { openPublicCoachUrl, resolvePublicCoachUrl } from '../utils/publicCoachUrl';
 import { publicWebsiteUrl } from '../domain/publicWebsiteUrl';
 import PublishOtpModal from './PublishOtpModal';
+import RequiredProfileFieldsModal from './RequiredProfileFieldsModal';
 import SaveYourWebsiteReview from './SaveYourWebsiteReview';
 import { buildPublicPathPreview } from '../domain/publicPathPreview';
 
@@ -146,6 +147,7 @@ export default function CoachPortfolioForm({
   const [otpResending, setOtpResending] = useState(false);
   const [otpKey, setOtpKey] = useState(null);
   const [placeMapOpen, setPlaceMapOpen] = useState(false);
+  const [requiredProfileItems, setRequiredProfileItems] = useState([]);
   const [fieldErrors, setFieldErrors] = useState({});
   const defaultCenterAppliedRef = useRef(false);
   const fieldRefs = useRef({});
@@ -767,7 +769,8 @@ export default function CoachPortfolioForm({
     }
     const aboutErrors = validateAboutForm(form);
     if (aboutErrors.length) {
-      flashMessage(aboutErrors[0], { error: true });
+      flashMessage('');
+      setRequiredProfileItems(aboutErrors);
       return;
     }
     if (!form.goalsConsent.accuracyConfirmed) {
@@ -1006,6 +1009,13 @@ export default function CoachPortfolioForm({
           )}
         </div>
       </div>
+
+      {requiredProfileItems.length ? (
+        <RequiredProfileFieldsModal
+          items={requiredProfileItems}
+          onClose={() => setRequiredProfileItems([])}
+        />
+      ) : null}
 
       {otpOpen ? (
         <PublishOtpModal

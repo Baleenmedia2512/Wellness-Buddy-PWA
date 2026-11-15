@@ -93,21 +93,21 @@ export function emptyPortfolioForm() {
   };
 }
 
-/** Profile-hydrated About fields required before Publish. */
+/** Profile-hydrated About fields required before Publish (all missing items). */
 export function validateAboutForm(form) {
   const errors = [];
   const personal = form?.personal || {};
   if (!String(personal.yearsExperience || '').trim()) {
-    errors.push('Set Date of joining Herbalife in Profile');
+    errors.push('Date of joining Herbalife');
   }
   if (!String(personal.background || '').trim()) {
-    errors.push('Complete About me in Profile');
+    errors.push('About me');
   }
   if (!Array.isArray(personal.languages) || personal.languages.length === 0) {
-    errors.push('Select Languages in Profile');
+    errors.push('Languages');
   }
   if (!String(personal.professionalTitle || '').trim()) {
-    errors.push('Complete Professional title in Profile');
+    errors.push('Professional title');
   }
   return errors;
 }
