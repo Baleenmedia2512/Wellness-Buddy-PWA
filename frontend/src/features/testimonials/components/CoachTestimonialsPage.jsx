@@ -1391,12 +1391,15 @@ function MemberCard({
             : patched;
           clearDrafts();
           void reloadMine(cleared);
+          setSubmitError(
+            'Add a different After photo (change the right photo), then tap Submit for Approval again.',
+          );
           return;
         }
         const hasDuration = Boolean(usableDurationForSubmit);
         setSubmitError(
           hasDuration
-            ? 'Coach approval did not start. Please tap Submit again — if it still fails, add the Before/After photos once more.'
+            ? 'Coach approval did not start. Change the After photo (right side), then tap Submit again.'
             : 'Coach approval did not start. Add a duration in days or months, then submit again.',
         );
         return;

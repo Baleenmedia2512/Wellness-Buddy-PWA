@@ -1901,12 +1901,38 @@ async function storeDisplayedTransformationPhotos({
   return repo.findByUserId(userId);
 }
 
+async function readBeforePhotoBytes(beforeRef) {
+  const ref = String(beforeRef || '').trim();
+  if (!ref) return null;
+  if (/^https?:\/\//i.test(ref) || /^data:image\//i.test(ref)) {
+    return bytesFromDisplayedImage(ref);
+  }
+  try {
+    return await repo.downloadBuffer(ref);
+  } catch (err) {
+    logger.warn('[testimonials.service] storage download for Before failed', {
+      message: err?.message || String(err),
+    });
+    return null;
+  }
+}
+
 async function copyBeforePhotoToAfter(existing, userId) {
   if (!displayedPairNeedsAfterCopy(existing)) return existing;
-  const bytes = await repo.downloadBuffer(existing.before_image_path);
-  const afterPath = `${userId}/after_${Date.now()}.jpg`;
-  await repo.uploadImage(bytes.toString('base64'), afterPath);
-  await repo.updateTestimonial(existing.id, { afterImagePath: afterPath });
+  const beforeRef = existing.before_image_path ?? existing.beforeImagePath;
+  const bytes = await readBeforePhotoBytes(beforeRef);
+  if (!bytes || bytes.length < 32) {
+    throw new Error('Could not read Before photo to create After for coach approval.');
+  }
+  const ts = Date.now();
+  const updates = { afterImagePath: `${userId}/after_${ts}.jpg` };
+  // If Before was stored as a raw URL, rewrite it to a real storage object too.
+  if (/^https?:\/\//i.test(String(beforeRef || '')) || /^data:image\//i.test(String(beforeRef || ''))) {
+    updates.beforeImagePath = `${userId}/before_${ts}.jpg`;
+    await repo.uploadImage(bytes.toString('base64'), updates.beforeImagePath);
+  }
+  await repo.uploadImage(bytes.toString('base64'), updates.afterImagePath);
+  await repo.updateTestimonial(existing.id, updates);
   return repo.findByUserId(userId);
 }
 
@@ -2077,7 +2103,7 @@ export async function submitAllEdits(rawBody) {
   });
 
   // OTP only when Before and After are two different stored files.
-  const photoNeedsOtp = (hasPhotoDirty || payload.submitForApproval)
+  let photoNeedsOtp = (hasPhotoDirty || payload.submitForApproval)
     && shouldSendPhotoApprovalOtp(existing, {
     beforePath: newBeforePath,
     afterPath: newAfterPath,
@@ -2085,6 +2111,24 @@ export async function submitAllEdits(rawBody) {
     afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
     status: existing.status,
   });
+
+  // Approval submit with Left-in-both / missing After: materialize a distinct After
+  // so coach OTP can start (weight/duration-only edits used to save with otpSent:false).
+  if (payload.submitForApproval && !photoNeedsOtp && hasRealBeforePhoto(existing)) {
+    if (displayedPairNeedsAfterCopy(existing)) {
+      const copied = await copyBeforePhotoToAfter(existing, payload.userId);
+      if (copied) existing = copied;
+    }
+    const retryBefore = photoUpdates.beforeImagePath ?? existing.before_image_path;
+    const retryAfter = photoUpdates.afterImagePath ?? existing.after_image_path;
+    photoNeedsOtp = shouldSendPhotoApprovalOtp(existing, {
+      beforePath: retryBefore,
+      afterPath: retryAfter,
+      beforeWeightKg: photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
+      afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
+      status: existing.status,
+    });
+  }
 
   // Health issues are optional — empty list is allowed on photo submit.
   const resolvedHealthIssues = mergedIssues;
@@ -2111,6 +2155,16 @@ export async function submitAllEdits(rawBody) {
   }
 
   if (!needsOtp) {
+    // Do not return otpSent:false for an approval tap — that showed a confusing
+    // "Coach approval did not start" error after a silent save.
+    if (payload.submitForApproval) {
+      throw new ValidationError(
+        422,
+        hasRealBeforePhoto(existing)
+          ? 'Add a different After photo (not the same as Before) before submitting for coach approval.'
+          : 'Add before and after photos before submitting for coach approval.',
+      );
+    }
     if (hasPhotoDirty && !isComplete) {
       photoUpdates.status = 'incomplete';
     }
