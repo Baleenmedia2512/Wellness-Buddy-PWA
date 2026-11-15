@@ -979,13 +979,13 @@ function MemberCard({
   const mediaVersion = `${testimonial?.updatedAt ?? testimonial?.id ?? ''}-${mediaEpoch}`;
   const beforeRaw = draftBefore?.previewUrl
     || withTestimonialMediaCacheBust(testimonial?.beforeImageUrl, mediaVersion);
-  // After must be a different file from Before. Do not paint Before into the
-  // After slot on Mine — that made members think After was already uploaded.
+  // New users: Profile Left fills Before, and After shows the same Left until
+  // they upload a real After (product: Left in both frames by default).
   const afterRaw = draftAfter?.previewUrl
     || (hasAfterImage
       ? withTestimonialMediaCacheBust(testimonial?.afterImageUrl, mediaVersion)
       : null)
-    || (!editable ? beforeRaw : null);
+    || beforeRaw;
   const beforeImageSrc = useRevocableImageSrc(beforeRaw);
   const afterImageSrc = useRevocableImageSrc(afterRaw);
 
@@ -1302,10 +1302,10 @@ function MemberCard({
     const visibleBeforeUrl = draftBefore?.previewUrl && /^https?:\/\//i.test(draftBefore.previewUrl)
       ? draftBefore.previewUrl
       : testimonial?.beforeImageUrl;
-    // Never send Before's URL as After — that made the server treat a clone as a pair.
+    // Default Left-in-both: After display may reuse Before until a real After upload.
     const visibleAfterUrl = draftAfter?.previewUrl && /^https?:\/\//i.test(draftAfter.previewUrl)
       ? draftAfter.previewUrl
-      : (hasAfterImage ? testimonial?.afterImageUrl : null);
+      : (hasAfterImage ? testimonial?.afterImageUrl : visibleBeforeUrl);
     if (!draftBefore?.imageBase64 && typeof visibleBeforeUrl === 'string') {
       payload.displayedBeforeUrl = visibleBeforeUrl;
     }
@@ -1326,15 +1326,6 @@ function MemberCard({
     // New users / profile-seeded cards must upload Transformation Before so OTP can start.
     if (!isSilentSave && !approvalReadyBefore) {
       setSubmitError('Add a Before photo on this Transformation card, then submit for approval.');
-      return;
-    }
-    const hasDistinctAfterDraftOrStored = Boolean(
-      draftAfter?.imageBase64
-      || hasAfterImage
-      || hasVisiblePhotoCard,
-    );
-    if (!isSilentSave && approvalReadyBefore && !hasDistinctAfterDraftOrStored) {
-      setSubmitError('Add a different After photo (not the same as Before), then submit for approval.');
       return;
     }
 
@@ -2548,7 +2539,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       if (Number.isFinite(latestWeightKg) && latestWeightKg > 0) {
         userPayload.latestWeightKg = latestWeightKg;
       }
-      // New users with Left/Centre/Right: Left defaults into Transformation Before (After mirrors until real After).
+      // New users with Left/Centre/Right: Left defaults into Before and After until a real After upload.
       const leftUrl = profileResult?.success
         ? profileResult?.data?.transformationPhotos?.left
         : null;
