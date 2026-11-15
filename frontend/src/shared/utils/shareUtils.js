@@ -28,26 +28,44 @@ export {
 const PROFILE_USER_NAME_KEY = 'wv.profileUserName';
 
 /**
- * Android WhatsApp sends the image twice when ACTION_SEND includes both
- * EXTRA_STREAM (file) and EXTRA_TEXT (caption). Share the file only, and put
- * the caption on the clipboard so the user can paste once if needed.
+ * Android system-chooser shares (Share.share / WhatsAppShare.shareImage) often
+ * send the photo twice when EXTRA_STREAM + EXTRA_TEXT are both set.
+ *
+ * Manual Log / classify uses shareViaCapacitorAPI → shareToWhatsApp (package-
+ * targeted), which can attach EXTRA_TEXT as the image caption safely.
+ * Chooser paths still omit text and keep a clipboard backup for paste.
  */
 function isAndroidNative() {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
 }
 
-async function prepareAndroidImageShareCaption(text) {
+function mimeTypeFromDataUrl(dataUrl, fallback = 'image/jpeg') {
+  if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
+    return fallback;
+  }
+  const semi = dataUrl.indexOf(';');
+  if (semi <= 5) return fallback;
+  return dataUrl.slice(5, semi) || fallback;
+}
+
+async function copyAndroidShareCaptionBackup(text) {
   const caption = String(text || '').trim();
-  if (!caption || !isAndroidNative()) return undefined;
+  if (!caption || !isAndroidNative()) return;
   try {
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(caption);
-      debugLog('📋 Share caption copied to clipboard (Android image-only share)');
+      debugLog('📋 Share caption copied to clipboard (Android backup)');
     }
   } catch (err) {
     console.warn('⚠️ Could not copy share caption to clipboard:', err?.message || err);
   }
-  // Omit text from the share intent — prevents the WhatsApp duplicate image.
+}
+
+/** Chooser / Share.share path: clipboard only — do not attach text to the intent. */
+async function prepareAndroidImageShareCaption(text) {
+  const caption = String(text || '').trim();
+  if (!caption || !isAndroidNative()) return undefined;
+  await copyAndroidShareCaptionBackup(caption);
   return undefined;
 }
 
@@ -335,6 +353,36 @@ export const shareViaCapacitorAPI = async (dataUrl, options = {}) => {
 
   // ── NATIVE (iOS / Android) ────────────────────────────────────────────
   if (Capacitor.isNativePlatform()) {
+    // Android Manual Log / classify: open WhatsApp directly with image + caption.
+    // Package-targeted send attaches EXTRA_TEXT as the photo caption without the
+    // duplicate-image bug seen on the system chooser path.
+    if (isAndroidNative()) {
+      try {
+        const { WhatsAppShare } = Capacitor.Plugins || {};
+        if (WhatsAppShare && typeof WhatsAppShare.shareToWhatsApp === "function") {
+          const caption = String(text || "").trim();
+          await copyAndroidShareCaptionBackup(caption);
+          await WhatsAppShare.shareToWhatsApp({
+            base64Data: dataUrl,
+            fileName,
+            text: caption,
+            mimeType: mimeTypeFromDataUrl(dataUrl),
+          });
+          debugLog("✅ [CapacitorShare] WhatsApp direct share with caption");
+          return { ok: true, dismissed: false };
+        }
+      } catch (waErr) {
+        if (isCanceled(waErr)) {
+          debugLog("ℹ️ [CapacitorShare] WhatsApp share cancelled");
+          return { ok: true, dismissed: true };
+        }
+        console.warn(
+          "⚠️ [CapacitorShare] WhatsApp direct share failed, falling back:",
+          waErr?.message || waErr,
+        );
+      }
+    }
+
     let writtenPath = null;
     try {
       const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
@@ -346,7 +394,7 @@ export const shareViaCapacitorAPI = async (dataUrl, options = {}) => {
       writtenPath = fileName;
       debugLog("📤 [CapacitorShare] file written:", writeResult.uri);
 
-      // Android WhatsApp duplicates the photo when files + text are both set.
+      // Android chooser fallback: image only + clipboard (avoids duplicate photo).
       const shareText = isAndroidNative()
         ? await prepareAndroidImageShareCaption(text)
         : text;

@@ -138,13 +138,19 @@ public class WhatsAppSharePlugin extends Plugin {
     }
     
     /**
-     * Share image directly to WhatsApp (if installed)
+     * Share image directly to WhatsApp (if installed).
+     *
+     * Unlike {@link #shareImage} (system chooser), package-targeted ACTION_SEND
+     * can include EXTRA_TEXT as the image caption without the duplicate-photo
+     * bug that appears when the generic chooser mixes STREAM + TEXT.
      */
     @PluginMethod
     public void shareToWhatsApp(PluginCall call) {
         try {
             String base64Data = call.getString("base64Data");
-            String fileName = call.getString("fileName", "wellness-valley-" + System.currentTimeMillis() + ".png");
+            String mimeType = call.getString("mimeType", "image/jpeg");
+            String defaultExt = "image/png".equals(mimeType) ? ".png" : ".jpg";
+            String fileName = call.getString("fileName", "wellness-valley-" + System.currentTimeMillis() + defaultExt);
             String text = call.getString("text", "");
             
             if (base64Data == null || base64Data.isEmpty()) {
@@ -179,11 +185,14 @@ public class WhatsAppSharePlugin extends Plugin {
             
             // Create WhatsApp specific intent
             Intent whatsappIntent = new Intent(Intent.ACTION_SEND);
-            whatsappIntent.setType("image/png");
+            whatsappIntent.setType(mimeType != null && !mimeType.isEmpty() ? mimeType : "image/jpeg");
             whatsappIntent.setPackage("com.whatsapp");
             
             whatsappIntent.putExtra(Intent.EXTRA_STREAM, imageUri);
-            // No EXTRA_TEXT — avoids WhatsApp duplicate-image bug (see shareImage).
+            // Caption on the photo — safe for package-targeted single-image send.
+            if (text != null && !text.isEmpty()) {
+                whatsappIntent.putExtra(Intent.EXTRA_TEXT, text);
+            }
 
             whatsappIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             whatsappIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);

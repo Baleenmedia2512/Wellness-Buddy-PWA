@@ -35,7 +35,8 @@ export async function shareTicketQrImage({ dataUrl, text, title, fileName }) {
         await plugin.shareToWhatsApp({
           base64Data: dataUrl,
           fileName: safeName,
-          text: '',
+          text: String(text || '').trim(),
+          mimeType: 'image/png',
         });
         return { ok: true, saved: false };
       }
