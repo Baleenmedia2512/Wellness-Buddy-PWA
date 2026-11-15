@@ -1,7 +1,7 @@
 /**
  * Community Position — first field. Nothing else is asked until this is saved.
  * App 3.5.6+ with ff.community-position-otp: Continue sends a coach approval
- * code (profile POST ignores eventLevel). Older / flag-off: save on profile.
+ * code and opens an OTP popup. Older / flag-off: save on profile.
  */
 import React, { useEffect, useState } from 'react';
 import { isFlagEnabled } from '../../../config/featureFlags';
@@ -25,8 +25,10 @@ export default function OnboardingCommunityPositionPage({ user, onComplete }) {
   const [position, setPosition] = useState('');
   const [options, setOptions] = useState(() => [...EVENT_LEVEL_OPTIONS]);
   const [pending, setPending] = useState(null);
+  const [otpOpen, setOtpOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [otpError, setOtpError] = useState('');
   const otpCtl = useOtpInput(EMAIL_OTP_LENGTH);
   const email = user?.email || user?.Email || '';
   const userId = user?.id || user?.UserId || user?.userId;
@@ -50,6 +52,7 @@ export default function OnboardingCommunityPositionPage({ user, onComplete }) {
 
   useEffect(() => {
     otpCtl.reset();
+    setOtpError('');
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when a new approval arrives
   }, [pending?.id, pending?.positionCode]);
 
@@ -81,7 +84,7 @@ export default function OnboardingCommunityPositionPage({ user, onComplete }) {
     }
   };
 
-  const sendApproval = async () => {
+  const sendApproval = async ({ force = false } = {}) => {
     if (!position) {
       setError('Choose your community position to continue.');
       return;
@@ -92,6 +95,7 @@ export default function OnboardingCommunityPositionPage({ user, onComplete }) {
     }
     setSaving(true);
     setError('');
+    setOtpError('');
     try {
       const data = await requestCommunityPosition({
         userId: userId || undefined,
@@ -101,6 +105,8 @@ export default function OnboardingCommunityPositionPage({ user, onComplete }) {
       if (data.alreadyHeld) {
         const saved = data.positionCode || position;
         rememberConfirmedCommunityPosition(userId, saved);
+        setOtpOpen(false);
+        setPending(null);
         await onComplete?.(saved);
         return;
       }
@@ -108,8 +114,14 @@ export default function OnboardingCommunityPositionPage({ user, onComplete }) {
       if (data.communityPositionRequest?.positionCode) {
         setPosition(data.communityPositionRequest.positionCode);
       }
+      setOtpOpen(true);
+      if (force) {
+        setOtpError('');
+      }
     } catch (err) {
-      setError(err?.message || 'Could not send the approval request.');
+      const message = err?.message || 'Could not send the approval request.';
+      if (otpOpen) setOtpError(message);
+      else setError(message);
     } finally {
       setSaving(false);
     }
@@ -118,7 +130,7 @@ export default function OnboardingCommunityPositionPage({ user, onComplete }) {
   const confirmCode = async (otp) => {
     if (!otp || saving) return;
     setSaving(true);
-    setError('');
+    setOtpError('');
     try {
       const data = await verifyCommunityPositionOtp({
         userId: userId || undefined,
@@ -128,9 +140,10 @@ export default function OnboardingCommunityPositionPage({ user, onComplete }) {
       const saved = data.positionCode || position;
       rememberConfirmedCommunityPosition(userId, saved);
       setPending(null);
+      setOtpOpen(false);
       await onComplete?.(saved);
     } catch (err) {
-      setError(err?.message || 'That approval code did not match.');
+      setOtpError(err?.message || 'That approval code did not match.');
     } finally {
       setSaving(false);
     }
@@ -138,17 +151,13 @@ export default function OnboardingCommunityPositionPage({ user, onComplete }) {
 
   const handleContinue = () => {
     if (otpEnabled) {
-      if (pending?.status === 'pending') {
-        confirmCode(otpCtl.value);
-        return;
-      }
       sendApproval();
       return;
     }
     saveLegacy();
   };
 
-  const awaitingCode = Boolean(otpEnabled && pending?.status === 'pending');
+  const awaitingCode = Boolean(otpEnabled && otpOpen && pending?.status === 'pending');
   const approver = String(pending?.approverName || 'your coach').trim();
   const approverEmail = String(pending?.approverEmail || '').trim();
 
@@ -156,11 +165,7 @@ export default function OnboardingCommunityPositionPage({ user, onComplete }) {
     <div className="fixed inset-0 z-[10060] bg-gray-50 flex flex-col">
       <div className="bg-gradient-to-r from-green-600 to-green-700 px-5 pt-12 pb-6 text-white">
         <h1 className="text-xl font-bold">Community Position</h1>
-        <p className="text-sm text-green-100 mt-1">
-          {awaitingCode
-            ? 'Enter the approval code from your coach.'
-            : 'Required before the rest of your profile.'}
-        </p>
+        <p className="text-sm text-green-100 mt-1">Required before the rest of your profile.</p>
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-5">
         <div className="max-w-md mx-auto bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-2">
@@ -170,11 +175,13 @@ export default function OnboardingCommunityPositionPage({ user, onComplete }) {
               <button
                 key={option.code}
                 type="button"
-                disabled={saving || awaitingCode}
+                disabled={saving}
                 onClick={() => {
                   setPosition(option.code);
                   setError('');
+                  setOtpError('');
                   setPending(null);
+                  setOtpOpen(false);
                 }}
                 className={`w-full text-left rounded-xl border px-3 py-3 text-sm font-semibold disabled:opacity-60 ${
                   selected
@@ -186,30 +193,6 @@ export default function OnboardingCommunityPositionPage({ user, onComplete }) {
               </button>
             );
           })}
-          {awaitingCode ? (
-            <div className="space-y-3 pt-3">
-              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                We sent an approval code to your coach <strong>{approver}</strong>
-                {approverEmail ? ` (${approverEmail})` : ''}. Enter the code they give you.
-              </p>
-              <OtpInputCells
-                otpCtl={otpCtl}
-                length={EMAIL_OTP_LENGTH}
-                emailOtp
-                disabled={saving}
-                onComplete={confirmCode}
-                cellClassName="w-10 h-12 text-center text-lg font-semibold border border-gray-300 rounded-lg"
-              />
-              <button
-                type="button"
-                disabled={saving}
-                onClick={sendApproval}
-                className="w-full py-2 rounded-lg text-xs font-medium text-green-700 border border-green-200"
-              >
-                Resend code
-              </button>
-            </div>
-          ) : null}
           {error ? <p className="text-sm text-red-600 pt-2">{error}</p> : null}
         </div>
       </div>
@@ -217,18 +200,69 @@ export default function OnboardingCommunityPositionPage({ user, onComplete }) {
         <button
           type="button"
           onClick={handleContinue}
-          disabled={
-            saving
-            || !position
-            || (awaitingCode && !otpCtl.isComplete)
-          }
+          disabled={saving || !position}
           className="max-w-md mx-auto block w-full py-3.5 rounded-xl bg-green-600 text-white font-bold disabled:opacity-50"
         >
-          {saving
-            ? (awaitingCode ? 'Checking…' : 'Sending…')
-            : (awaitingCode ? 'Confirm code' : 'Continue')}
+          {saving && !awaitingCode ? 'Sending…' : 'Continue'}
         </button>
       </div>
+
+      {awaitingCode ? (
+        <div
+          className="fixed inset-0 z-[10070] flex items-center justify-center bg-black/50 px-5"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="community-position-otp-title"
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white shadow-xl border border-gray-100 p-5 space-y-4">
+            <div>
+              <h2 id="community-position-otp-title" className="text-lg font-bold text-gray-900">
+                Enter approval code
+              </h2>
+              <p className="text-sm text-gray-600 mt-1">
+                We sent a code to your coach <strong>{approver}</strong>
+                {approverEmail ? ` (${approverEmail})` : ''}. Ask them for the code, then tap OK.
+              </p>
+            </div>
+            <OtpInputCells
+              otpCtl={otpCtl}
+              length={EMAIL_OTP_LENGTH}
+              emailOtp
+              disabled={saving}
+              onComplete={confirmCode}
+              cellClassName="w-10 h-12 text-center text-lg font-semibold border border-gray-300 rounded-lg"
+            />
+            {otpError ? <p className="text-sm text-red-600">{otpError}</p> : null}
+            <button
+              type="button"
+              disabled={saving || !otpCtl.isComplete}
+              onClick={() => confirmCode(otpCtl.value)}
+              className="w-full py-3 rounded-xl bg-green-600 text-white font-bold disabled:opacity-50"
+            >
+              {saving ? 'Checking…' : 'OK'}
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => sendApproval({ force: true })}
+              className="w-full py-2 rounded-xl border border-green-200 text-green-700 text-sm font-semibold disabled:opacity-50"
+            >
+              Resend code
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                setOtpOpen(false);
+                setOtpError('');
+              }}
+              className="w-full py-2 text-sm font-medium text-gray-500 disabled:opacity-50"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
