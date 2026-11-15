@@ -74,7 +74,7 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.5.7',
+  VERSION: '3.5.6',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
@@ -85,21 +85,24 @@ export const APP_VERSION = {
   IOS_BUILD_NUMBER: 80,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version  3.5.7',
+  RELEASE_NAME: 'Version  3.5.6',
   
   // Build date
   BUILD_DATE: '2026-11-12',
   
   // Platform release notes..
   PLATFORMS: {
-    ANDROID: { versionCode: 85, versionName: '3.5.7' },
-    IOS: { buildNumber: 80, versionName: '3.5.7' },
+    ANDROID: { versionCode: 85, versionName: '3.5.6' },
+    IOS: { buildNumber: 80, versionName: '3.5.6' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
  * 
+ * Version 3.5.6 (Code 85 / iOS build 80) - 2026-11-12 [ANDROID + iOS — not yet released]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
  * Version 3.5.5 (Code 84 / iOS build 79) - 2026-10-31 [ANDROID + iOS — not yet released]
  *   🐛 Patch release — bug fixes and stability improvements
  *
