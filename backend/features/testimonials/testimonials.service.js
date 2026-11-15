@@ -1978,9 +1978,12 @@ export async function submitAllEdits(rawBody) {
   // A card that already shows Before and After is ready without a new upload.
   if (!existing || !photosReady) {
     if ((hasPhotoDirty || payload.submitForApproval) && !hasPhotoBytes && !photosReady) {
+      const hasBefore = Boolean(existing && hasRealBeforePhoto(existing));
       throw new ValidationError(
         422,
-        'Add before and after photos before submitting for coach approval.',
+        hasBefore
+          ? 'Add a different After photo (not the same as Before) before submitting for coach approval.'
+          : 'Add before and after photos before submitting for coach approval.',
       );
     }
   }
