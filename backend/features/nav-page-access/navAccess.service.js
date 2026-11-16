@@ -13,6 +13,7 @@ import {
   pagesForRole,
   resolveMatrixRole,
   mergeOmittedCheckInPage,
+  mergeOmittedEventsPage,
   mergeOmittedSystemAdmin,
   validateMatrixInput,
 } from './domain/navAccess.rules.js';
@@ -109,9 +110,13 @@ export async function putAdminConfig({ requesterUserId, requesterEmail, matrix }
 
   const current = await loadMatrix();
   const row = await repo.insertConfig({
-    matrix: mergeOmittedCheckInPage(
+    matrix: mergeOmittedEventsPage(
       matrix,
-      mergeOmittedSystemAdmin(matrix, validated.matrix, current.matrix),
+      mergeOmittedCheckInPage(
+        matrix,
+        mergeOmittedSystemAdmin(matrix, validated.matrix, current.matrix),
+        current.matrix,
+      ),
       current.matrix,
     ),
     updatedByUserId: requester.UserId,
