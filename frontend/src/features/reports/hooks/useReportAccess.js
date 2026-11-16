@@ -5,6 +5,7 @@ const EMPTY = {
   loaded: false,
   access: 'none',
   daysLeft: null,
+  expiresAtDisplay: null,
   canSeeDetails: false,
   error: '',
   starting: false,
@@ -24,6 +25,7 @@ export default function useReportAccess(userId) {
       loaded: true,
       access: access.access,
       daysLeft: access.daysLeft,
+      expiresAtDisplay: access.expiresAtDisplay ?? null,
       canSeeDetails: access.canSeeDetails === true,
       error: '',
       starting: false,
@@ -41,6 +43,7 @@ export default function useReportAccess(userId) {
         ...prev,
         loaded: true,
         canSeeDetails: false,
+        expiresAtDisplay: null,
         error: 'Could not check report access',
         starting: false,
       }));
@@ -63,6 +66,7 @@ export default function useReportAccess(userId) {
         setState({
           ...EMPTY,
           loaded: true,
+          expiresAtDisplay: null,
           error: 'Could not check report access',
         });
         return;
