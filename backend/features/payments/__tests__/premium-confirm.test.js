@@ -12,7 +12,7 @@ import { confirmPremiumOrder, getPremiumStatus } from '../api/confirm-order.hand
 const paidOrder = (overrides = {}) => ({
   order_id: 'premium_42_abc123',
   order_status: 'PAID',
-  order_amount: 199,
+  order_amount: 234.82,
   customer_details: { customer_id: 'user_42' },
   ...overrides,
 });
@@ -31,18 +31,19 @@ describe('parsePremiumOrderUserId', () => {
 });
 
 describe('isPremiumOrderPaid', () => {
-  const expected = { userId: 42, amount: 199 };
-  it('accepts a PAID order for this member at the Premium price', () => {
+  const expected = { userId: 42, allowedAmounts: [234.82, 352.82, 1178.82] };
+  it('accepts a PAID order for this member at an allowed level total', () => {
     assert.equal(isPremiumOrderPaid(paidOrder(), expected), true);
   });
   it('rejects orders that are not PAID', () => {
     assert.equal(isPremiumOrderPaid(paidOrder({ order_status: 'ACTIVE' }), expected), false);
     assert.equal(isPremiumOrderPaid(paidOrder({ order_status: 'EXPIRED' }), expected), false);
   });
-  it('rejects another member or a short payment', () => {
+  it('rejects another member or a non-catalog payment', () => {
     assert.equal(isPremiumOrderPaid(paidOrder({ customer_details: { customer_id: 'user_7' } }), expected), false);
     assert.equal(isPremiumOrderPaid(paidOrder({ order_id: 'premium_7_abc123' }), expected), false);
     assert.equal(isPremiumOrderPaid(paidOrder({ order_amount: 1 }), expected), false);
+    assert.equal(isPremiumOrderPaid(paidOrder({ order_amount: 199 }), expected), false);
   });
 });
 
@@ -51,17 +52,31 @@ describe('confirmPremiumOrder', () => {
     process.env.CASHFREE_CLIENT_ID = 'TEST_ID';
     process.env.CASHFREE_CLIENT_SECRET = 'test_secret';
     process.env.CASHFREE_ENV = 'sandbox';
-    process.env.CASHFREE_ORDER_AMOUNT = '199';
   });
 
   it('saves a confirmed payment and says premium', async () => {
     const saved = [];
     const result = await confirmPremiumOrder(
       { userId: 42, orderId: 'premium_42_abc123' },
-      { fetchOrder: async () => paidOrder(), record: async (row) => { saved.push(row); } },
+      {
+        fetchOrder: async () => paidOrder(),
+        todayYmd: '2026-11-13',
+        record: async (row) => {
+          saved.push(row);
+          return { expiresAt: '2026-12-13' };
+        },
+      },
     );
     assert.equal(result.body.data.premium, true);
-    assert.deepEqual(saved, [{ orderId: 'premium_42_abc123', userId: 42, amount: 199, mode: 'sandbox' }]);
+    assert.equal(result.body.data.expiresAt, '2026-12-13');
+    assert.equal(result.body.data.daysLeft, 30);
+    assert.deepEqual(saved, [{
+      orderId: 'premium_42_abc123',
+      userId: 42,
+      amount: 234.82,
+      mode: 'sandbox',
+      todayYmd: '2026-11-13',
+    }]);
   });
 
   it('does not save an order that is still unpaid', async () => {
@@ -93,7 +108,14 @@ describe('confirmPremiumOrder', () => {
     const saved = [];
     await confirmPremiumOrder(
       { userId: 42, orderId: 'premium_42_abc123' },
-      { fetchOrder: async () => paidOrder(), record: async (row) => { saved.push(row); } },
+      {
+        fetchOrder: async () => paidOrder(),
+        todayYmd: '2026-11-13',
+        record: async (row) => {
+          saved.push(row);
+          return { expiresAt: '2026-12-13' };
+        },
+      },
     );
     assert.equal(saved[0].mode, 'production');
   });
@@ -101,23 +123,39 @@ describe('confirmPremiumOrder', () => {
 
 describe('getPremiumStatus', () => {
   it('returns premium true for a paid member', async () => {
-    const result = await getPremiumStatus({ userId: 42 }, { hasPaid: async () => true });
+    const result = await getPremiumStatus({ userId: 42 }, {
+      getMembership: async () => ({
+        premium: true,
+        daysLeft: 12,
+        expiresAt: '2026-12-13',
+        showExpiryWarning: false,
+      }),
+    });
     assert.equal(result.body.data.premium, true);
+    assert.equal(result.body.data.daysLeft, 12);
+    assert.equal(result.body.data.expiresAt, '2026-12-13');
   });
 
   it('asks for the current Cashfree mode so sandbox tests never count on live', async () => {
     process.env.CASHFREE_ENV = 'production';
     let asked = null;
-    await getPremiumStatus({ userId: 42 }, { hasPaid: async (args) => { asked = args; return false; } });
-    assert.deepEqual(asked, { userId: 42, mode: 'production' });
+    await getPremiumStatus({ userId: 42 }, {
+      todayYmd: '2026-11-13',
+      getMembership: async (args) => {
+        asked = args;
+        return { premium: false, daysLeft: null, expiresAt: null, showExpiryWarning: false };
+      },
+    });
+    assert.deepEqual(asked, { userId: 42, mode: 'production', todayYmd: '2026-11-13' });
   });
 
   it('answers not premium when the lookup fails instead of breaking the profile', async () => {
     const result = await getPremiumStatus({ userId: 42 }, {
-      hasPaid: async () => { throw new Error('db down'); },
+      getMembership: async () => { throw new Error('db down'); },
     });
     assert.equal(result.httpStatus, 200);
     assert.equal(result.body.data.premium, false);
+    assert.equal(result.body.data.showExpiryWarning, false);
   });
 
   it('requires a user id', async () => {

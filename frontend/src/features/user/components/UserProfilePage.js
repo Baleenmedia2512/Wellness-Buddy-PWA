@@ -15,7 +15,7 @@
 // user has a phone number from auth, the app checks for a counselling lead
 // record with the same phone and pre-populates the form fields.
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, LogOut, Trash2, CheckCircle, Sparkles, Camera, KeyRound } from 'lucide-react';
+import { ArrowLeft, LogOut, Trash2, CheckCircle, Sparkles, Camera, KeyRound, Share2 } from 'lucide-react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import * as Session from '../../../shared/services/sessionStorage';
 import {
@@ -24,13 +24,17 @@ import {
 } from '../../../shared/utils/autoCameraPreference';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile, requestCommunityId, verifyCommunityIdOtp, requestHeightChangeOtp, verifyHeightChangeOtp } from '../services/profileService';
+import { shareAppInvite } from '../services/appInviteShare.service';
 import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import { loadProfileMarathonWeightComparison } from '../../marathon';
 import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/counsellingApi';
 import UserProfileFields from './profile/UserProfileFields';
 import ProfileEmailKycSection from './profile/ProfileEmailKycSection';
 import CommunityIdField from './profile/CommunityIdField';
+import CommunityPositionField from './profile/CommunityPositionField';
 import WorkingPhysicalCentreField from './profile/WorkingPhysicalCentreField';
+import EventProfilePrefsFields from './profile/EventProfilePrefsFields';
+import ProfileIntroFields from './profile/ProfileIntroFields';
 import UserProfileBodyMetrics from './profile/UserProfileBodyMetrics';
 import IdealWeightCards from './profile/IdealWeightCards';
 import DietDropdown from './profile/DietDropdown';
@@ -51,11 +55,22 @@ import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardin
 import { hasValidProfileName } from '../domain/profileCompleteness';
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
+import {
+  COMMUNITY_POSITION_OTP_FLAG,
+  communityPositionFromProfile,
+  rememberConfirmedCommunityPosition,
+} from '../domain/communityPosition';
+import { consumeCommunityPositionFill } from '../domain/communityPositionFocus';
+import {
+  overlayProfileOtpConfirmation,
+  rememberProfileOtpConfirmation,
+} from '../domain/profileOtpHold';
 import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked, validateHeightCm } from '../domain/heightChange';
 import { looksLikeEmail } from '../domain/onboardingEmail';
 import GoPremiumButton from '../../payments/components/GoPremiumButton';
 import { PremiumAvatarRing, PremiumCrownMark } from '../../payments/components/PremiumBadge';
 import usePremiumStatus from '../../payments/hooks/usePremiumStatus';
+import { AdminGbpListingButton } from '../../gbp-listing';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -79,9 +94,17 @@ function resolveAccountEmail(user, formEmail) {
   return '';
 }
 
-const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', user: 'Customer' };
+const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', system_admin: 'System Admin', user: 'Customer' };
 
-const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfileUpdate }) => {
+const UserProfilePage = ({
+  user,
+  userRole = 'user',
+  onBack,
+  onSignOut,
+  onProfileUpdate,
+  /** null = fail-open; object = Admin Config page-access map */
+  allowedPages = null,
+}) => {
   const form = useProfileForm();
   const resolvedUserId = user?.id ?? user?._id ?? user?.UserId ?? user?.userId ?? form.userId ?? Session.getDbUserId() ?? null;
   const premiumUserId = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
@@ -97,6 +120,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [idealCoachName, setIdealCoachName] = useState('');
   const [teamSeat, setTeamSeat] = useState(null);
   const [communityIdRequest, setCommunityIdRequest] = useState(null);
+  const [communityPositionRequest, setCommunityPositionRequest] = useState(null);
   const [communityIdPair, setCommunityIdPair] = useState(null);
   const [communityIdBusy, setCommunityIdBusy] = useState(false);
   const [communityIdError, setCommunityIdError] = useState('');
@@ -113,7 +137,24 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     if (!email && !uid) return false;
     return !getCachedProfile({ email, userId: uid })?.data;
   });
+  useEffect(() => {
+    if (isLoading || !consumeCommunityPositionFill()) return undefined;
+    let tries = 0;
+    const timer = setInterval(() => {
+      const field = document.getElementById('profile-community-position');
+      tries += 1;
+      if (field) {
+        field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        field.focus?.();
+        clearInterval(timer);
+      } else if (tries > 20) {
+        clearInterval(timer);
+      }
+    }, 200);
+    return () => clearInterval(timer);
+  }, [isLoading]);
   const [isSaving, setIsSaving] = useState(false);
+  const [isInviting, setIsInviting] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [hasSaved, setHasSaved] = useState(false);
@@ -127,6 +168,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   const [leadPreFilled, setLeadPreFilled] = useState(false); // true once we've pre-filled from lead
   const leadPreFilledRef = useRef(false);
   const profileLoadGenRef = useRef(0);
+  const heightVerifyFlightRef = useRef(false);
+  const communityIdVerifyFlightRef = useRef(false);
   const [autoCameraEnabled, setAutoCameraEnabled] = useState(
     () => isAutoCameraOnResumeEnabled()
   );
@@ -158,7 +201,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     const loadGen = ++profileLoadGenRef.current;
     setError('');
 
-    const applyProfileData = (data) => {
+    const applyProfileData = (incoming) => {
+      const data = overlayProfileOtpConfirmation(incoming, uid);
       const profileData = {
         name: data?.userName || '',
         height: data?.height ? String(data.height) : '',
@@ -181,6 +225,20 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
           if (data?.teamId) return String(data.teamId).trim();
           return '';
         })(),
+        workingPhysicalCentreId: data?.workingPhysicalCentre?.id != null
+          ? String(data.workingPhysicalCentre.id)
+          : '',
+        eventTranslation: data?.eventTranslation || '',
+        eventYourCity: data?.eventYourCity || '',
+        eventLevel: communityPositionFromProfile(data, uid),
+        professionalTitle: data?.professionalTitle || '',
+        instagram: data?.instagram || '',
+        youtube: data?.youtube || '',
+        linkedin: data?.linkedin || '',
+        herbalifeJoinedOn: data?.herbalifeJoinedOn || '',
+        aboutMe: data?.aboutMe || '',
+        qualification: data?.qualification || '',
+        languages: Array.isArray(data?.languages) ? data.languages : [],
         bodyMetrics: data?.bodyMetrics || null,
         recoveredHealthIssues: Array.isArray(data?.recoveredHealthIssues)
           ? data.recoveredHealthIssues
@@ -226,6 +284,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       setIdealCoachName(data?.idealCoachName ? String(data.idealCoachName).trim() : '');
       setTeamSeat(data?.teamSeat || null);
       setCommunityIdRequest(data?.communityIdRequest || null);
+      setCommunityPositionRequest(data?.communityPositionRequest || null);
       setCommunityIdPair(data?.communityIdPair || null);
       setCommunityIdError('');
       transformationPhotos.loadFromProfile(data?.transformationPhotos);
@@ -332,7 +391,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     setSuccessMessage('');
     setIsSaving(true);
     try {
-      const err = form.validate({ requireDiet: false, maxHeight: 198 });
+      const err = form.validate({ requireDiet: false, requireFat: false, maxHeight: 198 });
       if (err) { setError(err); return; }
       // Only send a verified account email — unverified addresses use Profile KYC OTP.
       const emailForSave = accountEmail || undefined;
@@ -350,6 +409,16 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         payload.userId = user.id;
       }
       const data = await saveProfile(payload);
+      if (payload.bodyFat != null) {
+        const persisted = data?.data?.bodyFat;
+        if (persisted == null || !Number.isFinite(Number(persisted))) {
+          setError(
+            data?.data?.bodyFatError
+            || 'Could not save Fat %. Please try again.',
+          );
+          return;
+        }
+      }
       // Profile Left → Transformation Before (Centre/Right stay profile-only).
       const leftPending = photoExtras.transformationPhotos?.left || null;
       if (user?.id && leftPending) {
@@ -430,6 +499,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   }, [sessionUserId, accountEmail]);
 
   const handleHeightVerifyOtp = useCallback(async (otp) => {
+    if (heightVerifyFlightRef.current) return;
+    heightVerifyFlightRef.current = true;
     setHeightOtpError('');
     setSuccessMessage('');
     setHeightOtpBusy(true);
@@ -448,6 +519,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         otp,
       });
       const saved = data.height != null ? String(data.height) : String(heightValue);
+      rememberProfileOtpConfirmation(sessionUserId, { height: saved });
       form.setHeight(saved);
       setLockedHeight(saved);
       setHeightOtpPending(false);
@@ -462,6 +534,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     } catch (e) {
       setHeightOtpError(e.message || 'That verification code did not match.');
     } finally {
+      heightVerifyFlightRef.current = false;
       setHeightOtpBusy(false);
     }
   }, [
@@ -487,6 +560,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       // Already confirmed on the server — lock field to pencil mode (no OTP).
       if (data.alreadyOwned) {
         const seat = data.teamSeat || 'sponsor';
+        if (data.communityId) {
+          rememberProfileOtpConfirmation(sessionUserId, {
+            communityId: data.communityId,
+            teamSeat: seat,
+          });
+        }
         setCommunityIdRequest(null);
         if (data.communityId) form.setCommunityId(String(data.communityId));
         setTeamSeat(seat);
@@ -517,6 +596,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
   }, [sessionUserId, accountEmail, form, loadProfile, onProfileUpdate]);
 
   const handleCommunityIdVerify = useCallback(async (otp) => {
+    if (communityIdVerifyFlightRef.current) return;
+    communityIdVerifyFlightRef.current = true;
     setCommunityIdError('');
     setSuccessMessage('');
     setCommunityIdBusy(true);
@@ -527,6 +608,12 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         otp,
       });
       const confirmedSeat = data.teamSeat || null;
+      if (data.communityId) {
+        rememberProfileOtpConfirmation(sessionUserId, {
+          communityId: data.communityId,
+          teamSeat: confirmedSeat,
+        });
+      }
       setCommunityIdRequest(null);
       if (data.communityId) form.setCommunityId(String(data.communityId));
       // Lock the field to pencil mode immediately — do not wait on profile reload.
@@ -543,8 +630,34 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
         setTeamSeat(confirmedSeat);
       }
     } catch (e) {
-      setCommunityIdError(e.message || 'That approval code did not match.');
+      const message = e.message || 'That approval code did not match.';
+      const pendingCode = String(form.communityId || '').trim();
+      if (/no pending community id request/i.test(message) && pendingCode) {
+        try {
+          const fresh = await fetchProfile({
+            userId: sessionUserId || undefined,
+            email: accountEmail || undefined,
+            cacheBust: true,
+          });
+          const saved = String(fresh?.data?.communityId || '').trim();
+          if (saved && saved.toLowerCase() === pendingCode.toLowerCase()) {
+            const seat = fresh.data.teamSeat || 'sponsor';
+            rememberProfileOtpConfirmation(sessionUserId, {
+              communityId: saved,
+              teamSeat: seat,
+            });
+            setCommunityIdRequest(null);
+            form.setCommunityId(saved);
+            setTeamSeat(seat);
+            setSuccessMessage(fresh.data.message || 'Community ID confirmed.');
+            setHasSaved(true);
+            return;
+          }
+        } catch { /* show the original error */ }
+      }
+      setCommunityIdError(message);
     } finally {
+      communityIdVerifyFlightRef.current = false;
       setCommunityIdBusy(false);
     }
   }, [sessionUserId, accountEmail, form, onProfileUpdate, loadProfile]);
@@ -554,6 +667,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     const adoptedUserId = result?.adopted && result?.userId ? result.userId : null;
     const nextPhone = String(result?.phone || '').trim();
     if (nextEmail) {
+      rememberProfileOtpConfirmation(adoptedUserId || sessionUserId, { email: nextEmail });
       form.setEmail(nextEmail);
       Session.setUserEmail(nextEmail);
     }
@@ -588,7 +702,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
       userId: adoptedUserId || undefined,
       email: adoptedUserId ? undefined : (nextEmail || undefined),
     });
-  }, [form, onProfileUpdate, loadProfile, accountEmail]);
+  }, [form, onProfileUpdate, loadProfile, accountEmail, sessionUserId]);
 
   const handlePhotoUploaded = useCallback(async (uploadedImage) => {
     // Optimistic preview — keep previous photo if refresh fails.
@@ -634,10 +748,8 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     }
   }, [profileImagePreview, accountEmail, user, form.name, onProfileUpdate]);
 
-  const saveDisabled = isSaving || !form.nameValid ||
-    !form.height || form.height.trim() === '' ||
-    !form.phone || form.phone.trim() === '' ||
-    !form.fatPercentValid;
+  const photosDirty = transformationPhotos.hasPendingUploads();
+  const saveDisabled = isSaving || (!form.isDirty && !photosDirty);
 
   const derivedWeightGoalMode = useMemo(
     () => deriveWeightGoalMode({ heightCm: form.height, currentWeightKg: latestWeight }),
@@ -648,6 +760,10 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     if (derivedWeightGoalMode) form.setWeightGoalMode(derivedWeightGoalMode);
   }, [derivedWeightGoalMode, form.setWeightGoalMode]);
 
+  useEffect(() => {
+    if (form.isDirty || transformationPhotos.hasPendingUploads()) setHasSaved(false);
+  }, [form.isDirty, transformationPhotos]);
+
   const displayWeightGoalMode = derivedWeightGoalMode || form.weightGoalMode || 'loss';
   const displayName = (() => {
     const phoneNumber = form.phone || user?.phoneNumber || user?.phone;
@@ -657,6 +773,21 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
     return valid || 'User';
   })();
   const role = ROLE_LABELS[userRole] || 'Customer';
+
+  const handleAppInvite = useCallback(async () => {
+    if (isInviting) return;
+    setIsInviting(true);
+    try {
+      const result = await shareAppInvite({ inviterName: displayName });
+      if (result.method === 'clipboard') {
+        setSuccessMessage('Invite message & link copied to clipboard!');
+      }
+    } catch (err) {
+      console.warn('[UserProfilePage] App invite share failed', err);
+    } finally {
+      setIsInviting(false);
+    }
+  }, [isInviting, displayName]);
 
   return (
     <div className="min-h-full bg-gray-50 pb-8">
@@ -677,10 +808,27 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
             <ArrowLeft className="w-5 h-5" />
           </TouchFeedbackButton>
           <h1 className={`min-w-0 flex-1 truncate text-lg font-bold ${isPremiumMember ? 'text-sky-950' : 'text-white'}`}>My Profile</h1>
+          <TouchFeedbackButton
+            type="button"
+            onClick={handleAppInvite}
+            disabled={isInviting}
+            data-testid="profile-invite-button"
+            className={`px-3 py-1.5 rounded-full flex items-center gap-1.5 text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-60 shrink-0 ${
+              isPremiumMember
+                ? 'bg-white hover:bg-sky-50 text-sky-950 border border-sky-300'
+                : 'bg-white/20 hover:bg-white/30 text-white border border-white/30 backdrop-blur-sm'
+            }`}
+            ariaLabel="Invite to Wellness Valley"
+            title="Invite to Wellness Valley"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span>{isInviting ? 'Sharing...' : 'Invite'}</span>
+          </TouchFeedbackButton>
           <GoPremiumButton
             userId={premiumUserId}
             isPremium={isPremiumMember}
             onPremiumCheck={refreshPremium}
+            allowedPages={allowedPages}
           />
         </div>
 
@@ -861,10 +1009,43 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
                   sponsorName={coachName}
                   sponsorEmail={sponsorEmail}
                 />
+                <CommunityPositionField
+                  userId={resolvedUserId}
+                  email={accountEmail}
+                  confirmedCode={form.eventLevel}
+                  pendingRequest={communityPositionRequest}
+                  otpEnabled={isFlagEnabled(COMMUNITY_POSITION_OTP_FLAG)}
+                  disabled={isSaving || isUploadingPhoto}
+                  onChange={(code) => {
+                    rememberConfirmedCommunityPosition(resolvedUserId, code);
+                    form.setEventLevel(code);
+                    setCommunityPositionRequest(null);
+                  }}
+                  onSettled={() => loadProfile({ cacheBust: true })}
+                />
                 <WorkingPhysicalCentreField
                   userId={resolvedUserId}
                   value={form.workingPhysicalCentreId}
                   onChange={form.setWorkingPhysicalCentreId}
+                />
+                <EventProfilePrefsFields
+                  eventTranslation={form.eventTranslation}
+                  setEventTranslation={form.setEventTranslation}
+                  eventYourCity={form.eventYourCity}
+                  setEventYourCity={form.setEventYourCity}
+                />
+                <ProfileIntroFields
+                  values={{
+                    professionalTitle: form.professionalTitle,
+                    instagram: form.instagram,
+                    youtube: form.youtube,
+                    linkedin: form.linkedin,
+                    herbalifeJoinedOn: form.herbalifeJoinedOn,
+                    aboutMe: form.aboutMe,
+                    qualification: form.qualification,
+                    languages: form.languages,
+                  }}
+                  onChange={form.setIntroField}
                 />
                 <IdealWeightCards
                   height={form.height}
@@ -987,6 +1168,7 @@ const UserProfilePage = ({ user, userRole = 'user', onBack, onSignOut, onProfile
             <h2 className="text-sm font-semibold text-gray-700">Account</h2>
           </div>
           <div className="divide-y divide-gray-100">
+            <AdminGbpListingButton userId={premiumUserId} userRole={userRole} />
             <TouchFeedbackButton
               onClick={() => {
                 setEmailKycMode('recover');

@@ -209,7 +209,7 @@ const IdealWeightCards = ({
         <Row wrapper="bg-green-50 border border-green-200 text-green-600"
           label="At Ideal Weight"
           labelIcon={<EmojiOrNative emoji="✅" className="w-4 h-4" nativeClassName="text-sm" />}
-          sub="You are within the healthy BMI range (19–23)"
+          sub="You are within the healthy Indian BMI range (19–23)"
           value={<EmojiOrNative emoji="🎯" className="w-5 h-5" nativeClassName="text-base" />}
           valueClass="text-green-500" />
       )}

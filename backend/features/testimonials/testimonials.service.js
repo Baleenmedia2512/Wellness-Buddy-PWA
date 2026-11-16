@@ -13,6 +13,8 @@ import {
   resolveHealthIssueOtpChannel,
   shouldHydratePhotosFromProfile,
   shouldSendPhotoApprovalOtp,
+  displayedPairNeedsAfterCopy,
+  hasRealBeforePhoto,
 } from './domain/photoCompleteness.rules.js';
 import {
   previousEmailCardPaths,
@@ -130,6 +132,7 @@ async function resolveVerificationRecipient(userId) {
   }
   return {
     userName: userInfo.userName ?? null,
+    phoneNumber: userInfo.phoneNumber ?? null,
     coachId: recipientId,
     coachInfo: coachInfo ?? null,
     source,
@@ -446,6 +449,7 @@ async function sendHealthIssueOtpEmail({
     scheduleDeferredCoachDelivery('health-issue photo OTP email', () => sendCoachEmail({
       coachEmail:      coachInfo.email,
       memberName:      userInfo.userName,
+      memberPhone:     userInfo.phoneNumber,
       goalType:        existing.goal_type,
       beforeWeight:    existing.before_weight_kg,
       afterWeight:     existing.after_weight_kg,
@@ -471,6 +475,7 @@ async function sendHealthIssueOtpEmail({
   scheduleDeferredCoachDelivery('health-issue video OTP email', () => sendVideoCoachEmail({
     coachEmail:        coachInfo.email,
     memberName:        userInfo.userName,
+    memberPhone:       userInfo.phoneNumber,
     otp,
     healthVideoPath:   existing.health_video_path   ?? null,
     businessVideoPath: existing.business_video_path ?? null,
@@ -533,6 +538,10 @@ async function enrichTestimonialForDisplay(testimonial, opts = {}) {
     videoStatus:            testimonial.video_status        ?? 'none',
     videoVerifiedAt:        testimonial.video_verified_at   ?? null,
     recoveredHealthIssues:  testimonial.recovered_health_issues ?? [],
+    websiteDisplayAgreed:   testimonial.website_display_agreed === true
+      || testimonial.website_display_agreed === 1,
+    websiteDisplayConsentAt: testimonial.website_display_consent_at ?? null,
+    websiteDisplayConsentRevokedAt: testimonial.website_display_consent_revoked_at ?? null,
     // OTP metadata for member UI (never expose hash).
     otpExpiresAt:           testimonial.otp_expires_at ?? null,
     otpExpired:             testimonial.otp_hash
@@ -548,6 +557,7 @@ async function enrichTestimonialForDisplay(testimonial, opts = {}) {
 async function sendCoachEmail({
   coachEmail,
   memberName,
+  memberPhone = null,
   goalType,
   beforeWeight,
   afterWeight,
@@ -563,6 +573,7 @@ async function sendCoachEmail({
 
   const emailParams = {
     memberName,
+    memberPhone,
     goalType,
     beforeWeight,
     afterWeight,
@@ -606,7 +617,7 @@ export async function submitTestimonial(rawBody) {
     await resolveVerificationRecipient(payload.userId),
     'User has no coach or co-coach assigned. Cannot submit testimonial.',
   );
-  const userInfo = { coachId: recipient.coachId, userName: recipient.userName };
+  const userInfo = { coachId: recipient.coachId, userName: recipient.userName, phoneNumber: recipient.phoneNumber };
 
   const ts = Date.now();
   const beforePath = storagePath(payload.userId, 'before', ts);
@@ -649,6 +660,8 @@ export async function submitTestimonial(rawBody) {
     otpExpiresAt:           otpExpiry,
     verifiedAt:             null,
     recoveredHealthIssues:  payload.recoveredHealthIssues ?? [],
+    // Checkbox intent only — consent_at is set after member email OTP.
+    websiteDisplayAgreed:   payload.websiteDisplayAgreed === true,
     ...(afterPath ? { afterImagePath: afterPath, afterWeightKg: payload.afterWeightKg } : {}),
   };
 
@@ -693,6 +706,7 @@ export async function submitTestimonial(rawBody) {
           coachEmail:    coachInfo.email,
           coachName:     coachInfo.name,
           memberName:    userInfo.userName,
+          memberPhone:   userInfo.phoneNumber,
           goalType:      payload.goalType,
           beforeWeight:  payload.beforeWeightKg,
           afterWeight:   payload.afterWeightKg,
@@ -748,6 +762,23 @@ export async function verifyOtp(rawBody) {
   const verifiedAt = nowUtc();
   await repo.updateTestimonial(testimonialId, { status: 'verified', verifiedAt, otpHash: null });
 
+  try {
+    const { bustPortfolioTeamMediaCache } = await import(
+      '../coach-portfolio/api/public-team-media.service.js'
+    );
+    bustPortfolioTeamMediaCache(row.coach_id);
+  } catch {
+    /* non-fatal — public site cache refresh */
+  }
+
+  try {
+    const { maybeAutoSendDisplayConsentOtp } = await import('./websiteDisplayConsent.service.js');
+    const latest = await repo.findById(testimonialId);
+    await maybeAutoSendDisplayConsentOtp(latest || { ...row, status: 'verified' });
+  } catch {
+    /* non-fatal — member display-consent OTP */
+  }
+
   return {
     httpStatus: 200,
     body: { success: true, message: 'Testimonial verified successfully.' },
@@ -765,7 +796,7 @@ export async function editTestimonial(rawBody) {
 
   const recipient = await resolveVerificationRecipient(payload.userId);
   const userInfo  = recipient
-    ? { coachId: recipient.coachId, userName: recipient.userName }
+    ? { coachId: recipient.coachId, userName: recipient.userName, phoneNumber: recipient.phoneNumber }
     : null;
   const coachInfo = recipient?.coachInfo ?? null;
 
@@ -934,6 +965,7 @@ export async function editTestimonial(rawBody) {
           coachEmail:    coachInfo.email,
           coachName:     coachInfo.name,
           memberName:    userInfo.userName,
+          memberPhone:   userInfo.phoneNumber,
           goalType:      updates.goalType    ?? existing.goal_type,
           beforeWeight:  updates.beforeWeightKg ?? existing.before_weight_kg,
           afterWeight:   afterWeightNow,
@@ -1218,7 +1250,15 @@ function sanitizeUser(user) {
 
 // ─── Video email helper ───────────────────────────────────────────────────────
 
-async function sendVideoCoachEmail({ coachEmail, memberName, otp, healthVideoPath, businessVideoPath, recoveredHealthIssues }) {
+async function sendVideoCoachEmail({
+  coachEmail,
+  memberName,
+  memberPhone = null,
+  otp,
+  healthVideoPath,
+  businessVideoPath,
+  recoveredHealthIssues,
+}) {
   // Generate 7-day signed URLs so coach can watch the videos directly from their email client
   const [healthVideoUrl, businessVideoUrl] = await Promise.all([
     repo.getEmailSignedUrl(healthVideoPath   ?? null),
@@ -1227,6 +1267,7 @@ async function sendVideoCoachEmail({ coachEmail, memberName, otp, healthVideoPat
 
   const emailParams = {
     memberName,
+    memberPhone,
     otp,
     healthVideoUrl,
     businessVideoUrl,
@@ -1250,7 +1291,7 @@ async function assertVideoUploadEligible(userId) {
     await resolveVerificationRecipient(userId),
     'User has no coach or co-coach assigned. Cannot submit video testimonial.',
   );
-  const userInfo = { coachId: recipient.coachId, userName: recipient.userName };
+  const userInfo = { coachId: recipient.coachId, userName: recipient.userName, phoneNumber: recipient.phoneNumber };
 
   let existing = await repo.findByUserId(userId);
   if (!existing) {
@@ -1439,6 +1480,7 @@ export async function submitVideo(rawBody) {
     scheduleDeferredCoachDelivery('video OTP email', () => sendVideoCoachEmail({
       coachEmail:        coachInfo.email,
       memberName:        userInfo.userName,
+      memberPhone:       userInfo.phoneNumber,
       otp,
       healthVideoPath:   uploads.healthVideoPath   ?? existing.health_video_path   ?? null,
       businessVideoPath: uploads.businessVideoPath ?? existing.business_video_path ?? null,
@@ -1486,6 +1528,25 @@ export async function verifyVideoOtp(rawBody) {
     videoVerifiedAt,
     videoOtpHash:    null,
   });
+
+  try {
+    const { bustPortfolioTeamMediaCache } = await import(
+      '../coach-portfolio/api/public-team-media.service.js'
+    );
+    bustPortfolioTeamMediaCache(row.coach_id);
+  } catch {
+    /* non-fatal — public site cache refresh */
+  }
+
+  try {
+    const { maybeAutoSendDisplayConsentOtp } = await import('./websiteDisplayConsent.service.js');
+    const latest = await repo.findById(testimonialId);
+    await maybeAutoSendDisplayConsentOtp(
+      latest || { ...row, video_status: 'verified' },
+    );
+  } catch {
+    /* non-fatal — member display-consent OTP */
+  }
 
   return {
     httpStatus: 200,
@@ -1573,6 +1634,7 @@ export async function getTeamTestimonialReport(rawQuery) {
 async function sendUnifiedCoachEmail({
   coachEmail,
   memberName,
+  memberPhone = null,
   otp,
   changedSlots,
   goalType,
@@ -1740,6 +1802,7 @@ async function sendUnifiedCoachEmail({
 
   const emailParams = {
     memberName,
+    memberPhone,
     otp,
     changedSlots,
     goalType,
@@ -1785,6 +1848,94 @@ async function sendUnifiedCoachEmail({
   });
 }
 
+async function bytesFromDisplayedImage(ref) {
+  const text = String(ref || '').trim();
+  if (/^data:image\//i.test(text)) {
+    return Buffer.from(text.replace(/^data:[^;]+;base64,/, ''), 'base64');
+  }
+  if (/^https?:\/\//i.test(text)) {
+    const response = await fetch(text);
+    if (!response.ok) return null;
+    return Buffer.from(await response.arrayBuffer());
+  }
+  return null;
+}
+
+async function storeDisplayedTransformationPhotos({
+  userId,
+  existing,
+  coachId,
+  beforeUrl,
+  afterUrl,
+}) {
+  const beforeBytes = await bytesFromDisplayedImage(beforeUrl);
+  if (!beforeBytes || beforeBytes.length < 32) return existing ?? null;
+  const ts = Date.now();
+  const beforePath = `${userId}/before_${ts}.jpg`;
+  await repo.uploadImage(beforeBytes.toString('base64'), beforePath);
+  const afterBytes = await bytesFromDisplayedImage(afterUrl);
+  const afterSource = afterBytes && afterBytes.length >= 32 ? afterBytes : beforeBytes;
+  const afterPath = `${userId}/after_${ts}.jpg`;
+  await repo.uploadImage(afterSource.toString('base64'), afterPath);
+  if (!existing) {
+    if (!coachId) return null;
+    return repo.insertTestimonial({
+      userId,
+      coachId,
+      beforeImagePath: beforePath,
+      afterImagePath: afterPath,
+      beforeWeightKg: 0,
+      afterWeightKg: 0,
+      goalType: 'loss',
+      durationText: '1 days',
+      status: 'incomplete',
+      otpHash: null,
+      otpExpiresAt: null,
+    });
+  }
+  await repo.updateTestimonial(existing.id, {
+    beforeImagePath: beforePath,
+    afterImagePath: afterPath,
+    status: existing.status === 'verified' ? existing.status : 'incomplete',
+  });
+  return repo.findByUserId(userId);
+}
+
+async function readBeforePhotoBytes(beforeRef) {
+  const ref = String(beforeRef || '').trim();
+  if (!ref) return null;
+  if (/^https?:\/\//i.test(ref) || /^data:image\//i.test(ref)) {
+    return bytesFromDisplayedImage(ref);
+  }
+  try {
+    return await repo.downloadBuffer(ref);
+  } catch (err) {
+    logger.warn('[testimonials.service] storage download for Before failed', {
+      message: err?.message || String(err),
+    });
+    return null;
+  }
+}
+
+async function copyBeforePhotoToAfter(existing, userId) {
+  if (!displayedPairNeedsAfterCopy(existing)) return existing;
+  const beforeRef = existing.before_image_path ?? existing.beforeImagePath;
+  const bytes = await readBeforePhotoBytes(beforeRef);
+  if (!bytes || bytes.length < 32) {
+    throw new Error('Could not read Before photo to create After for coach approval.');
+  }
+  const ts = Date.now();
+  const updates = { afterImagePath: `${userId}/after_${ts}.jpg` };
+  // If Before was stored as a raw URL, rewrite it to a real storage object too.
+  if (/^https?:\/\//i.test(String(beforeRef || '')) || /^data:image\//i.test(String(beforeRef || ''))) {
+    updates.beforeImagePath = `${userId}/before_${ts}.jpg`;
+    await repo.uploadImage(bytes.toString('base64'), updates.beforeImagePath);
+  }
+  await repo.uploadImage(bytes.toString('base64'), updates.afterImagePath);
+  await repo.updateTestimonial(existing.id, updates);
+  return repo.findByUserId(userId);
+}
+
 /**
  * Member submits multiple edited slots in one request; generates a single unified OTP.
  *
@@ -1803,7 +1954,7 @@ export async function submitAllEdits(rawBody) {
     await resolveVerificationRecipient(payload.userId),
     'User has no coach or co-coach assigned. Cannot submit for approval.',
   );
-  const userInfo = { coachId: recipient.coachId, userName: recipient.userName };
+  const userInfo = { coachId: recipient.coachId, userName: recipient.userName, phoneNumber: recipient.phoneNumber };
 
   const slots       = new Set(payload.dirtySlots);
   const hasPhotoDirty = slots.has('before') || slots.has('after')
@@ -1827,35 +1978,51 @@ export async function submitAllEdits(rawBody) {
     if (hydrated) existing = hydrated;
   }
 
+  if (
+    payload.submitForApproval
+    && !hasPhotoBytes
+    && (payload.displayedBeforeUrl || payload.displayedAfterUrl)
+  ) {
+    const stored = await storeDisplayedTransformationPhotos({
+      userId: payload.userId,
+      existing,
+      coachId: userInfo.coachId,
+      beforeUrl: payload.displayedBeforeUrl,
+      afterUrl: payload.displayedAfterUrl || payload.displayedBeforeUrl,
+    });
+    if (stored) existing = stored;
+  }
+
+  if (payload.submitForApproval && existing && displayedPairNeedsAfterCopy(existing)) {
+    const copied = await copyBeforePhotoToAfter(existing, payload.userId);
+    if (copied) existing = copied;
+  }
+
+  const photosReady = Boolean(existing && hasRealBeforePhoto(existing) && !displayedPairNeedsAfterCopy(existing));
+
   // Unified Transformation UI keeps photos as local drafts until Submit.
-  // First submit must create the row — never 404 when validation already passed.
-  if (!existing) {
-    if ((hasPhotoDirty || payload.submitForApproval) && !hasPhotoBytes) {
+  // A card that already shows Before and After is ready without a new upload.
+  if (!existing || !photosReady) {
+    if ((hasPhotoDirty || payload.submitForApproval) && !hasPhotoBytes && !photosReady) {
+      const hasBefore = Boolean(existing && hasRealBeforePhoto(existing));
       throw new ValidationError(
         422,
-        'Add before and after photos before submitting for coach approval.',
+        hasBefore
+          ? 'Add a different After photo (not the same as Before) before submitting for coach approval.'
+          : 'Add before and after photos before submitting for coach approval.',
       );
     }
+  }
+  if (!existing) {
     existing = await repo.insertVideoOnlyTestimonial({
-      userId:  payload.userId,
+      userId: payload.userId,
       coachId: userInfo.coachId,
     });
     logger.info('[testimonials.service] Created testimonial stub for first unified submit', {
       userId: payload.userId,
       testimonialId: existing.id,
       dirtySlots: payload.dirtySlots,
-      hasBeforeImage: Boolean(payload.beforeImageBase64),
-      hasAfterImage: Boolean(payload.afterImageBase64),
     });
-  } else if (
-    (hasPhotoDirty || payload.submitForApproval)
-    && shouldHydratePhotosFromProfile(existing)
-    && !hasPhotoBytes
-  ) {
-    throw new ValidationError(
-      422,
-      'Add before and after photos before submitting for coach approval.',
-    );
   }
   // When the issues slot is dirty we replace with the exact incoming list so removals are honoured.
   const mergedIssues = hasIssuesDirty
@@ -1936,7 +2103,7 @@ export async function submitAllEdits(rawBody) {
   });
 
   // OTP only when Before and After are two different stored files.
-  const photoNeedsOtp = (hasPhotoDirty || payload.submitForApproval)
+  let photoNeedsOtp = (hasPhotoDirty || payload.submitForApproval)
     && shouldSendPhotoApprovalOtp(existing, {
     beforePath: newBeforePath,
     afterPath: newAfterPath,
@@ -1944,6 +2111,24 @@ export async function submitAllEdits(rawBody) {
     afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
     status: existing.status,
   });
+
+  // Approval submit with Left-in-both / missing After: materialize a distinct After
+  // so coach OTP can start (weight/duration-only edits used to save with otpSent:false).
+  if (payload.submitForApproval && !photoNeedsOtp && hasRealBeforePhoto(existing)) {
+    if (displayedPairNeedsAfterCopy(existing)) {
+      const copied = await copyBeforePhotoToAfter(existing, payload.userId);
+      if (copied) existing = copied;
+    }
+    const retryBefore = photoUpdates.beforeImagePath ?? existing.before_image_path;
+    const retryAfter = photoUpdates.afterImagePath ?? existing.after_image_path;
+    photoNeedsOtp = shouldSendPhotoApprovalOtp(existing, {
+      beforePath: retryBefore,
+      afterPath: retryAfter,
+      beforeWeightKg: photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
+      afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
+      status: existing.status,
+    });
+  }
 
   // Health issues are optional — empty list is allowed on photo submit.
   const resolvedHealthIssues = mergedIssues;
@@ -1970,6 +2155,16 @@ export async function submitAllEdits(rawBody) {
   }
 
   if (!needsOtp) {
+    // Do not return otpSent:false for an approval tap — that showed a confusing
+    // "Coach approval did not start" error after a silent save.
+    if (payload.submitForApproval) {
+      throw new ValidationError(
+        422,
+        hasRealBeforePhoto(existing)
+          ? 'Add a different After photo (not the same as Before) before submitting for coach approval.'
+          : 'Add before and after photos before submitting for coach approval.',
+      );
+    }
     if (hasPhotoDirty && !isComplete) {
       photoUpdates.status = 'incomplete';
     }
@@ -2116,6 +2311,7 @@ export async function submitAllEdits(rawBody) {
       await sendUnifiedCoachEmail({
         coachEmail:             coachInfo.email,
         memberName:             userInfo.userName,
+        memberPhone:            userInfo.phoneNumber,
         otp,
         changedSlots:           emailChangedSlots,
         goalType:               photoUpdates.goalType    ?? existing.goal_type,
@@ -2216,6 +2412,14 @@ export async function verifyUnifiedOtp(rawBody) {
 
   await repo.clearBaselineSnapshot(userId);
 
+  try {
+    const { maybeAutoSendDisplayConsentOtp } = await import('./websiteDisplayConsent.service.js');
+    const latest = await repo.findByUserId(userId);
+    await maybeAutoSendDisplayConsentOtp(latest);
+  } catch {
+    /* non-fatal — member display-consent OTP */
+  }
+
   const verifiedItems = [
     photoPending   && 'photos',
     videoPending   && 'videos',
@@ -2261,7 +2465,7 @@ export async function resendUnifiedOtp(rawBody) {
   if (!recipient?.coachId) {
     throw new ValidationError(422, 'You do not have a sponsor or co-coach assigned yet.');
   }
-  const userInfo = { coachId: recipient.coachId, userName: recipient.userName };
+  const userInfo = { coachId: recipient.coachId, userName: recipient.userName, phoneNumber: recipient.phoneNumber };
   const coachInfo = recipient.coachInfo;
   if (!coachInfo?.email) {
     throw new ValidationError(422, 'Sponsor email is not available. Please contact support.');
@@ -2316,6 +2520,7 @@ export async function resendUnifiedOtp(rawBody) {
   await sendUnifiedCoachEmail({
     coachEmail: coachInfo.email,
     memberName: userInfo.userName,
+    memberPhone: userInfo.phoneNumber,
     otp,
     changedSlots: [],
     goalType: row.goal_type,

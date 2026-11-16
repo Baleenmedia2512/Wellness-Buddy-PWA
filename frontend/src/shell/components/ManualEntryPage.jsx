@@ -110,7 +110,7 @@ const CATEGORIES = [
     isImgIcon: true,
     Icon: Dumbbell,
   },
-  { id: MANUAL_LOG_CATEGORY.GOOD_HABIT, Icon: Star, label: 'Good Habit' },
+  { id: MANUAL_LOG_CATEGORY.GOOD_HABIT, Icon: Star, label: 'Task by Coach' },
 ];
 
 /** Home hero banner greens — keep classify screen on-brand with Take Photo card. */
@@ -1142,7 +1142,7 @@ export default function ManualEntryPage({
       clientTimestamp: originalCapturedAt || null,
     });
     refreshAfterPersist('manual-good-habit-persisted');
-    onToast?.('Good Habit saved to Diary');
+    onToast?.('Task by Coach saved to Diary');
     exit({
       activityCaption: buildDiaryShareSuffix('good-habit', { habitType }),
       shareImage: shareImage || habitImage || imageBase64,

@@ -12,7 +12,15 @@ export const premiumStatusStore = createPremiumStatusStore({
     const justPaid = await confirmPendingPremiumOrder(userId);
     if (justPaid) {
       markPremiumSuccessPending(userId);
-      return true;
+      const membership = await fetchPremiumStatus(userId);
+      if (membership) return membership;
+      return {
+        premium: true,
+        daysLeft: null,
+        expiresAt: null,
+        expiresAtDisplay: null,
+        showExpiryWarning: false,
+      };
     }
     return fetchPremiumStatus(userId);
   },

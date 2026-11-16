@@ -18,6 +18,7 @@ import {
   sortByFoodNameMatch,
 } from '../nutrition-knowledge/index.js';
 import logger from '../../shared/lib/logger.js';
+import { assertDiaryPostEditableOrDeletable } from '../../shared/lib/diaryPostLock.rules.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { assertViewerCanAccessMember } from '../../utils/reportingHierarchyService.js';
@@ -262,6 +263,18 @@ export async function updateAnalysis(input) {
     totalVitaminB1, totalVitaminB2, totalVitaminB3, totalVitaminB6, totalVitaminB9, totalVitaminB12,
     totalCalcium, totalIron, totalMagnesium, totalPotassium, totalZinc, totalPhosphorus,
   } = input;
+
+  const existingMeal = await repo.fetchMealById(userId, id);
+  if (!existingMeal) {
+    return {
+      httpStatus: 404,
+      body: { success: false, message: 'Meal not found or unauthorized' },
+    };
+  }
+  const lockCheck = await assertDiaryPostEditableOrDeletable(existingMeal.CreatedAt, userId, 'edit');
+  if (!lockCheck.allowed) {
+    return lockCheck.errorResponse;
+  }
 
   // Resolve GI: request body → AnalysisData JSON → existing DB column (never wipe on portion edit)
   let { resolvedGi, source } = resolveGlycemicIndexForUpdate({

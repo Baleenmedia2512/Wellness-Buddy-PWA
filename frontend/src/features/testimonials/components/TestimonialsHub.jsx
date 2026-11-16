@@ -48,6 +48,8 @@ import {
   sanitizeWeightTyping,
 } from '../services/testimonialFormUtils.js';
 import DiseaseMultiSelect from './DiseaseMultiSelect.jsx';
+import WebsiteDisplayConsentCard from './WebsiteDisplayConsentCard.jsx';
+import { isFlagEnabled } from '../../../config/featureFlags.js';
 import OtpInline from './OtpInline.jsx';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -1246,6 +1248,24 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
       
       )}
 
+      {/* ── Upline website consent — checkbox only, below Result Videos ───── */}
+      {!isFocused
+        && isFlagEnabled('ff.testimonial-upline-display-consent')
+        && existing
+        && (existing.status === 'verified' || existingVideo?.videoStatus === 'verified' || existing?.videoStatus === 'verified') ? (
+        <WebsiteDisplayConsentCard
+          userId={userId}
+          testimonial={{
+            ...existing,
+            videoStatus: existing?.videoStatus || existingVideo?.videoStatus,
+          }}
+          onChanged={() => {
+            reload?.();
+            reloadVideo?.();
+          }}
+        />
+      ) : null}
+
       {/* ── How it works (first-time hint) ─────────────────────────────────── */}
       {!isFocused && !existing && !existingVideo && (
         <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-4 space-y-2">
@@ -1257,6 +1277,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
             <li>Ask your sponsor for the OTP and enter it here to get officially verified.</li>
             <li>Optionally upload <strong>Health</strong> or <strong>Business</strong> result videos — same OTP flow.</li>
             <li>You can upload any item independently, in any order, at any time.</li>
+            <li>After verify, agree + email OTP to show on all Upline coach websites.</li>
           </ol>
         </div>
       )}

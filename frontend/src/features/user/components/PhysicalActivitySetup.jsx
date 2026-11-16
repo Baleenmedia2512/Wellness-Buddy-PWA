@@ -11,7 +11,7 @@ import { PHYSICAL_ACTIVITY_OPTIONS } from '../../../shared/utils/tdeeCalculation
 import { saveProfile } from '../services/profileService';
 import * as Session from '../../../shared/services/sessionStorage.js';
 
-export default function PhysicalActivitySetup({ user, onComplete }) {
+export default function PhysicalActivitySetup({ user, onComplete, preferUserId = false }) {
   const [selected, setSelected] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -33,8 +33,11 @@ export default function PhysicalActivitySetup({ user, onComplete }) {
       // saveProfile clears the shared getProfile cache so the onboarding gate
       // cannot re-read a stale profile without physicalActivityLevel.
       const payload = { physicalActivityLevel: selected };
-      if (email) payload.email = email;
-      if (userId) payload.userId = userId;
+      if (preferUserId && userId) payload.userId = userId;
+      else {
+        if (email) payload.email = email;
+        if (userId) payload.userId = userId;
+      }
       const data = await saveProfile(payload);
       await onComplete?.({
         physicalActivityLevel: selected,

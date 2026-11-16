@@ -56,6 +56,7 @@ import {
   IANA_IST,
   assertNotFutureDateYmd,
   normalizeStoredTimestampToUtcIso,
+  normalizeActivityCreatedAt,
   normalizeFoodCreatedAt,
   resolveFoodTimestamp,
   timestampToCalendarYmd,
@@ -703,12 +704,21 @@ const IST_WALL_CLOCK_KINDS = new Set([
   'good-habit',
 ]);
 
+/** Weight and education clocks stay IST for every hour, including 3:00–5:29 AM. */
+const ACTIVITY_WALL_CLOCK_KINDS = new Set([
+  'weight',
+  'education',
+]);
+
 /**
  * @param {string} kind
  * @param {string|Date|null|undefined} raw
  * @returns {string} UTC ISO
  */
 function diaryCapturedAt(kind, raw) {
+  if (ACTIVITY_WALL_CLOCK_KINDS.has(kind)) {
+    return normalizeActivityCreatedAt(raw);
+  }
   if (IST_WALL_CLOCK_KINDS.has(kind)) {
     return normalizeFoodCreatedAt(raw);
   }

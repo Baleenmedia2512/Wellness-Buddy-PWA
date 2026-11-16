@@ -32,7 +32,7 @@ export async function saveGoodHabit(payload) {
   });
   const body = await res.json().catch(() => null);
   if (!res.ok || body?.ok === false) {
-    throw new Error(body?.error?.message || body?.message || "Couldn't save Good Habit");
+    throw new Error(body?.error?.message || body?.message || "Couldn't save Task by Coach");
   }
   return body;
 }
@@ -62,7 +62,7 @@ export async function fetchGoodHabitImages({ userId, id }) {
   );
   const body = await res.json().catch(() => null);
   if (!res.ok || !body?.success) {
-    throw new Error(body?.message || "Couldn't load Good Habit photos");
+    throw new Error(body?.message || "Couldn't load Task by Coach photos");
   }
   return {
     imageUrl: body.imageUrl || body.r2Url || null,

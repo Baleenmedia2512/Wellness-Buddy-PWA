@@ -27,9 +27,10 @@ export function cashfreeOrderStatus(order) {
 
 /**
  * True only when Cashfree says PAID, the order belongs to this member,
- * and at least the current Premium price was paid.
+ * and the paid amount is an allowed Premium total (level + GST), or at least
+ * a legacy fixed amount when `amount` is passed without `allowedAmounts`.
  * @param {unknown} order Cashfree order body
- * @param {{ userId: number, amount: number }} expected
+ * @param {{ userId: number, amount?: number, allowedAmounts?: number[] }} expected
  * @returns {boolean}
  */
 export function isPremiumOrderPaid(order, expected) {
@@ -38,7 +39,15 @@ export function isPremiumOrderPaid(order, expected) {
   if (parsePremiumOrderUserId(order.order_id) !== expected.userId) return false;
   if (String(order.customer_details?.customer_id || '') !== `user_${expected.userId}`) return false;
   const paidPaise = Math.round(Number(order.order_amount) * 100);
+  if (!Number.isFinite(paidPaise)) return false;
+
+  if (Array.isArray(expected.allowedAmounts) && expected.allowedAmounts.length > 0) {
+    return expected.allowedAmounts.some(
+      (total) => Math.round(Number(total) * 100) === paidPaise,
+    );
+  }
+
   const neededPaise = Math.round(Number(expected.amount) * 100);
-  if (!Number.isFinite(paidPaise) || !Number.isFinite(neededPaise)) return false;
+  if (!Number.isFinite(neededPaise)) return false;
   return paidPaise >= neededPaise;
 }

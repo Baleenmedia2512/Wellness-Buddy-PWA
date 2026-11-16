@@ -10,8 +10,14 @@ import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
 import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js';
+import TeamMemberProfileModal from '../../../shared/components/TeamMemberProfileModal';
 import LeaderboardAvatar from '../../leaderboard/components/LeaderboardAvatar.js';
+import LeaderboardAvatarViewer from '../../leaderboard/components/LeaderboardAvatarViewer.js';
 import LeaderboardRankBadge from '../../leaderboard/components/LeaderboardRankBadge.js';
+import {
+  buildUserAvatarUrl,
+  getAvatarDisplayVersion,
+} from '../../user/services/avatarDisplayVersion';
 import { sortLeaderboardByRankAsc } from '../../leaderboard/utils/leaderboardOrder.js';
 import { LEADERBOARD_CONFIG } from '../../../config/leaderboardConfig.js';
 import { useRaceLeaderboardRealtime } from '../../leaderboard/hooks/useRaceLeaderboardRealtime.js';
@@ -63,6 +69,8 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
   const [leaderboardData, setLeaderboardData] = useState(() => readWeightLBCache(userId) ?? []);
   const [isVisible, setIsVisible] = useState(() => (readWeightLBCache(userId)?.length ?? 0) > 0);
   const [hasEntered, setHasEntered] = useState(() => (readWeightLBCache(userId)?.length ?? 0) > 0);
+  const [expandedAvatar, setExpandedAvatar] = useState(null);
+  const [profileMember, setProfileMember] = useState(null);
   const isTile = variant === 'tile';
   const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
     enabled: !isTile && isVisible && leaderboardData.length > 0,
@@ -201,6 +209,69 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
     return null;
   }
 
+  const openProfile = (user) => {
+    const memberEmail = String(user?.email || user?.Email || '').trim();
+    const memberUserId = user?.userId ?? user?.UserId ?? user?.userID ?? user?.id;
+    if (memberEmail || memberUserId != null) {
+      setProfileMember({ email: memberEmail || null, userId: memberUserId ?? null });
+    }
+  };
+
+  const openExpandedAvatar = (user) => {
+    const memberUserId = user?.userId ?? user?.UserId ?? user?.userID ?? user?.id;
+    setExpandedAvatar({
+      src: buildUserAvatarUrl(apiBaseUrl, memberUserId, getAvatarDisplayVersion()),
+      name: user?.userName || user?.UserName || 'User',
+      email: user?.email || user?.Email,
+      userId: memberUserId,
+    });
+  };
+
+  const renderTappableAvatar = (user) => (
+    <button
+      type="button"
+      className="flex-shrink-0 rounded-full p-0 m-0 border-0 bg-transparent cursor-pointer appearance-none leading-none"
+      onClick={(event) => {
+        event.stopPropagation();
+        openExpandedAvatar(user);
+      }}
+      aria-label={`View ${user.userName || 'user'}'s photo`}
+    >
+      <LeaderboardAvatar
+        apiBaseUrl={apiBaseUrl}
+        userId={user.userId ?? user.UserId ?? user.userID ?? user.id}
+        email={user.email || user.Email}
+        userName={user.userName || user.UserName}
+        profileImage={user.profileImage}
+        interactive={false}
+      />
+    </button>
+  );
+
+  const avatarViewer = (
+    <LeaderboardAvatarViewer
+      isOpen={Boolean(expandedAvatar)}
+      src={expandedAvatar?.src}
+      name={expandedAvatar?.name}
+      onClose={() => setExpandedAvatar(null)}
+      onViewProfile={() => {
+        const member = expandedAvatar;
+        setExpandedAvatar(null);
+        openProfile(member);
+      }}
+    />
+  );
+
+  const profileViewer = (
+    <TeamMemberProfileModal
+      isOpen={Boolean(profileMember)}
+      onClose={() => setProfileMember(null)}
+      memberEmail={profileMember?.email}
+      memberUserId={profileMember?.userId}
+      apiBaseUrl={apiBaseUrl}
+    />
+  );
+
   // Render leaderboard card (strip row)
   const renderLeaderboardCard = (user, key) => (
     <div
@@ -214,21 +285,23 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
 
       {/* Profile Avatar */}
       <div className="flex-shrink-0">
-        <LeaderboardAvatar
-          apiBaseUrl={apiBaseUrl}
-          userId={user.userId}
-          email={user.email}
-          userName={user.userName}
-          profileImage={user.profileImage}
-          isPremium={user.isPremium === true}
-        />
+        {renderTappableAvatar(user)}
       </div>
 
       {/* User Details */}
       <div className="flex flex-col justify-center flex-shrink-0 min-w-0 max-w-[120px] sm:max-w-[150px] md:max-w-[180px]">
-        <span className="font-bold text-gray-800 text-xs sm:text-sm md:text-base truncate leading-tight">
+        <button
+          type="button"
+          className="truncate text-left font-bold text-gray-800 text-xs sm:text-sm md:text-base leading-tight hover:underline focus:outline-none focus-visible:underline"
+          onClick={(event) => {
+            event.stopPropagation();
+            openProfile(user);
+          }}
+          disabled={!user.email && user.userId == null}
+          aria-label={`View ${user.userName || 'user'}'s profile`}
+        >
           {user.userName}
-        </span>
+        </button>
         {(() => {
           const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
           if (!sponsorName && !idealCoachName) return null;
@@ -268,16 +341,17 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
           rank={user.rank}
           colorClass={getRankColor(user.rank)}
         />
-        <LeaderboardAvatar
-          apiBaseUrl={apiBaseUrl}
-          userId={user.userId}
-          email={user.email}
-          userName={user.userName}
-          profileImage={user.profileImage}
-          isPremium={user.isPremium === true}
-        />
+        {renderTappableAvatar(user)}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-gray-800">{user.userName}</p>
+          <button
+            type="button"
+            className="block max-w-full truncate text-left text-sm font-semibold text-gray-800 hover:underline focus:outline-none focus-visible:underline"
+            onClick={() => openProfile(user)}
+            disabled={!user.email && user.userId == null}
+            aria-label={`View ${user.userName || 'user'}'s profile`}
+          >
+            {user.userName}
+          </button>
           {(() => {
             const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
             if (!sponsorName && !idealCoachName) return null;
@@ -317,6 +391,8 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
         <ul className="divide-y divide-emerald-50">
           {leaderboardData.map(renderTileRow)}
         </ul>
+        {avatarViewer}
+        {profileViewer}
       </section>
     );
   }
@@ -359,6 +435,8 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
           </div>
         </div>
       </div>
+      {avatarViewer}
+      {profileViewer}
     </div>
   );
 });

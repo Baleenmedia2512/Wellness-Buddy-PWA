@@ -159,6 +159,20 @@ export async function summaryLogs(userId) {
   return data || [];
 }
 
+export async function findLogById(logId, userId) {
+  const db = getMysqlClient();
+  let q = db
+    .from('education_logs_table')
+    .select('"Id", "UserId", "CreatedAt", "IsDeleted"')
+    .eq('"Id"', logId);
+  if (userId) {
+    q = q.eq('"UserId"', userId);
+  }
+  const { data, error } = await q.limit(1);
+  if (error) throw error;
+  return Array.isArray(data) && data[0] ? data[0] : null;
+}
+
 export async function softDeleteLog(logId, userId) {
   const db = getMysqlClient();
   const currentTime = nowUtc();

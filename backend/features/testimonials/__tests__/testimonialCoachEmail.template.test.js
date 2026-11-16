@@ -227,4 +227,34 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     // Must not fall back to stats-only email when a share card exists.
     assert.doesNotMatch(html, /has gained|has lost/i);
   });
+
+  it('includes WhatsApp share button in coach email', () => {
+    const htmlWithoutPhone = buildTestimonialCoachEmailHtml({
+      memberName: 'Alex',
+      otp: '7788',
+      goalType: 'loss',
+      beforeWeight: 80,
+      afterWeight: 70,
+      durationText: '3 months',
+      beforeUrl: 'https://example.com/b.jpg',
+      afterUrl: 'https://example.com/a.jpg',
+    });
+    assert.match(htmlWithoutPhone, /Share code on WhatsApp/);
+    assert.match(htmlWithoutPhone, /api\.whatsapp\.com\/send\?text=/);
+    assert.match(htmlWithoutPhone, /7788/);
+
+    const htmlWithPhone = buildTestimonialCoachEmailHtml({
+      memberName: 'Alex',
+      memberPhone: '9840095500',
+      otp: '7788',
+      goalType: 'loss',
+      beforeWeight: 80,
+      afterWeight: 70,
+      durationText: '3 months',
+      beforeUrl: 'https://example.com/b.jpg',
+      afterUrl: 'https://example.com/a.jpg',
+    });
+    assert.match(htmlWithPhone, /Share code on WhatsApp/);
+    assert.match(htmlWithPhone, /https:\/\/wa\.me\/919840095500\?text=/);
+  });
 });

@@ -3,7 +3,11 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createPremiumStatusStore, PREMIUM_STATUS_TTL_MS } from './premiumStatusStore.js';
+import {
+  createPremiumStatusStore,
+  PREMIUM_STATUS_TTL_MS,
+  normalizePremiumMembershipStatus,
+} from './premiumStatusStore.js';
 
 function makeStore(answers, extra = {}) {
   let clock = 1_000;
@@ -26,12 +30,33 @@ function makeStore(answers, extra = {}) {
 }
 
 describe('premium status store', () => {
+  it('normalizes membership payloads', () => {
+    assert.deepEqual(
+      normalizePremiumMembershipStatus({
+        premium: true,
+        daysLeft: 2,
+        expiresAt: '2026-12-13',
+        expiresAtDisplay: '13 Dec 2026, 4:56 AM',
+        showExpiryWarning: true,
+      }),
+      {
+        premium: true,
+        daysLeft: 2,
+        expiresAt: '2026-12-13',
+        expiresAtDisplay: '13 Dec 2026, 4:56 AM',
+        showExpiryWarning: true,
+      },
+    );
+    assert.equal(normalizePremiumMembershipStatus(true).premium, true);
+  });
+
   it('asks the server once and then reuses the answer', async () => {
-    const t = makeStore([true]);
+    const t = makeStore([{ premium: true, daysLeft: 10, expiresAt: '2026-12-13', showExpiryWarning: false }]);
     assert.equal(await t.store.load(42), true);
     assert.equal(await t.store.load(42), true);
     assert.equal(t.calls(), 1);
     assert.equal(t.store.get(42), true);
+    assert.equal(t.store.getStatus(42).daysLeft, 10);
   });
 
   it('shares one request between screens that ask at the same time', async () => {
@@ -51,12 +76,17 @@ describe('premium status store', () => {
   });
 
   it('force asks again right away and tells listeners', async () => {
-    const t = makeStore([false, true]);
+    const t = makeStore([
+      { premium: false, daysLeft: null, expiresAt: null, showExpiryWarning: false },
+      { premium: true, daysLeft: 2, expiresAt: '2026-12-13', showExpiryWarning: true },
+    ]);
     const seen = [];
     t.store.subscribe(42, (value) => seen.push(value));
     await t.store.load(42);
     await t.store.load(42, { force: true });
-    assert.deepEqual(seen, [false, true]);
+    assert.equal(seen[0].premium, false);
+    assert.equal(seen[1].premium, true);
+    assert.equal(seen[1].showExpiryWarning, true);
   });
 
   it('checks again while a started payment is waiting to be confirmed', async () => {

@@ -137,6 +137,19 @@ describe('logging parameters', () => {
     assert.equal(r.earnedPoints, 0);
   });
 
+  it('weight post — 3:00–5:29 AM stays inside 3:00–6:30 and is not shifted by 5h30', () => {
+    const window = { start: '03:00:00', end: '06:30:00' };
+    for (const createdAt of ['2026-11-02T05:05:00.000Z', '2026-11-02T05:21:00.000Z', '2026-11-02T05:27:00.000Z', '2026-11-02T03:10:00.000Z']) {
+      const r = calculateWeightPost({
+        maxPoints: 100,
+        weightRecords: [{ CreatedAt: createdAt, Weight: 70 }],
+        window,
+      });
+      assert.equal(r.earnedPoints, 100, createdAt);
+      assert.equal(r.calculationReason, 'Done within allowed time');
+    }
+  });
+
   it('breakfast post — full when logged in breakfast window', () => {
     const r = calculateBreakfastPost({
       maxPoints: 100,

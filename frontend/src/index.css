@@ -718,10 +718,14 @@ html.premium-theme .focus\:ring-green-500:focus { --tw-ring-color: #38bdf8; }
 html.premium-theme .from-green-400,
 html.premium-theme .from-green-500,
 html.premium-theme .from-green-600,
+html.premium-theme .from-green-700,
 html.premium-theme .from-emerald-400,
 html.premium-theme .from-emerald-500,
+html.premium-theme .from-emerald-600,
+html.premium-theme .from-emerald-700,
 html.premium-theme .from-teal-500,
-html.premium-theme .from-teal-600 {
+html.premium-theme .from-teal-600,
+html.premium-theme .from-teal-700 {
   --tw-gradient-from: #7dd3fc var(--tw-gradient-from-position);
   --tw-gradient-to: rgb(125 211 252 / 0) var(--tw-gradient-to-position);
   --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
@@ -731,6 +735,7 @@ html.premium-theme .to-green-600,
 html.premium-theme .to-green-700,
 html.premium-theme .to-emerald-500,
 html.premium-theme .to-emerald-600,
+html.premium-theme .to-emerald-700,
 html.premium-theme .to-teal-600,
 html.premium-theme .to-teal-700 {
   --tw-gradient-to: #0284c7 var(--tw-gradient-to-position);

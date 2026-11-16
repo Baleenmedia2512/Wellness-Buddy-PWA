@@ -6,6 +6,7 @@ export const ADMIN_CONFIG_TABS = {
   ACTIVITY_TIME: 'activity-time',
   AI_CONFIG: 'ai-config',
   PAGE_ACCESS: 'page-access',
+  FIELD_COLLECTION: 'field-collection',
 };
 
 export const ADMIN_CONFIG_TAB_LABELS = {
@@ -13,6 +14,7 @@ export const ADMIN_CONFIG_TAB_LABELS = {
   [ADMIN_CONFIG_TABS.ACTIVITY_TIME]: 'Activity Time',
   [ADMIN_CONFIG_TABS.AI_CONFIG]: 'AI Config',
   [ADMIN_CONFIG_TABS.PAGE_ACCESS]: 'Page Access',
+  [ADMIN_CONFIG_TABS.FIELD_COLLECTION]: 'Field Collection',
 };
 
 /**
@@ -25,6 +27,7 @@ export function resolveAdminConfigTab(
     wellnessScoreEnabled = true,
     aiCreditsEnabled = true,
     navPageAccessEnabled = true,
+    fieldCollectionEnabled = true,
   } = {},
 ) {
   if (initialTab === ADMIN_CONFIG_TABS.WELLNESS_SCORE && wellnessScoreEnabled) {
@@ -38,6 +41,12 @@ export function resolveAdminConfigTab(
   }
   if (initialTab === ADMIN_CONFIG_TABS.ACTIVITY_TIME) {
     return ADMIN_CONFIG_TABS.ACTIVITY_TIME;
+  }
+  if (
+    initialTab === ADMIN_CONFIG_TABS.FIELD_COLLECTION
+    && fieldCollectionEnabled
+  ) {
+    return ADMIN_CONFIG_TABS.FIELD_COLLECTION;
   }
   if (wellnessScoreEnabled) return ADMIN_CONFIG_TABS.WELLNESS_SCORE;
   if (aiCreditsEnabled) return ADMIN_CONFIG_TABS.AI_CONFIG;

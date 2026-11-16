@@ -44,9 +44,22 @@ async function loadProfileLeftPhoto(userId) {
 }
 
 async function persistLeftAsBeforePath(userId, leftUrl) {
+  const beforePath = storagePath(userId, 'before', Date.now());
   if (DATA_IMAGE_RE.test(leftUrl)) {
-    const beforePath = storagePath(userId, 'before', Date.now());
     await repo.uploadImage(leftUrl, beforePath);
+    return beforePath;
+  }
+  // https/R2 Left must become a storage path — raw URLs break before→after copy.
+  if (/^https?:\/\//i.test(String(leftUrl || '').trim())) {
+    const response = await fetch(String(leftUrl).trim());
+    if (!response.ok) {
+      throw new Error('Could not read Profile Left photo for Transformation Before.');
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length < 32) {
+      throw new Error('Profile Left photo is empty.');
+    }
+    await repo.uploadImage(bytes.toString('base64'), beforePath);
     return beforePath;
   }
   return leftUrl;

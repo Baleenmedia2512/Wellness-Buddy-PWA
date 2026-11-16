@@ -9,6 +9,7 @@ import { isFlagEnabled } from "../../config/featureFlags";
 import { canAccessReportsModule } from "../../features/reports/domain/reportsAccess.rules.js";
 import { hasValidProfileName } from "../../features/user/domain/profileCompleteness";
 import { PremiumAvatarRing, PremiumCrownMark } from "../../features/payments/components/PremiumBadge";
+import PremiumExpiryBanner from "../../features/payments/components/PremiumExpiryBanner";
 import usePremiumStatus from "../../features/payments/hooks/usePremiumStatus";
 import * as Session from "../services/sessionStorage";
 
@@ -18,12 +19,17 @@ const Header = ({
   onSignOut,
   onShowBackgroundHistory,
   onShowHome,
+  onShowEvents,
   onShowWellnessEnrollment,
   onShowWellnessCounselling,
   onShowNutritionCentersMap,
   onShowActivityReport,
   onShowTestimonials,
   onShowBroadcast,
+  onShowCreateEvent,
+  onShowPaidFeatures,
+  onShowMapBusiness,
+  onShowEventCheckIn,
   onShowReports,
   onShowWellnessScoreSetup,
   wellnessScoreSetupEnabled = false,
@@ -45,7 +51,13 @@ const Header = ({
 
   // Premium members get a light blue header. Tab-only bars use the same check.
   const premiumUserId = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
-  const { premium: isPremiumMember } = usePremiumStatus(premiumUserId);
+  const {
+    premium: isPremiumMember,
+    daysLeft: premiumDaysLeft,
+    expiresAtDisplay: premiumExpiresAtDisplay,
+    showExpiryWarning,
+    refresh: refreshPremium,
+  } = usePremiumStatus(premiumUserId);
 
   // Reports: common module for every signed-in user when the flag is on.
   const reportsEnabled = isFlagEnabled('ff.reports-module')
@@ -167,6 +179,7 @@ const Header = ({
         <AppNavTabs
           activePage={activePage}
           onShowHome={onShowHome}
+          onShowEvents={onShowEvents}
           onShowBackgroundHistory={onShowBackgroundHistory}
           onShowActivityReport={onShowActivityReport}
           onShowWellnessEnrollment={onShowWellnessEnrollment}
@@ -174,6 +187,10 @@ const Header = ({
           onShowNutritionCentersMap={onShowNutritionCentersMap}
           onShowTestimonials={onShowTestimonials}
           onShowBroadcast={onShowBroadcast}
+          onShowCreateEvent={onShowCreateEvent}
+          onShowPaidFeatures={onShowPaidFeatures}
+          onShowMapBusiness={onShowMapBusiness}
+          onShowEventCheckIn={onShowEventCheckIn}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}
           allowedPages={allowedPages}
@@ -242,11 +259,22 @@ const Header = ({
         </div>
       </div>
 
+      {activePage === 'home' && showExpiryWarning ? (
+        <PremiumExpiryBanner
+          daysLeft={premiumDaysLeft}
+          expiresAtDisplay={premiumExpiresAtDisplay}
+          userId={premiumUserId}
+          onPremiumCheck={refreshPremium}
+          allowedPages={allowedPages}
+        />
+      ) : null}
+
       {/* ── Row 2: App top navigation bar — always 6 tabs, always uniform ── */}
       <nav aria-label="App navigation" className="border-t border-green-100 bg-white safe-left safe-right">
         <AppNavTabs
           activePage={activePage}
           onShowHome={onShowHome}
+          onShowEvents={onShowEvents}
           onShowBackgroundHistory={onShowBackgroundHistory}
           onShowActivityReport={onShowActivityReport}
           onShowWellnessEnrollment={onShowWellnessEnrollment}
@@ -254,6 +282,10 @@ const Header = ({
           onShowNutritionCentersMap={onShowNutritionCentersMap}
           onShowTestimonials={onShowTestimonials}
           onShowBroadcast={onShowBroadcast}
+          onShowCreateEvent={onShowCreateEvent}
+          onShowPaidFeatures={onShowPaidFeatures}
+          onShowMapBusiness={onShowMapBusiness}
+          onShowEventCheckIn={onShowEventCheckIn}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}
           allowedPages={allowedPages}

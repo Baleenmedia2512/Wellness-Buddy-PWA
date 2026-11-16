@@ -60,6 +60,27 @@ describe('report trial window', () => {
       'none',
     );
   });
+
+  it('after Premium expires never offers free trial again', () => {
+    assert.deepEqual(
+      resolveReportAccess({
+        premium: false,
+        everPaid: true,
+        startYmd: null,
+        todayYmd: '2026-11-13',
+      }),
+      { access: 'ended', daysLeft: 0 },
+    );
+    assert.equal(
+      resolveReportAccess({
+        premium: false,
+        everPaid: true,
+        startYmd: '2026-11-01',
+        todayYmd: '2026-11-13',
+      }).access,
+      'ended',
+    );
+  });
 });
 
 describe('report detail version gate', () => {

@@ -34,7 +34,7 @@ features/<domain>/
 - `domain/` and `hooks/` are optional and frequently absent — add them when logic warrants.
 - Always export the public surface via `index.js`; import features through their barrel.
 
-Features: activity, auth, background-analysis, body-parameters-card, captures, counselling, diary, education, food-corrections, leaderboard, misc, nutrition, nutrition-centers, reports, team, testimonials, user, water, weight, weight-progress-tips, wellness-score-sheet. (There are no longer standalone `admin`, `screen`, `tasks`, or `token` feature folders.)
+Features: activity, auth, background-analysis, body-parameters-card, captures, counselling, diary, education, events, food-corrections, leaderboard, misc, nutrition, nutrition-centers, reports, team, testimonials, user, water, weight, weight-progress-tips, wellness-score-sheet. (There are no longer standalone `admin`, `screen`, `tasks`, or `token` feature folders.)
 
 ### Composition layer (`frontend/src/shell/`)
 `shell/` is the in-app **composition root** — the only layer allowed to import from multiple `features/*` slices to wire them into one surface (`shared/` is forbidden from importing features). Introduced by ADR-0001/ADR-0003. Current resident: `components/Dashboard.js` (mounts Nutrition / Weight / Education / Diary dashboards). New cross-feature surfaces go here, **not** into `shared/`. See [shell/README.md](src/shell/README.md).

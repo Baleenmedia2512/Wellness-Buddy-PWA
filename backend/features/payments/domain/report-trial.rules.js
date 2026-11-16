@@ -69,11 +69,25 @@ export function reportTrialWindow(startYmd, todayYmd) {
 }
 
 /**
- * @param {{ premium?: boolean, startYmd?: string|null, todayYmd?: string|null }} input
+ * Free trial is once only. After Premium expires (or trial ends), access is
+ * `ended` → recharge — never offer trial again.
+ * @param {{
+ *   premium?: boolean,
+ *   everPaid?: boolean,
+ *   startYmd?: string|null,
+ *   todayYmd?: string|null,
+ * }} input
  * @returns {{ access: 'premium'|'trial'|'ended'|'none', daysLeft: number|null }}
  */
-export function resolveReportAccess({ premium = false, startYmd = null, todayYmd = null } = {}) {
+export function resolveReportAccess({
+  premium = false,
+  everPaid = false,
+  startYmd = null,
+  todayYmd = null,
+} = {}) {
   if (premium) return { access: 'premium', daysLeft: null };
+  // Had Premium before (now expired) → recharge only, no second free trial.
+  if (everPaid) return { access: 'ended', daysLeft: 0 };
   if (!startYmd) return { access: 'none', daysLeft: null };
   const window = reportTrialWindow(startYmd, todayYmd);
   if (window.active) return { access: 'trial', daysLeft: window.daysLeft };

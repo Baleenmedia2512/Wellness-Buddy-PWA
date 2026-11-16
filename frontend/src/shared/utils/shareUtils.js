@@ -28,6 +28,48 @@ export {
 const PROFILE_USER_NAME_KEY = 'wv.profileUserName';
 
 /**
+ * Android system-chooser shares (Share.share / WhatsAppShare.shareImage) often
+ * send the photo twice when EXTRA_STREAM + EXTRA_TEXT are both set.
+ *
+ * Manual Log / classify uses shareViaCapacitorAPI → shareToWhatsApp (package-
+ * targeted), which can attach EXTRA_TEXT as the image caption safely.
+ * Chooser paths still omit text and keep a clipboard backup for paste.
+ */
+function isAndroidNative() {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+}
+
+function mimeTypeFromDataUrl(dataUrl, fallback = 'image/jpeg') {
+  if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
+    return fallback;
+  }
+  const semi = dataUrl.indexOf(';');
+  if (semi <= 5) return fallback;
+  return dataUrl.slice(5, semi) || fallback;
+}
+
+async function copyAndroidShareCaptionBackup(text) {
+  const caption = String(text || '').trim();
+  if (!caption || !isAndroidNative()) return;
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(caption);
+      debugLog('📋 Share caption copied to clipboard (Android backup)');
+    }
+  } catch (err) {
+    console.warn('⚠️ Could not copy share caption to clipboard:', err?.message || err);
+  }
+}
+
+/** Chooser / Share.share path: clipboard only — do not attach text to the intent. */
+async function prepareAndroidImageShareCaption(text) {
+  const caption = String(text || '').trim();
+  if (!caption || !isAndroidNative()) return undefined;
+  await copyAndroidShareCaptionBackup(caption);
+  return undefined;
+}
+
+/**
  * Brand line (Name · Wellness Valley v X.Y.Z) + activity suffix.
  * Resolves the display name from savedUserName / user / cached profile.
  */
@@ -311,6 +353,36 @@ export const shareViaCapacitorAPI = async (dataUrl, options = {}) => {
 
   // ── NATIVE (iOS / Android) ────────────────────────────────────────────
   if (Capacitor.isNativePlatform()) {
+    // Android Manual Log / classify: open WhatsApp directly with image + caption.
+    // Package-targeted send attaches EXTRA_TEXT as the photo caption without the
+    // duplicate-image bug seen on the system chooser path.
+    if (isAndroidNative()) {
+      try {
+        const { WhatsAppShare } = Capacitor.Plugins || {};
+        if (WhatsAppShare && typeof WhatsAppShare.shareToWhatsApp === "function") {
+          const caption = String(text || "").trim();
+          await copyAndroidShareCaptionBackup(caption);
+          await WhatsAppShare.shareToWhatsApp({
+            base64Data: dataUrl,
+            fileName,
+            text: caption,
+            mimeType: mimeTypeFromDataUrl(dataUrl),
+          });
+          debugLog("✅ [CapacitorShare] WhatsApp direct share with caption");
+          return { ok: true, dismissed: false };
+        }
+      } catch (waErr) {
+        if (isCanceled(waErr)) {
+          debugLog("ℹ️ [CapacitorShare] WhatsApp share cancelled");
+          return { ok: true, dismissed: true };
+        }
+        console.warn(
+          "⚠️ [CapacitorShare] WhatsApp direct share failed, falling back:",
+          waErr?.message || waErr,
+        );
+      }
+    }
+
     let writtenPath = null;
     try {
       const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
@@ -322,9 +394,14 @@ export const shareViaCapacitorAPI = async (dataUrl, options = {}) => {
       writtenPath = fileName;
       debugLog("📤 [CapacitorShare] file written:", writeResult.uri);
 
+      // Android chooser fallback: image only + clipboard (avoids duplicate photo).
+      const shareText = isAndroidNative()
+        ? await prepareAndroidImageShareCaption(text)
+        : text;
+
       await Share.share({
         title,
-        text,
+        text: shareText,
         files: [writeResult.uri],
         dialogTitle: title,
       });
@@ -406,11 +483,12 @@ export const shareCachedDataUrl = async (dataUrl, options = {}) => {
       if (!WhatsAppShare) return false;
 
       const start = performance.now();
+      const shareText = await prepareAndroidImageShareCaption(text);
       await WhatsAppShare.shareImage({
         base64Data: dataUrl,
         fileName: finalFileName,
         title,
-        text,
+        text: shareText || '',
         mimeType,
       });
       debugLog(
@@ -786,11 +864,12 @@ const shareNative = async (
         );
 
         const pluginStart = performance.now();
+        const shareText = await prepareAndroidImageShareCaption(text);
         const result = await WhatsAppShare.shareImage({
           base64Data: base64Data,
           fileName: fileName,
           title: title,
-          text: text,
+          text: shareText || '',
           mimeType: mimeType,
         });
         debugLog(
@@ -857,11 +936,14 @@ const shareNative = async (
           fileUri.startsWith("file://"),
         );
 
-        // When shareAsDocument is true, include text to trigger document mode in WhatsApp
-        // This prevents automatic compression and maintains full image quality
+        // Android WhatsApp duplicates the image when files + EXTRA_TEXT are both set.
+        // iOS can keep caption text with the file.
+        const shareText = isAndroidNative()
+          ? await prepareAndroidImageShareCaption(text)
+          : (shareAsDocument ? text : undefined);
         const shareOptions = {
           title: title,
-          text: shareAsDocument ? text : undefined, // Include text for document mode
+          text: shareText,
           files: [fileUri],
           dialogTitle: "Share via",
         };
@@ -1188,9 +1270,12 @@ export const shareImageWithLink = async (dataUrl, shareUrl, options = {}) => {
         data: base64String,
         directory: Directory.Cache,
       });
+      const shareText = isAndroidNative()
+        ? await prepareAndroidImageShareCaption(textWithLink)
+        : textWithLink;
       await Share.share({
         title,
-        text: textWithLink,
+        text: shareText,
         files: [writeResult.uri],
         dialogTitle: "Share Meal Analysis",
       });

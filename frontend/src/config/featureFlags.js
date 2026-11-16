@@ -70,6 +70,15 @@ const REGISTRY = Object.freeze({
     description:    'Contact Picker API shortcut on the phone login field.',
   },
 
+  // Sample Events page and name-only demo registration. Owner: @principal-eng.
+  // Remove by 2027-01-31, or when live event data replaces this demo.
+  'ff.events': {
+    envKey:         'REACT_APP_FF_EVENTS',
+    storageKey:     'ff.events',
+    defaultEnabled: true,
+    description:    'Sample Events page and non-persistent name-only registration demo.',
+  },
+
   // Testimonials — before/after Herbalife transformation photos with
   // coach OTP verification. Members upload; coach verifies via emailed OTP.
   // Default ON. Set REACT_APP_FF_TESTIMONIALS=false or
@@ -79,6 +88,16 @@ const REGISTRY = Object.freeze({
     storageKey:     'ff.testimonials',
     defaultEnabled: true,
     description:    'Before/after testimonial upload + coach OTP verification flow.',
+  },
+
+  // Member must agree + email OTP before Transformation shows on upline coach websites.
+  // Default ON. Set REACT_APP_FF_TESTIMONIAL_UPLINE_DISPLAY_CONSENT=false to hide UI;
+  // backend kill switch is FF_TESTIMONIAL_UPLINE_DISPLAY_CONSENT.
+  'ff.testimonial-upline-display-consent': {
+    envKey:         'REACT_APP_FF_TESTIMONIAL_UPLINE_DISPLAY_CONSENT',
+    storageKey:     'ff.testimonial-upline-display-consent',
+    defaultEnabled: true,
+    description:    'Checkbox + member OTP to show Transformation on all upline coach websites.',
   },
 
   // Reports module — common analytics (Ideal Weight, Wellness Score, Nutrition, Trend).
@@ -173,6 +192,16 @@ const REGISTRY = Object.freeze({
     description:    'Profile Community ID Create + sponsor OTP (create / co-sponsor).',
   },
 
+  // ADR-0016 — Community Position under Community ID. Send code emails the coach.
+  // Default ON. Set REACT_APP_FF_COMMUNITY_POSITION_OTP=false or
+  // localStorage 'ff.community-position-otp'='false' to save the role with the profile.
+  'ff.community-position-otp': {
+    envKey:         'REACT_APP_FF_COMMUNITY_POSITION_OTP',
+    storageKey:     'ff.community-position-otp',
+    defaultEnabled: true,
+    description:    'Profile Community Position under Community ID; coach OTP before the role is saved.',
+  },
+
   // Profile height: first Save free; later changes need the coach's email approval.
   // Default ON. Set REACT_APP_FF_HEIGHT_CHANGE_OTP=false or
   // localStorage 'ff.height-change-otp'='false' to restore free height edits.
@@ -201,12 +230,62 @@ const REGISTRY = Object.freeze({
     description:    'Profile Go Premium opens Cashfree checkout.',
   },
 
+  // Create Event — event form plus update, delete, postpone, and cancel.
+  'ff.create-event': {
+    envKey:         'REACT_APP_FF_CREATE_EVENT',
+    storageKey:     'ff.create-event',
+    defaultEnabled: true,
+    description:    'Create Event page in the main navigation.',
+  },
+
+  // Unique per-user wallet. Cash-in after OTP to a selected Wellness Valley person.
+  // Default ON. Set REACT_APP_FF_WALLET=false or localStorage 'ff.wallet'='false' to hide.
+  'ff.wallet': {
+    envKey:         'REACT_APP_FF_WALLET',
+    storageKey:     'ff.wallet',
+    defaultEnabled: true,
+    description:    'Profile Wallet: unique balance and OTP-approved cash-in.',
+  },
+
+  // Coach Website portfolio — paid gate + form entry (Cashfree later).
+  // Default ON. Set REACT_APP_FF_COACH_PORTFOLIO=false or
+  // localStorage 'ff.coach-portfolio'='false' to hide.
+  'ff.coach-portfolio': {
+    envKey:         'REACT_APP_FF_COACH_PORTFOLIO',
+    storageKey:     'ff.coach-portfolio',
+    defaultEnabled: true,
+    description:    'Coach Website: paid unlock and portfolio form entry.',
+  },
+
+  'ff.gbp-listing': {
+    envKey:         'REACT_APP_FF_GBP_LISTING',
+    storageKey:     'ff.gbp-listing',
+    defaultEnabled: false,
+    description:    'Google Maps Listing request form + ops queue. Off for Digital Portfolio APK review.',
+  },
+
+  // Profile field collection. Kill switch returns to the previous onboarding screens.
+  'ff.field-collection': {
+    envKey:         'REACT_APP_FF_FIELD_COLLECTION',
+    storageKey:     'ff.field-collection',
+    defaultEnabled: true,
+    description:    'Community Position first, then admin-configured entry and later fields.',
+  },
+
   // Reports detail trial. Kill switch shows the full report again.
   'ff.report-trial': {
     envKey:         'REACT_APP_FF_REPORT_TRIAL',
     storageKey:     'ff.report-trial',
     defaultEnabled: true,
     description:    'Unpaid report details stay hidden until a 14-day trial or Premium.',
+  },
+
+  // Digital Portfolio gate. Same shared 14-day trial as Reports. Create Event and Check-in stay open.
+  'ff.events-trial': {
+    envKey:         'REACT_APP_FF_EVENTS_TRIAL',
+    storageKey:     'ff.events-trial',
+    defaultEnabled: true,
+    description:    'Gates Digital Portfolio with the shared Reports 14-day trial. Create Event and Check-in stay open.',
   },
 });
 

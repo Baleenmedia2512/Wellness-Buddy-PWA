@@ -363,6 +363,15 @@ registerFlag({
 });
 
 registerFlag({
+  name:           'ff.community-position-otp',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-11',
+  removeBy:       '2027-05-11',
+  description:    'ADR-0016 — Profile Community Position sits under Community ID. Choosing a role emails a 24h code to the coach. Kill switch. Version routing: app 3.5.6+ skips immediate save on profile POST; older or missing versions still save the legacy list.',
+  defaultEnabled: true,
+});
+
+registerFlag({
   name:           'ff.height-change-otp',
   owner:          '@principal-eng',
   createdAt:      '2026-09-25',
@@ -390,10 +399,73 @@ registerFlag({
 });
 
 registerFlag({
+  name:           'ff.create-event',
+  owner:          '@principal-eng',
+  createdAt:      '2026-10-30',
+  removeBy:       '2027-04-30',
+  description:    'Create Event page: name, organizer, place, seating, plus update, delete, postpone, and cancel.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.wallet',
+  owner:          '@principal-eng',
+  createdAt:      '2026-10-30',
+  removeBy:       '2027-04-30',
+  description:    'Unique per-user wallet. Cash-in after OTP emailed to a selected Wellness Valley person. Kill switch hides the Profile row and wallet APIs.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.coach-portfolio',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-03',
+  removeBy:       '2027-05-03',
+  description:    'Coach Website portfolio: paid gate (admin mark paid for testing; Cashfree later) + form entry. Kill switch hides Profile rows and portfolio APIs.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.gbp-listing',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-12',
+  removeBy:       '2027-05-12',
+  description:    'Google Maps Listing request: coach form + FTP media kit + ops email/admin queue. Kill switch hides nav, Profile queue, and GBP APIs. Default OFF until Digital Portfolio review is done.',
+  defaultEnabled: false,
+});
+
+registerFlag({
+  name:           'ff.field-collection',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-12',
+  removeBy:       '2027-05-12',
+  description:    'Admin-configured profile fields. Community Position is first. Entry fields block; later fields follow skip count, ask interval, and a must-fill day. Role and community position decide who sees each field. Kill switch. Already released app bundles keep the previous onboarding screens.',
+  defaultEnabled: true,
+});
+
+registerFlag({
   name:           'ff.report-trial',
   owner:          '@principal-eng',
   createdAt:      '2026-11-05',
   removeBy:       '2027-05-05',
   description:    'Reports stay open. Unpaid detail is hidden until a 14-day trial or Premium. Kill switch. Version routing: app 3.5.5+ is gated; older or missing versions keep the full report.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.events-trial',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-12',
+  removeBy:       '2027-05-12',
+  description:    'Digital Portfolio gate. Shares Reports 14-day trial (report_trials_table); remaining days continue. Create Event and Check-in stay open. Kill switch. Version routing: app 3.5.7+ gated; older/missing versions keep Digital Portfolio open.',
+  defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.testimonial-upline-display-consent',
+  owner:          '@testimonials-team',
+  createdAt:      '2026-11-09',
+  removeBy:       '2027-05-09',
+  description:    'Gate coach-website What We Say / What We Do on member checkbox + member email OTP after coach content verify. When OFF: legacy verified + direct downline only.',
   defaultEnabled: true,
 });

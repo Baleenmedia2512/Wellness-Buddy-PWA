@@ -191,7 +191,7 @@ export function hasDistinctTransformationAfter(testimonial) {
 export function hasApprovalReadyBeforePhoto({ testimonial, draftBefore } = {}) {
   if (draftBefore?.imageBase64) return true;
   if (hasStoredTransformationBefore(testimonial)) return true;
-  if (isProfileSeededTransformation(testimonial)) return false;
+  if (testimonial?.beforeImageUrl) return true;
   return Boolean(testimonial?.id && testimonial?.beforeImageUrl);
 }
 

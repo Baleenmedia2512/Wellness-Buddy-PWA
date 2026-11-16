@@ -27,6 +27,7 @@ import {
   isValidImageType,
 } from './domain/image-types.js';
 import logger from '../../shared/lib/logger.js';
+import { assertDiaryPostEditableOrDeletable } from '../../shared/lib/diaryPostLock.rules.js';
 
 /**
  * Mirror the legacy `createPendingCapture` write into `captures_table`.
@@ -251,6 +252,17 @@ export async function deleteById({ captureId, userId }) {
     err.status = 400;
     throw err;
   }
+  const capture = await repo.findByIdForOwner(captureId, userId);
+  if (!capture) {
+    return {
+      httpStatus: 200,
+      body: { ok: true, data: { deleted: false } },
+    };
+  }
+  const lockCheck = await assertDiaryPostEditableOrDeletable(capture.CreatedAt, userId, 'delete');
+  if (!lockCheck.allowed) {
+    return lockCheck.errorResponse;
+  }
   const result = await repo.softDeleteById({ captureId, userId: userId.toString() });
   return {
     httpStatus: 200,
@@ -279,6 +291,13 @@ export async function undoDeleteById({ captureId, userId }) {
     const err = new Error('captures.undoDeleteById: userId required');
     err.status = 400;
     throw err;
+  }
+  const capture = await repo.findByIdForOwner(captureId, userId);
+  if (capture) {
+    const lockCheck = await assertDiaryPostEditableOrDeletable(capture.CreatedAt, userId, 'delete');
+    if (!lockCheck.allowed) {
+      return lockCheck.errorResponse;
+    }
   }
   const result = await repo.undoSoftDeleteById({ captureId, userId: userId.toString() });
   return {

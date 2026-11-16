@@ -13,7 +13,20 @@ const handle = app.getRequestHandler();
 app.prepare().then(() => {
   createServer((req, res) => {
     handle(req, res, parse(req.url, true));
-  }).listen(port, hostname);
+  }).listen(port, hostname, () => {
+    if (process.env.DB_POOL_METRICS !== '1') return;
+    import('./shared/lib/dbPoolMetricsLog.js')
+      .then(({ bindPoolMetricsLogShutdown }) => {
+        bindPoolMetricsLogShutdown();
+        return import('./shared/lib/prisma.js');
+      })
+      .then(({ logPoolMetricsProcessStart }) => {
+        logPoolMetricsProcessStart();
+      })
+      .catch(() => {
+        console.error('[ERROR] db pool metrics file unavailable');
+      });
+  });
 }).catch((err) => {
   console.error(err);
   process.exit(1);

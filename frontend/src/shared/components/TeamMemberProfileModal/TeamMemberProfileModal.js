@@ -6,6 +6,7 @@ import PhoneContactActions from '../PhoneContactActions.jsx';
 import { fetchTeamMemberProfile } from './fetchTeamMemberProfile.js';
 import { isCallablePhone } from '../../domain/phoneContact.js';
 import { openPhoneCall } from '../../utils/phoneContactActions.js';
+import FullscreenProfilePhotoViewer from '../FullscreenProfilePhotoViewer.jsx';
 import { computeBmiFromHeightWeight } from '../../../features/user/domain/bmi.js';
 import { formatCommunityIdPairLabel } from '../../../features/user/domain/communityId.js';
 import IdealWeightCards from '../../../features/user/components/profile/IdealWeightCards.js';
@@ -40,17 +41,25 @@ function displayText(value) {
  * @param {boolean}  isOpen        - Whether the modal is visible
  * @param {Function} onClose       - Close handler
  * @param {string}   memberEmail   - Email of the member whose profile to load
+ * @param {number|string} memberUserId - Numeric user ID when email is unavailable
  * @param {string}   apiBaseUrl    - Base URL for API calls
  */
-const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) => {
+const TeamMemberProfileModal = ({
+  isOpen,
+  onClose,
+  memberEmail,
+  memberUserId,
+  apiBaseUrl,
+}) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [enlargedPhoto, setEnlargedPhoto] = useState(null);
+  const [showProfilePhoto, setShowProfilePhoto] = useState(false);
   const [avatarBroken, setAvatarBroken] = useState(false);
 
   useEffect(() => {
-    if (!isOpen || !memberEmail) return undefined;
+    if (!isOpen || (!memberEmail && !memberUserId)) return undefined;
 
     let cancelled = false;
     const fetchProfile = async () => {
@@ -58,9 +67,11 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
       setError('');
       setProfile(null);
       setEnlargedPhoto(null);
+      setShowProfilePhoto(false);
       setAvatarBroken(false);
       try {
-        const data = await fetchTeamMemberProfile(memberEmail, apiBaseUrl);
+        const member = memberEmail || { userId: memberUserId };
+        const data = await fetchTeamMemberProfile(member, apiBaseUrl);
         if (cancelled) return;
         if (data.success && data.data) {
           setProfile(data.data);
@@ -78,7 +89,7 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
     return () => {
       cancelled = true;
     };
-  }, [isOpen, memberEmail, apiBaseUrl]);
+  }, [isOpen, memberEmail, memberUserId, apiBaseUrl]);
 
   if (!isOpen) return null;
 
@@ -124,12 +135,19 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
 
         <div className="flex justify-center -mt-12 mb-4 relative z-10">
           {mediaImageSrc(profile?.profileImage || profile?.avatarUrl, apiBaseUrl) && !avatarBroken ? (
-            <img
-              src={mediaImageSrc(profile?.profileImage || profile?.avatarUrl, apiBaseUrl)}
-              alt=""
-              className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg bg-white"
-              onError={() => setAvatarBroken(true)}
-            />
+            <button
+              type="button"
+              onClick={() => setShowProfilePhoto(true)}
+              className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              aria-label={`View ${profile?.userName || 'team member'}'s profile photo`}
+            >
+              <img
+                src={mediaImageSrc(profile?.profileImage || profile?.avatarUrl, apiBaseUrl)}
+                alt={profile?.userName || 'Team member'}
+                className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg bg-white"
+                onError={() => setAvatarBroken(true)}
+              />
+            </button>
           ) : (
             <div
               className="w-24 h-24 rounded-full border-4 border-white shadow-lg flex items-center justify-center text-white text-3xl font-bold"
@@ -311,29 +329,20 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
         </div>
       </div>
 
-      {enlargedPhoto ? (
-        <div
-          className="fixed inset-0 z-[60] bg-black/80 flex flex-col items-center justify-center p-4"
-          onClick={(e) => {
-            e.stopPropagation();
-            setEnlargedPhoto(null);
-          }}
-        >
-          <p className="text-white text-sm font-semibold mb-3">{enlargedPhoto.label}</p>
-          <img
-            src={enlargedPhoto.src}
-            alt={enlargedPhoto.label}
-            className="max-h-[75vh] max-w-full object-contain rounded-xl"
-          />
-          <button
-            type="button"
-            onClick={() => setEnlargedPhoto(null)}
-            className="mt-4 px-4 py-2 rounded-full bg-white text-sm font-semibold text-gray-800"
-          >
-            Close
-          </button>
-        </div>
-      ) : null}
+      <FullscreenProfilePhotoViewer
+        isOpen={Boolean(enlargedPhoto)}
+        src={enlargedPhoto?.src}
+        alt={enlargedPhoto?.label || 'Transformation photo'}
+        title={`${profile?.userName || 'Team member'} · ${enlargedPhoto?.label || 'Transformation'}`}
+        onClose={() => setEnlargedPhoto(null)}
+      />
+      <FullscreenProfilePhotoViewer
+        isOpen={showProfilePhoto}
+        src={mediaImageSrc(profile?.profileImage || profile?.avatarUrl, apiBaseUrl)}
+        alt={profile?.userName || 'Team member'}
+        title={`${profile?.userName || 'Team member'}'s profile photo`}
+        onClose={() => setShowProfilePhoto(false)}
+      />
     </div>
   );
 };

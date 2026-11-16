@@ -3,10 +3,12 @@
  * needed for account removal.
  */
 import { getMysqlClient } from '../../utils/mysqlClient.js';
+import { getPrisma } from '../../shared/lib/prisma.js';
 import { nowUtc, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { buildCardPatchFromProfile } from '../body-parameters-card/domain/sync.rules.js';
 import { findLatestCardForProfileSync } from '../body-parameters-card/data/card.repo.js';
 import { buildAdoptProfileMetricsPatch } from './domain/onboardingEmail.rules.js';
+import { herbalifeDateToSql, sqlDateToHerbalife } from './domain/profileIntro.rules.js';
 import logger from '../../shared/lib/logger.js';
 
 const TEAM = 'team_table';
@@ -98,14 +100,14 @@ export async function findByUsername(username) {
 
 export async function getProfile(email) {
   // Consent / optional body-metric columns are optional until migrations are applied.
-  // Body fat is stored on weight_records_table, not team_table.
+  // Fat % lives on team_table.BodyFat (independent) and is mirrored to weight rows when present.
   const withPhotos =
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues, transformation_photos';
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "BodyFat", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues, transformation_photos';
   const withKeyAndPhotos = `"ProfileImageKey", ${withPhotos}`;
   const fullCols =
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "BodyFat", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
   const withMetricsNoHealth =
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm"';
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "BodyFat", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm"';
   const withConsentNoMetrics =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion"';
   const noConsentCols =
@@ -147,7 +149,7 @@ export async function getProfile(email) {
       }
     }
     const msg2 = String(current?.message || current || '');
-    const missingMetrics = /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg2);
+    const missingMetrics = /Age|BodyFat|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg2);
     if (missingMetrics) {
       try {
         return await load(withConsentNoMetrics);
@@ -166,12 +168,12 @@ export async function getProfile(email) {
 /** Same columns as getProfile, resolved by UserId (phone / pre-email onboarding). */
 export async function getProfileByUserId(userId) {
   const withPhotos =
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues, transformation_photos';
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "BodyFat", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues, transformation_photos';
   const withKeyAndPhotos = `"ProfileImageKey", ${withPhotos}`;
   const fullCols =
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "BodyFat", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues';
   const withMetricsNoHealth =
-    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm"';
+    '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion", "Age", "BodyFat", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm"';
   const withConsentNoMetrics =
     '"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Gender", "Bmr", profile_pic_snooze, "WeightGoalMode", "PhysicalActivityLevel", "CommunityId", timezone_iana, "ConsentAcceptedAt", "ConsentVersion"';
   const noConsentCols =
@@ -213,7 +215,7 @@ export async function getProfileByUserId(userId) {
       }
     }
     const msg2 = String(current?.message || current || '');
-    const missingMetrics = /Age|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg2);
+    const missingMetrics = /Age|BodyFat|VisceralFat|BodyAge|ChestCm|WaistCm|HipCm/i.test(msg2);
     if (missingMetrics) {
       try {
         return await load(withConsentNoMetrics);
@@ -557,7 +559,19 @@ export async function updateLatestWeightBodyFat(userId, bodyFat, bmr = null) {
     ({ data, error } = await runUpdate(false));
   }
   if (error) throw error;
-  return data || null;
+  // Some MySQL bridges return no row from UPDATE … RETURNING; verify via re-read.
+  if (!data?.ID) {
+    const refreshed = await getLatestWeight(uid);
+    if (
+      refreshed?.ID === latest.ID
+      && refreshed.BodyFat != null
+      && Number(refreshed.BodyFat) === Number(bodyFat)
+    ) {
+      return refreshed;
+    }
+    return null;
+  }
+  return data;
 }
 
 export async function updateUserByEmail(email, updateData) {
@@ -616,6 +630,213 @@ export async function markBcmProfileReviewedIfNeeded(userId, reviewedAt) {
   } catch (err) {
     const msg = String(err?.message || err || '');
     if (/BcmProfileReviewedAt|column/i.test(msg)) return false;
+    throw err;
+  }
+}
+
+/**
+ * Soft-load WorkingPhysicalCentreId (column may be missing pre-migration).
+ * Uses raw SQL so it works even before `prisma generate` picks up the column.
+ * @returns {Promise<number|null>}
+ */
+export async function getWorkingPhysicalCentrePreference(userId) {
+  try {
+    const prisma = getPrisma();
+    const rows = await prisma.$queryRawUnsafe(
+      'SELECT WorkingPhysicalCentreId FROM team_table WHERE UserId = ? LIMIT 1',
+      Number(userId),
+    );
+    const id = Number(rows?.[0]?.WorkingPhysicalCentreId);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/WorkingPhysicalCentreId|Unknown column|1054|column/i.test(msg)) return null;
+    throw err;
+  }
+}
+
+/**
+ * Save / clear Working Physical Centre preference. Soft no-op if column missing.
+ * Raw SQL — avoids table-client "Update payload is empty" when Prisma catalog
+ * has not been regenerated yet after the migration.
+ * @param {number|string} userId
+ * @param {number|null} centreId — null clears preference
+ * @returns {Promise<boolean>} true when write succeeded
+ */
+export async function setWorkingPhysicalCentrePreference(userId, centreId) {
+  try {
+    const next = centreId == null ? null : Number(centreId);
+    const value = (Number.isFinite(next) && next > 0) ? next : null;
+    const prisma = getPrisma();
+    await prisma.$executeRawUnsafe(
+      'UPDATE team_table SET WorkingPhysicalCentreId = ? WHERE UserId = ?',
+      value,
+      Number(userId),
+    );
+    return true;
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/WorkingPhysicalCentreId|Unknown column|1054|column|Update payload is empty/i.test(msg)) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Soft-load event registration prefs (Translation / Your City / Level).
+ * @returns {Promise<{ eventTranslation: string|null, eventYourCity: string|null, eventLevel: string|null }>}
+ */
+export async function getEventProfilePreferences(userId) {
+  const empty = { eventTranslation: null, eventYourCity: null, eventLevel: null };
+  try {
+    const prisma = getPrisma();
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT EventTranslation, EventYourCity, EventLevel
+       FROM team_table WHERE UserId = ? LIMIT 1`,
+      Number(userId),
+    );
+    const row = rows?.[0];
+    if (!row) return empty;
+    const cell = (name) => {
+      if (row[name] != null && String(row[name]).trim() !== '') return String(row[name]).trim();
+      const key = Object.keys(row).find((item) => item.toLowerCase() === name.toLowerCase());
+      if (!key || row[key] == null || String(row[key]).trim() === '') return null;
+      return String(row[key]).trim();
+    };
+    return {
+      eventTranslation: cell('EventTranslation'),
+      eventYourCity: cell('EventYourCity'),
+      eventLevel: cell('EventLevel'),
+    };
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/EventTranslation|EventYourCity|EventLevel|Unknown column|1054|column/i.test(msg)) {
+      return empty;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Save event registration prefs. Soft no-op if columns missing.
+ * Only updates keys that are explicitly provided (undefined = leave unchanged).
+ * @returns {Promise<boolean>}
+ */
+export async function setEventProfilePreferences(userId, prefs = {}) {
+  const sets = [];
+  const values = [];
+  if (prefs.eventTranslation !== undefined) {
+    sets.push('EventTranslation = ?');
+    values.push(prefs.eventTranslation);
+  }
+  if (prefs.eventYourCity !== undefined) {
+    sets.push('EventYourCity = ?');
+    values.push(prefs.eventYourCity);
+  }
+  if (prefs.eventLevel !== undefined) {
+    sets.push('EventLevel = ?');
+    values.push(prefs.eventLevel);
+  }
+  if (sets.length === 0) return true;
+  try {
+    const prisma = getPrisma();
+    await prisma.$executeRawUnsafe(
+      `UPDATE team_table SET ${sets.join(', ')} WHERE UserId = ?`,
+      ...values,
+      Number(userId),
+    );
+    return true;
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/EventTranslation|EventYourCity|EventLevel|Unknown column|1054|column|Update payload is empty/i.test(msg)) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+const INTRO_COLUMNS = 'ProfessionalTitle, InstagramUrl, YoutubeUrl, LinkedinUrl, HerbalifeJoinedOn, AboutMe, Qualification, Languages';
+
+function parseLanguageCodes(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item));
+  if (value == null || value === '') return [];
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.map((item) => String(item)) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+export async function getProfileIntro(userId) {
+  const empty = {
+    professionalTitle: '',
+    instagram: '',
+    youtube: '',
+    linkedin: '',
+    herbalifeJoinedOn: '',
+    aboutMe: '',
+    qualification: '',
+    languages: [],
+  };
+  try {
+    const prisma = getPrisma();
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT ${INTRO_COLUMNS} FROM team_table WHERE UserId = ? LIMIT 1`,
+      Number(userId),
+    );
+    const row = rows?.[0];
+    if (!row) return empty;
+    return {
+      professionalTitle: row.ProfessionalTitle ? String(row.ProfessionalTitle) : '',
+      instagram: row.InstagramUrl ? String(row.InstagramUrl) : '',
+      youtube: row.YoutubeUrl ? String(row.YoutubeUrl) : '',
+      linkedin: row.LinkedinUrl ? String(row.LinkedinUrl) : '',
+      herbalifeJoinedOn: sqlDateToHerbalife(row.HerbalifeJoinedOn),
+      aboutMe: row.AboutMe ? String(row.AboutMe) : '',
+      qualification: row.Qualification ? String(row.Qualification) : '',
+      languages: parseLanguageCodes(row.Languages),
+    };
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/ProfessionalTitle|InstagramUrl|Unknown column|1054|column/i.test(msg)) return empty;
+    throw err;
+  }
+}
+
+export async function setProfileIntro(userId, intro = {}) {
+  const sets = [];
+  const values = [];
+  const assign = (column, value) => {
+    sets.push(`${column} = ?`);
+    values.push(value);
+  };
+  if (intro.professionalTitle !== undefined) assign('ProfessionalTitle', intro.professionalTitle || null);
+  if (intro.instagram !== undefined) assign('InstagramUrl', intro.instagram || null);
+  if (intro.youtube !== undefined) assign('YoutubeUrl', intro.youtube || null);
+  if (intro.linkedin !== undefined) assign('LinkedinUrl', intro.linkedin || null);
+  if (intro.herbalifeJoinedOn !== undefined) {
+    assign('HerbalifeJoinedOn', herbalifeDateToSql(intro.herbalifeJoinedOn));
+  }
+  if (intro.aboutMe !== undefined) assign('AboutMe', intro.aboutMe || null);
+  if (intro.qualification !== undefined) assign('Qualification', intro.qualification || null);
+  if (intro.languages !== undefined) assign('Languages', JSON.stringify(intro.languages || []));
+  if (sets.length === 0) return true;
+  try {
+    const prisma = getPrisma();
+    await prisma.$executeRawUnsafe(
+      `UPDATE team_table SET ${sets.join(', ')} WHERE UserId = ?`,
+      ...values,
+      Number(userId),
+    );
+    return true;
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/ProfessionalTitle|InstagramUrl|Unknown column|1054|column/i.test(msg)) return false;
     throw err;
   }
 }

@@ -4,6 +4,7 @@ import {
   normalizeHabitPayload,
 } from '../domain/habit.rules.js';
 import logger from '../../../shared/lib/logger.js';
+import { assertDiaryPostEditableOrDeletable } from '../../../shared/lib/diaryPostLock.rules.js';
 import {
   nowUtc,
   parseClientTimestampToUtc,
@@ -119,6 +120,14 @@ export async function getHabitImage({ id, userId, slot = null }) {
 }
 
 export async function deleteHabit({ id, userId }) {
+  const existing = await repo.findHabitById(id, userId);
+  if (!existing || existing.IsDeleted) {
+    return { httpStatus: 404, body: { success: false, message: 'Habit not found' } };
+  }
+  const lockCheck = await assertDiaryPostEditableOrDeletable(existing.CreatedAt, userId, 'delete');
+  if (!lockCheck.allowed) {
+    return lockCheck.errorResponse;
+  }
   const updatedAt = utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST);
   const data = await repo.softDeleteHabit(id, userId, updatedAt);
   if (!data) {
@@ -128,6 +137,13 @@ export async function deleteHabit({ id, userId }) {
 }
 
 export async function undoDeleteHabit({ id, userId }) {
+  const existing = await repo.findHabitById(id, userId);
+  if (existing) {
+    const lockCheck = await assertDiaryPostEditableOrDeletable(existing.CreatedAt, userId, 'delete');
+    if (!lockCheck.allowed) {
+      return lockCheck.errorResponse;
+    }
+  }
   const updatedAt = utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST);
   const data = await repo.restoreHabit(id, userId, updatedAt);
   if (!data) {

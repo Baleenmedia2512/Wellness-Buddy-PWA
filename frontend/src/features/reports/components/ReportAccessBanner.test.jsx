@@ -32,6 +32,17 @@ describe('ReportAccessBanner', () => {
     view.unmount();
   });
 
+  it('accepts a shorter trial length for Events host tools', () => {
+    const view = renderBanner({
+      access: 'none',
+      trialLengthDays: 7,
+      onStartTrial: () => {},
+    });
+    expect(view.container.textContent).toMatch(/7 days/);
+    expect(view.container.textContent).not.toMatch(/14 days/);
+    view.unmount();
+  });
+
   it('shows the days left during the trial', () => {
     const view = renderBanner({ access: 'trial', daysLeft: 14 });
     expect(view.container.textContent).toMatch(/14 days left/);
@@ -39,10 +50,27 @@ describe('ReportAccessBanner', () => {
     view.unmount();
   });
 
-  it('shows Go Premium after the trial ends', () => {
+  it('opens the payment page after the trial ends', () => {
     const view = renderBanner({ access: 'ended', userId: '42', onPremiumCheck: async () => false });
-    expect(view.container.textContent).toMatch(/Free trial ended/);
-    expect(view.container.querySelector('button[aria-label="Go Premium"]')).not.toBeNull();
+    expect(document.body.textContent).toMatch(/Premium plan/);
+    expect(document.body.textContent).not.toMatch(/Please recharge/);
+    expect(view.container.querySelector('button[aria-label="Recharge Premium"]')).toBeNull();
+    view.unmount();
+  });
+
+  it('asks to fill Community Position and opens profile', () => {
+    const view = renderBanner({
+      centered: true,
+      access: 'none',
+      featureName: 'Reports',
+      error: 'Fill Community Position on your profile.',
+    });
+    expect(view.container.textContent).toMatch(/Fill Community Position on your profile/);
+    expect(view.container.textContent).toMatch(/Community Position/);
+    const button = view.container.querySelector('button[aria-label="Fill Community Position"]');
+    expect(button).not.toBeNull();
+    expect(button.textContent).toMatch(/Fill Community Position/);
+    expect(view.container.querySelector('button[aria-label="Try again"]')).toBeNull();
     view.unmount();
   });
 

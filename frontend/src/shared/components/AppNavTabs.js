@@ -11,6 +11,11 @@ import {
   Trophy,
   FileBarChart,
   Megaphone,
+  CalendarPlus,
+  Sparkles,
+  MapPinned,
+  CalendarDays,
+  ScanLine,
 } from 'lucide-react';
 import NavTabButton from './NavTabButton';
 import { isFlagEnabled } from '../../config/featureFlags';
@@ -19,6 +24,7 @@ import { canAccessNavPage } from '../../features/nav-page-access/domain/navAcces
 export default function AppNavTabs({
   activePage,
   onShowHome,
+  onShowEvents,
   onShowBackgroundHistory,
   onShowActivityReport,
   onShowWellnessEnrollment,
@@ -26,6 +32,10 @@ export default function AppNavTabs({
   onShowNutritionCentersMap,
   onShowTestimonials,
   onShowBroadcast,
+  onShowCreateEvent,
+  onShowPaidFeatures,
+  onShowMapBusiness,
+  onShowEventCheckIn,
   onShowReports,
   reportsEnabled = false,
   /** null = fail-open (all tabs); object = role page map from DB */
@@ -33,6 +43,11 @@ export default function AppNavTabs({
 }) {
   const allow = (pageKey) => canAccessNavPage(allowedPages, pageKey);
   const broadcastEnabled = isFlagEnabled('ff.broadcast');
+  const createEventEnabled = isFlagEnabled('ff.create-event');
+  const paidFeaturesEnabled = isFlagEnabled('ff.coach-portfolio');
+  const mapBusinessEnabled = isFlagEnabled('ff.gbp-listing');
+  // Same gate as the former Home card — do not add a new nav-access key (would hide for existing matrices).
+  const upcomingEventsEnabled = isFlagEnabled('ff.events');
 
   return (
     <div
@@ -45,6 +60,15 @@ export default function AppNavTabs({
           active={activePage === 'home'}
           icon={Home}
           label="Home"
+        />
+      )}
+      {upcomingEventsEnabled && (
+        <NavTabButton
+          onClick={onShowEvents ?? (() => {})}
+          active={activePage === 'events'}
+          icon={CalendarDays}
+          label="Events"
+          ariaLabel="Events"
         />
       )}
       {allow('dashboard') && (
@@ -158,6 +182,66 @@ export default function AppNavTabs({
           labelClass="text-emerald-800"
           label="BroadCast"
           ariaLabel="BroadCast"
+        />
+      )}
+      {createEventEnabled && allow('create-event') && (
+        <NavTabButton
+          onClick={onShowCreateEvent ?? (() => {})}
+          active={activePage === 'create-event'}
+          activeBg="bg-emerald-100"
+          hoverBg="hover:bg-emerald-50"
+          icon={CalendarPlus}
+          iconActiveClass="text-emerald-800"
+          iconClass="text-emerald-700"
+          labelActiveClass="text-emerald-900"
+          labelClass="text-emerald-800"
+          label="Create Event"
+          ariaLabel="Create Event"
+        />
+      )}
+      {paidFeaturesEnabled && allow('paid-features') && (
+        <NavTabButton
+          onClick={onShowPaidFeatures ?? (() => {})}
+          active={activePage === 'paid-features'}
+          activeBg="bg-emerald-100"
+          hoverBg="hover:bg-emerald-50"
+          icon={Sparkles}
+          iconActiveClass="text-emerald-800"
+          iconClass="text-emerald-700"
+          labelActiveClass="text-emerald-900"
+          labelClass="text-emerald-800"
+          label="Digital Portfolio"
+          ariaLabel="Digital Portfolio"
+        />
+      )}
+      {mapBusinessEnabled && allow('map-business') && (
+        <NavTabButton
+          onClick={onShowMapBusiness ?? (() => {})}
+          active={activePage === 'map-business'}
+          activeBg="bg-emerald-100"
+          hoverBg="hover:bg-emerald-50"
+          icon={MapPinned}
+          iconActiveClass="text-emerald-800"
+          iconClass="text-emerald-700"
+          labelActiveClass="text-emerald-900"
+          labelClass="text-emerald-800"
+          label="Google Map Business"
+          ariaLabel="Google Map Business"
+        />
+      )}
+      {createEventEnabled && allow('event-check-in') && (
+        <NavTabButton
+          onClick={onShowEventCheckIn ?? onShowCreateEvent ?? (() => {})}
+          active={activePage === 'event-check-in'}
+          activeBg="bg-emerald-100"
+          hoverBg="hover:bg-emerald-50"
+          icon={ScanLine}
+          iconActiveClass="text-emerald-800"
+          iconClass="text-emerald-700"
+          labelActiveClass="text-emerald-900"
+          labelClass="text-emerald-800"
+          label="Check-in"
+          ariaLabel="Event Check-in"
         />
       )}
     </div>

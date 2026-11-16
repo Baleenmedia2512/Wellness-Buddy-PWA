@@ -61,5 +61,7 @@ describe('normalizeNavAccessMatrix', () => {
     expect(m.coach.home).toBe(false);
     expect(m.admin).toBeDefined();
     expect(m.developer).toBeDefined();
+    expect(m.system_admin).toBeDefined();
+    expect(m.system_admin.home).toBe(false);
   });
 });
