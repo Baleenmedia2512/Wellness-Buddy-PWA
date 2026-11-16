@@ -4,6 +4,7 @@
   useCallback,
   forwardRef,
   useImperativeHandle,
+  useRef,
 } from "react";
 import { Scale } from "lucide-react";
 import { debugLog } from '../../../shared/utils/logger.js';
@@ -61,7 +62,8 @@ const writeWeightLBCache = (userId, data) => {
 
 /**
  * WeightLossLeaderboard Component
- * Hierarchy-scoped weight loss leaderboard (Weight Loss Today vs Yesterday).
+ * Hierarchy-scoped weight loss leaderboard (Today vs Yesterday by default).
+ * Tile variant can toggle Last 10 days — same pattern as Wellness Score.
  *
  * @param {'strip'|'tile'} variant - strip = auto-scroll headline (legacy); tile = static card list
  */
@@ -72,22 +74,35 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
   const [expandedAvatar, setExpandedAvatar] = useState(null);
   const [profileMember, setProfileMember] = useState(null);
   const isTile = variant === 'tile';
+  const [showTenDay, setShowTenDay] = useState(false);
+  const [tenDayData, setTenDayData] = useState([]);
+  const [tenDayStatus, setTenDayStatus] = useState('idle');
+  const showTenDayRef = useRef(false);
+  const fetchInFlightRef = useRef({ 1: false, 10: false });
   const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
     enabled: !isTile && isVisible && leaderboardData.length > 0,
   });
 
-  // Fetch leaderboard data
-  const fetchLeaderboard = useCallback(async () => {
+  const fetchLeaderboard = useCallback(async (days = 1) => {
+    const windowDays = days === 10 ? 10 : 1;
     const emailTrim = String(email || '').trim();
     if ((userId == null || userId === '') && !emailTrim) {
-      setLeaderboardData([]);
-      setIsVisible(false);
+      if (windowDays === 10) {
+        setTenDayData([]);
+        setTenDayStatus('empty');
+      } else {
+        setLeaderboardData([]);
+        setIsVisible(false);
+      }
       return;
     }
+    if (fetchInFlightRef.current[windowDays]) return;
+    fetchInFlightRef.current[windowDays] = true;
     try {
       const params = new URLSearchParams({
         topN: String(topN),
       });
+      if (windowDays === 10) params.set('days', '10');
       if (userId != null && userId !== '') params.set('userId', String(userId));
       if (emailTrim) params.set('email', emailTrim);
       const response = await fetch(
@@ -102,10 +117,26 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
 
       if (!response.ok) {
         debugLog("[LEADERBOARD] API returned", response.status);
+        if (windowDays === 10) {
+          setTenDayData([]);
+          setTenDayStatus('error');
+        }
         return;
       }
 
       const result = await response.json();
+
+      if (windowDays === 10) {
+        if (result.success && result.data?.length > 0) {
+          setTenDayData(sortLeaderboardByRankAsc(result.data));
+          setTenDayStatus('ready');
+        } else {
+          debugLog('[LEADERBOARD] No 10-day data:', result.message || 'Empty');
+          setTenDayData([]);
+          setTenDayStatus(result.success ? 'empty' : 'error');
+        }
+        return;
+      }
 
       if (result.success && result.data && result.data.length > 0) {
         const ordered = sortLeaderboardByRankAsc(result.data);
@@ -122,17 +153,39 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
       }
     } catch (error) {
       debugLog("[LEADERBOARD] Error fetching data:", error?.message || error);
-      setLeaderboardData([]);
-      setIsVisible(false);
+      if (windowDays === 10) {
+        setTenDayData([]);
+        setTenDayStatus('error');
+      } else {
+        setLeaderboardData([]);
+        setIsVisible(false);
+      }
+    } finally {
+      fetchInFlightRef.current[windowDays] = false;
     }
   }, [apiBaseUrl, topN, userId, email]);
+
+  const refreshBoards = useCallback(() => {
+    fetchLeaderboard(1);
+    if (showTenDayRef.current) fetchLeaderboard(10);
+  }, [fetchLeaderboard]);
+
+  const toggleTenDay = useCallback(() => {
+    if (showTenDayRef.current) {
+      showTenDayRef.current = false;
+      setShowTenDay(false);
+      return;
+    }
+    showTenDayRef.current = true;
+    setShowTenDay(true);
+    setTenDayStatus((status) => (status === 'ready' ? status : 'loading'));
+    fetchLeaderboard(10);
+  }, [fetchLeaderboard]);
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
     // refresh: re-fetches from server (retries after 4s for DB propagation)
-    refresh: () => {
-      fetchLeaderboard();
-    },
+    refresh: refreshBoards,
     // injectEntry: instantly show the current user's entry in the strip
     // without waiting for any API call. The next refresh will replace with real data.
     injectEntry: ({ userId: entryUserId, userName, email, weightLoss, profileImage, coachName }) => {
@@ -159,7 +212,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
     },
   }));
 
-  useRaceLeaderboardRealtime(fetchLeaderboard);
+  useRaceLeaderboardRealtime(refreshBoards);
 
   // Instant paint from SWR cache; Realtime pings + slower poll backup
   useEffect(() => {
@@ -168,9 +221,9 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
       setLeaderboardData(cached);
       setIsVisible(true);
     }
-    fetchLeaderboard();
-    return setVisibilityAwareInterval(fetchLeaderboard, POLL_MS);
-  }, [fetchLeaderboard, userId]);
+    fetchLeaderboard(1);
+    return setVisibilityAwareInterval(refreshBoards, POLL_MS);
+  }, [fetchLeaderboard, refreshBoards, userId]);
 
   // Smooth fade-in when the strip becomes visible
   useEffect(() => {
@@ -372,24 +425,45 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
   };
 
   if (isTile) {
+    const tileRows = showTenDay ? tenDayData : leaderboardData;
+    const tileSubtitle = showTenDay ? 'Last 10 days' : 'Today vs Yesterday';
     return (
       <section
         className={`mx-1 rounded-2xl border border-emerald-100 bg-white p-3 shadow-sm transition-opacity duration-500 ease-out ${
           hasEntered ? 'opacity-100' : 'opacity-0'
         }`}
-        aria-label="Weight Loss Today vs Yesterday"
+        aria-label={showTenDay ? `Top ${topN} Weight Loss, last 10 days` : 'Weight Loss Today vs Yesterday'}
       >
         <header className="mb-1 flex items-center gap-2 border-b border-emerald-50 pb-2">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100" aria-hidden>
             <Scale className="h-4 w-4 text-emerald-700" />
           </span>
-          <div className="min-w-0">
-            <h3 className="text-sm font-bold text-emerald-900">Top 10 Weight Loss</h3>
-            <p className="text-[11px] text-emerald-700/80">Today vs Yesterday</p>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-bold text-emerald-900">Top {topN} Weight Loss</h3>
+            <p className="text-[11px] text-emerald-700/80">{tileSubtitle}</p>
           </div>
+          <button
+            type="button"
+            className="ml-auto shrink-0 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-center text-[11px] font-semibold leading-tight text-emerald-700"
+            onClick={toggleTenDay}
+            aria-pressed={showTenDay}
+          >
+            {showTenDay ? 'Show today' : (
+              <span className="block"> Last 10 days</span>
+            )}
+          </button>
         </header>
         <ul className="divide-y divide-emerald-50">
-          {leaderboardData.map(renderTileRow)}
+          {showTenDay && tenDayStatus === 'loading' && tileRows.length === 0 && (
+            <li className="py-3 text-center text-xs text-emerald-700">Loading last 10 days…</li>
+          )}
+          {showTenDay && tenDayStatus === 'empty' && (
+            <li className="py-3 text-center text-xs text-gray-500">No weight loss in the last 10 days.</li>
+          )}
+          {showTenDay && tenDayStatus === 'error' && (
+            <li className="py-3 text-center text-xs text-gray-500">Could not load last 10 days.</li>
+          )}
+          {tileRows.map(renderTileRow)}
         </ul>
         {avatarViewer}
         {profileViewer}
