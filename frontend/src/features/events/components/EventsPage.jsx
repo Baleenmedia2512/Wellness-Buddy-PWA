@@ -158,7 +158,7 @@ function profileGapMessages(source) {
     [source?.idNo, 'Set Community ID in Profile'],
     [source?.eventLevel, 'Set Community Position in Profile'],
     [source?.phoneNumber, 'Set Phone Number in Profile'],
-    [source?.eventYourCity, 'Set Your City in Profile'],
+    [source?.eventYourCity, 'Set Living city in Profile'],
   ];
   return checks
     .filter(([value]) => !text(value))
@@ -594,7 +594,7 @@ function EventsPage({ user, initialTab = 'events' }) {
     if (!trimmedPhone) nextErrors.phoneNumber = forFriend ? required : 'Set Phone Number in Profile';
     if (!participantCount) nextErrors.participantCount = 'This is a required question';
     if (!trimmedTicketNo) nextErrors.ticketNo = 'This is a required question';
-    if (!yourCityValue) nextErrors.yourCity = 'Set Your City in Profile';
+    if (!yourCityValue) nextErrors.yourCity = 'Set Living city in Profile';
     if (attendCity && place && attendCity !== place && !isAttendOnline(attendCity)) {
       nextErrors.attendCity = 'Choose the event city or Online';
     }

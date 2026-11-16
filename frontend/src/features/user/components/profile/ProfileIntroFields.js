@@ -1,5 +1,5 @@
 /**
- * Profile: title, social links, Herbalife date, about, qualification, languages.
+ * Profile: title, social links, community date, about, qualification, languages you speak.
  * Links are optional until an admin makes the field required.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -57,7 +57,7 @@ function LanguagePicker({ value, onChange }) {
 
   return (
     <div ref={rootRef}>
-      <FieldLabel hint="Select every language you use.">Languages</FieldLabel>
+      <FieldLabel hint="Select every language you use.">Languages you speak</FieldLabel>
       {selected.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {selected.map((code) => (
@@ -115,14 +115,14 @@ function HerbalifeDateFields({ value, onChange }) {
   return (
     <div>
       <FieldLabel hint="Open the calendar and pick the day you joined.">
-        Date of joining Herbalife
+        Date of joining community
       </FieldLabel>
       <input
         type="date"
         value={isoValue}
         min="1980-01-01"
         max={maxIso}
-        aria-label="Date of joining Herbalife"
+        aria-label="Date of joining community"
         onChange={(event) => {
           const next = event.target.value;
           onChange(next ? isoToHerbalifeDate(next) : '');
