@@ -98,7 +98,7 @@ export function validateAboutForm(form) {
   const errors = [];
   const personal = form?.personal || {};
   if (!String(personal.yearsExperience || '').trim()) {
-    errors.push('Date of joining Herbalife');
+    errors.push('Date of joining community');
   }
   if (!String(personal.background || '').trim()) {
     errors.push('About me');
