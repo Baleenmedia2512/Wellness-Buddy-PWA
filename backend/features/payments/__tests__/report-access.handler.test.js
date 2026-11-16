@@ -28,6 +28,7 @@ describe('startReportTrial', () => {
     assert.equal(first.body.data.access, 'trial');
     assert.equal(first.body.data.daysLeft, 14);
     assert.equal(first.body.data.canSeeDetails, true);
+    assert.equal(first.body.data.expiresAtDisplay, '19 Nov 2026, 12:00 AM');
     assert.deepEqual(second.body.data, first.body.data);
   });
 

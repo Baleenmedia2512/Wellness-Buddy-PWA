@@ -21,6 +21,7 @@ import {
   canSeeReportDetails,
   resolveReportAccess,
   shouldGateReportDetails,
+  trialExpiresAtDisplay,
   trialStartIstYmd,
 } from '../domain/report-trial.rules.js';
 
@@ -44,11 +45,17 @@ function accessPayload({ premium, everPaid, startedAt, todayYmd }) {
     startYmd,
     todayYmd,
   });
-  return {
+  const data = {
     access: resolved.access,
     daysLeft: resolved.daysLeft,
     canSeeDetails: canSeeReportDetails(resolved.access),
   };
+  // Extra field. Older apps ignore it. Only an active trial has an end time.
+  if (resolved.access === 'trial') {
+    const expiresAtDisplay = trialExpiresAtDisplay(startYmd);
+    if (expiresAtDisplay) data.expiresAtDisplay = expiresAtDisplay;
+  }
+  return data;
 }
 
 /**

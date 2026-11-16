@@ -4,7 +4,11 @@
  * Apps older than 3.5.5, and requests with no version, keep the full report.
  */
 import { isAtLeastVersion } from '../../app-version/domain/version.rules.js';
-import { timestampToCalendarYmd, IANA_IST } from '../../../shared/lib/datetime/datetime.js';
+import {
+  timestampToCalendarYmd,
+  formatUtcForDisplay,
+  IANA_IST,
+} from '../../../shared/lib/datetime/datetime.js';
 
 export const REPORT_TRIAL_LENGTH_DAYS = 14;
 /** First app version whose report payloads hide unpaid detail. */
@@ -45,6 +49,39 @@ export function calendarDaysBetween(startYmd, todayYmd) {
   const today = civilDayUtc(todayYmd);
   if (start == null || today == null) return null;
   return Math.round((today - start) / 86400000);
+}
+
+/**
+ * @param {unknown} ymd
+ * @param {number} days
+ * @returns {string|null}
+ */
+function addCalendarDaysYmd(ymd, days) {
+  const start = civilDayUtc(ymd);
+  const count = Number(days);
+  if (start == null || !Number.isInteger(count)) return null;
+  const next = new Date(start + count * 86400000);
+  const year = next.getUTCFullYear();
+  const month = String(next.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(next.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * When the 14-day trial stops: 12:00 AM IST on the morning after the last active day.
+ * Same clock style as Premium (`13 Dec 2026, 11:59 PM`).
+ * @param {unknown} startYmd India date the trial started
+ * @returns {string|null}
+ */
+export function trialExpiresAtDisplay(startYmd) {
+  const endYmd = addCalendarDaysYmd(startYmd, REPORT_TRIAL_LENGTH_DAYS);
+  if (!endYmd) return null;
+  try {
+    // Zone-less digits are IST wall-clock in the shared formatter.
+    return formatUtcForDisplay(`${endYmd} 00:00:00`, IANA_IST, 'dd MMM yyyy, h:mm a');
+  } catch {
+    return null;
+  }
 }
 
 /**

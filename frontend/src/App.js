@@ -201,6 +201,7 @@ import { DuplicateFoodModal } from "./features/nutrition";
 import { UserProfileModal } from "./features/user";
 import { UserProfilePage, ProfilePageErrorBoundary } from "./features/user";
 import PremiumSuccessHost from "./features/payments/components/PremiumSuccessHost";
+import HomePlanStatus from "./features/payments/components/HomePlanStatus";
 import { CompleteProfilePage } from "./features/user";
 import { FieldCollectionHost } from "./features/field-collection";
 import { OnboardingIdentityPage } from "./features/user";
@@ -9466,6 +9467,10 @@ function WellnessValleyApp() {
                 </div>
               </div>
             </div>
+
+            <HomePlanStatus
+              userId={user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null}
+            />
 
             {/* Today's Nutrition Carousel � Calories � Macros � Heart Healthy � Low Carb */}
             <HomeNutritionCarousel
