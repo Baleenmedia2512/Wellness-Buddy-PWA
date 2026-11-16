@@ -169,7 +169,7 @@ describe('WeightLossLeaderboard profile photo flow', () => {
     );
     expect(container.textContent).toContain('Last 10 days');
     expect(container.textContent).toContain('Ten Day Winner');
-    expect(container.textContent).toContain('Show today');
+    expect(container.textContent).toContain('Last 1 days');
   });
 });
 
