@@ -10,6 +10,7 @@ import {
   canSeeReportDetails,
   shouldGateReportDetails,
   trialStartIstYmd,
+  trialExpiresAtDisplay,
   REPORT_TRIAL_LENGTH_DAYS,
 } from '../domain/report-trial.rules.js';
 
@@ -22,6 +23,11 @@ describe('report trial window', () => {
       daysLeft: 14,
       ended: false,
     });
+  });
+
+  it('ends at midnight IST on the morning after the last active day', () => {
+    assert.equal(trialExpiresAtDisplay('2026-11-05'), '19 Nov 2026, 12:00 AM');
+    assert.equal(trialExpiresAtDisplay('not-a-date'), null);
   });
 
   it('keeps details through day 14 and locks on the next India date', () => {
