@@ -106,4 +106,70 @@ describe('WeightLossLeaderboard profile photo flow', () => {
     expect(container.querySelector('[data-testid="member-profile"]')?.textContent)
       .toBe('42');
   });
+
+  it('toggles Last 10 days and requests days=10 from the weight leaderboard API', async () => {
+    globalThis.fetch = jest.fn((url) => {
+      const href = String(url);
+      if (href.includes('days=10')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: [{
+              rank: 1,
+              userId: 7,
+              userName: 'Ten Day Winner',
+              email: 'tenday@example.com',
+              weightLoss: 1.2,
+            }],
+          }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: [{
+            rank: 1,
+            userId: 42,
+            userName: 'Member One',
+            email: 'member@example.com',
+            weightLoss: 0.5,
+          }],
+        }),
+      });
+    });
+
+    await act(async () => {
+      root.render(
+        <WeightLossLeaderboard
+          variant="tile"
+          apiBaseUrl="https://example.test"
+          userId={1}
+          email="viewer@example.com"
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('Today vs Yesterday');
+    const toggle = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.includes('Last 10 days'));
+    expect(toggle).not.toBeUndefined();
+
+    await act(async () => {
+      toggle.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('days=10'),
+      expect.any(Object),
+    );
+    expect(container.textContent).toContain('Last 10 days');
+    expect(container.textContent).toContain('Ten Day Winner');
+    expect(container.textContent).toContain('Last 1 days');
+  });
 });
+

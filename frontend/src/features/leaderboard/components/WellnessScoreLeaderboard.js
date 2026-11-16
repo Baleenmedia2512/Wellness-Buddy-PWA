@@ -423,10 +423,10 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
             onClick={toggleTenDay}
             aria-pressed={showTenDay}
           >
-            {showTenDay ? 'Show today' : (
-              <>
-                <span className="block"> Last 10 days</span>
-              </>
+            {showTenDay ? (
+              <span className="block">Last 1 days</span>
+            ) : (
+              <span className="block">Last 10 days</span>
             )}
           </button>
         </header>

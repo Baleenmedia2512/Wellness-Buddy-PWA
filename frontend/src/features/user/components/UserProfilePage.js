@@ -687,22 +687,23 @@ const UserProfilePage = ({
       phone: result?.phone,
       teamSearchRefresh: true,
     });
+    // Recovered account = switched identity — land on Home like a fresh login.
+    if (result?.adopted) {
+      onBack?.();
+      return;
+    }
     const hadVerifiedEmail = looksLikeEmail(accountEmail);
     setSuccessMessage(
-      result?.adopted
-        ? 'Account recovered and email verified.'
-        : hadVerifiedEmail
-          ? 'Email updated and verified.'
-          : 'Email verified. You can appear as a sponsor to new members.',
+      hadVerifiedEmail
+        ? 'Email updated and verified.'
+        : 'Email verified. You can appear as a sponsor to new members.',
     );
     setHasSaved(true);
-    // Load recovered row by new id (sessionUserId in this closure is still old).
     await loadProfile({
       cacheBust: true,
-      userId: adoptedUserId || undefined,
-      email: adoptedUserId ? undefined : (nextEmail || undefined),
+      email: nextEmail || undefined,
     });
-  }, [form, onProfileUpdate, loadProfile, accountEmail, sessionUserId]);
+  }, [form, onProfileUpdate, loadProfile, accountEmail, sessionUserId, onBack]);
 
   const handlePhotoUploaded = useCallback(async (uploadedImage) => {
     // Optimistic preview — keep previous photo if refresh fails.
