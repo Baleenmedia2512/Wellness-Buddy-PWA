@@ -46,7 +46,6 @@ export default function AppNavTabs({
   const createEventEnabled = isFlagEnabled('ff.create-event');
   const paidFeaturesEnabled = isFlagEnabled('ff.coach-portfolio');
   const mapBusinessEnabled = isFlagEnabled('ff.gbp-listing');
-  // Same gate as the former Home card — do not add a new nav-access key (would hide for existing matrices).
   const upcomingEventsEnabled = isFlagEnabled('ff.events');
 
   return (
@@ -62,7 +61,7 @@ export default function AppNavTabs({
           label="Home"
         />
       )}
-      {upcomingEventsEnabled && (
+      {upcomingEventsEnabled && allow('events') && (
         <NavTabButton
           onClick={onShowEvents ?? (() => {})}
           active={activePage === 'events'}

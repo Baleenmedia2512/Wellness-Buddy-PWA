@@ -5,6 +5,7 @@
 
 export const NAV_PAGE_KEYS = Object.freeze([
   'home',
+  'events',
   'dashboard',
   'activity-report',
   'enrollment',
@@ -36,6 +37,7 @@ const ALL_PAGES_ON = Object.freeze(
 
 const CUSTOMER_DEFAULT = Object.freeze({
   home: true,
+  events: true,
   dashboard: true,
   'activity-report': false,
   enrollment: true,
@@ -204,6 +206,36 @@ export function mergeOmittedSystemAdmin(incoming, validatedMatrix, storedMatrix)
 }
 
 /**
+ * Older Admin Config saves omit a page key. Keep the stored value
+ * (or the role default) instead of turning the new page off.
+ *
+ * @param {unknown} incoming
+ * @param {Record<string, Record<string, boolean>>} validatedMatrix
+ * @param {Record<string, Record<string, boolean>>|null|undefined} storedMatrix
+ * @param {string} pageKey
+ * @returns {Record<string, Record<string, boolean>>}
+ */
+function mergeOmittedPageKey(incoming, validatedMatrix, storedMatrix, pageKey) {
+  const out = { ...validatedMatrix };
+  for (const role of MATRIX_ROLES) {
+    const incomingRole = incoming?.[role];
+    const sent = incomingRole
+      && typeof incomingRole === 'object'
+      && !Array.isArray(incomingRole)
+      && Object.prototype.hasOwnProperty.call(incomingRole, pageKey);
+    if (sent) continue;
+    const kept = storedMatrix?.[role]?.[pageKey];
+    out[role] = {
+      ...out[role],
+      [pageKey]: kept == null
+        ? Boolean(DEFAULT_NAV_ACCESS_MATRIX[role]?.[pageKey])
+        : Boolean(kept),
+    };
+  }
+  return out;
+}
+
+/**
  * Older Admin Config saves omit `event-check-in`. Keep the stored value
  * (or the role default) instead of turning the new page off.
  *
@@ -213,23 +245,20 @@ export function mergeOmittedSystemAdmin(incoming, validatedMatrix, storedMatrix)
  * @returns {Record<string, Record<string, boolean>>}
  */
 export function mergeOmittedCheckInPage(incoming, validatedMatrix, storedMatrix) {
-  const out = { ...validatedMatrix };
-  for (const role of MATRIX_ROLES) {
-    const incomingRole = incoming?.[role];
-    const sent = incomingRole
-      && typeof incomingRole === 'object'
-      && !Array.isArray(incomingRole)
-      && Object.prototype.hasOwnProperty.call(incomingRole, 'event-check-in');
-    if (sent) continue;
-    const kept = storedMatrix?.[role]?.['event-check-in'];
-    out[role] = {
-      ...out[role],
-      'event-check-in': kept == null
-        ? Boolean(DEFAULT_NAV_ACCESS_MATRIX[role]?.['event-check-in'])
-        : Boolean(kept),
-    };
-  }
-  return out;
+  return mergeOmittedPageKey(incoming, validatedMatrix, storedMatrix, 'event-check-in');
+}
+
+/**
+ * Older Admin Config saves omit `events`. Keep the stored value
+ * (or the role default) instead of turning Events off.
+ *
+ * @param {unknown} incoming
+ * @param {Record<string, Record<string, boolean>>} validatedMatrix
+ * @param {Record<string, Record<string, boolean>>|null|undefined} storedMatrix
+ * @returns {Record<string, Record<string, boolean>>}
+ */
+export function mergeOmittedEventsPage(incoming, validatedMatrix, storedMatrix) {
+  return mergeOmittedPageKey(incoming, validatedMatrix, storedMatrix, 'events');
 }
 
 /**
