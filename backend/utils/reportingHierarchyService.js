@@ -540,7 +540,7 @@ const TEAM_USER_SELECT =
 const MAX_SUBTREE_DEPTH = 12;
 const SUBTREE_CONTEXT_CACHE = new Map();
 const SUBTREE_CONTEXT_TTL_MS = 60_000;
-const SUBTREE_CACHE_KEY_PREFIX = 'v8:'; // bump when select columns or rollup rules change
+const SUBTREE_CACHE_KEY_PREFIX = 'v9:'; // bump when select columns or rollup rules change
 
 /** Keep PostgREST `.in()` lists bounded (URL / planner safety). */
 const COACH_ID_IN_CHUNK = 100;
@@ -645,42 +645,59 @@ export async function fetchTeamUsersByCommunityCodePaged(db, communityCode, sele
  * @param {TeamUser} rootUser
  * @returns {Promise<number[]>}
  */
+/**
+ * Prefer a real Coach↔CoCoach pair (distinct ids) when multiple active rows match.
+ * @param {Array<{ CoachId?: unknown, CoCoachId?: unknown }>|null|undefined} rows
+ * @param {number} rootId
+ * @returns {number[]|null}
+ */
+function pickCoCoachPartnershipLeads(rows, rootId) {
+  const scored = [];
+  for (const row of rows || []) {
+    const a = Number(row?.CoachId);
+    const b = Number(row?.CoCoachId);
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || b <= 0) continue;
+    if (rootId !== a && rootId !== b) continue;
+    scored.push({ a, b, distinct: a !== b ? 1 : 0 });
+  }
+  scored.sort((x, y) => y.distinct - x.distinct);
+  const best = scored[0];
+  if (!best) return null;
+  return [...new Set([best.a, best.b])];
+}
+
 async function resolveCoCoachRootCoachIds(db, rootUser) {
   const rootId = Number(rootUser?.UserId);
   if (!Number.isFinite(rootId)) return [];
 
   // Prefer: viewer is already a lead on an active coach_teams row.
-  const { data: byRole, error: byRoleError } = await db
+  // Load all matches — a self-pair leftover must not hide a real partnership.
+  const { data: byRoleRows, error: byRoleError } = await db
     .from('coach_teams_table')
     .select('CoachId, CoCoachId')
     .or(`CoachId.eq.${rootId},CoCoachId.eq.${rootId}`)
-    .eq('Status', 'active')
-    .maybeSingle();
+    .eq('Status', 'active');
 
-  if (!byRoleError && byRole?.CoachId && byRole?.CoCoachId) {
-    return [...new Set([byRole.CoachId, byRole.CoCoachId].filter(Boolean))];
+  if (!byRoleError) {
+    const fromRole = pickCoCoachPartnershipLeads(byRoleRows, rootId);
+    if (fromRole?.length) return fromRole;
   }
 
   const teamCode = rootUser.TeamId || rootUser.CoachTeamId;
   if (!teamCode) return [rootId];
 
-  const { data: coachTeam, error } = await db
+  const { data: coachTeams, error } = await db
     .from('coach_teams_table')
     .select('CoachId, CoCoachId')
     .eq('TeamId', teamCode)
-    .eq('Status', 'active')
-    .maybeSingle();
+    .eq('Status', 'active');
 
-  if (error || !coachTeam?.CoachId || !coachTeam?.CoCoachId) {
-    return [rootId];
-  }
+  if (error) return [rootId];
 
-  // Only merge partner downlines when the viewer is one of the two leads.
-  if (rootId !== Number(coachTeam.CoachId) && rootId !== Number(coachTeam.CoCoachId)) {
-    return [rootId];
-  }
+  const fromTeam = pickCoCoachPartnershipLeads(coachTeams, rootId);
+  if (fromTeam?.length) return fromTeam;
 
-  return [...new Set([coachTeam.CoachId, coachTeam.CoCoachId].filter(Boolean))];
+  return [rootId];
 }
 
 /**
@@ -719,6 +736,30 @@ export async function loadReportingContextForCoach(db, rootCoachId) {
     if (!ancestor) break;
     usersById.set(ancestor.UserId, ancestor);
     walkId = Number(ancestor.CoachId);
+  }
+
+  // Co-coach partners of every upline (ancestor) — partner person only.
+  // Used so a member who already sees Leenah as upline also sees Balaji
+  // (Leenah's co-coach). Does not load partner peers or partner downlines.
+  /** @type {number[]} */
+  const ancestorCoCoachPartnerIds = [];
+  for (const ancestorId of visitedUp) {
+    if (ancestorId === rootId) continue;
+    const ancestorUser = usersById.get(ancestorId);
+    if (!ancestorUser) continue;
+    const leadIds = await resolveCoCoachRootCoachIds(db, ancestorUser);
+    for (const partnerRaw of leadIds) {
+      const partnerId = Number(partnerRaw);
+      if (!Number.isFinite(partnerId) || partnerId === ancestorId || partnerId === rootId) {
+        continue;
+      }
+      if (!ancestorCoCoachPartnerIds.includes(partnerId)) {
+        ancestorCoCoachPartnerIds.push(partnerId);
+      }
+      if (usersById.has(partnerId)) continue;
+      const partner = await fetchTeamUserById(db, partnerId);
+      if (partner) usersById.set(partner.UserId, partner);
+    }
   }
 
   const rootCoachIds = await resolveCoCoachRootCoachIds(db, rootUser);
@@ -881,6 +922,8 @@ export async function loadReportingContextForCoach(db, rootCoachId) {
   // (e.g. Usha sees Jasper because Jasper is in Balaji's Direct via Leenah co-coach).
   context.parentPartnerRootIds = parentPartnerRootIds;
   context.parentCommunityPeerRootIds = parentCommunityPeerRootIds;
+  // Co-coach of each upline (partner node only — no peers / no partner downline).
+  context.ancestorCoCoachPartnerIds = ancestorCoCoachPartnerIds;
   // Re-resolve after peer subtrees are loaded so nested community coaches are excluded.
   context.communityPeerRootIds = resolveCommunityPeerCoachIds(
     rootId,
@@ -897,6 +940,9 @@ export async function loadReportingContextForCoach(db, rootCoachId) {
  * Includes:
  * - the viewer
  * - every ancestor on the CoachId chain (the people only — not their other branches)
+ * - co-coach partner of each ancestor (partner person only — not partner peers /
+ *   not partner downline). Example: Vasantha sees Leenah as upline and also
+ *   Balaji when Balaji is Leenah's co-coach.
  * - the viewer's full downline at every level
  * - peers = parent's shared Direct Team nodes only (CoachId siblings + parent's
  *   Sponsor/Co-Sponsor partner directs + parent's same-community peer directs).
@@ -943,6 +989,21 @@ export function collectVisibleHierarchyUsers(viewerUserId, context, { partnerIds
     if (!ancestor) break;
     result.set(Number(ancestor.UserId), ancestor);
     walkId = Number(ancestor.CoachId);
+  }
+
+  // ── Upline co-coaches: partner person only (no peers / no partner downline)
+  const ancestorPartners = Array.isArray(context.ancestorCoCoachPartnerIds)
+    ? context.ancestorCoCoachPartnerIds
+    : [];
+  for (const partnerRaw of ancestorPartners) {
+    const partnerId = Number(partnerRaw);
+    if (!Number.isFinite(partnerId) || partnerId === viewerId) continue;
+    if (visitedUp.has(partnerId)) continue;
+    const partner = getUser(partnerId);
+    if (!partner) continue;
+    const canShowPartner =
+      isCoachRole(partner.Role) || isActiveTeamStatus(partner.Status);
+    if (canShowPartner) result.set(partnerId, partner);
   }
 
   // ── Peers: parent's shared Direct Team (nodes only) ─────────────────────
