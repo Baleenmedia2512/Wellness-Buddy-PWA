@@ -154,7 +154,7 @@ describe('WeightLossLeaderboard profile photo flow', () => {
 
     expect(container.textContent).toContain('Today vs Yesterday');
     const toggle = Array.from(container.querySelectorAll('button'))
-      .find((button) => button.textContent.includes('Last 10 days'));
+      .find((button) => button.textContent.includes('Show Last 10 Days'));
     expect(toggle).not.toBeUndefined();
 
     await act(async () => {
@@ -169,7 +169,7 @@ describe('WeightLossLeaderboard profile photo flow', () => {
     );
     expect(container.textContent).toContain('Last 10 days');
     expect(container.textContent).toContain('Ten Day Winner');
-    expect(container.textContent).toContain('Last 1 days');
+    expect(container.textContent).toContain('Show Today');
   });
 });
 

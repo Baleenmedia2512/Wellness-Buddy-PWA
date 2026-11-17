@@ -117,6 +117,42 @@ function resolveShareUserId(user, userId) {
 }
 
 /**
+ * Sync marathon comparison for share (cache / profile only — no network).
+ * Use on mobile web before navigator.share so the user-gesture window is not lost.
+ *
+ * @param {object} [options]
+ * @param {object|null} [options.user]
+ * @param {unknown} [options.timezoneSource]
+ * @param {unknown} [options.currentMarathonDay0Weight]
+ * @param {object|null|undefined} [options.marathonWeightComparison]
+ * @returns {object|null}
+ */
+export function peekMarathonWeightComparisonForShare({
+  user = null,
+  timezoneSource,
+  currentMarathonDay0Weight,
+  marathonWeightComparison,
+} = {}) {
+  let comparison = marathonWeightComparison ?? null;
+  if (comparison == null) {
+    comparison = getMarathonWeightComparisonFromCache()
+      ?? resolveMarathonWeightComparisonFromProfileCache(user);
+  }
+
+  const ymd = getClientMarathonBusinessYmd(timezoneSource ?? user);
+  const state = getMarathonCalendarState(ymd);
+
+  if (currentMarathonDay0Weight !== undefined) {
+    return mergeMarathonWeightComparisonForShare(
+      comparison,
+      currentMarathonDay0Weight,
+      state.marathonDay,
+    );
+  }
+  return comparison;
+}
+
+/**
  * Load marathon Day 0 comparison for share when cache is empty or partial.
  * Uses the same business date as the Day 0 caption (profile/device tz + test override).
  *

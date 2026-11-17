@@ -449,11 +449,15 @@ export default function ManualEntryPage({
     return loadWorkoutToday({ showLoading: !workoutSummaryReadyRef.current });
   }, [activeForm, loadWorkoutToday]);
 
-  const exit = (shareMeta = null) => {
-    // Leave classify immediately — share sheet opens from App in the background.
-    // onSaved must read imageBase64 synchronously before onBack clears the payload.
-    onSaved?.(shareMeta);
-    onBack?.();
+  const exit = async (shareMeta = null) => {
+    // Await share on web so navigator.share({ files }) stays in the Save gesture
+    // window (otherwise the photo is dropped and only wa.me text opens).
+    // onSaved must read imageBase64 before onBack clears the payload.
+    try {
+      await onSaved?.(shareMeta);
+    } finally {
+      onBack?.();
+    }
   };
 
   /** Close classify — optionally discard a new capture (not when opened from Diary). */
@@ -1008,6 +1012,7 @@ export default function ManualEntryPage({
         idealWeight: pickIdealWeightKg(weightValue, idealRange),
       }),
       currentMarathonDay0Weight: weightValue,
+      shareImage: img,
     });
 
     void saveWeight({
@@ -1035,6 +1040,7 @@ export default function ManualEntryPage({
       activityCaption: buildDiaryShareSuffix('workout', {
         caloriesBurned,
       }),
+      shareImage: img,
     });
 
     void saveLog({
@@ -1115,6 +1121,7 @@ export default function ManualEntryPage({
         platform,
         session: topic,
       }),
+      shareImage: img,
     });
 
     void saveLog({

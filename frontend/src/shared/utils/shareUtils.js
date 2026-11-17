@@ -48,6 +48,41 @@ function mimeTypeFromDataUrl(dataUrl, fallback = 'image/jpeg') {
   return dataUrl.slice(5, semi) || fallback;
 }
 
+/** Sync data-URL → File so web share stays inside the user-gesture window. */
+function dataUrlToShareFile(dataUrl, fileName, fallbackType = 'image/jpeg') {
+  try {
+    const comma = dataUrl.indexOf(',');
+    if (comma < 0) return null;
+    const mime = mimeTypeFromDataUrl(dataUrl, fallbackType);
+    const b64 = dataUrl.slice(comma + 1);
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: mime });
+    return new File([blob], fileName, { type: mime });
+  } catch {
+    return null;
+  }
+}
+
+async function copyWebShareCaptionBackup(text) {
+  const caption = String(text || '').trim();
+  if (!caption || typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(caption);
+    debugLog('📋 [CapacitorShare] web caption copied for WhatsApp paste');
+  } catch (clipErr) {
+    console.warn(
+      '⚠️ [CapacitorShare] web clipboard caption failed:',
+      clipErr?.message || clipErr,
+    );
+  }
+}
+
 async function copyAndroidShareCaptionBackup(text) {
   const caption = String(text || '').trim();
   if (!caption || !isAndroidNative()) return;
@@ -428,22 +463,42 @@ export const shareViaCapacitorAPI = async (dataUrl, options = {}) => {
   }
 
   // ── WEB (navigator.share with file) ──────────────────────────────────
+  // Manual Log / classify: attach the photo (same caption style as native WA).
+  // Do not gate on canShare({ files }) — mobile Chrome often returns false
+  // even when file share works, which used to drop the image and send text only.
+  // Share the file FIRST (gesture-sensitive); clipboard caption is best-effort.
   try {
-    const blob = await (await fetch(dataUrl)).blob();
-    const file = new File([blob], fileName, { type: blob.type || "image/jpeg" });
-
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ title, text, files: [file] });
-      return { ok: true, dismissed: false };
+    if (!navigator.share) {
+      return { ok: false, error: new Error("Web Share API not available") };
     }
 
-    // Last-resort web fallback — share text/url only.
-    if (navigator.share) {
-      await navigator.share({ title, text });
+    const file = dataUrlToShareFile(dataUrl, fileName);
+    if (!file) {
+      return { ok: false, error: new Error("could not build share file") };
+    }
+    const caption = String(text || "").trim();
+
+    try {
+      await navigator.share(
+        caption
+          ? { title, text: caption, files: [file] }
+          : { title, files: [file] },
+      );
+      if (caption) void copyWebShareCaptionBackup(caption);
+      return { ok: true, dismissed: false };
+    } catch (mixErr) {
+      if (isCanceled(mixErr)) {
+        return { ok: true, dismissed: true };
+      }
+      // files+text is NotAllowed on some mobile browsers — retry image only.
+      debugLog(
+        "⚠️ [CapacitorShare] web files+text failed, retrying files only:",
+        mixErr?.name || mixErr?.message,
+      );
+      await navigator.share({ title, files: [file] });
+      if (caption) void copyWebShareCaptionBackup(caption);
       return { ok: true, dismissed: false };
     }
-
-    return { ok: false, error: new Error("Web Share API not available") };
   } catch (err) {
     if (isCanceled(err)) {
       return { ok: true, dismissed: true };
