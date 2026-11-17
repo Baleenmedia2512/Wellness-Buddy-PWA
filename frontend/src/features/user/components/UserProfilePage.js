@@ -70,6 +70,8 @@ import { looksLikeEmail } from '../domain/onboardingEmail';
 import GoPremiumButton from '../../payments/components/GoPremiumButton';
 import { PremiumAvatarRing, PremiumCrownMark } from '../../payments/components/PremiumBadge';
 import usePremiumStatus from '../../payments/hooks/usePremiumStatus';
+import { buildHomePlanStatus } from '../../payments/domain/homePlanStatus.rules';
+import useReportAccess from '../../reports/hooks/useReportAccess';
 import { AdminGbpListingButton } from '../../gbp-listing';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
@@ -108,7 +110,22 @@ const UserProfilePage = ({
   const form = useProfileForm();
   const resolvedUserId = user?.id ?? user?._id ?? user?.UserId ?? user?.userId ?? form.userId ?? Session.getDbUserId() ?? null;
   const premiumUserId = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
-  const { premium: isPremiumMember, refresh: refreshPremium } = usePremiumStatus(premiumUserId);
+  const {
+    premium: isPremiumMember,
+    daysLeft: premiumDaysLeft,
+    expiresAtDisplay: premiumExpiresAtDisplay,
+    refresh: refreshPremium,
+  } = usePremiumStatus(premiumUserId);
+  const trialAccess = useReportAccess(isPremiumMember ? null : premiumUserId);
+  const onTrial = !isPremiumMember && trialAccess.access === 'trial';
+  const planStatus = buildHomePlanStatus({
+    premium: isPremiumMember,
+    trial: onTrial,
+    daysLeft: isPremiumMember ? premiumDaysLeft : trialAccess.daysLeft,
+    expiresAtDisplay: isPremiumMember
+      ? premiumExpiresAtDisplay
+      : trialAccess.expiresAtDisplay,
+  });
   const transformationPhotos = useTransformationPhotos();
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [latestWeight, setLatestWeight] = useState(null);
@@ -886,6 +903,21 @@ const UserProfilePage = ({
             <p className={`text-xl font-bold truncate ${isPremiumMember ? 'text-sky-950' : 'text-white'}`}>{displayName}</p>
             <p className={`text-sm truncate ${isPremiumMember ? 'text-sky-700' : 'text-green-100'}`}>{accountEmail || user?.email}</p>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
+              {planStatus?.daysLabel ? (
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${
+                    planStatus.urgent
+                      ? 'bg-red-50 border-red-300 text-red-700'
+                      : isPremiumMember
+                        ? 'bg-amber-50 border-amber-300 text-amber-900'
+                        : 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                  }`}
+                  title={planStatus.endsOn || undefined}
+                  data-testid="profile-plan-days"
+                >
+                  {planStatus.daysLabel}
+                </span>
+              ) : null}
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-900">
                 {role}
               </span>

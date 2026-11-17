@@ -74,32 +74,35 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.5.6',
+  VERSION: '3.5.7',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
   // NOTE: versionCode must never decrease for Play Store compatibility.
-  VERSION_CODE: 85,
+  VERSION_CODE: 86,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
-  IOS_BUILD_NUMBER: 80,
+  IOS_BUILD_NUMBER: 81,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version  3.5.6',
+  RELEASE_NAME: 'Version  3.5.7',
   
   // Build date
-  BUILD_DATE: '2026-11-12',
+  BUILD_DATE: '2026-11-17',
   
   // Platform release notes..
   PLATFORMS: {
-    ANDROID: { versionCode: 85, versionName: '3.5.6' },
-    IOS: { buildNumber: 80, versionName: '3.5.6' },
+    ANDROID: { versionCode: 86, versionName: '3.5.7' },
+    IOS: { buildNumber: 81, versionName: '3.5.7' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
  * 
+ * Version 3.5.7 (Code 86 / iOS build 81) - 2026-11-17 [ANDROID + iOS — not yet released]
+ *   ✨ Task by Coach — coach email OTP before save; score only on verify IST day
+ *
  * Version 3.5.6 (Code 85 / iOS build 80) - 2026-11-12 [ANDROID + iOS — not yet released]
  *   🐛 Patch release — bug fixes and stability improvements
  *
