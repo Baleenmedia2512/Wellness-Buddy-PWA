@@ -98,7 +98,7 @@ export default function AppNavTabs({
       {upcomingEventsEnabled && allow('events') && (
         <NavTabButton
           onClick={onShowEvents ?? (() => {})}
-          active={activePage === 'events'}
+          active={activePage === 'events' || activePage === 'create-event'}
           icon={CalendarDays}
           label="Events"
           ariaLabel="Events"
@@ -217,21 +217,7 @@ export default function AppNavTabs({
           ariaLabel="BroadCast"
         />
       )}
-      {createEventEnabled && allow('create-event') && (
-        <NavTabButton
-          onClick={onShowCreateEvent ?? (() => {})}
-          active={activePage === 'create-event'}
-          activeBg="bg-emerald-100"
-          hoverBg="hover:bg-emerald-50"
-          icon={CalendarPlus}
-          iconActiveClass="text-emerald-800"
-          iconClass="text-emerald-700"
-          labelActiveClass="text-emerald-900"
-          labelClass="text-emerald-800"
-          label="Create Event"
-          ariaLabel="Create Event"
-        />
-      )}
+
       {paidFeaturesEnabled && allow('paid-features') && (
         <NavTabButton
           onClick={onShowPaidFeatures ?? (() => {})}

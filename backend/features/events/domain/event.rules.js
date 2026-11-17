@@ -574,3 +574,45 @@ export function canScanEventRegistrations(event, scannerUserId) {
   const designated = Array.isArray(event.designatedPersons) ? event.designatedPersons : [];
   return designated.some((person) => Number(person?.userId) === uid);
 }
+
+/**
+ * Determines whether an event has finished / ended.
+ * @param {object} event
+ * @param {{ date: string, time?: string }} now YYYY-MM-DD and HH:mm in IST.
+ * @returns {boolean}
+ */
+export function isEventFinished(event, now) {
+  if (!event || !now?.date) return false;
+  const rawDates = Array.isArray(event.eventDates) ? event.eventDates : [];
+  const dates = rawDates
+    .map((item) => {
+      const date = String(item?.date || item?.eventDate || '').slice(0, 10);
+      const endMatch = /^(\d{2}):(\d{2})/.exec(String(item?.endTime || '').trim());
+      return {
+        date,
+        endTime: endMatch ? `${endMatch[1]}:${endMatch[2]}` : null,
+      };
+    })
+    .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item.date));
+
+  if (dates.length === 0) {
+    const single = String(event.eventDate || event.date || '').slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(single)) {
+      const endMatch = /^(\d{2}):(\d{2})/.exec(String(event.endTime || '').trim());
+      dates.push({
+        date: single,
+        endTime: endMatch ? `${endMatch[1]}:${endMatch[2]}` : null,
+      });
+    }
+  }
+
+  if (dates.length === 0) return false;
+  dates.sort((a, b) => a.date.localeCompare(b.date));
+  const last = dates[dates.length - 1];
+
+  if (now.date > last.date) return true;
+  if (now.date === last.date && last.endTime) {
+    return String(now.time || '00:00') > last.endTime;
+  }
+  return false;
+}

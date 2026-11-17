@@ -1374,7 +1374,6 @@ function WellnessValleyApp() {
       } else if (page === 'create-event' || page === 'event-check-in') {
         if (!isFlagEnabled('ff.create-event')) return;
         bumpTabVisitKeyRef.current('create-event');
-        setCreateEventTab(page === 'event-check-in' ? 'checkin' : 'manage');
         setShowDashboard(false);
         setShowWellnessCounselling(false);
         setShowUniversityEnrollment(false);
@@ -1389,8 +1388,16 @@ function WellnessValleyApp() {
         setShowAdminConfigSetup(false);
         setShowWellnessScore(false);
         setShowProfilePage(false);
-        setShowEvents(false);
-        startTransition(() => setShowCreateEvent(true));
+        if (page === 'event-check-in') {
+          setCreateEventTab('checkin');
+          setShowEvents(false);
+          startTransition(() => setShowCreateEvent(true));
+        } else {
+          const canCreate = canAccessNavPage(navAccessPagesRef.current, 'create-event');
+          setEventsInitialTab(canCreate ? 'create' : 'events');
+          setShowCreateEvent(false);
+          startTransition(() => setShowEvents(true));
+        }
         Session.setCurrentPage('main');
       } else if (page === 'paid-features') {
         if (!isFlagEnabled('ff.coach-portfolio')) return;
@@ -3077,9 +3084,15 @@ function WellnessValleyApp() {
         }
         break;
       case 'create-event':
+        if (isFlagEnabled('ff.create-event')) {
+          const canCreate = canAccessNavPage(navAccessPagesRef.current, 'create-event');
+          setEventsInitialTab(canCreate ? 'create' : 'events');
+          setShowEvents(true);
+        }
+        break;
       case 'event-check-in':
         if (isFlagEnabled('ff.create-event')) {
-          setCreateEventTab(targetPage === 'event-check-in' ? 'checkin' : 'manage');
+          setCreateEventTab('checkin');
           setShowCreateEvent(true);
         }
         break;
@@ -8683,7 +8696,7 @@ function WellnessValleyApp() {
           profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
-          <EventsPage user={user} initialTab={eventsInitialTab} />
+          <EventsPage user={user} initialTab={eventsInitialTab} allowedPages={navAccessPages} />
         </div>
       </div>
     );
