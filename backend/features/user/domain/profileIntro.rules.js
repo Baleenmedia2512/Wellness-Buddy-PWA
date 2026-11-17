@@ -27,10 +27,10 @@ export const PROFILE_INTRO_LABELS = Object.freeze({
   instagram: 'Instagram',
   youtube: 'YouTube',
   linkedin: 'LinkedIn',
-  herbalifeJoinedOn: 'Date of joining Herbalife',
+  herbalifeJoinedOn: 'Date of joining community',
   aboutMe: 'About me',
   qualification: 'Qualification',
-  languages: 'Languages',
+  languages: 'Languages you speak',
 });
 
 const SOCIAL_HOSTS = Object.freeze({

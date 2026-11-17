@@ -10,7 +10,14 @@ import {
   deleteHabit,
   undoDeleteHabit,
 } from '../../../features/good-habits/api/save.handler.js';
+import {
+  requestGoodHabitOtp,
+  verifyGoodHabitOtp,
+} from '../../../features/good-habits/api/otp.handler.js';
+import { requiresGoodHabitCoachOtp } from '../../../features/good-habits/domain/otp.rules.js';
 import { deleteById as deleteCaptureById } from '../../../features/captures/captures.service.js';
+import { getClientAppVersion } from '../../../shared/lib/client-app-version.js';
+import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import logger from '../../../shared/lib/logger.js';
 
@@ -37,10 +44,33 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
+    const action = String(req.body?.action || '').trim().toLowerCase();
+    if (action === 'request-otp') {
+      return runService(res, () => requestGoodHabitOtp(req.body));
+    }
+    if (action === 'verify-otp') {
+      return runService(res, () => verifyGoodHabitOtp({
+        userId: req.body?.userId,
+        otp: req.body?.otp,
+        otpKey: req.body?.otpKey,
+      }));
+    }
+
     const undo = req.body?.undo === true || req.query?.undo === '1';
     if (undo) {
       return runService(res, () => undoDeleteHabit(validateDeleteHabit(req.body)));
     }
+
+    const appVersion = getClientAppVersion(req);
+    if (requiresGoodHabitCoachOtp(appVersion)) {
+      return runService(res, async () => {
+        throw new ValidationError(
+          400,
+          'Coach OTP is required to save Task by Coach. Request a code for your coach first.',
+        );
+      });
+    }
+
     return runService(res, async () => {
       const input = validateSaveHabit(req.body);
       const result = await saveHabit(input);
