@@ -428,22 +428,49 @@ export const shareViaCapacitorAPI = async (dataUrl, options = {}) => {
   }
 
   // ── WEB (navigator.share with file) ──────────────────────────────────
+  // Manual Log / classify: attach the photo (same caption style as native WA).
+  // Do not gate on canShare({ files }) — mobile Chrome often returns false
+  // even when file share works, which used to drop the image and send text only.
   try {
+    if (!navigator.share) {
+      return { ok: false, error: new Error("Web Share API not available") };
+    }
+
     const blob = await (await fetch(dataUrl)).blob();
     const file = new File([blob], fileName, { type: blob.type || "image/jpeg" });
+    const caption = String(text || "").trim();
 
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ title, text, files: [file] });
-      return { ok: true, dismissed: false };
+    if (caption && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(caption);
+        debugLog("📋 [CapacitorShare] web caption copied for WhatsApp paste");
+      } catch (clipErr) {
+        console.warn(
+          "⚠️ [CapacitorShare] web clipboard caption failed:",
+          clipErr?.message || clipErr,
+        );
+      }
     }
 
-    // Last-resort web fallback — share text/url only.
-    if (navigator.share) {
-      await navigator.share({ title, text });
+    try {
+      await navigator.share(
+        caption
+          ? { title, text: caption, files: [file] }
+          : { title, files: [file] },
+      );
+      return { ok: true, dismissed: false };
+    } catch (mixErr) {
+      if (isCanceled(mixErr)) {
+        return { ok: true, dismissed: true };
+      }
+      // files+text is NotAllowed on some mobile browsers — retry image only.
+      debugLog(
+        "⚠️ [CapacitorShare] web files+text failed, retrying files only:",
+        mixErr?.name || mixErr?.message,
+      );
+      await navigator.share({ title, files: [file] });
       return { ok: true, dismissed: false };
     }
-
-    return { ok: false, error: new Error("Web Share API not available") };
   } catch (err) {
     if (isCanceled(err)) {
       return { ok: true, dismissed: true };
