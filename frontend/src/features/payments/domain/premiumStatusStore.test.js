@@ -115,6 +115,126 @@ describe('premium status store', () => {
     assert.equal(await t.store.load(42, { force: true }), true);
   });
 
+  it('shows the last saved Premium answer before the server answers', async () => {
+    const saved = new Map();
+    const t = makeStore(
+      [{ premium: true, daysLeft: 31, expiresAt: '2026-12-17', expiresAtDisplay: '17 Dec 2026, 5:29 AM', showExpiryWarning: false }],
+      {
+        recall: (userId) => saved.get(String(userId)) || null,
+        remember: (userId, status) => saved.set(String(userId), status),
+      },
+    );
+    assert.equal(t.store.getStatus(42).premium, false);
+    assert.equal(await t.store.load(42), true);
+    assert.equal(saved.get('42').daysLeft, 31);
+
+    const reopened = makeStore([null], {
+      recall: (userId) => saved.get(String(userId)) || null,
+      remember: (userId, status) => saved.set(String(userId), status),
+    });
+    assert.equal(reopened.store.getStatus(42).premium, true);
+    assert.equal(reopened.store.getStatus(42).daysLeft, 31);
+    assert.equal(reopened.store.getStatus(7).premium, false);
+  });
+
+  it('does not replace Premium when the check is not confirmed', async () => {
+    const saved = new Map();
+    const t = makeStore([
+      {
+        entitlementPacket: true,
+        premiumConfirmed: true,
+        premium: { premium: true, daysLeft: 31, expiresAt: '2026-12-17', expiresAtDisplay: '17 Dec 2026, 5:29 AM', showExpiryWarning: false },
+        reportConfirmed: true,
+        report: { access: 'premium', daysLeft: null, canSeeDetails: true },
+      },
+      {
+        entitlementPacket: true,
+        premiumConfirmed: false,
+        reportConfirmed: false,
+      },
+    ], {
+      remember: (userId, status) => saved.set(String(userId), status),
+    });
+    assert.equal(await t.store.load(42), true);
+    t.advance(PREMIUM_STATUS_TTL_MS + 1);
+    assert.equal(await t.store.load(42, { force: true }), true);
+    assert.equal(t.store.getStatus(42).daysLeft, 31);
+    assert.equal(saved.get('42').premium, true);
+    assert.equal(t.store.getStatus(7).premium, false);
+  });
+
+  it('keeps members apart when one answer arrives late', async () => {
+    let releaseFirst;
+    const first = new Promise((resolve) => { releaseFirst = resolve; });
+    const now = Date.parse('2026-11-17T08:00:00+05:30');
+    const store = createPremiumStatusStore({
+      loadStatus: (userId) => (
+        String(userId) === '1'
+          ? first
+          : { premium: false, daysLeft: null, expiresAt: null, showExpiryWarning: false }
+      ),
+      now: () => now,
+    });
+    const pending = store.load(1);
+    assert.equal(await store.load(2), false);
+    releaseFirst({
+      premium: true,
+      daysLeft: 10,
+      expiresAt: '2026-12-17',
+      showExpiryWarning: false,
+    });
+    assert.equal(await pending, true);
+    assert.equal(store.get(1), true);
+    assert.equal(store.get(2), false);
+  });
+
+  it('applies a payment refresh after the status check already in flight', async () => {
+    let releaseFirst;
+    const first = new Promise((resolve) => { releaseFirst = resolve; });
+    let calls = 0;
+    const now = Date.parse('2026-11-17T08:00:00+05:30');
+    const store = createPremiumStatusStore({
+      loadStatus: () => {
+        calls += 1;
+        if (calls === 1) return first;
+        return { premium: true, daysLeft: 30, expiresAt: '2026-12-17', showExpiryWarning: false };
+      },
+      now: () => now,
+    });
+    const slow = store.load(42);
+    const paid = store.load(42, { force: true });
+    releaseFirst({ premium: false, daysLeft: null, expiresAt: null, showExpiryWarning: false });
+    assert.equal(await slow, false);
+    assert.equal(await paid, true);
+    assert.equal(store.get(42), true);
+    assert.equal(store.getStatus(42).daysLeft, 30);
+    assert.equal(calls, 2);
+  });
+
+  it('stops showing Premium after the saved expiry, and keeps it when the network fails before then', async () => {
+    let clock = Date.parse('2026-11-17T08:00:00+05:30');
+    const t = makeStore([
+      { premium: true, daysLeft: 20, expiresAt: '2026-12-07', showExpiryWarning: false },
+      null,
+    ], { now: () => clock });
+    assert.equal(await t.store.load(42), true);
+    clock += 60 * 60 * 1000;
+    assert.equal(await t.store.load(42, { force: true }), true);
+    clock = Date.parse('2026-12-08T00:00:00+05:30');
+    assert.equal(t.store.get(42), false);
+  });
+
+  it('does not keep Premium that has no expiry for more than a day', async () => {
+    let clock = Date.parse('2026-11-17T08:00:00+05:30');
+    const store = createPremiumStatusStore({
+      loadStatus: async () => true,
+      now: () => clock,
+    });
+    assert.equal(await store.load(42), true);
+    clock += (24 * 60 * 60 * 1000) + 1;
+    assert.equal(store.get(42), false);
+  });
+
   it('ignores a missing member id', async () => {
     const t = makeStore([true]);
     assert.equal(await t.store.load(null), false);

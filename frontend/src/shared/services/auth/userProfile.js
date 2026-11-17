@@ -24,6 +24,7 @@
 import * as Session from "../sessionStorage";
 import { getProfile } from "../../../features/user/services/user.api.js";
 import { isOnboardingIdentityComplete } from "../../../features/user/domain/profileCompleteness";
+import { rememberSavedCommunityPosition } from "../../../features/user/domain/communityPosition.js";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -75,6 +76,11 @@ export async function fetchProfileCompletion({ apiBaseUrl, email, userId, afterS
         continue;
       }
       latestData = payload.data;
+      const savedPosition = latestData.eventLevel || latestData.communityPosition?.code;
+      const savedUserId = latestData.userId ?? latestData.UserId ?? userId ?? null;
+      if (savedPosition && savedUserId != null) {
+        rememberSavedCommunityPosition(savedUserId, savedPosition);
+      }
 
       if (latestData.profileComplete) {
         // Cache the per-email fast-path flag so subsequent boots can skip

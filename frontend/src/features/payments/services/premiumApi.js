@@ -113,7 +113,8 @@ export async function fetchPremiumQuote(userId) {
  *   expiresAt: string|null,
  *   expiresAtDisplay: string|null,
  *   showExpiryWarning: boolean,
- * }|null>} null when the server could not be reached
+ * }|null>} null when the server could not be reached.
+ * `confirmed: false` is a network or database failure, not a Free member.
  */
 export async function fetchPremiumStatus(userId) {
   try {
@@ -122,19 +123,25 @@ export async function fetchPremiumStatus(userId) {
       { method: 'GET', cache: 'no-store' },
     );
     const body = await response.json().catch(() => ({}));
-    if (!response.ok || typeof body?.data?.premium !== 'boolean') return null;
+    if (!response.ok || typeof body?.data?.premium !== 'boolean') {
+      return { confirmed: false, status: null };
+    }
+    if (body.data.lookupOk === false) return { confirmed: false, status: null };
     return {
-      premium: body.data.premium === true,
-      daysLeft: Number.isFinite(Number(body.data.daysLeft)) ? Number(body.data.daysLeft) : null,
-      expiresAt: typeof body.data.expiresAt === 'string' && body.data.expiresAt.trim()
-        ? body.data.expiresAt.trim()
-        : null,
-      expiresAtDisplay: typeof body.data.expiresAtDisplay === 'string' && body.data.expiresAtDisplay.trim()
-        ? body.data.expiresAtDisplay.trim()
-        : null,
-      showExpiryWarning: body.data.showExpiryWarning === true,
+      confirmed: true,
+      status: {
+        premium: body.data.premium === true,
+        daysLeft: Number.isFinite(Number(body.data.daysLeft)) ? Number(body.data.daysLeft) : null,
+        expiresAt: typeof body.data.expiresAt === 'string' && body.data.expiresAt.trim()
+          ? body.data.expiresAt.trim()
+          : null,
+        expiresAtDisplay: typeof body.data.expiresAtDisplay === 'string' && body.data.expiresAtDisplay.trim()
+          ? body.data.expiresAtDisplay.trim()
+          : null,
+        showExpiryWarning: body.data.showExpiryWarning === true,
+      },
     };
   } catch {
-    return null;
+    return { confirmed: false, status: null };
   }
 }

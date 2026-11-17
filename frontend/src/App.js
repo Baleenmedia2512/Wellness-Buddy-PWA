@@ -7602,6 +7602,9 @@ function WellnessValleyApp() {
       // ? Set React gate FIRST ? this immediately shows Login screen
       // and blocks any Firebase re-auth callbacks from re-logging in
       setForceLoggedOut(true);
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.remove('premium-theme');
+      }
 
       // Clear the fresh sign-in flag immediately to prevent re-login issues
       sessionStorage.removeItem("freshGoogleSignIn");
