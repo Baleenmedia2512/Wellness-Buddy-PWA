@@ -4,7 +4,8 @@
 // WebOTP API also auto-reads when the SMS includes @domain #code.
 // Pending OTP step is persisted (sessionStorage) so mobile-web tab reload
 // after switching to the SMS app still shows Enter OTP.
-import { useRef, useState } from 'react';
+// Phone draft survives Login remount when web authLoading flips false.
+import { useEffect, useRef, useState } from 'react';
 import { sendOtp as sendOtpApi, verifyOtp as verifyOtpApi } from '../services/authService';
 import {
   normalizePhone,
@@ -20,26 +21,48 @@ import {
   loadLoginOtpChallenge,
   saveLoginOtpChallenge,
 } from '../domain/loginOtpChallenge.js';
+import {
+  clearLoginPhoneDraft,
+  loadLoginPhoneDraft,
+  saveLoginPhoneDraft,
+} from '../domain/loginPhoneDraft.js';
 
 export default function useAuthFlow({ onOtpVerified } = {}) {
-  // Restore once on mount — mobile web often reloads after the user opens SMS.
-  const [restored] = useState(() => loadLoginOtpChallenge());
+  // Restore once on mount — OTP challenge first, else in-progress phone draft
+  // (App remounts <Login> when Firebase authLoading ends on web).
+  const [restoredChallenge] = useState(() => loadLoginOtpChallenge());
+  const [restoredDraft] = useState(() => {
+    if (loadLoginOtpChallenge()) return null;
+    return loadLoginPhoneDraft();
+  });
+  const restored = restoredChallenge || restoredDraft;
   // `email` keeps its name for backward-compat with existing tests/UI; it now
   // holds either an email OR a raw phone number (the user-typed value).
   const [email, setEmail] = useState(() => restored?.email || '');
   const [countryDial, setCountryDial] = useState(() => restored?.countryDial || DEFAULT_COUNTRY.dial);
-  const [otpSent, setOtpSent] = useState(() => Boolean(restored));
+  const [otpSent, setOtpSent] = useState(() => Boolean(restoredChallenge));
   const [verified, setVerified] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   // `contactType` is derived at send time and frozen for the verify step so
   // a half-typed change to the input doesn't switch flows mid-verification.
-  const [activeChannel, setActiveChannel] = useState(() => restored?.activeChannel || null); // 'email' | 'phone' | null
+  const [activeChannel, setActiveChannel] = useState(() => restoredChallenge?.activeChannel || null); // 'email' | 'phone' | null
   const [termsAccepted, setTermsAccepted] = useState(() => restored?.termsAccepted === true);
 
   // E.164 phone frozen for the verify step (phone channel only).
-  const phoneRecipientRef = useRef(restored?.phoneRecipient || null);
+  const phoneRecipientRef = useRef(restoredChallenge?.phoneRecipient || null);
+
+  // Keep draft warm while typing so authLoading → Login remount does not wipe digits.
+  useEffect(() => {
+    if (otpSent) return undefined;
+    saveLoginPhoneDraft({
+      email,
+      countryDial,
+      termsAccepted: termsAccepted === true,
+    });
+    return undefined;
+  }, [email, countryDial, termsAccepted, otpSent]);
 
   const sendOtp = async () => {
     setSuccessMessage('');
@@ -69,6 +92,7 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
         phoneRecipientRef.current = e164;
         setActiveChannel('phone');
         setOtpSent(true);
+        clearLoginPhoneDraft();
         saveLoginOtpChallenge({
           email,
           countryDial,
@@ -138,6 +162,7 @@ export default function useAuthFlow({ onOtpVerified } = {}) {
       }
       // Leave the OTP screen as soon as the code is accepted.
       clearLoginOtpChallenge();
+      clearLoginPhoneDraft();
       if (onOtpVerified) await onOtpVerified(data.isNewUser === true);
       return true;
     } catch {
