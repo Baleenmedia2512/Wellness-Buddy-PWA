@@ -133,16 +133,46 @@ const LoginEmailEntry = ({
             autoFocus
             // Progressive phone typing on web — do not select-all on focus/click.
             data-no-select-all="true"
-            name="tel"
+            // Avoid browser "tel" autofill selecting/replacing digits mid-type.
+            name="wv-login-phone"
             enterKeyHint="done"
             value={email}
+            onFocus={(e) => {
+              // Mobile web often selects the whole tel value on focus; keep caret at end.
+              const el = e.currentTarget;
+              const len = String(el.value || '').length;
+              requestAnimationFrame(() => {
+                try {
+                  if (typeof el.setSelectionRange === 'function') {
+                    el.setSelectionRange(len, len);
+                  }
+                } catch {
+                  /* some WebViews reject selection APIs */
+                }
+              });
+            }}
             onChange={(e) => {
               // Strip any non-numeric characters (except leading +) so only
               // digits reach the normalizer. This matches the E.164 expectation
               // in contactIdentifier.normalizePhone.
-              const raw = e.target.value;
+              const el = e.target;
+              const caret = el.selectionStart;
+              const raw = el.value;
               const cleaned = raw.replace(/[^\d+]/g, '');
               setEmail(cleaned);
+              if (cleaned !== raw) {
+                const pos = Math.min(
+                  typeof caret === 'number' ? caret : cleaned.length,
+                  cleaned.length,
+                );
+                requestAnimationFrame(() => {
+                  try {
+                    el.setSelectionRange(pos, pos);
+                  } catch {
+                    /* ignore */
+                  }
+                });
+              }
             }}
             onPaste={(e) => {
               e.preventDefault();
