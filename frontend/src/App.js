@@ -1624,6 +1624,12 @@ function WellnessValleyApp() {
         if (result.status === 'complete') {
           setShowCompleteProfile(false);
           profileCompletedRef.current = true;
+          // Field collection owns Community Position and the photo gate.
+          if (isFlagEnabled('ff.field-collection') && fieldCollectionLiveRef.current) {
+            transformationPhotosGateRef.current = false;
+            setShowOnboardingTransformationPhotos(false);
+            return;
+          }
           const photosDecision = resolveTransformationPhotosGate({
             confirmedThisSession: transformationPhotosConfirmedRef.current,
             profile: result.data,
@@ -2121,6 +2127,27 @@ function WellnessValleyApp() {
     return () => clearTimeout(timer);
   }, [showLaunchOverlay]);
 
+  // Returning from battery details must not leave the logo on top of Home.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return undefined;
+    let handle = null;
+    let cancelled = false;
+    nativeLifecycle
+      .addAppStateListener(({ isActive }) => {
+        if (!isActive || cancelled) return;
+        setShowLaunchOverlay(false);
+      })
+      .then((h) => {
+        if (cancelled) h?.remove?.();
+        else handle = h;
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      try { handle?.remove?.(); } catch { /* ignore */ }
+    };
+  }, []);
+
   // Deep-link handler: open the app via Android App Link
   // (https://<host>/share/<id>) or the custom scheme
   // (wellnessvalley://share/<id>) ? resolve the share identifier against the
@@ -2434,6 +2461,19 @@ function WellnessValleyApp() {
     }, 5000);
     return () => clearTimeout(authTimeout);
   }, []);
+
+  // The logo bridge has no other exit if a status check dies while battery
+  // settings is open. Leave it after 8 seconds so Home or Login can show.
+  const [authBridgeExpired, setAuthBridgeExpired] = useState(false);
+  useEffect(() => {
+    if (user) {
+      setAuthBridgeExpired(false);
+      return undefined;
+    }
+    if (!postAuthBridge && !authLoading && !(isOtpVerified && !user)) return undefined;
+    const timer = setTimeout(() => setAuthBridgeExpired(true), 8000);
+    return () => clearTimeout(timer);
+  }, [user, postAuthBridge, authLoading, isOtpVerified]);
 
   // ? NATIVE LIFECYCLE PHASE (May 2026): SplashScreen dismissal delegated to
   // shared/services/nativeLifecycle. Timing (500ms), error-swallowing, and
@@ -7955,11 +7995,11 @@ function WellnessValleyApp() {
     </>
   );
 
-  if (postAuthBridge) {
+  if (postAuthBridge && !authBridgeExpired) {
     return authBridgeScreen;
   }
 
-  if (authLoading) {
+  if (authLoading && !authBridgeExpired) {
     // On native, show the logo overlay instead of a blank screen.
     if (Capacitor.isNativePlatform()) {
       return authBridgeScreen;
@@ -7979,7 +8019,7 @@ function WellnessValleyApp() {
   }
 
   // OTP user restore / post-OTP handoff — never remount Login (looks like a glitch).
-  if (isOtpVerified && !user) {
+  if (isOtpVerified && !user && !authBridgeExpired) {
     return authBridgeScreen;
   }
 

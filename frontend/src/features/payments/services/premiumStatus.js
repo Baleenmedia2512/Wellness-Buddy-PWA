@@ -108,3 +108,19 @@ export function clearPremiumThemeClass() {
   if (typeof document === 'undefined') return;
   document.documentElement.classList.remove('premium-theme');
 }
+
+/**
+ * Paint the saved membership colour before React mounts a gate.
+ * Uses the same freshness rules as the home card. Does not write storage.
+ */
+export function applyCachedPremiumTheme(userId) {
+  if (typeof document === 'undefined') return;
+  const key = String(userId || '').trim();
+  if (!key) {
+    clearPremiumThemeClass();
+    return;
+  }
+  const status = premiumStatusStore.getStatus(key);
+  if (status?.premium === true) document.documentElement.classList.add('premium-theme');
+  else clearPremiumThemeClass();
+}
