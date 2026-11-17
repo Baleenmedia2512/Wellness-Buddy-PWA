@@ -65,15 +65,17 @@ export function shouldConfirmCommunityPositionGate({
 }
 
 /**
- * A saved role hides the required screen only until the server asks again.
- * The confirming answer still asking means the role is gone.
+ * Prompts can say the role is missing before the saved profile is visible.
+ * That answer must not wipe the role that survived the last app close.
+ * A later profile that actually contains a code replaces it.
  */
-export function shouldClearSavedCommunityPosition({
-  step = '',
-  confirmed = false,
-  responseOk = true,
-} = {}) {
-  return responseOk === true && step === 'communityPosition' && confirmed === true;
+export function shouldClearSavedCommunityPosition() {
+  return false;
+}
+
+/** Keep Home up when this phone already has the role the prompts are asking for. */
+export function shouldSuppressCommunityPositionStep(step, savedCode) {
+  return step === 'communityPosition' && String(savedCode || '').trim() !== '';
 }
 
 /**

@@ -5,7 +5,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   hasCompleteTransformationPhotos,
+  readTransformationPhotosComplete,
+  rememberTransformationPhotosComplete,
   resolveTransformationPhotosGate,
+  shouldSuppressPhotosStep,
 } from './transformationPhotosGate.js';
 
 describe('hasCompleteTransformationPhotos', () => {
@@ -63,5 +66,21 @@ describe('resolveTransformationPhotosGate', () => {
 
   it('hides when profile payload is missing (do not fail-closed)', () => {
     assert.equal(resolveTransformationPhotosGate({ profile: null }), 'hide');
+  });
+});
+
+describe('saved transformation photos', () => {
+  it('keeps the photo gate off after an app restart when all three were saved', () => {
+    const map = new Map();
+    const storage = {
+      getItem: (key) => (map.has(key) ? map.get(key) : null),
+      setItem: (key, value) => map.set(key, String(value)),
+    };
+    assert.equal(readTransformationPhotosComplete(7, storage), false);
+    assert.equal(shouldSuppressPhotosStep('photos', false), false);
+    rememberTransformationPhotosComplete(7, storage);
+    assert.equal(readTransformationPhotosComplete(7, storage), true);
+    assert.equal(shouldSuppressPhotosStep('photos', true), true);
+    assert.equal(shouldSuppressPhotosStep('communityPosition', true), false);
   });
 });

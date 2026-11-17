@@ -19,6 +19,30 @@ describe('focusInputForKeyboard', () => {
     // Node / web is not native Android — click would select-all mid-typing.
     assert.equal(click.mock.callCount(), 0);
   });
+
+  it('does not re-focus when the field is already active (mobile web tel select-all)', () => {
+    if (typeof document === 'undefined') {
+      // Node unit env: production code also skips the activeElement guard here.
+      const el = { focus: mock.fn(), click: mock.fn() };
+      focusInputForKeyboard(el);
+      assert.equal(el.focus.mock.callCount(), 1);
+      return;
+    }
+    const el = { focus: mock.fn(), click: mock.fn() };
+    const previous = Object.getOwnPropertyDescriptor(document, 'activeElement');
+    Object.defineProperty(document, 'activeElement', {
+      configurable: true,
+      get: () => el,
+    });
+    try {
+      focusInputForKeyboard(el);
+      assert.equal(el.focus.mock.callCount(), 0);
+      assert.equal(el.click.mock.callCount(), 0);
+    } finally {
+      if (previous) Object.defineProperty(document, 'activeElement', previous);
+      else delete document.activeElement;
+    }
+  });
 });
 
 describe('scheduleFocusInputForKeyboard', () => {

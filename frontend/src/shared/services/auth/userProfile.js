@@ -25,6 +25,10 @@ import * as Session from "../sessionStorage";
 import { getProfile } from "../../../features/user/services/user.api.js";
 import { isOnboardingIdentityComplete } from "../../../features/user/domain/profileCompleteness";
 import { rememberSavedCommunityPosition } from "../../../features/user/domain/communityPosition.js";
+import {
+  hasCompleteTransformationPhotos,
+  rememberTransformationPhotosComplete,
+} from "../../../features/user/domain/transformationPhotosGate.js";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -80,6 +84,9 @@ export async function fetchProfileCompletion({ apiBaseUrl, email, userId, afterS
       const savedUserId = latestData.userId ?? latestData.UserId ?? userId ?? null;
       if (savedPosition && savedUserId != null) {
         rememberSavedCommunityPosition(savedUserId, savedPosition);
+      }
+      if (savedUserId != null && hasCompleteTransformationPhotos(latestData.transformationPhotos)) {
+        rememberTransformationPhotosComplete(savedUserId);
       }
 
       if (latestData.profileComplete) {
