@@ -1012,6 +1012,7 @@ export default function ManualEntryPage({
         idealWeight: pickIdealWeightKg(weightValue, idealRange),
       }),
       currentMarathonDay0Weight: weightValue,
+      shareImage: img,
     });
 
     void saveWeight({
@@ -1039,6 +1040,7 @@ export default function ManualEntryPage({
       activityCaption: buildDiaryShareSuffix('workout', {
         caloriesBurned,
       }),
+      shareImage: img,
     });
 
     void saveLog({
@@ -1119,6 +1121,7 @@ export default function ManualEntryPage({
         platform,
         session: topic,
       }),
+      shareImage: img,
     });
 
     void saveLog({
