@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { Share2 } from "lucide-react";
 import APP_VERSION from "../../config/version";
 import { cacheProfileUserName } from "../utils/shareUtils.js";
 import TouchFeedbackButton from "./TouchFeedbackButton";
@@ -12,6 +13,7 @@ import { PremiumAvatarRing, PremiumCrownMark } from "../../features/payments/com
 import PremiumExpiryBanner from "../../features/payments/components/PremiumExpiryBanner";
 import usePremiumStatus from "../../features/payments/hooks/usePremiumStatus";
 import * as Session from "../services/sessionStorage";
+import { shareAppInvite } from "../../features/user/services/appInviteShare.service";
 
 const Header = ({
   user,
@@ -47,6 +49,7 @@ const Header = ({
 }) => {
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
+  const [isSharingInvite, setIsSharingInvite] = useState(false);
   const prevProfileKeyRef = useRef(profileKey);
 
   // Premium members get a light blue header. Tab-only bars use the same check.
@@ -167,6 +170,27 @@ const Header = ({
     </div>
   );
 
+  const handleShareInvite = async (e) => {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
+    if (isSharingInvite) return;
+    setIsSharingInvite(true);
+    try {
+      const inviterCandidates = [
+        savedUserName,
+        user?.userName,
+        user?.name,
+        user?.displayName,
+      ];
+      const inviterName = inviterCandidates.find((n) => typeof n === 'string' && n.trim().length > 0 && n.trim() !== 'User') || '';
+      await shareAppInvite({ inviterName });
+    } catch (err) {
+      console.warn('[Header] App invite share failed:', err);
+    } finally {
+      setIsSharingInvite(false);
+    }
+  };
+
   // navOnly mode: render only the tab navigation row (Row 2).
   // Used by full-page sub-views so they display the full nav without
   // duplicating the logo/settings row on top.
@@ -237,8 +261,24 @@ const Header = ({
           </div>
         </div>
 
-        {/* Profile avatar — tap to navigate to full profile page */}
+        {/* Actions: WhatsApp invite share & Profile avatar */}
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          <TouchFeedbackButton
+            type="button"
+            onClick={handleShareInvite}
+            disabled={isSharingInvite}
+            className={`inline-flex items-center justify-center aspect-square h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-full border transition-all active:scale-95 disabled:opacity-60 ${
+              isPremiumMember
+                ? 'border-sky-200 text-sky-700 bg-sky-50 hover:bg-sky-100'
+                : 'border-green-200 text-green-700 bg-green-50 hover:bg-green-100'
+            }`}
+            title="Share on WhatsApp"
+            ariaLabel="Share on WhatsApp"
+            data-testid="header-share-button"
+          >
+            <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
+          </TouchFeedbackButton>
+
           <span className="relative inline-flex">
             <PremiumAvatarRing enabled={isPremiumMember}>
               <TouchFeedbackButton
