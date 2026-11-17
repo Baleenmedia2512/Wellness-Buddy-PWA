@@ -7,6 +7,15 @@ import { Capacitor } from '@capacitor/core';
 import { debugLog } from './shared/utils/logger.js';
 import { installNativeInputModeSync } from './shared/utils/nativeInputMode.js';
 import { installSelectAllOnTextFocus, installDisableNonEditableSelection } from './shared/utils/textSelectionFix.js';
+import { applyCachedPremiumTheme } from './features/payments/services/premiumStatus.js';
+
+// Paint Premium blue before the first screen, from the membership already on this phone.
+try {
+  if (typeof localStorage !== 'undefined' && localStorage.getItem('userSignedOut') !== 'true') {
+    const savedUserId = localStorage.getItem('dbUserId');
+    if (savedUserId) applyCachedPremiumTheme(savedUserId);
+  }
+} catch { /* private mode */ }
 
 // ✅ PERFORMANCE: Suppress all console output in production
 // In iOS WKWebView, every console.log bridges to native — very expensive
