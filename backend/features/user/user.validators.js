@@ -314,6 +314,7 @@ export function validateUpdateProfile(body) {
     eventYourCity,
     eventLevel,
     profileIntro,
+    skipOtp: Boolean(body.skipOtp || body.directSave),
   };
 }
 
