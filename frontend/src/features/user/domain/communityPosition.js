@@ -18,6 +18,64 @@ function browserSession() {
   return null;
 }
 
+function browserLocal() {
+  try {
+    if (typeof localStorage !== 'undefined') return localStorage;
+  } catch { /* private mode */ }
+  return null;
+}
+
+export function savedCommunityPositionKey(userId) {
+  if (userId == null || String(userId).trim() === '') return '';
+  return `wv.communityPosition.saved.${String(userId).trim()}`;
+}
+
+/**
+ * Position that survived the last app close. Used so the required screen
+ * does not flash while the profile is still loading.
+ */
+export function rememberSavedCommunityPosition(userId, code, storage = browserLocal()) {
+  const key = savedCommunityPositionKey(userId);
+  const saved = String(code || '').trim();
+  if (!key || !saved || !storage) return;
+  try { storage.setItem(key, saved); } catch { /* private mode */ }
+}
+
+export function readSavedCommunityPosition(userId, storage = browserLocal()) {
+  const key = savedCommunityPositionKey(userId);
+  if (!key || !storage) return '';
+  try { return String(storage.getItem(key) || '').trim(); } catch { return ''; }
+}
+
+export function clearSavedCommunityPosition(userId, storage = browserLocal()) {
+  const key = savedCommunityPositionKey(userId);
+  if (!key || !storage) return;
+  try { storage.removeItem(key); } catch { /* private mode */ }
+}
+
+/**
+ * The required Community Position screen waits for a second answer.
+ * The first answer often arrives before the saved profile, then disappears.
+ */
+export function shouldConfirmCommunityPositionGate({
+  step = '',
+  alreadyConfirmed = false,
+} = {}) {
+  return step === 'communityPosition' && alreadyConfirmed !== true;
+}
+
+/**
+ * A saved role hides the required screen only until the server asks again.
+ * The confirming answer still asking means the role is gone.
+ */
+export function shouldClearSavedCommunityPosition({
+  step = '',
+  confirmed = false,
+  responseOk = true,
+} = {}) {
+  return responseOk === true && step === 'communityPosition' && confirmed === true;
+}
+
 /**
  * Remember the role the coach code just saved.
  * A later Profile read that still has the previous role must not replace it.
@@ -30,6 +88,7 @@ export function rememberConfirmedCommunityPosition(userId, code, storage = brows
     storage.setItem(key, saved);
     storage.setItem(`${key}.hold`, saved);
   } catch { /* private mode */ }
+  rememberSavedCommunityPosition(userId, saved);
   rememberProfileOtpConfirmation(userId, { eventLevel: saved });
 }
 
@@ -65,6 +124,7 @@ export function communityPositionFromProfile(data, userId, storage = browserSess
     if (key && storage) {
       try { storage.setItem(key, fromServer); } catch { /* private mode */ }
     }
+    rememberSavedCommunityPosition(userId, fromServer);
     return fromServer;
   }
   if (!key || !storage) return '';

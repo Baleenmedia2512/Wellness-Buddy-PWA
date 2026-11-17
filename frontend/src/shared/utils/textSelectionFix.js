@@ -149,6 +149,9 @@ export function installSelectAllOnTextFocus() {
   };
 
   const onClick = (e) => {
+    // Ignore programmatic el.click() (e.g. focusInputForKeyboard) — those have
+    // no prior mousedown mark and would re-select mid-typing on web.
+    if (e.isTrusted === false) return;
     if (!shouldSelectAllOnClick(e.target)) return;
     selectAllTextInField(e.target);
   };

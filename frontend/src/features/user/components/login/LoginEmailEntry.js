@@ -131,6 +131,8 @@ const LoginEmailEntry = ({
             pattern="[0-9]*"
             autoComplete="off"
             autoFocus
+            // Progressive phone typing on web — do not select-all on focus/click.
+            data-no-select-all="true"
             name="tel"
             enterKeyHint="done"
             value={email}

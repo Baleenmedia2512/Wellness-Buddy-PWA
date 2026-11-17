@@ -33,14 +33,18 @@ function parseUserId(raw) {
   return Number.isFinite(userId) && userId > 0 ? userId : null;
 }
 
-function membershipPayload(membership) {
-  return {
+function membershipPayload(membership, { lookupOk } = {}) {
+  const data = {
     premium: membership?.premium === true,
     daysLeft: membership?.daysLeft ?? null,
     expiresAt: membership?.expiresAt ?? null,
     expiresAtDisplay: membership?.expiresAtDisplay ?? null,
     showExpiryWarning: membership?.showExpiryWarning === true,
   };
+  // Optional. Older apps ignore it. A failed lookup still sends premium:false
+  // so those apps keep working; new clients do not treat that as confirmed.
+  if (lookupOk === true || lookupOk === false) data.lookupOk = lookupOk;
+  return data;
 }
 
 function inactivePayload(status) {
@@ -155,10 +159,12 @@ export async function getPremiumStatus(input, deps = {}) {
     expiresAtDisplay: null,
     showExpiryWarning: false,
   };
+  let lookupOk = true;
   try {
     membership = await getMembership({ userId, mode, todayYmd });
   } catch (error) {
+    lookupOk = false;
     logger.warn('Premium status lookup failed', { userId, message: error?.message || String(error) });
   }
-  return { httpStatus: 200, body: { ok: true, data: membershipPayload(membership) } };
+  return { httpStatus: 200, body: { ok: true, data: membershipPayload(membership, { lookupOk }) } };
 }

@@ -201,7 +201,6 @@ import { DuplicateFoodModal } from "./features/nutrition";
 import { UserProfileModal } from "./features/user";
 import { UserProfilePage, ProfilePageErrorBoundary } from "./features/user";
 import PremiumSuccessHost from "./features/payments/components/PremiumSuccessHost";
-import HomePlanStatus from "./features/payments/components/HomePlanStatus";
 import { CompleteProfilePage } from "./features/user";
 import { FieldCollectionHost } from "./features/field-collection";
 import { OnboardingIdentityPage } from "./features/user";
@@ -810,26 +809,24 @@ function WellnessValleyApp() {
         const shareText = buildCaption(shareDisplayName);
 
         clearOverlayNow();
-        if (Capacitor.isNativePlatform()) {
-          const result = await shareViaCapacitorAPI(dataUrl, {
-            title: shareDisplayName,
-            text: shareText,
-            fileName: `wellness-meal-${Date.now()}.jpg`,
-          });
-          _hasCompletedFirstShareRef.current = true;
-          if (!result?.ok || result.dismissed) {
-            foodAutoSharedRef.current = false;
-            return { shared: false };
-          }
+        // Web + native: share the photo with the branded caption (Name · WV v…
+        // food / Marathon Day…). Web used to open wa.me text-only and drop the image.
+        const result = await shareViaCapacitorAPI(dataUrl, {
+          title: shareDisplayName,
+          text: shareText,
+          fileName: `wellness-meal-${Date.now()}.jpg`,
+        });
+        _hasCompletedFirstShareRef.current = true;
+        if (result?.ok && !result.dismissed) {
           return { shared: true };
         }
-        const ok = await shareTextViaWhatsApp(shareText);
-        _hasCompletedFirstShareRef.current = true;
-        if (!ok) {
-          foodAutoSharedRef.current = false;
-          return { shared: false };
+        // Web fallback when the OS blocks file share — still open WhatsApp with caption.
+        if (!Capacitor.isNativePlatform()) {
+          const ok = await shareTextViaWhatsApp(shareText);
+          if (ok) return { shared: true };
         }
-        return { shared: true };
+        foodAutoSharedRef.current = false;
+        return { shared: false };
       } catch (_) {
         try {
           const shareDisplayName = resolveShareDisplayName(
@@ -838,9 +835,13 @@ function WellnessValleyApp() {
           );
           const shareText = buildCaption(shareDisplayName);
           clearOverlayNow();
-          await shareTextViaWhatsApp(shareText);
-          _hasCompletedFirstShareRef.current = true;
-          return { shared: true };
+          if (!Capacitor.isNativePlatform()) {
+            await shareTextViaWhatsApp(shareText);
+            _hasCompletedFirstShareRef.current = true;
+            return { shared: true };
+          }
+          foodAutoSharedRef.current = false;
+          return { shared: false };
         } catch (__) {
           foodAutoSharedRef.current = false;
           return { shared: false };
@@ -7616,6 +7617,9 @@ function WellnessValleyApp() {
       // ? Set React gate FIRST ? this immediately shows Login screen
       // and blocks any Firebase re-auth callbacks from re-logging in
       setForceLoggedOut(true);
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.remove('premium-theme');
+      }
 
       // Clear the fresh sign-in flag immediately to prevent re-login issues
       sessionStorage.removeItem("freshGoogleSignIn");
@@ -8889,8 +8893,8 @@ function WellnessValleyApp() {
             // Always land on Home — history.back() can pop to a stale Diary entry.
             window.history.replaceState({ wvPage: 'main' }, '');
           }}
-          onSaved={(shareMeta) => {
-            // Read image before onBack clears payload (exit calls onSaved then onBack).
+          onSaved={async (shareMeta) => {
+            // Read image before onBack clears payload (exit awaits onSaved then onBack).
             // Do NOT refresh score here — ManualEntryPage refreshes after DB promote/save
             // so Home + sheet do not lock in a pre-save total.
             const image = shareMeta?.shareImage || manualEntryPayload?.imageBase64;
@@ -8912,7 +8916,7 @@ function WellnessValleyApp() {
               );
               processedImageRef.current = aiImage || image || null;
             }
-            void shareCaptureAfterClassify(image, {
+            await shareCaptureAfterClassify(image, {
               activityCaption: shareMeta?.activityCaption || null,
               currentMarathonDay0Weight: shareMeta?.currentMarathonDay0Weight ?? null,
             });
@@ -9480,10 +9484,6 @@ function WellnessValleyApp() {
                 </div>
               </div>
             </div>
-
-            <HomePlanStatus
-              userId={user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null}
-            />
 
             {/* Today's Nutrition Carousel � Calories � Macros � Heart Healthy � Low Carb */}
             <HomeNutritionCarousel
