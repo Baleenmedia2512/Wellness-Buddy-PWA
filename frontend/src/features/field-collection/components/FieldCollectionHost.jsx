@@ -7,11 +7,18 @@ import PhysicalActivitySetup from '../../user/components/PhysicalActivitySetup';
 import OnboardingTransformationPhotosPage from '../../user/components/OnboardingTransformationPhotosPage';
 import { fetchFieldCollectionPrompts } from '../services/fieldCollection.api';
 import { readDeferredFields } from '../domain/sessionDefer';
+import { fetchProfile } from '../../user/services/profileService';
 import {
-  clearSavedCommunityPosition,
-  shouldClearSavedCommunityPosition,
+  readSavedCommunityPosition,
   shouldConfirmCommunityPositionGate,
+  shouldSuppressCommunityPositionStep,
 } from '../../user/domain/communityPosition';
+import {
+  hasCompleteTransformationPhotos,
+  readTransformationPhotosComplete,
+  rememberTransformationPhotosComplete,
+  shouldSuppressPhotosStep,
+} from '../../user/domain/transformationPhotosGate';
 import OnboardingCommunityPositionPage from './OnboardingCommunityPositionPage';
 import OnboardingEntryFieldsPage from './OnboardingEntryFieldsPage';
 import OnboardingProfileIntroPage from './OnboardingProfileIntroPage';
@@ -53,22 +60,41 @@ export default function FieldCollectionHost({
       });
       let data = await request();
       if (gen !== generation.current) return data;
-      if (shouldConfirmCommunityPositionGate({
+      const savedPosition = readSavedCommunityPosition(userId);
+      if (shouldSuppressCommunityPositionStep(data?.step, savedPosition)) {
+        // The role is already on this phone. Do not cover Home while prompts
+        // catch up, and do not delete the saved role.
+        confirmedMissingPosition.current = false;
+        data = { ...data, step: 'done' };
+      } else if (shouldConfirmCommunityPositionGate({
         step: data?.step,
         alreadyConfirmed: confirmedMissingPosition.current,
       })) {
         confirmedMissingPosition.current = true;
         data = await request();
         if (gen !== generation.current) return data;
-      }
-      if (shouldClearSavedCommunityPosition({
-        step: data?.step,
-        confirmed: confirmedMissingPosition.current,
-        responseOk: data != null,
-      })) {
-        clearSavedCommunityPosition(userId);
+        if (shouldSuppressCommunityPositionStep(data?.step, readSavedCommunityPosition(userId))) {
+          confirmedMissingPosition.current = false;
+          data = { ...data, step: 'done' };
+        }
       } else if (data?.step !== 'communityPosition') {
         confirmedMissingPosition.current = false;
+      }
+      if (data?.step === 'photos') {
+        let photosComplete = readTransformationPhotosComplete(userId);
+        if (!photosComplete) {
+          try {
+            const profile = await fetchProfile({ userId });
+            if (gen !== generation.current) return data;
+            photosComplete = hasCompleteTransformationPhotos(profile?.data?.transformationPhotos);
+            if (photosComplete) rememberTransformationPhotosComplete(userId);
+          } catch {
+            photosComplete = false;
+          }
+        }
+        if (shouldSuppressPhotosStep(data?.step, photosComplete)) {
+          data = { ...data, step: 'done' };
+        }
       }
       planRef.current = data;
       setPlan(data);
@@ -117,7 +143,7 @@ export default function FieldCollectionHost({
   }, [blocking, onBlockingChange]);
 
   if (!userId) return null;
-  if (loading && !plan) return null;
+  if (loading && (!plan || plan.step === 'done')) return null;
   if (loading) {
     return (
       <div className="fixed inset-0 z-[10060] bg-gray-50 flex items-center justify-center">

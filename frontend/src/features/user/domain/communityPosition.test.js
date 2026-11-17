@@ -13,6 +13,7 @@ import {
   rememberSavedCommunityPosition,
   shouldClearSavedCommunityPosition,
   shouldConfirmCommunityPositionGate,
+  shouldSuppressCommunityPositionStep,
 } from './communityPosition.js';
 
 describe('communityPositionDraftAfterSync', () => {
@@ -120,23 +121,14 @@ describe('saved community position', () => {
     assert.equal(readSavedCommunityPosition(42, storage), '');
   });
 
-  it('clears a saved role only after the server confirms it is missing', () => {
-    assert.equal(shouldClearSavedCommunityPosition({
-      step: 'communityPosition',
-      confirmed: false,
-    }), false);
-    assert.equal(shouldClearSavedCommunityPosition({
-      step: 'done',
-      confirmed: true,
-    }), false);
+  it('does not clear a saved role when prompts say it is missing', () => {
     assert.equal(shouldClearSavedCommunityPosition({
       step: 'communityPosition',
       confirmed: true,
-    }), true);
-    assert.equal(shouldClearSavedCommunityPosition({
-      step: 'communityPosition',
-      confirmed: true,
-      responseOk: false,
+      responseOk: true,
     }), false);
+    assert.equal(shouldSuppressCommunityPositionStep('communityPosition', 'PC'), true);
+    assert.equal(shouldSuppressCommunityPositionStep('communityPosition', ''), false);
+    assert.equal(shouldSuppressCommunityPositionStep('photos', 'PC'), false);
   });
 });
