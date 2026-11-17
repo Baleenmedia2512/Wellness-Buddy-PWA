@@ -17,15 +17,19 @@ export default function PremiumBadge() {
 /**
  * Blue-to-purple ring around a paid member's profile photo.
  * Pass enabled={false} to render the photo with no ring.
+ *
+ * Size must come from the child (e.g. h-9 w-9 / h-20 w-20) — do not use
+ * h-full/w-full or aspect-square on these wrappers. On iOS Safari that
+ * circular % sizing collapses the ring to 0px so only the crown shows.
  */
 export function PremiumAvatarRing({ enabled = true, children }) {
   if (!enabled) return children;
   return (
     <span
-      className="inline-flex aspect-square shrink-0 items-center justify-center rounded-full bg-[conic-gradient(from_210deg,#2563eb,#38bdf8,#c084fc,#7c3aed,#2563eb)] p-[3px] leading-none"
+      className="inline-flex shrink-0 items-center justify-center rounded-full bg-[conic-gradient(from_210deg,#2563eb,#38bdf8,#c084fc,#7c3aed,#2563eb)] p-[3px] leading-none"
       data-testid="premium-avatar-ring"
     >
-      <span className="flex aspect-square h-full w-full items-center justify-center overflow-hidden rounded-full bg-white p-[2px] leading-none">
+      <span className="inline-flex items-center justify-center overflow-hidden rounded-full bg-white p-[2px] leading-none">
         {children}
       </span>
     </span>
