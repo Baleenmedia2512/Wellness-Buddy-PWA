@@ -7,6 +7,11 @@ import PhysicalActivitySetup from '../../user/components/PhysicalActivitySetup';
 import OnboardingTransformationPhotosPage from '../../user/components/OnboardingTransformationPhotosPage';
 import { fetchFieldCollectionPrompts } from '../services/fieldCollection.api';
 import { readDeferredFields } from '../domain/sessionDefer';
+import {
+  clearSavedCommunityPosition,
+  shouldClearSavedCommunityPosition,
+  shouldConfirmCommunityPositionGate,
+} from '../../user/domain/communityPosition';
 import OnboardingCommunityPositionPage from './OnboardingCommunityPositionPage';
 import OnboardingEntryFieldsPage from './OnboardingEntryFieldsPage';
 import OnboardingProfileIntroPage from './OnboardingProfileIntroPage';
@@ -23,29 +28,54 @@ export default function FieldCollectionHost({
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const planRef = useRef(null);
+  const generation = useRef(0);
+  const confirmedMissingPosition = useRef(false);
   const userId = user?.id || user?.UserId || user?.userId;
 
   const load = useCallback(async () => {
     if (!userId) {
+      generation.current += 1;
       planRef.current = null;
       setPlan(null);
       setLoading(false);
       return null;
     }
+    const gen = ++generation.current;
     // Keep the current step mounted while a save is rechecked, so typed
     // answers are not wiped when the server still asks for the same fields.
     if (!planRef.current) setLoading(true);
     setError('');
     try {
-      const data = await fetchFieldCollectionPrompts({
+      const request = () => fetchFieldCollectionPrompts({
         userId,
         apiBaseUrl,
         defer: readDeferredFields(userId),
       });
+      let data = await request();
+      if (gen !== generation.current) return data;
+      if (shouldConfirmCommunityPositionGate({
+        step: data?.step,
+        alreadyConfirmed: confirmedMissingPosition.current,
+      })) {
+        confirmedMissingPosition.current = true;
+        data = await request();
+        if (gen !== generation.current) return data;
+      }
+      if (shouldClearSavedCommunityPosition({
+        step: data?.step,
+        confirmed: confirmedMissingPosition.current,
+        responseOk: data != null,
+      })) {
+        clearSavedCommunityPosition(userId);
+      } else if (data?.step !== 'communityPosition') {
+        confirmedMissingPosition.current = false;
+      }
       planRef.current = data;
       setPlan(data);
       return data;
     } catch (err) {
+      // A failed prompts request must not erase a role the server already saved.
+      confirmedMissingPosition.current = false;
       const message = err?.message || 'Could not check required details.';
       if (!planRef.current) {
         setError(message);
@@ -58,8 +88,24 @@ export default function FieldCollectionHost({
   }, [userId, apiBaseUrl]);
 
   useEffect(() => {
+    confirmedMissingPosition.current = false;
+    generation.current += 1;
+  }, [userId]);
+
+  useEffect(() => {
     load().catch(() => {});
   }, [load, nonce]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      const step = planRef.current?.step;
+      if (step && step !== 'done' && step !== 'communityPosition') return;
+      load().catch(() => {});
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [load]);
 
   const blocking = Boolean(error) || (plan?.active && plan.step && plan.step !== 'done');
   useEffect(() => {
