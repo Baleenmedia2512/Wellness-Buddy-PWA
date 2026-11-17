@@ -34,7 +34,8 @@ export default function PremiumPlanPage({
     return () => window.removeEventListener('keydown', onKey);
   }, [busy, onClose]);
 
-  const amountLabel = quote ? formatPremiumPlanAmount(quote.amount) : '';
+  const baseAmountLabel = quote ? formatPremiumPlanAmount(quote.baseAmount) : '';
+  const totalAmountLabel = quote ? formatPremiumPlanAmount(quote.amount) : '';
   const canPay = Boolean(quote) && !quoteLoading && !busy;
   const needsPosition = !quoteLoading && !quote;
 
@@ -79,9 +80,10 @@ export default function PremiumPlanPage({
             {quoteLoading ? (
               <p className="mt-1 text-sm text-gray-500">Loading your plan…</p>
             ) : quote ? (
-              <p className="mt-1 flex items-baseline gap-1">
-                <span className="text-4xl font-bold text-gray-900">₹{amountLabel}</span>
+              <p className="mt-1 flex items-baseline gap-1.5 flex-wrap">
+                <span className="text-4xl font-bold text-gray-900">₹{baseAmountLabel}</span>
                 <span className="text-sm text-gray-400">/ 30 days</span>
+                <span className="text-sm font-semibold text-gray-500">+18% GST</span>
               </p>
             ) : (
               <p className="mt-1 text-sm text-gray-700">
@@ -122,8 +124,8 @@ export default function PremiumPlanPage({
             ? 'Opening payment...'
             : quoteLoading
               ? 'Loading price...'
-              : amountLabel
-                ? `Pay Now · ₹${amountLabel}`
+              : totalAmountLabel
+                ? `Pay Now - ₹${totalAmountLabel}`
                 : 'Fill Community Position'}
         </TouchFeedbackButton>
       </div>

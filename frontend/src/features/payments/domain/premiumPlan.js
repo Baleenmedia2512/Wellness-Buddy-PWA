@@ -15,7 +15,7 @@ const DEFAULT_GST_RATE = 0.18;
 export function formatPremiumPlanAmount(amount) {
   const value = Number(amount);
   if (!Number.isFinite(value)) return '';
-  return value % 1 === 0 ? String(value) : value.toFixed(2);
+  return String(Math.round(value));
 }
 
 /**
@@ -39,9 +39,9 @@ export function normalizePremiumQuote(quote) {
   const gstRate = Number(quote.gstRate);
   return {
     positionCode,
-    baseAmount,
-    gstAmount,
+    baseAmount: Math.round(baseAmount),
+    gstAmount: Math.round(gstAmount),
     gstRate: Number.isFinite(gstRate) ? gstRate : DEFAULT_GST_RATE,
-    amount,
+    amount: Math.round(amount),
   };
 }
