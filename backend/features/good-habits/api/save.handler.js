@@ -12,9 +12,10 @@ import {
   IANA_IST,
 } from '../../../shared/lib/datetime/index.js';
 
-function resolveCreatedAt(clientTimestamp) {
+function resolveCreatedAt(clientTimestamp, { useServerNow = false } = {}) {
   let utcInstant = nowUtc();
-  if (clientTimestamp) {
+  // Coach-OTP verify always uses server now so the score day = verification IST day.
+  if (!useServerNow && clientTimestamp) {
     try {
       utcInstant = parseClientTimestampToUtc(clientTimestamp).utcIso;
     } catch (err) {
@@ -30,7 +31,9 @@ export async function saveHabit(input) {
   const normalized = normalizeHabitPayload(input);
   assertHabitImages(normalized);
 
-  const createdAt = resolveCreatedAt(input.clientTimestamp);
+  const createdAt = resolveCreatedAt(input.clientTimestamp, {
+    useServerNow: input.useServerNow === true,
+  });
   const row = await repo.insertHabit({
     UserId: input.userId,
     HabitType: normalized.habitType,
