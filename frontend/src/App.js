@@ -77,6 +77,7 @@ import {
   DetoxDayReminder,
   ensureMarathonWeightComparisonForShare,
   isValidMarathonWeightKg,
+  peekMarathonWeightComparisonForShare,
   withMarathonWhatsAppNotice,
 } from "./features/marathon";
 import { EducationLogCard } from "./features/education";
@@ -743,6 +744,7 @@ function WellnessValleyApp() {
       const dataUrl = imageBase64.startsWith("data:")
         ? imageBase64
         : `data:image/jpeg;base64,${imageBase64}`;
+      const isWebShare = !Capacitor.isNativePlatform();
 
       const clearOverlayNow = () => {
         setSharingPendingImage((prev) => {
@@ -759,25 +761,25 @@ function WellnessValleyApp() {
         }
       };
 
-      // Snapchat-style "Getting ready to share" overlay while prep runs.
-      setSharingPendingImage(dataUrl);
-      if (sharingPendingTimerRef.current) {
-        clearTimeout(sharingPendingTimerRef.current);
-      }
-      sharingPendingTimerRef.current = setTimeout(clearOverlayNow, 120000);
-
-      // One frame is enough for the overlay to paint before the sheet opens.
-      await new Promise((resolve) => {
-        requestAnimationFrame(resolve);
-      });
-
       const isWeightShare = isValidMarathonWeightKg(currentMarathonDay0Weight);
-      const marathonWeightComparison = isWeightShare
-        ? await ensureMarathonWeightComparisonForShare({
-          user,
-          currentMarathonDay0Weight,
-        })
-        : null;
+
+      // Web must share the photo inside the Save tap gesture. Any await
+      // (marathon fetch / overlay paint) expires that gesture → NotAllowedError
+      // → old wa.me text-only path (image never attached).
+      let marathonWeightComparison = null;
+      if (isWeightShare) {
+        if (isWebShare) {
+          marathonWeightComparison = peekMarathonWeightComparisonForShare({
+            user,
+            currentMarathonDay0Weight,
+          });
+        } else {
+          marathonWeightComparison = await ensureMarathonWeightComparisonForShare({
+            user,
+            currentMarathonDay0Weight,
+          });
+        }
+      }
 
       const buildCaption = (shareDisplayName) => {
         const brand = buildQuickShareText(
@@ -796,21 +798,50 @@ function WellnessValleyApp() {
       };
 
       try {
-        // Sync name first (cached) — do not block share on a profile fetch.
-        const shareDisplayName = await ensureShareDisplayName(
-          savedUserNameRef.current ?? savedUserName,
-          user,
-          apiBaseUrl,
-        );
-        if (shareDisplayName && user?.email) {
-          cacheProfileUserName(user.email, shareDisplayName);
-          setSavedUserName(shareDisplayName);
-        }
-        const shareText = buildCaption(shareDisplayName);
+        let shareDisplayName;
+        if (isWebShare) {
+          // Sync name only — do not await profile before navigator.share({ files }).
+          shareDisplayName = resolveShareDisplayName(
+            savedUserNameRef.current ?? savedUserName,
+            user,
+          );
+          void ensureShareDisplayName(
+            savedUserNameRef.current ?? savedUserName,
+            user,
+            apiBaseUrl,
+          ).then((freshName) => {
+            if (freshName && user?.email) {
+              cacheProfileUserName(user.email, freshName);
+              setSavedUserName(freshName);
+            }
+          });
+        } else {
+          // Snapchat-style overlay while native prep runs.
+          setSharingPendingImage(dataUrl);
+          if (sharingPendingTimerRef.current) {
+            clearTimeout(sharingPendingTimerRef.current);
+          }
+          sharingPendingTimerRef.current = setTimeout(clearOverlayNow, 120000);
+          await new Promise((resolve) => {
+            requestAnimationFrame(resolve);
+          });
 
+          shareDisplayName = await ensureShareDisplayName(
+            savedUserNameRef.current ?? savedUserName,
+            user,
+            apiBaseUrl,
+          );
+          if (shareDisplayName && user?.email) {
+            cacheProfileUserName(user.email, shareDisplayName);
+            setSavedUserName(shareDisplayName);
+          }
+        }
+
+        const shareText = buildCaption(shareDisplayName);
         clearOverlayNow();
-        // Web + native: share the photo with the branded caption (Name · WV v…
-        // food / Marathon Day…). Web used to open wa.me text-only and drop the image.
+
+        // Always share the photo + caption (web + native). Never open wa.me
+        // text-only when we have an image — that is what dropped the photo.
         const result = await shareViaCapacitorAPI(dataUrl, {
           title: shareDisplayName,
           text: shareText,
@@ -820,32 +851,11 @@ function WellnessValleyApp() {
         if (result?.ok && !result.dismissed) {
           return { shared: true };
         }
-        // Web fallback when the OS blocks file share — still open WhatsApp with caption.
-        if (!Capacitor.isNativePlatform()) {
-          const ok = await shareTextViaWhatsApp(shareText);
-          if (ok) return { shared: true };
-        }
         foodAutoSharedRef.current = false;
         return { shared: false };
       } catch (_) {
-        try {
-          const shareDisplayName = resolveShareDisplayName(
-            savedUserNameRef.current ?? savedUserName,
-            user,
-          );
-          const shareText = buildCaption(shareDisplayName);
-          clearOverlayNow();
-          if (!Capacitor.isNativePlatform()) {
-            await shareTextViaWhatsApp(shareText);
-            _hasCompletedFirstShareRef.current = true;
-            return { shared: true };
-          }
-          foodAutoSharedRef.current = false;
-          return { shared: false };
-        } catch (__) {
-          foodAutoSharedRef.current = false;
-          return { shared: false };
-        }
+        foodAutoSharedRef.current = false;
+        return { shared: false };
       } finally {
         clearOverlayNow();
       }
