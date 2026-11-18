@@ -11,13 +11,12 @@ import {
   subscribeAvatarDisplayVersion,
 } from '../../services/avatarDisplayVersion';
 import ProfilePhotoViewer from '../picture/ProfilePhotoViewer';
+import { formatAppRoleLabel } from '../../../../shared/constants/roles';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 
 const initialOf = (name, email) => (name || email || 'U').charAt(0).toUpperCase();
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
-
-const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', system_admin: 'System Admin', user: 'Customer' };
 
 const UserProfileHeader = ({
   user, name, userRole, profileImagePreview,
@@ -35,7 +34,7 @@ const UserProfileHeader = ({
   }, [avatarVersion, userId, profileImagePreview]);
 
   const displayName = name || user?.displayName || user?.name || 'User';
-  const role = ROLE_LABELS[userRole] || 'Customer';
+  const role = formatAppRoleLabel(userRole || user?.role || user?.Role);
   const displayAvatarSrc = resolveClientAvatarSrc({
     apiBaseUrl: getApiBaseUrl(),
     userId,

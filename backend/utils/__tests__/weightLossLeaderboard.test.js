@@ -6,7 +6,18 @@ import assert from 'node:assert/strict';
 import {
   MAX_TEN_DAY_LOSS_KG,
   buildWindowWeightLossCandidates,
+  resolveWeightLeaderboardWindowDays,
 } from '../weightLossLeaderboard.js';
+
+describe('resolveWeightLeaderboardWindowDays', () => {
+  it('keeps missing values on today and allows 2..30 only', () => {
+    assert.equal(resolveWeightLeaderboardWindowDays(undefined), 1);
+    assert.equal(resolveWeightLeaderboardWindowDays('10'), 10);
+    assert.equal(resolveWeightLeaderboardWindowDays('5'), 5);
+    assert.equal(resolveWeightLeaderboardWindowDays('30'), 30);
+    assert.equal(resolveWeightLeaderboardWindowDays('31'), 1);
+  });
+});
 
 describe('buildWindowWeightLossCandidates', () => {
   const toYmd = (ts) => String(ts).slice(0, 10);

@@ -6,7 +6,8 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from 'react';
-import { Trophy, Share2, Loader2 } from 'lucide-react';
+import { Trophy, Share2, Loader2, Calendar } from 'lucide-react';
+import { AnimatePresence } from 'framer-motion';
 import {
   captureAndShare,
   precaptureShareImage,
@@ -17,6 +18,7 @@ import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabe
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
 import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js';
 import TeamMemberProfileModal from '../../../shared/components/TeamMemberProfileModal';
+import DateRangePicker from '../../../shared/components/common/DateRangePicker';
 import LeaderboardAvatar from './LeaderboardAvatar.js';
 import LeaderboardAvatarViewer from './LeaderboardAvatarViewer.js';
 import LeaderboardRankBadge from './LeaderboardRankBadge.js';
@@ -32,6 +34,12 @@ import {
 import { subscribeDailyWellnessScoreSeed } from '../../wellness-score-sheet/services/dailyWellnessScoreCache';
 import { LEADERBOARD_CONFIG } from '../../../config/leaderboardConfig.js';
 import { useRaceLeaderboardRealtime } from '../hooks/useRaceLeaderboardRealtime.js';
+import {
+  LB_DATE_FILTER_OPTIONS,
+  LB_DATE_PRESETS,
+  LB_MAX_WINDOW_DAYS,
+  resolveLbDateFilter,
+} from '../domain/leaderboardDateFilter.js';
 
 const CACHE_TTL = 15 * 1000;
 // Keep a short poll even when Realtime is configured — subscribe can fail
@@ -104,36 +112,59 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
   const cardRef = useRef(null);
   const cachedDataUrlRef = useRef(null);
   const [isSharing, setIsSharing] = useState(false);
-  const [showTenDay, setShowTenDay] = useState(false);
-  const [tenDayData, setTenDayData] = useState([]);
-  const [tenDayStatus, setTenDayStatus] = useState('idle');
-  const showTenDayRef = useRef(false);
+  const todayFilter = resolveLbDateFilter(LB_DATE_PRESETS.TODAY);
+  const [filterPreset, setFilterPreset] = useState(LB_DATE_PRESETS.TODAY);
+  const [filterMeta, setFilterMeta] = useState(todayFilter);
+  const [rangeData, setRangeData] = useState([]);
+  const [rangeStatus, setRangeStatus] = useState('idle');
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [showCustomPicker, setShowCustomPicker] = useState(false);
+  const [customStartDate, setCustomStartDate] = useState(null);
+  const [customEndDate, setCustomEndDate] = useState(null);
+  const [rangeError, setRangeError] = useState(null);
+  const filterRef = useRef({
+    preset: LB_DATE_PRESETS.TODAY,
+    days: 1,
+    dateYmd: null,
+  });
   const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
     enabled: !isTile && isVisible && leaderboardData.length > 0,
   });
 
-  const fetchInFlightRef = useRef({ 1: false, 10: false });
+  const fetchInFlightRef = useRef({});
 
-  const fetchLeaderboard = useCallback(async (days = 1) => {
-    const windowDays = days === 10 ? 10 : 1;
+  const isTodayFilter = filterPreset === LB_DATE_PRESETS.TODAY;
+
+  const fetchLeaderboard = useCallback(async (days = 1, dateYmd = null) => {
+    const windowDays = Number(days) >= 2 && Number(days) <= LB_MAX_WINDOW_DAYS
+      ? Number(days)
+      : 1;
+    const endYmd = typeof dateYmd === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateYmd)
+      ? dateYmd
+      : null;
+    const isTodayBoard = windowDays === 1 && !endYmd;
+    const flightKey = endYmd
+      ? `d${windowDays}:${endYmd}`
+      : `d${windowDays}:today`;
     const emailTrim = String(email || '').trim();
     if ((userId == null || userId === '') && !emailTrim) {
-      if (windowDays === 10) {
-        setTenDayData([]);
-        setTenDayStatus('empty');
-      } else {
+      if (isTodayBoard) {
         setLeaderboardData([]);
         setIsVisible(false);
+      } else {
+        setRangeData([]);
+        setRangeStatus('empty');
       }
       return;
     }
-    if (fetchInFlightRef.current[windowDays]) return;
-    fetchInFlightRef.current[windowDays] = true;
+    if (fetchInFlightRef.current[flightKey]) return;
+    fetchInFlightRef.current[flightKey] = true;
     try {
       const params = new URLSearchParams({
         topN: String(topN),
       });
-      if (windowDays === 10) params.set('days', '10');
+      if (windowDays >= 2) params.set('days', String(windowDays));
+      if (endYmd) params.set('date', endYmd);
       if (userId != null && userId !== '') params.set('userId', String(userId));
       if (emailTrim) params.set('email', emailTrim);
       const response = await fetch(
@@ -148,14 +179,14 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
 
       const result = await response.json();
 
-      if (windowDays === 10) {
+      if (!isTodayBoard) {
         if (result.success && result.data?.length > 0) {
-          setTenDayData(toAscendingRankOrder(result.data));
-          setTenDayStatus('ready');
+          setRangeData(toAscendingRankOrder(result.data));
+          setRangeStatus('ready');
         } else {
-          debugLog('[WELLNESS-LB] No 10-day data:', result.message || 'Empty');
-          setTenDayData([]);
-          setTenDayStatus(result.success ? 'empty' : 'error');
+          debugLog('[WELLNESS-LB] No filtered data:', result.message || 'Empty');
+          setRangeData([]);
+          setRangeStatus(result.success ? 'empty' : 'error');
         }
         return;
       }
@@ -172,34 +203,99 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
       }
     } catch (error) {
       console.error('[WELLNESS-LB] Error fetching data:', error);
-      if (windowDays === 10) {
-        setTenDayData([]);
-        setTenDayStatus('error');
-      } else {
+      if (isTodayBoard) {
         setLeaderboardData([]);
         setIsVisible(false);
+      } else {
+        setRangeData([]);
+        setRangeStatus('error');
       }
     } finally {
-      fetchInFlightRef.current[windowDays] = false;
+      fetchInFlightRef.current[flightKey] = false;
     }
   }, [apiBaseUrl, topN, userId, email]);
 
-  const refreshBoards = useCallback(() => {
-    fetchLeaderboard(1);
-    if (showTenDayRef.current) fetchLeaderboard(10);
-  }, [fetchLeaderboard]);
+  const applyFilter = useCallback((resolved) => {
+    if (!resolved?.ok) return;
+    const prev = filterRef.current;
+    const sameQuery = prev.preset === resolved.preset
+      && prev.days === resolved.days
+      && prev.dateYmd === resolved.dateYmd;
+    filterRef.current = {
+      preset: resolved.preset,
+      days: resolved.days,
+      dateYmd: resolved.dateYmd,
+    };
+    setFilterPreset(resolved.preset);
+    setFilterMeta(resolved);
+    setRangeError(null);
+    setShowFilterPanel(false);
 
-  const toggleTenDay = useCallback(() => {
-    if (showTenDayRef.current) {
-      showTenDayRef.current = false;
-      setShowTenDay(false);
+    if (resolved.preset === LB_DATE_PRESETS.TODAY) {
+      setShowCustomPicker(false);
+      setRangeStatus('idle');
+      // Keep today rows on screen; refresh quietly in the background.
+      if (!sameQuery) fetchLeaderboard(1);
       return;
     }
-    showTenDayRef.current = true;
-    setShowTenDay(true);
-    setTenDayStatus((status) => (status === 'ready' ? status : 'loading'));
-    fetchLeaderboard(10);
+
+    setShowCustomPicker(false);
+    // Keep previous rows visible while the next filter loads (feels faster).
+    if (!sameQuery) {
+      setRangeStatus('loading');
+      fetchLeaderboard(resolved.days, resolved.dateYmd);
+    }
   }, [fetchLeaderboard]);
+
+  const refreshBoards = useCallback(() => {
+    fetchLeaderboard(1);
+    const active = filterRef.current;
+    if (active.preset !== LB_DATE_PRESETS.TODAY) {
+      fetchLeaderboard(active.days, active.dateYmd);
+    }
+  }, [fetchLeaderboard]);
+
+  const openDateFilter = useCallback(() => {
+    setShowFilterPanel((open) => {
+      const next = !open;
+      if (!next) setShowCustomPicker(false);
+      return next;
+    });
+    setRangeError(null);
+  }, []);
+
+  const selectPreset = useCallback((preset) => {
+    if (preset === LB_DATE_PRESETS.CUSTOM) {
+      setFilterPreset(LB_DATE_PRESETS.CUSTOM);
+      setShowCustomPicker(true);
+      setRangeError(null);
+      return;
+    }
+    const resolved = resolveLbDateFilter(preset);
+    if (!resolved.ok) return;
+    setShowCustomPicker(false);
+    applyFilter(resolved);
+  }, [applyFilter]);
+
+  const selectCustomRange = useCallback((start, end) => {
+    const resolved = resolveLbDateFilter(
+      LB_DATE_PRESETS.CUSTOM,
+      start,
+      end || start,
+    );
+    if (!resolved.ok) {
+      setRangeError(
+        resolved.error === 'range_too_long'
+          ? `Select up to ${LB_MAX_WINDOW_DAYS} days only`
+          : 'Invalid date range',
+      );
+      return;
+    }
+    setCustomStartDate(start);
+    setCustomEndDate(end || start);
+    setShowCustomPicker(false);
+    applyFilter(resolved);
+  }, [applyFilter]);
 
   useImperativeHandle(ref, () => ({
     refresh: refreshBoards,
@@ -258,7 +354,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [isTile, leaderboardData, tenDayData, showTenDay, hasEntered]);
+  }, [isTile, leaderboardData, rangeData, filterPreset, hasEntered]);
 
   const getRankColor = (rank) => {
     // Gold / silver / bronze by place (1 / 2 / 3), not by score %.
@@ -276,7 +372,9 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
     if (isSharing || !cardRef.current) return;
     setIsSharing(true);
     try {
-      const modeSuffix = showTenDay ? 'last-10-days' : 'today';
+      const modeSuffix = isTodayFilter
+        ? 'today'
+        : `${filterPreset}-${filterMeta?.endYmd || filterMeta?.days || 'range'}`;
       const fileName = `top-${topN}-wellness-score-${modeSuffix}-${Date.now()}.jpg`;
       const shareOpts = {
         title: `Top ${topN} Wellness Score`,
@@ -454,15 +552,17 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
   };
 
   if (isTile) {
-    const tileRows = showTenDay ? tenDayData : leaderboardData;
-    const tileSubtitle = showTenDay ? 'Last 10 days' : "Today's ranking";
+    const tileRows = isTodayFilter ? leaderboardData : rangeData;
+    const tileSubtitle = filterMeta?.subtitle || "Today's ranking";
+    const buttonLabel = filterMeta?.buttonLabel || 'Today';
+    const ariaPeriod = isTodayFilter ? null : (filterMeta?.subtitle || filterPreset);
     return (
       <section
         ref={cardRef}
         className={`mx-1 rounded-2xl border border-violet-100 bg-white p-3 shadow-sm transition-opacity duration-500 ease-out ${
           hasEntered ? 'opacity-100' : 'opacity-0'
         }`}
-        aria-label={showTenDay ? `Top ${topN} Wellness Score, last 10 days` : `Top ${topN} Wellness Score`}
+        aria-label={ariaPeriod ? `Top ${topN} Wellness Score, ${ariaPeriod}` : `Top ${topN} Wellness Score`}
       >
         <header className="mb-1 flex items-center gap-2 border-b border-violet-50 pb-2">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100" aria-hidden>
@@ -491,26 +591,74 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
           </div>
           <button
             type="button"
-            className="ml-auto shrink-0 rounded-lg bg-violet-50 px-2.5 py-1.5 text-center text-[11px] font-semibold leading-tight text-violet-700"
-            onClick={toggleTenDay}
-            aria-pressed={showTenDay}
+            className={`ml-auto inline-flex shrink-0 items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-center text-[11px] font-semibold leading-tight ${
+              showFilterPanel || !isTodayFilter
+                ? 'bg-violet-600 text-white'
+                : 'bg-violet-50 text-violet-700'
+            }`}
+            onClick={openDateFilter}
+            aria-expanded={showFilterPanel}
+            aria-label="Open wellness score date filter"
+            data-html2canvas-ignore="true"
           >
-            {showTenDay ? (
-              <span className="block">Show Today</span>
-            ) : (
-              <span className="block">Show Last 10 Days</span>
-            )}
+            <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span className="truncate max-w-[6.5rem]">{buttonLabel}</span>
           </button>
         </header>
+
+        {showFilterPanel && (
+          <div
+            className="mb-2 rounded-xl border border-violet-100 bg-violet-50/60 p-2"
+            data-html2canvas-ignore="true"
+          >
+            <div className="flex gap-1.5 overflow-x-auto pb-0.5 no-scrollbar" role="group" aria-label="Date filter">
+              {LB_DATE_FILTER_OPTIONS.map((option) => {
+                const selected = filterPreset === option.value
+                  || (option.value === LB_DATE_PRESETS.CUSTOM && showCustomPicker);
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => selectPreset(option.value)}
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold transition-colors ${
+                      selected
+                        ? 'bg-violet-700 text-white'
+                        : 'bg-white text-violet-800 border border-violet-200'
+                    }`}
+                    aria-pressed={selected}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            {rangeError && (
+              <p className="mt-1.5 text-[10px] font-medium text-red-600">{rangeError}</p>
+            )}
+            <AnimatePresence>
+              {showCustomPicker && (
+                <div className="mt-2">
+                  <DateRangePicker
+                    startDate={customStartDate}
+                    endDate={customEndDate}
+                    onSelect={selectCustomRange}
+                    onClose={() => setShowCustomPicker(false)}
+                  />
+                </div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+
         <ul className="divide-y divide-violet-50">
-          {showTenDay && tenDayStatus === 'loading' && tileRows.length === 0 && (
-            <li className="py-3 text-center text-xs text-violet-700">Loading last 10 days…</li>
+          {!isTodayFilter && rangeStatus === 'loading' && tileRows.length === 0 && (
+            <li className="py-3 text-center text-xs text-violet-700">Loading ranking…</li>
           )}
-          {showTenDay && tenDayStatus === 'empty' && (
-            <li className="py-3 text-center text-xs text-gray-500">No scores in the last 10 days.</li>
+          {!isTodayFilter && rangeStatus === 'empty' && tileRows.length === 0 && (
+            <li className="py-3 text-center text-xs text-gray-500">No scores for this date filter.</li>
           )}
-          {showTenDay && tenDayStatus === 'error' && (
-            <li className="py-3 text-center text-xs text-gray-500">Could not load last 10 days.</li>
+          {!isTodayFilter && rangeStatus === 'error' && tileRows.length === 0 && (
+            <li className="py-3 text-center text-xs text-gray-500">Could not load this date filter.</li>
           )}
           {tileRows.map(renderTileRow)}
         </ul>

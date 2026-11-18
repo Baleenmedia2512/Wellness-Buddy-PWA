@@ -7,7 +7,23 @@ import assert from 'node:assert/strict';
 import {
   aggregateWellnessWindowScores,
   rankWellnessLeaderboardEntries,
+  resolveWellnessLeaderboardWindowDays,
 } from '../wellnessScoreLeaderboard.js';
+
+describe('resolveWellnessLeaderboardWindowDays', () => {
+  it('keeps missing and non-10 values on today for released apps', () => {
+    assert.equal(resolveWellnessLeaderboardWindowDays(undefined), 1);
+    assert.equal(resolveWellnessLeaderboardWindowDays('1'), 1);
+    assert.equal(resolveWellnessLeaderboardWindowDays('abc'), 1);
+  });
+
+  it('allows multi-day windows up to 30 and rejects 31+', () => {
+    assert.equal(resolveWellnessLeaderboardWindowDays('5'), 5);
+    assert.equal(resolveWellnessLeaderboardWindowDays('10'), 10);
+    assert.equal(resolveWellnessLeaderboardWindowDays('30'), 30);
+    assert.equal(resolveWellnessLeaderboardWindowDays('31'), 1);
+  });
+});
 
 describe('rankWellnessLeaderboardEntries', () => {
   it('takes Top N from the already-filtered set, not a global list', () => {

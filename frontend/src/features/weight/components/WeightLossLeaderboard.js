@@ -6,7 +6,8 @@ import React, {
   useImperativeHandle,
   useRef,
 } from "react";
-import { Scale, Share2, Loader2 } from "lucide-react";
+import { Scale, Share2, Loader2, Calendar } from "lucide-react";
+import { AnimatePresence } from 'framer-motion';
 import {
   captureAndShare,
   precaptureShareImage,
@@ -17,6 +18,7 @@ import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabe
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
 import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js';
 import TeamMemberProfileModal from '../../../shared/components/TeamMemberProfileModal';
+import DateRangePicker from '../../../shared/components/common/DateRangePicker';
 import LeaderboardAvatar from '../../leaderboard/components/LeaderboardAvatar.js';
 import LeaderboardAvatarViewer from '../../leaderboard/components/LeaderboardAvatarViewer.js';
 import LeaderboardRankBadge from '../../leaderboard/components/LeaderboardRankBadge.js';
@@ -27,6 +29,21 @@ import {
 import { sortLeaderboardByRankAsc } from '../../leaderboard/utils/leaderboardOrder.js';
 import { LEADERBOARD_CONFIG } from '../../../config/leaderboardConfig.js';
 import { useRaceLeaderboardRealtime } from '../../leaderboard/hooks/useRaceLeaderboardRealtime.js';
+import {
+  LB_DATE_FILTER_OPTIONS,
+  LB_DATE_PRESETS,
+  LB_MAX_WINDOW_DAYS,
+  resolveLbDateFilter,
+} from '../../leaderboard/domain/leaderboardDateFilter.js';
+
+const WEIGHT_FILTER_LABELS = Object.freeze({
+  todaySubtitle: 'Today vs Yesterday',
+  todayButtonLabel: 'Today',
+});
+
+const resolveWeightFilter = (preset, customStart = null, customEnd = null) => (
+  resolveLbDateFilter(preset, customStart, customEnd, new Date(), undefined, WEIGHT_FILTER_LABELS)
+);
 
 // ---------------------------------------------------------------------------
 // SWR cache — hierarchy-scoped (per logged-in user).
@@ -68,7 +85,7 @@ const writeWeightLBCache = (userId, data) => {
 /**
  * WeightLossLeaderboard Component
  * Hierarchy-scoped weight loss leaderboard (Today vs Yesterday by default).
- * Tile variant can toggle Last 10 days — same pattern as Wellness Score.
+ * Tile variant uses the same IST date filter as Top 10 Wellness Score.
  *
  * @param {'strip'|'tile'} variant - strip = auto-scroll headline (legacy); tile = static card list
  */
@@ -82,35 +99,56 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
   const cardRef = useRef(null);
   const cachedDataUrlRef = useRef(null);
   const [isSharing, setIsSharing] = useState(false);
-  const [showTenDay, setShowTenDay] = useState(false);
-  const [tenDayData, setTenDayData] = useState([]);
-  const [tenDayStatus, setTenDayStatus] = useState('idle');
-  const showTenDayRef = useRef(false);
-  const fetchInFlightRef = useRef({ 1: false, 10: false });
+  const todayFilter = resolveWeightFilter(LB_DATE_PRESETS.TODAY);
+  const [filterPreset, setFilterPreset] = useState(LB_DATE_PRESETS.TODAY);
+  const [filterMeta, setFilterMeta] = useState(todayFilter);
+  const [rangeData, setRangeData] = useState([]);
+  const [rangeStatus, setRangeStatus] = useState('idle');
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [showCustomPicker, setShowCustomPicker] = useState(false);
+  const [customStartDate, setCustomStartDate] = useState(null);
+  const [customEndDate, setCustomEndDate] = useState(null);
+  const [rangeError, setRangeError] = useState(null);
+  const filterRef = useRef({
+    preset: LB_DATE_PRESETS.TODAY,
+    days: 1,
+    dateYmd: null,
+  });
+  const fetchInFlightRef = useRef({});
   const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
     enabled: !isTile && isVisible && leaderboardData.length > 0,
   });
 
-  const fetchLeaderboard = useCallback(async (days = 1) => {
-    const windowDays = days === 10 ? 10 : 1;
+  const isTodayFilter = filterPreset === LB_DATE_PRESETS.TODAY;
+
+  const fetchLeaderboard = useCallback(async (days = 1, dateYmd = null) => {
+    const windowDays = Number(days) >= 2 && Number(days) <= LB_MAX_WINDOW_DAYS
+      ? Number(days)
+      : 1;
+    const endYmd = typeof dateYmd === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateYmd)
+      ? dateYmd
+      : null;
+    const isTodayBoard = windowDays === 1 && !endYmd;
+    const flightKey = endYmd ? `d${windowDays}:${endYmd}` : `d${windowDays}:today`;
     const emailTrim = String(email || '').trim();
     if ((userId == null || userId === '') && !emailTrim) {
-      if (windowDays === 10) {
-        setTenDayData([]);
-        setTenDayStatus('empty');
-      } else {
+      if (isTodayBoard) {
         setLeaderboardData([]);
         setIsVisible(false);
+      } else {
+        setRangeData([]);
+        setRangeStatus('empty');
       }
       return;
     }
-    if (fetchInFlightRef.current[windowDays]) return;
-    fetchInFlightRef.current[windowDays] = true;
+    if (fetchInFlightRef.current[flightKey]) return;
+    fetchInFlightRef.current[flightKey] = true;
     try {
       const params = new URLSearchParams({
         topN: String(topN),
       });
-      if (windowDays === 10) params.set('days', '10');
+      if (windowDays >= 2) params.set('days', String(windowDays));
+      if (endYmd) params.set('date', endYmd);
       if (userId != null && userId !== '') params.set('userId', String(userId));
       if (emailTrim) params.set('email', emailTrim);
       const response = await fetch(
@@ -125,23 +163,22 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
 
       if (!response.ok) {
         debugLog("[LEADERBOARD] API returned", response.status);
-        if (windowDays === 10) {
-          setTenDayData([]);
-          setTenDayStatus('error');
-        }
+        if (isTodayBoard) return;
+        setRangeData([]);
+        setRangeStatus('error');
         return;
       }
 
       const result = await response.json();
 
-      if (windowDays === 10) {
+      if (!isTodayBoard) {
         if (result.success && result.data?.length > 0) {
-          setTenDayData(sortLeaderboardByRankAsc(result.data));
-          setTenDayStatus('ready');
+          setRangeData(sortLeaderboardByRankAsc(result.data));
+          setRangeStatus('ready');
         } else {
-          debugLog('[LEADERBOARD] No 10-day data:', result.message || 'Empty');
-          setTenDayData([]);
-          setTenDayStatus(result.success ? 'empty' : 'error');
+          debugLog('[LEADERBOARD] No filtered data:', result.message || 'Empty');
+          setRangeData([]);
+          setRangeStatus(result.success ? 'empty' : 'error');
         }
         return;
       }
@@ -161,34 +198,97 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
       }
     } catch (error) {
       debugLog("[LEADERBOARD] Error fetching data:", error?.message || error);
-      if (windowDays === 10) {
-        setTenDayData([]);
-        setTenDayStatus('error');
-      } else {
+      if (isTodayBoard) {
         setLeaderboardData([]);
         setIsVisible(false);
+      } else {
+        setRangeData([]);
+        setRangeStatus('error');
       }
     } finally {
-      fetchInFlightRef.current[windowDays] = false;
+      fetchInFlightRef.current[flightKey] = false;
     }
   }, [apiBaseUrl, topN, userId, email]);
 
-  const refreshBoards = useCallback(() => {
-    fetchLeaderboard(1);
-    if (showTenDayRef.current) fetchLeaderboard(10);
-  }, [fetchLeaderboard]);
+  const applyFilter = useCallback((resolved) => {
+    if (!resolved?.ok) return;
+    const prev = filterRef.current;
+    const sameQuery = prev.preset === resolved.preset
+      && prev.days === resolved.days
+      && prev.dateYmd === resolved.dateYmd;
+    filterRef.current = {
+      preset: resolved.preset,
+      days: resolved.days,
+      dateYmd: resolved.dateYmd,
+    };
+    setFilterPreset(resolved.preset);
+    setFilterMeta(resolved);
+    setRangeError(null);
+    setShowFilterPanel(false);
 
-  const toggleTenDay = useCallback(() => {
-    if (showTenDayRef.current) {
-      showTenDayRef.current = false;
-      setShowTenDay(false);
+    if (resolved.preset === LB_DATE_PRESETS.TODAY) {
+      setShowCustomPicker(false);
+      setRangeStatus('idle');
+      if (!sameQuery) fetchLeaderboard(1);
       return;
     }
-    showTenDayRef.current = true;
-    setShowTenDay(true);
-    setTenDayStatus((status) => (status === 'ready' ? status : 'loading'));
-    fetchLeaderboard(10);
+
+    setShowCustomPicker(false);
+    if (!sameQuery) {
+      setRangeStatus('loading');
+      fetchLeaderboard(resolved.days, resolved.dateYmd);
+    }
   }, [fetchLeaderboard]);
+
+  const refreshBoards = useCallback(() => {
+    fetchLeaderboard(1);
+    const active = filterRef.current;
+    if (active.preset !== LB_DATE_PRESETS.TODAY) {
+      fetchLeaderboard(active.days, active.dateYmd);
+    }
+  }, [fetchLeaderboard]);
+
+  const openDateFilter = useCallback(() => {
+    setShowFilterPanel((open) => {
+      const next = !open;
+      if (!next) setShowCustomPicker(false);
+      return next;
+    });
+    setRangeError(null);
+  }, []);
+
+  const selectPreset = useCallback((preset) => {
+    if (preset === LB_DATE_PRESETS.CUSTOM) {
+      setFilterPreset(LB_DATE_PRESETS.CUSTOM);
+      setShowCustomPicker(true);
+      setRangeError(null);
+      return;
+    }
+    const resolved = resolveWeightFilter(preset);
+    if (!resolved.ok) return;
+    setShowCustomPicker(false);
+    applyFilter(resolved);
+  }, [applyFilter]);
+
+  const selectCustomRange = useCallback((start, end) => {
+    const resolved = resolveWeightFilter(
+      LB_DATE_PRESETS.CUSTOM,
+      start,
+      end || start,
+    );
+    if (!resolved.ok) {
+      setRangeError(
+        resolved.error === 'range_too_long'
+          ? `Select up to ${LB_MAX_WINDOW_DAYS} days only`
+          : 'Invalid date range',
+      );
+      return;
+    }
+    setCustomStartDate(start);
+    setCustomEndDate(end || start);
+    setShowCustomPicker(false);
+    applyFilter(resolved);
+  }, [applyFilter]);
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
@@ -281,7 +381,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [isTile, leaderboardData, tenDayData, showTenDay, hasEntered]);
+  }, [isTile, leaderboardData, rangeData, filterPreset, hasEntered]);
 
   // Don't render if no data or loading failed
   if (!isVisible || leaderboardData.length === 0) {
@@ -292,7 +392,9 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
     if (isSharing || !cardRef.current) return;
     setIsSharing(true);
     try {
-      const modeSuffix = showTenDay ? 'last-10-days' : 'today';
+      const modeSuffix = isTodayFilter
+        ? 'today'
+        : `${filterPreset}-${filterMeta?.endYmd || filterMeta?.days || 'range'}`;
       const fileName = `top-${topN}-weight-loss-${modeSuffix}-${Date.now()}.jpg`;
       const shareOpts = {
         title: `Top ${topN} Weight Loss`,
@@ -479,15 +581,17 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
   };
 
   if (isTile) {
-    const tileRows = showTenDay ? tenDayData : leaderboardData;
-    const tileSubtitle = showTenDay ? 'Last 10 days' : 'Today vs Yesterday';
+    const tileRows = isTodayFilter ? leaderboardData : rangeData;
+    const tileSubtitle = filterMeta?.subtitle || 'Today vs Yesterday';
+    const buttonLabel = filterMeta?.buttonLabel || 'Today';
+    const ariaPeriod = isTodayFilter ? null : (filterMeta?.subtitle || filterPreset);
     return (
       <section
         ref={cardRef}
         className={`mx-1 rounded-2xl border border-emerald-100 bg-white p-3 shadow-sm transition-opacity duration-500 ease-out ${
           hasEntered ? 'opacity-100' : 'opacity-0'
         }`}
-        aria-label={showTenDay ? `Top ${topN} Weight Loss, last 10 days` : 'Weight Loss Today vs Yesterday'}
+        aria-label={ariaPeriod ? `Top ${topN} Weight Loss, ${ariaPeriod}` : 'Weight Loss Today vs Yesterday'}
       >
         <header className="mb-1 flex items-center gap-2 border-b border-emerald-50 pb-2">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100" aria-hidden>
@@ -516,26 +620,74 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
           </div>
           <button
             type="button"
-            className="ml-auto shrink-0 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-center text-[11px] font-semibold leading-tight text-emerald-700"
-            onClick={toggleTenDay}
-            aria-pressed={showTenDay}
+            className={`ml-auto inline-flex shrink-0 items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-center text-[11px] font-semibold leading-tight ${
+              showFilterPanel || !isTodayFilter
+                ? 'bg-emerald-600 text-white'
+                : 'bg-emerald-50 text-emerald-700'
+            }`}
+            onClick={openDateFilter}
+            aria-expanded={showFilterPanel}
+            aria-label="Open weight loss date filter"
+            data-html2canvas-ignore="true"
           >
-            {showTenDay ? (
-              <span className="block">Show Today</span>
-            ) : (
-              <span className="block">Show Last 10 Days</span>
-            )}
+            <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span className="truncate max-w-[6.5rem]">{buttonLabel}</span>
           </button>
         </header>
+
+        {showFilterPanel && (
+          <div
+            className="mb-2 rounded-xl border border-emerald-100 bg-emerald-50/60 p-2"
+            data-html2canvas-ignore="true"
+          >
+            <div className="flex gap-1.5 overflow-x-auto pb-0.5 no-scrollbar" role="group" aria-label="Date filter">
+              {LB_DATE_FILTER_OPTIONS.map((option) => {
+                const selected = filterPreset === option.value
+                  || (option.value === LB_DATE_PRESETS.CUSTOM && showCustomPicker);
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => selectPreset(option.value)}
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold transition-colors ${
+                      selected
+                        ? 'bg-emerald-700 text-white'
+                        : 'bg-white text-emerald-800 border border-emerald-200'
+                    }`}
+                    aria-pressed={selected}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            {rangeError && (
+              <p className="mt-1.5 text-[10px] font-medium text-red-600">{rangeError}</p>
+            )}
+            <AnimatePresence>
+              {showCustomPicker && (
+                <div className="mt-2">
+                  <DateRangePicker
+                    startDate={customStartDate}
+                    endDate={customEndDate}
+                    onSelect={selectCustomRange}
+                    onClose={() => setShowCustomPicker(false)}
+                  />
+                </div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+
         <ul className="divide-y divide-emerald-50">
-          {showTenDay && tenDayStatus === 'loading' && tileRows.length === 0 && (
-            <li className="py-3 text-center text-xs text-emerald-700">Loading last 10 days…</li>
+          {!isTodayFilter && rangeStatus === 'loading' && tileRows.length === 0 && (
+            <li className="py-3 text-center text-xs text-emerald-700">Loading ranking…</li>
           )}
-          {showTenDay && tenDayStatus === 'empty' && (
-            <li className="py-3 text-center text-xs text-gray-500">No weight loss in the last 10 days.</li>
+          {!isTodayFilter && rangeStatus === 'empty' && tileRows.length === 0 && (
+            <li className="py-3 text-center text-xs text-gray-500">No weight loss for this date filter.</li>
           )}
-          {showTenDay && tenDayStatus === 'error' && (
-            <li className="py-3 text-center text-xs text-gray-500">Could not load last 10 days.</li>
+          {!isTodayFilter && rangeStatus === 'error' && tileRows.length === 0 && (
+            <li className="py-3 text-center text-xs text-gray-500">Could not load this date filter.</li>
           )}
           {tileRows.map(renderTileRow)}
         </ul>

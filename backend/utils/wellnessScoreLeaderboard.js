@@ -3,8 +3,28 @@
  * Does not change score calculation; only orders existing persisted scores.
  */
 
-/** Inclusive IST window for the home "Show more" board. */
+/** Preset length for home "Last 10 Days". */
 export const WELLNESS_LEADERBOARD_WINDOW_DAYS = 10;
+
+/** Inclusive custom-range / API window cap (IST). */
+export const WELLNESS_LEADERBOARD_MAX_WINDOW_DAYS = 30;
+
+/**
+ * Resolve `days` query for wellness leaderboard.
+ * Missing / invalid / 1 → today (legacy released apps).
+ * 2..30 → multi-day IST window ending on `date` (or today).
+ * 31+ → today (do not expand past the cap).
+ * Released apps only omit `days` or send `days=10` — both stay unchanged.
+ *
+ * @param {unknown} rawDays
+ * @returns {number}
+ */
+export function resolveWellnessLeaderboardWindowDays(rawDays) {
+  const n = parseInt(rawDays, 10);
+  if (!Number.isFinite(n) || n < 2) return 1;
+  if (n > WELLNESS_LEADERBOARD_MAX_WINDOW_DAYS) return 1;
+  return n;
+}
 
 /**
  * @param {Array<{ wellnessPercentage?: number, totalEarned?: number }>} entries

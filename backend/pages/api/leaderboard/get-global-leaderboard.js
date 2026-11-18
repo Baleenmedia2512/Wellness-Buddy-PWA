@@ -5,6 +5,7 @@ import {
   todayInTimezone,
   shiftDateYmd,
   timestampToCalendarYmd,
+  resolveRequestedDateYmd,
   IANA_IST,
 } from '../../../shared/lib/datetime/index.js';
 import * as activityReportRepo from '../../../features/activity/activity-report.repository.js';
@@ -20,10 +21,10 @@ import { resolveLeaderboardViewerId } from '../../../utils/leaderboardViewer.js'
 import { cashfreeCheckoutMode } from '../../../features/payments/domain/premium.rules.js';
 import { attachPremiumFlags } from '../../../features/payments/data/premium.repository.js';
 import {
-  WEIGHT_LEADERBOARD_WINDOW_DAYS,
   MAX_TODAY_VS_YESTERDAY_LOSS_KG,
   MAX_TEN_DAY_LOSS_KG,
   buildWindowWeightLossCandidates,
+  resolveWeightLeaderboardWindowDays,
 } from '../../../utils/weightLossLeaderboard.js';
 
 /** Server-side TTL — hierarchy-scoped; cache key includes viewerUserId. */
@@ -33,8 +34,9 @@ const LEADERBOARD_CACHE_TTL_MS = 60 * 1000;
 /**
  * Hierarchy-scoped Weight Loss Leaderboard API
  * Default: weight loss today vs yesterday for the viewer's allowed hierarchy.
- * Optional `days=10`: net loss over the last 10 IST days (earliest → latest weigh-in).
- * Missing / any value other than 10 keeps Today vs Yesterday so released apps are unchanged.
+ * Optional `days=2..30`: net loss over that many IST days ending on `date` (or today).
+ * Optional `date=YYYY-MM-DD`: IST end day (single-day compare uses end vs previous day).
+ * Missing / invalid / >30 `days` keeps Today vs Yesterday so released apps are unchanged.
  *
  * Order of work (must NOT global-top then filter):
  *   logged-in user → allowed hierarchy (upline people + sibling peers only +
@@ -42,8 +44,8 @@ const LEADERBOARD_CACHE_TTL_MS = 60 * 1000;
  *
  * Logic:
  * - Only includes active users (Status = 'Active')
- * - Today vs Yesterday: loss > 0 and ≤ 3.0 kg
- * - Last 10 days: net loss > 0 and ≤ 10.0 kg across different IST days
+ * - Single-day compare (days=1): loss > 0 and ≤ 3.0 kg (end day vs previous IST day)
+ * - Multi-day (days=2..30): net loss > 0 and ≤ 10.0 kg across different IST days
  * - Gains are never shown
  * - Returns: rank, profile (email for avatar), userName, coachName, weightLoss
  */
@@ -78,10 +80,11 @@ export default async function handler(req, res) {
 
   try {
     const topN = Math.min(parseInt(req.query.topN, 10) || 10, 10);
-    // Missing or any value other than 10 stays on Today vs Yesterday (released apps).
-    const windowDays = parseInt(req.query.days, 10) === WEIGHT_LEADERBOARD_WINDOW_DAYS
-      ? WEIGHT_LEADERBOARD_WINDOW_DAYS
-      : 1;
+    // Missing / 1 / invalid / >10 → Today vs Yesterday (released apps).
+    const windowDays = resolveWeightLeaderboardWindowDays(req.query.days);
+    const endYmd = req.query.date
+      ? resolveRequestedDateYmd(req.query.date, IANA_IST)
+      : todayInTimezone(IANA_IST);
     const viewerUserId = await resolveLeaderboardViewerId({
       userId: req.query.userId,
       email: req.query.email,
@@ -93,11 +96,12 @@ export default async function handler(req, res) {
         data: [],
         topN,
         windowDays,
+        scoreDate: endYmd,
         message: "userId is required",
       });
     }
 
-    const cacheKey = `lb:hierarchy:weight:v4:${viewerUserId}:${topN}:d${windowDays}`;
+    const cacheKey = `lb:hierarchy:weight:v5:${viewerUserId}:${topN}:${endYmd}:d${windowDays}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       res.setHeader("X-Cache", "HIT");
@@ -108,7 +112,7 @@ export default async function handler(req, res) {
     const startedAt = Date.now();
 
     logger.debug(
-      `🏆 [LEADERBOARD] Hierarchy weight loss Top ${topN} days=${windowDays} viewer=${viewerUserId}`,
+      `🏆 [LEADERBOARD] Hierarchy weight loss Top ${topN} days=${windowDays} end=${endYmd} viewer=${viewerUserId}`,
     );
 
     // Indexed subtree: viewer + ancestors (people only) + own downline + sibling peers.
@@ -142,15 +146,14 @@ export default async function handler(req, res) {
 
     logger.debug(`✅ [LEADERBOARD] Found ${activeUsers.length} allowed users`);
 
-    // Calendar window in platform timezone
-    const todayYmd = todayInTimezone(IANA_IST);
+    // Calendar window in platform timezone (IST). `endYmd` is the filter end day.
     const rangeStartYmd = windowDays === 1
-      ? shiftDateYmd(todayYmd, -1, IANA_IST)
-      : shiftDateYmd(todayYmd, -(windowDays - 1), IANA_IST);
-    const yesterdayYmd = shiftDateYmd(todayYmd, -1, IANA_IST);
+      ? shiftDateYmd(endYmd, -1, IANA_IST)
+      : shiftDateYmd(endYmd, -(windowDays - 1), IANA_IST);
+    const previousYmd = shiftDateYmd(endYmd, -1, IANA_IST);
 
     logger.debug(
-      `📅 [LEADERBOARD] Window ${rangeStartYmd}..${todayYmd} (days=${windowDays})`,
+      `📅 [LEADERBOARD] Window ${rangeStartYmd}..${endYmd} (days=${windowDays})`,
     );
 
     // One range fetch; repository already parallel-chunks .in() lists.
@@ -160,59 +163,61 @@ export default async function handler(req, res) {
     const rangeWeights = await activityReportRepo.fetchWeightRecords(
       activeUserIds,
       rangeStartYmd,
-      todayYmd,
+      endYmd,
       IANA_IST,
     );
     const weightsMs = Date.now() - weightsStartedAt;
 
     const leaderboardData = [];
-    const comparisonLabel = windowDays === 1 ? "Today vs Yesterday" : "Last 10 days";
+    const comparisonLabel = windowDays === 1
+      ? (endYmd === todayInTimezone(IANA_IST) ? 'Today vs Yesterday' : `${previousYmd} vs ${endYmd}`)
+      : (windowDays === 10 ? 'Last 10 days' : `Last ${windowDays} days`);
 
     if (windowDays === 1) {
-      // Create maps for quick lookup (get latest weight per user per IST day)
-      const todayWeightMap = new Map();
-      const yesterdayWeightMap = new Map();
+      // Latest weight per user on end day vs previous IST day.
+      const endWeightMap = new Map();
+      const previousWeightMap = new Map();
 
       for (const record of rangeWeights || []) {
         const dayYmd = timestampToCalendarYmd(record.CreatedAt, IANA_IST);
         if (!dayYmd) continue;
-        if (dayYmd === todayYmd) {
-          if (!todayWeightMap.has(record.UserId)) {
-            todayWeightMap.set(record.UserId, record);
+        if (dayYmd === endYmd) {
+          if (!endWeightMap.has(record.UserId)) {
+            endWeightMap.set(record.UserId, record);
           }
-        } else if (dayYmd === yesterdayYmd) {
-          if (!yesterdayWeightMap.has(record.UserId)) {
-            yesterdayWeightMap.set(record.UserId, record);
+        } else if (dayYmd === previousYmd) {
+          if (!previousWeightMap.has(record.UserId)) {
+            previousWeightMap.set(record.UserId, record);
           }
         }
       }
 
       logger.debug(
-        `📊 [LEADERBOARD] Found ${todayWeightMap.size} users with today's weight, ${yesterdayWeightMap.size} with yesterday's weight (context=${contextMs}ms weights=${weightsMs}ms users=${activeUsers.length})`,
+        `📊 [LEADERBOARD] Found ${endWeightMap.size} users with end-day weight, ${previousWeightMap.size} with previous-day weight (context=${contextMs}ms weights=${weightsMs}ms users=${activeUsers.length})`,
       );
 
       for (const user of activeUsers) {
-        const todayRecord = todayWeightMap.get(user.UserId);
-        const yesterdayRecord = yesterdayWeightMap.get(user.UserId);
+        const endRecord = endWeightMap.get(user.UserId);
+        const previousRecord = previousWeightMap.get(user.UserId);
 
-        if (todayRecord && yesterdayRecord) {
-          const todayWeight = parseFloat(todayRecord.Weight);
-          const yesterdayWeight = parseFloat(yesterdayRecord.Weight);
-          const weightLoss = yesterdayWeight - todayWeight; // Positive = weight lost
+        if (endRecord && previousRecord) {
+          const endWeight = parseFloat(endRecord.Weight);
+          const previousWeight = parseFloat(previousRecord.Weight);
+          const weightLoss = previousWeight - endWeight; // Positive = weight lost
 
-          // Loss-only, and within the Today vs Yesterday plausibility cap (≤ 3 kg).
+          // Loss-only, and within the single-day plausibility cap (≤ 3 kg).
           if (weightLoss > 0 && weightLoss <= MAX_TODAY_VS_YESTERDAY_LOSS_KG) {
             leaderboardData.push({
               userId: user.UserId,
               userName: user.UserName || "Unknown",
               email: user.Email || "",
               weightLoss: parseFloat(weightLoss.toFixed(2)),
-              todayWeight: parseFloat(todayWeight.toFixed(2)),
-              yesterdayWeight: parseFloat(yesterdayWeight.toFixed(2)),
-              startWeight: parseFloat(yesterdayWeight.toFixed(2)),
-              endWeight: parseFloat(todayWeight.toFixed(2)),
-              todayDate: todayRecord.CreatedAt,
-              yesterdayDate: yesterdayRecord.CreatedAt,
+              todayWeight: parseFloat(endWeight.toFixed(2)),
+              yesterdayWeight: parseFloat(previousWeight.toFixed(2)),
+              startWeight: parseFloat(previousWeight.toFixed(2)),
+              endWeight: parseFloat(endWeight.toFixed(2)),
+              todayDate: endRecord.CreatedAt,
+              yesterdayDate: previousRecord.CreatedAt,
             });
           }
         }
@@ -229,7 +234,7 @@ export default async function handler(req, res) {
       );
 
       logger.debug(
-        `📊 [LEADERBOARD] Found ${windowCandidates.length} users with 10-day net loss (context=${contextMs}ms weights=${weightsMs}ms users=${activeUsers.length})`,
+        `📊 [LEADERBOARD] Found ${windowCandidates.length} users with ${windowDays}-day net loss (context=${contextMs}ms weights=${weightsMs}ms users=${activeUsers.length})`,
       );
 
       for (const user of activeUsers) {
@@ -326,8 +331,9 @@ export default async function handler(req, res) {
       data: withPremium,
       topN,
       windowDays,
+      scoreDate: endYmd,
       dateStart: rangeStartYmd,
-      dateEnd: todayYmd,
+      dateEnd: endYmd,
       totalEligible: leaderboardData.length,
       calculatedAt: nowUtc(),
     };

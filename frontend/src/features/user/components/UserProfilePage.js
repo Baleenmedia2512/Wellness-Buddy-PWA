@@ -78,6 +78,7 @@ import usePremiumStatus from '../../payments/hooks/usePremiumStatus';
 import { buildHomePlanStatus } from '../../payments/domain/homePlanStatus.rules';
 import useReportAccess from '../../reports/hooks/useReportAccess';
 import { AdminGbpListingButton } from '../../gbp-listing';
+import { formatAppRoleLabel } from '../../../shared/constants/roles';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -100,8 +101,6 @@ function resolveAccountEmail(user, formEmail) {
   }
   return '';
 }
-
-const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', system_admin: 'System Admin', user: 'Customer' };
 
 const UserProfilePage = ({
   user,
@@ -801,7 +800,7 @@ const UserProfilePage = ({
     const valid = candidates.find((n) => hasValidProfileName(n, { email, phoneNumber }));
     return valid || 'User';
   })();
-  const role = ROLE_LABELS[userRole] || 'Customer';
+  const role = formatAppRoleLabel(userRole || user?.role || user?.Role);
   // Same-origin /api/user/avatar — raw Google/R2 URLs fail on iOS Safari (no-referrer).
   const displayAvatarSrc = resolveClientAvatarSrc({
     apiBaseUrl: getApiBaseUrl(),
