@@ -1,9 +1,15 @@
 // Header bar with avatar (ProfileImage), role badge, name, email, close.
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import TouchFeedbackButton from '../../../../shared/components/TouchFeedbackButton';
 import { EmojiOrNative } from '../../../../shared/components/icons/EmojiImage';
 import BathroomScaleIcon from '../../../../shared/components/icons/BathroomScaleIcon';
+import { getApiBaseUrl } from '../../../../config/api.config';
+import {
+  getAvatarDisplayVersion,
+  resolveClientAvatarSrc,
+  subscribeAvatarDisplayVersion,
+} from '../../services/avatarDisplayVersion';
 import ProfilePhotoViewer from '../picture/ProfilePhotoViewer';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
@@ -19,20 +25,44 @@ const UserProfileHeader = ({
   weightGoalMode,
 }) => {
   const [showPhotoViewer, setShowPhotoViewer] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  const [avatarVersion, setAvatarVersion] = useState(getAvatarDisplayVersion);
+  const userId = user?.id ?? user?.UserId ?? user?.userId ?? null;
+
+  useEffect(() => subscribeAvatarDisplayVersion(setAvatarVersion), []);
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [avatarVersion, userId, profileImagePreview]);
+
   const displayName = name || user?.displayName || user?.name || 'User';
   const role = ROLE_LABELS[userRole] || 'Customer';
+  const displayAvatarSrc = resolveClientAvatarSrc({
+    apiBaseUrl: getApiBaseUrl(),
+    userId,
+    version: avatarVersion,
+    optimisticSrc: profileImagePreview,
+    failed: avatarFailed,
+  });
   return (
     <div className="flex items-center justify-between p-6 bg-gradient-to-r from-green-500 to-green-600 rounded-t-2xl">
       <div className="flex items-center space-x-3">
-        {profileImagePreview ? (
+        {displayAvatarSrc ? (
           <button
             type="button"
             className="relative w-16 h-16 rounded-full border-2 border-white overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
             onClick={() => setShowPhotoViewer(true)}
             aria-label={`View ${displayName}'s profile photo`}
           >
-            <img src={profileImagePreview} alt={displayName} className="w-full h-full object-cover"
-              loading="lazy" decoding="async" referrerPolicy="no-referrer" />
+            <img
+              key={displayAvatarSrc}
+              src={displayAvatarSrc}
+              alt={displayName}
+              className="w-full h-full object-cover"
+              loading="eager"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              onError={() => setAvatarFailed(true)}
+            />
           </button>
         ) : (
           <div className={`relative w-16 h-16 rounded-full border-2 border-white overflow-hidden flex items-center justify-center text-white font-bold text-2xl ${colorOf(name, user?.email)}`}>
@@ -81,7 +111,7 @@ const UserProfileHeader = ({
       </div>
       <ProfilePhotoViewer
         isOpen={showPhotoViewer}
-        src={profileImagePreview}
+        src={displayAvatarSrc}
         alt={displayName}
         onClose={() => setShowPhotoViewer(false)}
       />

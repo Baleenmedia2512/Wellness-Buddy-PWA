@@ -105,7 +105,7 @@ export default function ReportsWeightTrendChart({
     [metric.key],
   );
 
-  const { firstValue, latestValue } = useMemo(
+  const { firstValue: allTimeFirstValue } = useMemo(
     () => getFirstAndLatestRecordedValue(weightHistory, valueOf),
     [weightHistory, valueOf],
   );
@@ -117,6 +117,26 @@ export default function ReportsWeightTrendChart({
     }, { getValue: valueOf }),
     [weightHistory, rangeDays, customStartDate, customEndDate, valueOf],
   );
+
+  // First/current follow the selected range (5D/10D/1M/1Y/Custom), not all-time history.
+  const { firstValue, latestValue, firstDate, latestDate } = useMemo(() => {
+    if (!series.length) {
+      return {
+        firstValue: null,
+        latestValue: null,
+        firstDate: null,
+        latestDate: null,
+      };
+    }
+    const first = series[0];
+    const latest = series[series.length - 1];
+    return {
+      firstValue: first.value,
+      latestValue: latest.value,
+      firstDate: first.date || first.label,
+      latestDate: latest.date || latest.label,
+    };
+  }, [series]);
   const axisBounds = useMemo(() => {
     if (rangeDays === 5 || rangeDays === 10) {
       return getTrendRangeBounds(rangeDays, {
@@ -193,15 +213,20 @@ export default function ReportsWeightTrendChart({
 
   const emptyMessage = isCustom && !hasCustomDates
     ? 'Select a date range to view the trend.'
-    : series.length === 0 && Number.isFinite(firstValue)
+    : series.length === 0 && Number.isFinite(allTimeFirstValue)
       ? `No ${metric.label} records available for this period.`
       : `No ${metric.label} records available for this user.`;
 
   return (
     <div className="min-w-0">
-      <p className="text-xs sm:text-sm text-gray-500 mb-2 break-words">
-        {firstToCurrentMetricLabel(firstValue, latestValue, metric.key)}
-      </p>
+      {series.length > 0 ? (
+        <p className="text-xs sm:text-sm text-gray-500 mb-2 break-words">
+          {firstToCurrentMetricLabel(firstValue, latestValue, metric.key, {
+            firstDate,
+            latestDate,
+          })}
+        </p>
+      ) : null}
       {series.length === 0 ? (
         <div className="h-36 rounded-xl border border-dashed border-gray-200 flex items-center justify-center text-sm text-gray-500 px-4 text-center">
           {emptyMessage}
