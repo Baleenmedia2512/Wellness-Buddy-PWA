@@ -539,6 +539,30 @@ export const shareCachedDataUrl = async (dataUrl, options = {}) => {
 
       const start = performance.now();
       const shareText = await prepareAndroidImageShareCaption(text);
+
+      // Try package-targeted direct WhatsApp share first
+      if (typeof WhatsAppShare.shareToWhatsApp === "function") {
+        try {
+          await WhatsAppShare.shareToWhatsApp({
+            base64Data: dataUrl,
+            fileName: finalFileName,
+            text: shareText || '',
+            mimeType,
+          });
+          debugLog(`⚡ Direct WhatsApp share dispatched in ${Math.round(performance.now() - start)} ms`);
+          return true;
+        } catch (waErr) {
+          const isCanceled =
+            waErr?.message?.toLowerCase().includes("cancel") ||
+            waErr?.message?.toLowerCase().includes("cancelled");
+          if (isCanceled) {
+            debugLog("ℹ️ User cancelled WhatsApp direct share");
+            return true;
+          }
+          console.warn("⚠️ Direct WhatsApp share failed, falling back to shareImage:", waErr);
+        }
+      }
+
       await WhatsAppShare.shareImage({
         base64Data: dataUrl,
         fileName: finalFileName,
@@ -563,11 +587,35 @@ export const shareCachedDataUrl = async (dataUrl, options = {}) => {
     }
   }
 
-  // iOS / web — convert dataURL to blob and reuse existing pipeline.
+  // Web fast path — synchronous File creation keeps user gesture active for navigator.share
+  const isNative = Capacitor.isNativePlatform();
+  if (!isNative && typeof navigator !== "undefined" && navigator.share) {
+    try {
+      const file = dataUrlToShareFile(dataUrl, finalFileName, mimeType);
+      if (file) {
+        await navigator.share({
+          title,
+          files: [file],
+        });
+        debugLog("✅ Cached Web Share API dispatched inside user gesture");
+        return true;
+      }
+    } catch (webErr) {
+      const isCanceled =
+        webErr?.name === "AbortError" ||
+        webErr?.message?.toLowerCase().includes("cancel");
+      if (isCanceled) {
+        debugLog("ℹ️ User cancelled web share");
+        return true;
+      }
+      console.warn("⚠️ Cached web share failed, falling back to blob pipeline:", webErr);
+    }
+  }
+
+  // iOS / web fallback — convert dataURL to blob and reuse existing pipeline.
   try {
     const resp = await fetch(dataUrl);
     const blob = await resp.blob();
-    const isNative = Capacitor.isNativePlatform();
     if (isNative) {
       await shareNative(blob, {
         title,
@@ -791,6 +839,31 @@ export const captureAndShare = async (element, options = {}) => {
         }
 
         const pluginStart = performance.now();
+        // Try direct WhatsApp share first if available
+        if (typeof WhatsAppShare.shareToWhatsApp === "function") {
+          try {
+            await WhatsAppShare.shareToWhatsApp({
+              base64Data: dataUrl,
+              fileName: fastFileName,
+              text: text || '',
+              mimeType: dataUrlMime,
+            });
+            debugLog(
+              `✅ Direct WhatsApp share launched in ${Math.round(performance.now() - pluginStart)} ms (fast path)`,
+            );
+            return;
+          } catch (waErr) {
+            const isCanceled =
+              waErr?.message?.toLowerCase().includes("cancel") ||
+              waErr?.message?.toLowerCase().includes("cancelled");
+            if (isCanceled) {
+              debugLog("ℹ️ User cancelled WhatsApp direct share");
+              return;
+            }
+            console.warn("⚠️ Direct WhatsApp share failed, falling back to shareImage:", waErr);
+          }
+        }
+
         const result = await WhatsAppShare.shareImage({
           base64Data: dataUrl,
           fileName: fastFileName,
@@ -1133,10 +1206,20 @@ const downloadImage = async (blob, fileName) => {
 const shareWithRetryAndFallback = async (blob, options) => {
   const { title, fileName } = options;
 
+  const openWhatsAppFallback = () => {
+    try {
+      const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(
+        typeof navigator !== "undefined" ? navigator.userAgent : ""
+      );
+      window.open(isMobile ? "whatsapp://send" : "https://web.whatsapp.com", "_blank");
+    } catch {}
+  };
+
   // Check if Web Share API exists at all
   if (!navigator.share) {
-    debugLog("❌ Web Share API not supported in this browser, falling back to download");
+    debugLog("❌ Web Share API not supported in this browser, falling back to download and WhatsApp");
     await downloadImage(blob, fileName);
+    openWhatsAppFallback();
     return;
   }
 
@@ -1170,15 +1253,9 @@ const shareWithRetryAndFallback = async (blob, options) => {
     // NotAllowedError = gesture chain broken OR browser blocked.
     // With JPEG + scale:2, file is ~300-700 KB so size is NOT the issue here.
     if (error.name === "NotAllowedError") {
-      debugLog("⚠️ NotAllowedError — gesture context may have expired. Falling back to download.");
+      debugLog("⚠️ NotAllowedError — gesture context may have expired. Falling back to download and WhatsApp.");
       await downloadImage(blob, fileName);
-      alert(
-        "Image saved to your downloads! 📥\n\n" +
-        "To share on WhatsApp:\n" +
-        "1. Open WhatsApp\n" +
-        "2. Open the chat\n" +
-        "3. Tap 📎 → Gallery → select the downloaded image"
-      );
+      openWhatsAppFallback();
       return;
     }
 
