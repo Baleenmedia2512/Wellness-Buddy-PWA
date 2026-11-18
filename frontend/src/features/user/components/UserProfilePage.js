@@ -47,8 +47,14 @@ import ChangeProfilePhotoModal from './ChangeProfilePhotoModal';
 import ProfilePhotoViewer from './picture/ProfilePhotoViewer';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
-import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
+import {
+  bumpAvatarDisplayVersion,
+  getAvatarDisplayVersion,
+  resolveClientAvatarSrc,
+  subscribeAvatarDisplayVersion,
+} from '../services/avatarDisplayVersion';
 import { getCachedProfile, getProfile } from '../services/user.api';
+import { getApiBaseUrl } from '../../../config/api.config';
 import useTransformationPhotos from '../hooks/useTransformationPhotos';
 import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
 import { hasValidProfileName } from '../domain/profileCompleteness';
@@ -127,6 +133,8 @@ const UserProfilePage = ({
   });
   const transformationPhotos = useTransformationPhotos();
   const [profileImagePreview, setProfileImagePreview] = useState(null);
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  const [avatarVersion, setAvatarVersion] = useState(getAvatarDisplayVersion);
   const [latestWeight, setLatestWeight] = useState(null);
   const [initialWeight, setInitialWeight] = useState(null);
   const [initialWeightDate, setInitialWeightDate] = useState(null);
@@ -780,6 +788,11 @@ const UserProfilePage = ({
     if (form.isDirty || transformationPhotos.hasPendingUploads()) setHasSaved(false);
   }, [form.isDirty, transformationPhotos]);
 
+  useEffect(() => subscribeAvatarDisplayVersion(setAvatarVersion), []);
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [avatarVersion, resolvedUserId, profileImagePreview]);
+
   const displayWeightGoalMode = derivedWeightGoalMode || form.weightGoalMode || 'loss';
   const displayName = (() => {
     const phoneNumber = form.phone || user?.phoneNumber || user?.phone;
@@ -789,6 +802,15 @@ const UserProfilePage = ({
     return valid || 'User';
   })();
   const role = ROLE_LABELS[userRole] || 'Customer';
+  // Same-origin /api/user/avatar — raw Google/R2 URLs fail on iOS Safari (no-referrer).
+  const displayAvatarSrc = resolveClientAvatarSrc({
+    apiBaseUrl: getApiBaseUrl(),
+    userId: resolvedUserId,
+    version: avatarVersion,
+    optimisticSrc: profileImagePreview,
+    failed: avatarFailed,
+  });
+  const hasDisplayAvatar = Boolean(displayAvatarSrc);
 
   return (
     <div className="min-h-full bg-gray-50 pb-8">
@@ -826,22 +848,24 @@ const UserProfilePage = ({
                 type="button"
                 onClick={() => {
                   if (isUploadingPhoto || isSaving) return;
-                  if (profileImagePreview) setShowPhotoViewer(true);
+                  if (hasDisplayAvatar) setShowPhotoViewer(true);
                   else setShowChangePhotoModal(true);
                 }}
                 disabled={isUploadingPhoto || isSaving}
                 className="w-full h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-70"
-                ariaLabel={profileImagePreview ? 'View profile photo' : 'Add profile photo'}
-                title={profileImagePreview ? 'View profile photo' : 'Add profile photo'}
+                ariaLabel={hasDisplayAvatar ? 'View profile photo' : 'Add profile photo'}
+                title={hasDisplayAvatar ? 'View profile photo' : 'Add profile photo'}
               >
-                {profileImagePreview ? (
+                {hasDisplayAvatar ? (
                   <img
-                    src={profileImagePreview}
+                    key={displayAvatarSrc}
+                    src={displayAvatarSrc}
                     alt={displayName}
                     className="w-full h-full object-cover pointer-events-none"
-                    loading="lazy"
+                    loading="eager"
                     decoding="async"
                     referrerPolicy="no-referrer"
+                    onError={() => setAvatarFailed(true)}
                   />
                 ) : (
                   <div className={`w-full h-full flex items-center justify-center text-white font-bold text-3xl ${colorOf(form.name, accountEmail)}`}>
@@ -1220,7 +1244,7 @@ const UserProfilePage = ({
 
       <ProfilePhotoViewer
         isOpen={showPhotoViewer}
-        src={profileImagePreview}
+        src={displayAvatarSrc}
         alt={displayName}
         onClose={() => setShowPhotoViewer(false)}
         onRecrop={() => {
@@ -1242,7 +1266,7 @@ const UserProfilePage = ({
         }}
         user={user}
         accountEmail={accountEmail}
-        currentPreviewUrl={profileImagePreview}
+        currentPreviewUrl={displayAvatarSrc || profileImagePreview}
         startWithRecrop={startPhotoRecrop}
         onStartWithRecropConsumed={() => setStartPhotoRecrop(false)}
         onUploaded={handlePhotoUploaded}

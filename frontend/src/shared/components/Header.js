@@ -1,11 +1,17 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Share2 } from "lucide-react";
 import APP_VERSION from "../../config/version";
+import { getApiBaseUrl } from "../../config/api.config";
 import { cacheProfileUserName } from "../utils/shareUtils.js";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 import AppNavTabs from "./AppNavTabs";
 import wellnessValleyIcon from "../../assets/wellness-valley-icon.png";
 import { getProfile } from "../../features/user/services/user.api";
+import {
+  getAvatarDisplayVersion,
+  resolveClientAvatarSrc,
+  subscribeAvatarDisplayVersion,
+} from "../../features/user/services/avatarDisplayVersion";
 import { isFlagEnabled } from "../../config/featureFlags";
 import { canAccessReportsModule } from "../../features/reports/domain/reportsAccess.rules.js";
 import { hasValidProfileName } from "../../features/user/domain/profileCompleteness";
@@ -49,11 +55,18 @@ const Header = ({
 }) => {
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  const [avatarVersion, setAvatarVersion] = useState(getAvatarDisplayVersion);
   const [isSharingInvite, setIsSharingInvite] = useState(false);
   const prevProfileKeyRef = useRef(profileKey);
 
   // Premium members get a light blue header. Tab-only bars use the same check.
   const premiumUserId = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
+
+  useEffect(() => subscribeAvatarDisplayVersion(setAvatarVersion), []);
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [avatarVersion, premiumUserId, savedProfileImage, user?.profileImage, user?.ProfileImage, user?.photoURL]);
   const {
     premium: isPremiumMember,
     daysLeft: premiumDaysLeft,
@@ -126,12 +139,18 @@ const Header = ({
       || userEmail
       || "User";
   })();
-  // Prefer fetched profile; fall back to session user after profile photo save (before refetch lands).
-  const headerAvatarSrc = savedProfileImage
-    || user?.profileImage
-    || user?.ProfileImage
-    || user?.photoURL
-    || null;
+  // Same-origin /api/user/avatar — raw Google/R2 URLs fail on iOS Safari (no-referrer).
+  const headerAvatarSrc = resolveClientAvatarSrc({
+    apiBaseUrl: getApiBaseUrl(),
+    userId: premiumUserId,
+    version: avatarVersion,
+    optimisticSrc: savedProfileImage
+      || user?.profileImage
+      || user?.ProfileImage
+      || user?.photoURL
+      || null,
+    failed: avatarFailed,
+  });
 
   const getInitial = () => {
     if (userName) return userName.charAt(0).toUpperCase();
@@ -146,13 +165,15 @@ const Header = ({
 
   const avatarNode = headerAvatarSrc ? (
     <img
+      key={headerAvatarSrc}
       src={headerAvatarSrc}
       alt="User Avatar"
       className={`block h-9 w-9 sm:h-10 sm:w-10 aspect-square rounded-full object-cover pointer-events-none ${isPremiumMember ? '' : 'border border-gray-300 shadow-sm'}`}
-      loading="lazy"
+      loading="eager"
       decoding="async"
       draggable="false"
       referrerPolicy="no-referrer"
+      onError={() => setAvatarFailed(true)}
       style={{
         WebkitUserSelect: "none",
         userSelect: "none",

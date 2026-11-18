@@ -6,7 +6,12 @@ import React, {
   useImperativeHandle,
   useRef,
 } from "react";
-import { Scale } from "lucide-react";
+import { Scale, Share2, Loader2 } from "lucide-react";
+import {
+  captureAndShare,
+  precaptureShareImage,
+  shareCachedDataUrl,
+} from '../../../shared/utils/shareUtils.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
@@ -74,6 +79,9 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
   const [expandedAvatar, setExpandedAvatar] = useState(null);
   const [profileMember, setProfileMember] = useState(null);
   const isTile = variant === 'tile';
+  const cardRef = useRef(null);
+  const cachedDataUrlRef = useRef(null);
+  const [isSharing, setIsSharing] = useState(false);
   const [showTenDay, setShowTenDay] = useState(false);
   const [tenDayData, setTenDayData] = useState([]);
   const [tenDayStatus, setTenDayStatus] = useState('idle');
@@ -257,10 +265,56 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
     return "bg-gradient-to-br from-green-500 to-green-700 text-white";
   };
 
+  // Pre-capture card image off the click path to preserve browser user gesture
+  useEffect(() => {
+    cachedDataUrlRef.current = null;
+    if (!isTile || !cardRef.current || !hasEntered) return undefined;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      precaptureShareImage(cardRef.current, { scale: 1.5, quality: 0.85 }).then((dataUrl) => {
+        if (!cancelled && dataUrl) {
+          cachedDataUrlRef.current = dataUrl;
+        }
+      });
+    }, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [isTile, leaderboardData, tenDayData, showTenDay, hasEntered]);
+
   // Don't render if no data or loading failed
   if (!isVisible || leaderboardData.length === 0) {
     return null;
   }
+
+  const handleShareCard = async () => {
+    if (isSharing || !cardRef.current) return;
+    setIsSharing(true);
+    try {
+      const modeSuffix = showTenDay ? 'last-10-days' : 'today';
+      const fileName = `top-${topN}-weight-loss-${modeSuffix}-${Date.now()}.jpg`;
+      const shareOpts = {
+        title: `Top ${topN} Weight Loss`,
+        text: `Top ${topN} Weight Loss - Wellness Valley`,
+        fileName,
+      };
+
+      const cached = cachedDataUrlRef.current;
+      if (cached) {
+        const ok = await shareCachedDataUrl(cached, shareOpts);
+        if (ok) return;
+      }
+
+      await captureAndShare(cardRef.current, shareOpts);
+    } catch (err) {
+      if (!err?.message?.toLowerCase().includes('cancel')) {
+        console.error('Share failed:', err);
+      }
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   const openProfile = (user) => {
     const memberEmail = String(user?.email || user?.Email || '').trim();
@@ -409,7 +463,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
             const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
             if (!sponsorName && !idealCoachName) return null;
             return (
-              <p className="truncate text-[10px] text-gray-500">
+              <p className="mt-0.5 text-[11px] leading-normal text-gray-500 break-words pb-0.5">
                 {[sponsorName && `Sponsor: ${sponsorName}`, idealCoachName && `Coach: ${idealCoachName}`]
                   .filter(Boolean)
                   .join(' · ')}
@@ -429,6 +483,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
     const tileSubtitle = showTenDay ? 'Last 10 days' : 'Today vs Yesterday';
     return (
       <section
+        ref={cardRef}
         className={`mx-1 rounded-2xl border border-emerald-100 bg-white p-3 shadow-sm transition-opacity duration-500 ease-out ${
           hasEntered ? 'opacity-100' : 'opacity-0'
         }`}
@@ -439,7 +494,24 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
             <Scale className="h-4 w-4 text-emerald-700" />
           </span>
           <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-bold text-emerald-900">Top {topN} Weight Loss</h3>
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-sm font-bold text-emerald-900">Top {topN} Weight Loss</h3>
+              <button
+                type="button"
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-emerald-600 hover:bg-emerald-100 hover:text-emerald-800 transition-colors focus:outline-none disabled:opacity-50"
+                onClick={handleShareCard}
+                disabled={isSharing}
+                data-html2canvas-ignore="true"
+                aria-label={`Share Top ${topN} Weight Loss as image`}
+                title="Share as image"
+              >
+                {isSharing ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Share2 className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </div>
             <p className="text-[11px] text-emerald-700/80">{tileSubtitle}</p>
           </div>
           <button

@@ -9,6 +9,7 @@ import {
   bumpAvatarDisplayVersion,
   getAvatarDisplayVersion,
   pickShareAvatarSrc,
+  resolveClientAvatarSrc,
   subscribeAvatarDisplayVersion,
 } from '../avatarDisplayVersion.js';
 
@@ -58,6 +59,37 @@ describe('avatarDisplayVersion', () => {
     assert.equal(buildUserAvatarUrl('', 1, 1), null);
     assert.equal(buildUserAvatarUrl('https://api.example', null, 1), null);
     assert.equal(buildUserAvatarUrl('https://api.example', '', 1), null);
+  });
+
+  it('resolveClientAvatarSrc prefers data: URI then inline /api/user/avatar; ignores Google/R2 https', () => {
+    assert.equal(
+      resolveClientAvatarSrc({
+        apiBaseUrl: 'https://api.example',
+        userId: 9,
+        version: 0,
+        optimisticSrc: 'data:image/jpeg;base64,abc',
+      }),
+      'data:image/jpeg;base64,abc',
+    );
+    assert.equal(
+      resolveClientAvatarSrc({
+        apiBaseUrl: 'https://api.example',
+        userId: 9,
+        version: 2,
+        optimisticSrc: 'https://lh3.googleusercontent.com/photo',
+      }),
+      'https://api.example/api/user/avatar?userId=9&_v=2&inline=1',
+    );
+    assert.equal(
+      resolveClientAvatarSrc({
+        apiBaseUrl: 'https://api.example',
+        userId: 9,
+        version: 0,
+        optimisticSrc: 'https://lh3.googleusercontent.com/photo',
+        failed: true,
+      }),
+      null,
+    );
   });
 
   it('pickShareAvatarSrc prefers data URIs over R2 https for canvas', () => {

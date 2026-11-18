@@ -74,7 +74,7 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.5.7',
+  VERSION: '3.5.6',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
@@ -85,22 +85,22 @@ export const APP_VERSION = {
   IOS_BUILD_NUMBER: 81,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version  3.5.7',
+  RELEASE_NAME: 'Version  3.5.6',
   
   // Build date
   BUILD_DATE: '2026-11-17',
   
   // Platform release notes..
   PLATFORMS: {
-    ANDROID: { versionCode: 86, versionName: '3.5.7' },
-    IOS: { buildNumber: 81, versionName: '3.5.7' },
+    ANDROID: { versionCode: 86, versionName: '3.5.6' },
+    IOS: { buildNumber: 81, versionName: '3.5.6' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
  * 
- * Version 3.5.7 (Code 86 / iOS build 81) - 2026-11-17 [ANDROID + iOS — not yet released]
+ * Version 3.5.6 (Code 86 / iOS build 81) - 2026-11-17 [ANDROID + iOS — not yet released]
  *   ✨ Task by Coach — coach email OTP before save; score only on verify IST day
  *
  * Version 3.5.6 (Code 85 / iOS build 80) - 2026-11-12 [ANDROID + iOS — not yet released]
