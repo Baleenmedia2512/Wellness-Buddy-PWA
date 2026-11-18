@@ -15,6 +15,8 @@ import FloatingMealTray from "./meal-builder/FloatingMealTray";
 import MealBuilderSheet from "./meal-builder/MealBuilderSheet";
 import MealBowlIcon from "./meal-builder/MealBowlIcon";
 import CustomFoodEntryForm from "./meal-builder/CustomFoodEntryForm";
+import FlyToMealAnimation from "./meal-builder/FlyToMealAnimation";
+import { rectCenter, resolveFlyTargetPoint } from "./meal-builder/flyToMeal.geometry";
 import {
   buildPlateSavePayload,
   computeMacroSummary,
@@ -106,6 +108,7 @@ const SmartFoodSearchModal = ({
   const [selectedItems, setSelectedItems] = useState([]);
   const [mealSheetOpen, setMealSheetOpen] = useState(false);
   const [addToast, setAddToast] = useState("");
+  const [flyFlights, setFlyFlights] = useState([]);
   const [latestFoods, setLatestFoods] = useState([]);
   const [oftenWith, setOftenWith] = useState([]);
   const [usualCombo, setUsualCombo] = useState([]);
@@ -132,11 +135,32 @@ const SmartFoodSearchModal = ({
   const usualComboRef = useRef([]);
   const selectedItemsRef = useRef(selectedItems);
   selectedItemsRef.current = selectedItems;
+  const mealHostRef = useRef(null);
+  const mealDropRef = useRef(null);
+  const flySeqRef = useRef(0);
 
   const showAddToast = useCallback((msg) => {
     setAddToast(msg);
     if (addToastTimerRef.current) clearTimeout(addToastTimerRef.current);
     addToastTimerRef.current = setTimeout(() => setAddToast(""), 2800);
+  }, []);
+
+  const spawnFlyToMeal = useCallback((sourceEl, foodName) => {
+    if (!sourceEl || typeof sourceEl.getBoundingClientRect !== "function") return;
+    if (typeof window !== "undefined"
+      && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
+      return;
+    }
+    const from = rectCenter(sourceEl.getBoundingClientRect());
+    if (!from) return;
+    const to = resolveFlyTargetPoint(mealDropRef.current, mealHostRef.current);
+    flySeqRef.current += 1;
+    const id = `fly-${flySeqRef.current}`;
+    setFlyFlights((prev) => [...prev, { id, name: foodName, from, to }]);
+  }, []);
+
+  const handleFlyDone = useCallback((id) => {
+    setFlyFlights((prev) => prev.filter((f) => f.id !== id));
   }, []);
 
   const resetManualForm = () => {
@@ -367,7 +391,7 @@ const SmartFoodSearchModal = ({
   }, []);
 
   /** Legacy toggle (flag OFF): add/remove without measure UI. */
-  const handleToggleItem = (item) => {
+  const handleToggleItem = (item, event) => {
     const prev = selectedItemsRef.current;
     const exists = prev.some((s) => s.name === item.name);
     if (exists) {
@@ -375,16 +399,18 @@ const SmartFoodSearchModal = ({
       return;
     }
     setSelectedItems([...prev, toSelectableItem(item)]);
+    spawnFlyToMeal(event?.currentTarget, item.name);
     showAddToast(`Added ${item.name}`);
   };
 
   /** Meal builder: add (or replace) with chosen g / ml / pcs quantity. */
-  const handleAddWithMeasure = useCallback((item, measure) => {
+  const handleAddWithMeasure = useCallback((item, measure, event) => {
     const measured = applyFoodMeasure(item, measure);
     const selectable = toSelectableItem(measured);
     const prev = selectedItemsRef.current;
     const without = prev.filter((s) => s.name !== item.name);
     setSelectedItems([...without, selectable]);
+    spawnFlyToMeal(event?.currentTarget, item.name);
     const unit = String(measure?.unit || selectable.measureUnit || "g");
     const qty = measure?.quantity ?? selectable.servings ?? 1;
     showAddToast(
@@ -392,7 +418,7 @@ const SmartFoodSearchModal = ({
         ? `Added ${qty} ${item.name}`
         : `Added ${qty}${unit} ${item.name}`,
     );
-  }, [showAddToast]);
+  }, [showAddToast, spawnFlyToMeal]);
 
   const handleQuantityChange = (name, rawValue) => {
     const qty = parseFloat(rawValue);
@@ -429,6 +455,7 @@ const SmartFoodSearchModal = ({
       );
       if (!exists) {
         setSelectedItems([...prev, toSelectableItem(mealItem)]);
+        spawnFlyToMeal(inputRef.current, name);
       }
       showAddToast(`Added ${name} — search again to add more`);
       setSearchQuery("");
@@ -648,6 +675,7 @@ const SmartFoodSearchModal = ({
   if (useFullScreen) {
     return (
       <div
+        ref={mealHostRef}
         className="fixed inset-0 z-50 bg-white flex flex-col"
         style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
       >
@@ -805,6 +833,7 @@ const SmartFoodSearchModal = ({
           <FloatingMealTray
             items={selectedItems}
             totalKcal={selectedTotal}
+            mealDropRef={mealDropRef}
             onOpenSheet={() => setMealSheetOpen(true)}
             onSave={handleAddSelected}
             onClear={clearMealSelection}
@@ -823,6 +852,8 @@ const SmartFoodSearchModal = ({
           onQuantityChange={handleQuantityChange}
           plainQuantity={catalogMode}
         />
+
+        <FlyToMealAnimation flights={flyFlights} onFlightDone={handleFlyDone} />
       </div>
     );
   }
@@ -1042,7 +1073,7 @@ const FoodItemRow = ({
     return (
       <button
         type="button"
-        onClick={() => onToggle(item)}
+        onClick={(e) => onToggle(item, e)}
         aria-label={selected ? `Remove ${item.name}` : `Add ${item.name}`}
         className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 border-2 transition-colors text-left ${
           selected ? "bg-green-50 border-green-500" : "bg-white border-gray-200 hover:border-green-300"
@@ -1201,7 +1232,7 @@ const FoodItemRow = ({
                 ? `Update ${item.name} to ${quantity || "?"} ${unitLabel}`
                 : `Add ${quantity || "?"} ${unitLabel} ${item.name}`
             }
-            onClick={() => onAddWithMeasure?.(item, { unit, quantity })}
+            onClick={(e) => onAddWithMeasure?.(item, { unit, quantity }, e)}
             className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center font-bold text-lg ml-auto ${
               selected
                 ? "bg-green-600 text-white"
@@ -1218,7 +1249,7 @@ const FoodItemRow = ({
   return (
     <button
       type="button"
-      onClick={() => onToggle(item)}
+      onClick={(e) => onToggle(item, e)}
       className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 border-2 transition-colors text-left ${
         selected ? "bg-orange-50 border-orange-400" : "bg-white border-gray-200 hover:border-orange-300"
       }`}
