@@ -122,10 +122,11 @@ export default async function handler(req, res) {
       visibleUsers.map((u) => [Number(u.UserId), u]),
     );
 
-    // Existing app-user rule: Active + public-aggregate (excludes prod developers).
+    // Active + public-aggregate. Prod hides other developers from Top 10;
+    // local NODE_ENV=development keeps them visible for QA. Self still allowed.
     const activeUsers = filterPublicAggregateUsers(
       [...visibleById.values()].filter((u) => isActiveTeamStatus(u.Status)),
-      { viewerUserId },
+      { viewerUserId, publicLeaderboard: true },
     );
 
     if (!activeUsers || activeUsers.length === 0) {
