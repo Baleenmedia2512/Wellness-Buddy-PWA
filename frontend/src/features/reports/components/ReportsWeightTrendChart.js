@@ -7,6 +7,7 @@ import { formatCustomRangeLabel } from '../../../shared/domain/reportDateRanges'
 import {
   buildChartGeometry,
   buildRecordedTrendSeries,
+  computeResponsiveDateLabelOptions,
   computeTrendChartRenderWidth,
   getFirstAndLatestRecordedValue,
   getRecordedSeriesAxisBounds,
@@ -159,17 +160,24 @@ export default function ReportsWeightTrendChart({
   );
   const chartScrollable = renderWidth > chartWidth;
 
+  // Short presets can label every day; custom / long ranges sample labels so
+  // close dates (e.g. Nov 15 + Nov 16) do not overlap on the axis.
+  const labelEveryPoint = rangeDays === 5 || rangeDays === 10;
   const geom = useMemo(
-    () => (series.length
-      ? buildChartGeometry(series, renderWidth, {
+    () => {
+      if (!series.length) return null;
+      const labelOpts = labelEveryPoint
+        ? { showAllDateLabels: true }
+        : computeResponsiveDateLabelOptions(renderWidth, series.length, narrowChart);
+      return buildChartGeometry(series, renderWidth, {
         maxMarkers: series.length,
-        showAllDateLabels: true,
         plotAllPoints: true,
         rangeStart: axisBounds?.start ?? null,
         rangeEnd: axisBounds?.end ?? null,
-      })
-      : null),
-    [series, renderWidth, axisBounds],
+        ...labelOpts,
+      });
+    },
+    [series, renderWidth, axisBounds, labelEveryPoint, narrowChart],
   );
 
   useEffect(() => {
