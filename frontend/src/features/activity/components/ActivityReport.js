@@ -15,6 +15,7 @@ import {
   formatActivityReportLevel,
   formatActivityReportMemberType,
 } from '../utils/activityReportShareText';
+import { enrichActivityReportWeightDeltas } from '../utils/activityReportWeightDelta';
 import {
   ACTIVITY_REPORT_ATTENDANCE,
   activeActivityReportTableFilters,
@@ -329,7 +330,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
     applyReportMeta(summaryData);
     setMemberSummaries(memberData.members || []);
     setMemberStats(memberData.stats || null);
-    const records = detailData.records || [];
+    const records = enrichActivityReportWeightDeltas(detailData.records || []);
     setDetailRecords(records);
     applyPaginationMeta(detailData, 1);
     detailCacheRef.current.set(
@@ -390,7 +391,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
         throw new Error(data.message || 'Failed to fetch activity details');
       }
 
-      const records = data.records || [];
+      const records = enrichActivityReportWeightDeltas(data.records || []);
       const pageMeta = data.pagination || emptyPagination(page);
       if (data.availableFilters && typeof data.availableFilters === 'object') {
         setAvailableFilters({
