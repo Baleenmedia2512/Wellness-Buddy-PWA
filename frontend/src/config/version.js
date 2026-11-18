@@ -79,7 +79,7 @@ export const APP_VERSION = {
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
   // NOTE: versionCode must never decrease for Play Store compatibility.
-  VERSION_CODE: 86,
+  VERSION_CODE: 87,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
   // Must be > last App Store build (3.5.5 was build 84).
@@ -93,7 +93,7 @@ export const APP_VERSION = {
   
   // Platform release notes..
   PLATFORMS: {
-    ANDROID: { versionCode: 86, versionName: '3.5.6' },
+    ANDROID: { versionCode: 87, versionName: '3.5.6' },
     IOS: { buildNumber: 85, versionName: '3.5.6' },
   },
 };
@@ -101,7 +101,7 @@ export const APP_VERSION = {
 /**
  * 📋 CHANGE LOG
  * 
- * Version 3.5.6 (Code 86 / iOS build 85) - 2026-11-18 [ANDROID + iOS — not yet released]
+ * Version 3.5.6 (Code 87 / iOS build 85) - 2026-11-18 [ANDROID + iOS — not yet released]
  *   ✨ Task by Coach — coach email OTP before save; score only on verify IST day
  *   ✨ Home Top 10 date filter (Today / Yesterday / Last 10 / Custom up to 30 days)
  *   ✨ Profile role badge — Customer / Sponsor / Admin / Developer
