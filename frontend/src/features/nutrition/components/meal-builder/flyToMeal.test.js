@@ -41,5 +41,6 @@ describe('fly-to-meal geometry', () => {
       resolveFlyTargetPoint(emptyTarget, host),
       bottomTrayFallbackPoint(host),
     );
+    assert.deepEqual(bottomTrayFallbackPoint(host), { x: 180, y: 584 });
   });
 });

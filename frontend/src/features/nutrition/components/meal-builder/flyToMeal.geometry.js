@@ -8,7 +8,7 @@ export function rectCenter(rect) {
   };
 }
 
-/** Fallback when the meal tray is not mounted yet (first add). */
+/** Fallback when the bottom tray is not mounted yet (first add). */
 export function bottomTrayFallbackPoint(hostEl) {
   const host = hostEl?.getBoundingClientRect?.();
   if (host && host.width > 0) {

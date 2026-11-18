@@ -136,7 +136,9 @@ const SmartFoodSearchModal = ({
   const selectedItemsRef = useRef(selectedItems);
   selectedItemsRef.current = selectedItems;
   const mealHostRef = useRef(null);
+  /** Bottom sticky “Your Meal · N items” tray — fly + scroll target. */
   const mealDropRef = useRef(null);
+  const selectedMealListRef = useRef(null);
   const flySeqRef = useRef(0);
 
   const showAddToast = useCallback((msg) => {
@@ -145,19 +147,41 @@ const SmartFoodSearchModal = ({
     addToastTimerRef.current = setTimeout(() => setAddToast(""), 2800);
   }, []);
 
+  const revealMealAfterAdd = useCallback((foodName) => {
+    // Keep top picks list compact: scroll the new card into that box.
+    const list = selectedMealListRef.current;
+    if (list && foodName) {
+      const cards = list.querySelectorAll("[data-selected-meal-name]");
+      const match = [...cards].find(
+        (el) => el.getAttribute("data-selected-meal-name") === String(foodName),
+      );
+      match?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    }
+    // Always bring the bottom tray into view so count/kcal confirms the add
+    // (important when many picks fill the screen and search is far above).
+    mealDropRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }, []);
+
   const spawnFlyToMeal = useCallback((sourceEl, foodName) => {
     if (!sourceEl || typeof sourceEl.getBoundingClientRect !== "function") return;
     if (typeof window !== "undefined"
       && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
+      revealMealAfterAdd(foodName);
       return;
     }
     const from = rectCenter(sourceEl.getBoundingClientRect());
     if (!from) return;
-    const to = resolveFlyTargetPoint(mealDropRef.current, mealHostRef.current);
-    flySeqRef.current += 1;
-    const id = `fly-${flySeqRef.current}`;
-    setFlyFlights((prev) => [...prev, { id, name: foodName, from, to }]);
-  }, []);
+    // Wait a frame so the bottom tray exists, then fly down into it.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        revealMealAfterAdd(foodName);
+        const to = resolveFlyTargetPoint(mealDropRef.current, mealHostRef.current);
+        flySeqRef.current += 1;
+        const id = `fly-${flySeqRef.current}`;
+        setFlyFlights((prev) => [...prev, { id, name: foodName, from, to }]);
+      });
+    });
+  }, [revealMealAfterAdd]);
 
   const handleFlyDone = useCallback((id) => {
     setFlyFlights((prev) => prev.filter((f) => f.id !== id));
@@ -540,8 +564,6 @@ const SmartFoodSearchModal = ({
 
   if (!isOpen) return null;
 
-  const hasMyItems = myItems.length > 0;
-  const hasCommunityItems = communityItems.length > 0;
   const hasSelected = selectedItems.length > 0;
   const selectedTotal = computeSelectedKcal(selectedItems);
   const macroSummary = computeMacroSummary(selectedItems);
@@ -550,17 +572,27 @@ const SmartFoodSearchModal = ({
   const hasTypedQuery = searchQuery.trim().length >= 1;
   const searching = hasTypedQuery;
   const showCatalogResults = catalogMode || hasTypedQuery;
-  const suggestionRows = hasSelected
-    ? filterSuggestionsAgainstSelected(oftenWith, selectedItems)
-    : filterSuggestionsAgainstSelected(latestFoods, selectedItems);
+  // Keep Latest visible after a pick — selected row moves to “Your meal”, others stay.
+  const suggestionRows = filterSuggestionsAgainstSelected(latestFoods, selectedItems);
+  const oftenRows = filterSuggestionsAgainstSelected(oftenWith, selectedItems);
   const drySaladOftenRows = filterSuggestionsAgainstSelected(oftenWith, selectedItems);
-  // Selected items move to the top list; hide them from combo/catalog to avoid duplicates
+  // Selected items move to “Your meal” only — never duplicate in search / library lists.
   const usualComboRows = filterSuggestionsAgainstSelected(usualCombo, selectedItems);
-  const catalogRows = catalogMode && !hasTypedQuery
-    ? filterSuggestionsAgainstSelected(masterItems, selectedItems)
-    : masterItems;
+  const catalogRows = filterSuggestionsAgainstSelected(masterItems, selectedItems);
+  const myHistoryRows = filterSuggestionsAgainstSelected(myItems, selectedItems);
+  const communityRows = filterSuggestionsAgainstSelected(communityItems, selectedItems);
+  const hasMyItems = myHistoryRows.length > 0;
+  const hasCommunityItems = communityRows.length > 0;
   const showDrySaladSuggestions = catalogMode && !hasTypedQuery && !showManualForm;
-  const showRegularSuggestions = !catalogMode && !showManualForm && !searching && suggestionRows.length > 0;
+  const showRegularSuggestions = !catalogMode
+    && !showManualForm
+    && !searching
+    && suggestionRows.length > 0;
+  const showOftenWithSuggestions = !catalogMode
+    && !showManualForm
+    && !searching
+    && hasSelected
+    && oftenRows.length > 0;
   const noSearchHits = !isSearching
     && catalogRows.length === 0
     && !hasMyItems
@@ -573,7 +605,7 @@ const SmartFoodSearchModal = ({
     && hasTypedQuery
     && shouldOfferCustomFoodAdd({
       query: searchQuery,
-      results: [...catalogRows, ...myItems, ...communityItems],
+      results: [...catalogRows, ...myHistoryRows, ...communityRows],
       isSearching,
     });
 
@@ -645,13 +677,13 @@ const SmartFoodSearchModal = ({
         {!catalogMode && hasMyItems && (
           <div>
             <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">My History</p>
-            <div className="space-y-1.5">{renderFoodRows(myItems, "my", mealBuilder)}</div>
+            <div className="space-y-1.5">{renderFoodRows(myHistoryRows, "my", mealBuilder)}</div>
           </div>
         )}
         {!catalogMode && hasCommunityItems && (
           <div>
             <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5 px-1">Community</p>
-            <div className="space-y-1.5">{renderFoodRows(communityItems, "community", mealBuilder)}</div>
+            <div className="space-y-1.5">{renderFoodRows(communityRows, "community", mealBuilder)}</div>
           </div>
         )}
         {showAddCustomOption && (
@@ -695,31 +727,21 @@ const SmartFoodSearchModal = ({
           </h1>
         </div>
 
+        {/* Search stays fixed — list scrolls underneath (Target Nutrition + Food log). */}
+        {!showManualForm && (
+          <div className="flex-shrink-0 px-4 pt-3 pb-2 border-b border-gray-100 bg-white z-10">
+            {searchBar}
+            {addToast && (
+              <p className="text-[11px] text-green-700 font-medium px-1 pt-2" role="status">
+                {addToast}
+              </p>
+            )}
+          </div>
+        )}
+
         <div className={`flex-1 overflow-y-auto px-4 py-3 space-y-3 ${hasSelected ? "pb-40" : ""}`}>
-          {searchBar}
-
-          {addToast && (
-            <p className="text-[11px] text-green-700 font-medium px-1" role="status">
-              {addToast}
-            </p>
-          )}
-
-          {hasTypedQuery && renderCatalogResults(true)}
-
-          {showRegularSuggestions && (
-            <div>
-              <div className="flex items-center justify-between mb-2 px-0.5">
-                <p className="text-sm font-bold text-gray-900">
-                  {hasSelected ? "Often added with" : "Latest"}
-                </p>
-              </div>
-              <div className="space-y-1.5">
-                {renderFoodRows(suggestionRows, hasSelected ? "often" : "latest", true)}
-              </div>
-            </div>
-          )}
-
-          {catalogMode && hasSelected && !showManualForm && (
+          {/* Selected picks at top — Food log + Target Nutrition (always visible while scrolling results). */}
+          {hasSelected && !showManualForm && (
             <div>
               <p className="text-[11px] text-green-700 font-medium px-0.5 mb-2">
                 Your picks — add or remove items, then save
@@ -727,8 +749,51 @@ const SmartFoodSearchModal = ({
               <p className="text-sm font-bold text-gray-900 mb-2 px-0.5">
                 Your meal
               </p>
+              {/* Cap height so 6+ picks don’t hide search / next add confirmation. */}
+              <div
+                ref={selectedMealListRef}
+                className="space-y-1.5 max-h-[40vh] overflow-y-auto overscroll-contain pr-0.5"
+              >
+                {selectedItems.map((item) => (
+                  <div
+                    key={`selected-wrap-${item.name}`}
+                    data-selected-meal-name={item.name}
+                  >
+                    <FoodItemRow
+                      item={item}
+                      selected
+                      onToggle={handleToggleItem}
+                      onAddWithMeasure={handleAddWithMeasure}
+                      onRemove={handleRemoveItem}
+                      mealBuilder
+                      targetNutrition={catalogMode}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {hasTypedQuery && renderCatalogResults(true)}
+
+          {showRegularSuggestions && (
+            <div>
+              <div className="flex items-center justify-between mb-2 px-0.5">
+                <p className="text-sm font-bold text-gray-900">Latest</p>
+              </div>
               <div className="space-y-1.5">
-                {renderFoodRows(selectedItems, "selected", true)}
+                {renderFoodRows(suggestionRows, "latest", true)}
+              </div>
+            </div>
+          )}
+
+          {showOftenWithSuggestions && (
+            <div>
+              <div className="flex items-center justify-between mb-2 px-0.5">
+                <p className="text-sm font-bold text-gray-900">Often added with</p>
+              </div>
+              <div className="space-y-1.5">
+                {renderFoodRows(oftenRows, "often", true)}
               </div>
             </div>
           )}
