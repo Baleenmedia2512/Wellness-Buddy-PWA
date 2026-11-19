@@ -40,6 +40,7 @@ import {
   getAppPortfolioHeroPhotoUrl,
   getAppWorkingClubForPortfolio,
 } from '../../features/coach-portfolio/api/hydrate-from-app.service.js';
+import * as publicRatingRepo from '../../features/coach-portfolio/data/public-rating.repo.js';
 import { fetchCityVillage } from '../../shared/lib/reverseGeocode.js';
 
 function absoluteUrl(baseUrl, maybeUrl) {
@@ -73,6 +74,78 @@ function nameInitials(displayName) {
   const a = parts[0][0] || '';
   const b = (parts[1] || parts[0])[0] || '';
   return `${a}${b}`.toUpperCase();
+}
+
+const STAR_PATH = 'M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.4L12 17.8 6.2 20.3l1.1-6.4L2.6 9.3l6.5-.9L12 2.5z';
+
+/** 5 stars with fractional fill (e.g. 4.7 → four full + partial fifth). No review text. */
+function FractionalStars({ value, size = 18 }) {
+  const v = Math.min(5, Math.max(0, Number(value) || 0));
+  const px = Number(size) || 18;
+  return (
+    <span className="biz-stars" aria-hidden="true">
+      {[0, 1, 2, 3, 4].map((i) => {
+        const fill = Math.min(1, Math.max(0, v - i));
+        return (
+          <span key={i} className="biz-star" style={{ width: px, height: px }}>
+            <svg className="biz-star-base" viewBox="0 0 24 24" width={px} height={px} aria-hidden="true">
+              <path fill="currentColor" d={STAR_PATH} />
+            </svg>
+            {fill > 0 ? (
+              <span className="biz-star-clip" style={{ width: `${fill * 100}%` }}>
+                <svg className="biz-star-fill" viewBox="0 0 24 24" width={px} height={px} aria-hidden="true">
+                  <path fill="currentColor" d={STAR_PATH} />
+                </svg>
+              </span>
+            ) : null}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+/** Clickable 1–5 stars for visitors (no comments). */
+function RateCoachStars({
+  value = 0,
+  disabled = false,
+  onRate,
+}) {
+  const [hover, setHover] = useState(0);
+  const shown = hover || value || 0;
+  return (
+    <div
+      className="hero-rate-stars"
+      role="group"
+      aria-label="Rate this coach"
+      onMouseLeave={() => setHover(0)}
+    >
+      {[1, 2, 3, 4, 5].map((star) => {
+        const filled = shown >= star;
+        return (
+          <button
+            key={star}
+            type="button"
+            className={`hero-rate-star${filled ? ' is-filled' : ''}`}
+            disabled={disabled}
+            aria-label={`${star} star${star === 1 ? '' : 's'}`}
+            aria-pressed={value === star}
+            onMouseEnter={() => setHover(star)}
+            onFocus={() => setHover(star)}
+            onBlur={() => setHover(0)}
+            onClick={() => {
+              if (disabled || typeof onRate !== 'function') return;
+              onRate(star);
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <path fill="currentColor" d={STAR_PATH} />
+            </svg>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export async function getServerSideProps({ params, req }) {
@@ -234,11 +307,20 @@ export async function getServerSideProps({ params, req }) {
   page.seoDescription = seo.seoDescription;
   page.seoKeywords = seo.seoKeywords;
 
+  let publicRating = null;
+  try {
+    publicRating = await publicRatingRepo.getPublicRatingSummary(row.id);
+  } catch {
+    publicRating = null;
+  }
+
   return {
     props: {
       page,
       hasClub,
       teamMedia,
+      publicRating,
+      publicSlug: pathSlug,
       baseUrl,
       pageUrl: `${baseUrl}/coach/${pathSlug}`,
     },
@@ -394,10 +476,18 @@ export default function CoachPortfolioPage({
   page,
   hasClub: hasClubProp = false,
   teamMedia = null,
+  publicRating: publicRatingProp = null,
+  publicSlug = '',
   baseUrl,
   pageUrl,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [heroRating, setHeroRating] = useState(
+    publicRatingProp && publicRatingProp.count > 0 ? publicRatingProp : null,
+  );
+  const [myRating, setMyRating] = useState(0);
+  const [ratingBusy, setRatingBusy] = useState(false);
+  const [ratingNote, setRatingNote] = useState('');
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [lightboxItems, setLightboxItems] = useState([]);
   const [videoSrc, setVideoSrc] = useState(null);
@@ -432,6 +522,31 @@ export default function CoachPortfolioPage({
       .trim();
     return [locality, city].filter(Boolean).join(', ') || city || placeShort || null;
   })();
+  const submitPublicRating = async (stars) => {
+    const slug = String(publicSlug || page?.slug || '').trim();
+    if (!slug || ratingBusy) return;
+    setRatingBusy(true);
+    setRatingNote('');
+    setMyRating(stars);
+    try {
+      const res = await fetch('/api/coach-portfolio/public-rating', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ publicSlug: slug, rating: stars }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.message || 'Could not save rating');
+      }
+      const summary = json?.data?.summary || null;
+      if (summary && summary.count > 0) setHeroRating(summary);
+      setRatingNote('Thanks for your rating');
+    } catch (err) {
+      setRatingNote(err?.message || 'Could not save rating');
+    } finally {
+      setRatingBusy(false);
+    }
+  };
 
   const hasGallery = Boolean(
     page.entrancePhoto
@@ -925,6 +1040,15 @@ export default function CoachPortfolioPage({
                   <span className="biz-listing-place-text">{heroPlace}</span>
                 </p>
               ) : null}
+              {heroRating ? (
+                <p
+                  className="biz-listing-review"
+                  aria-label={`Rated ${heroRating.label} out of 5 from ${heroRating.count} rating${heroRating.count === 1 ? '' : 's'}`}
+                >
+                  <FractionalStars value={heroRating.average} />
+                  <span className="biz-listing-score">{heroRating.label}</span>
+                </p>
+              ) : null}
             </div>
 
             <div className={photo ? 'hero-visual' : 'hero-visual empty'}>
@@ -951,21 +1075,33 @@ export default function CoachPortfolioPage({
                 <span className="hero-h1-script">Starts Here</span>
               </h1>
               <p className="hero-lead">{heroSupport}</p>
-              {coachDisplayName ? (
-                <div className="hero-coach-chip">
-                  <span className="hero-coach-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
-                      <circle cx="12" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.8" />
-                      <path d="M5 19.5c1.6-3.2 4-4.8 7-4.8s5.4 1.6 7 4.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                    </svg>
-                  </span>
-                  <p className="hero-coach-text">
-                    Coach:
-                    {' '}
-                    <strong>{coachDisplayName}</strong>
-                  </p>
+              <div className="hero-coach-row">
+                {coachDisplayName ? (
+                  <div className="hero-coach-chip">
+                    <span className="hero-coach-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+                        <circle cx="12" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.8" />
+                        <path d="M5 19.5c1.6-3.2 4-4.8 7-4.8s5.4 1.6 7 4.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                      </svg>
+                    </span>
+                    <p className="hero-coach-text">
+                      Coach:
+                      {' '}
+                      <strong>{coachDisplayName}</strong>
+                    </p>
+                  </div>
+                ) : null}
+                <div className="hero-rate-wrap">
+                  <RateCoachStars
+                    value={myRating}
+                    disabled={ratingBusy}
+                    onRate={submitPublicRating}
+                  />
+                  {ratingNote ? (
+                    <p className="hero-rate-note" aria-live="polite">{ratingNote}</p>
+                  ) : null}
                 </div>
-              ) : null}
+              </div>
               <div className="hero-actions">
                 {wa ? (
                   <a className="btn btn-whatsapp" href={wa} target="_blank" rel="noreferrer">
@@ -2021,13 +2157,13 @@ img { max-width: 100%; }
 .biz-stars {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
   line-height: 0;
 }
 .biz-star {
   position: relative;
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
   flex: 0 0 auto;
   color: rgba(196, 165, 116, 0.28);
 }
@@ -2127,8 +2263,15 @@ img { max-width: 100%; }
   line-height: 1.6;
   max-width: 44ch;
 }
-.hero-coach-chip {
+.hero-coach-row {
   margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 14px;
+}
+.hero-coach-chip {
+  margin: 0;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -2138,6 +2281,49 @@ img { max-width: 100%; }
   background: rgba(45, 106, 79, 0.10);
   border: 1px solid rgba(45, 106, 79, 0.22);
   box-shadow: 0 6px 16px rgba(27, 67, 50, 0.06);
+}
+.hero-rate-wrap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+.hero-rate-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.hero-rate-star {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 2px;
+  margin: 0;
+  line-height: 0;
+  cursor: pointer;
+  color: rgba(196, 165, 116, 0.32);
+  transition: color 0.12s ease, transform 0.12s ease;
+}
+.hero-rate-star.is-filled {
+  color: var(--gold);
+}
+.hero-rate-star:hover:not(:disabled),
+.hero-rate-star:focus-visible:not(:disabled) {
+  color: var(--gold);
+  transform: translateY(-1px);
+  outline: none;
+}
+.hero-rate-star:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.hero-rate-note {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--botanical);
+  line-height: 1.2;
 }
 .hero-coach-icon {
   width: 34px;
@@ -3468,6 +3654,12 @@ img { max-width: 100%; }
   .hero-copy {
     text-align: center;
     padding: 8px 0 26px;
+  }
+  .hero-coach-row {
+    justify-content: center;
+  }
+  .hero-rate-wrap {
+    align-items: center;
   }
   /* One accent script only ("Starts Here"); center name stays solid serif. */
   .biz-listing {

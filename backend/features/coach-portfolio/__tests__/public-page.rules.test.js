@@ -11,6 +11,7 @@ import {
   buildGoogleMapsSearchUrl,
   canShowPublicPortfolio,
   mapsEmbedSrcFromLink,
+  summarizeTestimonialRatings,
   toPublicPortfolioPage,
 } from '../domain/public-page.rules.js';
 import { DEFAULT_PORTFOLIO_OFFERINGS } from '../domain/default-offerings.rules.js';
@@ -231,6 +232,19 @@ describe('coach-portfolio public-page.rules', () => {
     assert.equal(page.testimonials[0].name, 'Riya');
     assert.match(page.testimonials[0].quote, /Great coaching/);
     assert.equal(page.testimonials[0].rating, 4);
+  });
+
+  it('summarizes testimonial star averages without inventing empty scores', () => {
+    assert.equal(summarizeTestimonialRatings([]), null);
+    assert.equal(summarizeTestimonialRatings(null), null);
+    const summary = summarizeTestimonialRatings([
+      { rating: 5 },
+      { rating: 4 },
+      { rating: 5 },
+    ]);
+    assert.equal(summary.count, 3);
+    assert.equal(summary.average, 4.7);
+    assert.equal(summary.label, '4.7');
   });
 
   it('uses Other professional title text when selected', () => {

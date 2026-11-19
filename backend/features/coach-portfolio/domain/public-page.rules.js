@@ -24,6 +24,27 @@ export function canShowPublicPortfolio({ isPublished, status }) {
   return PUBLIC_VISIBLE_STATUSES.has(String(status || ''));
 }
 
+/**
+ * Average of testimonial star fields (legacy helper).
+ * Empty → null (hero uses DB public ratings; do not invent 5.0).
+ * @param {unknown} testimonials
+ * @returns {{ average: number, count: number, label: string } | null}
+ */
+export function summarizeTestimonialRatings(testimonials) {
+  const list = Array.isArray(testimonials) ? testimonials : [];
+  const ratings = list
+    .map((item) => Number(item?.rating))
+    .filter((n) => Number.isFinite(n) && n >= 1 && n <= 5);
+  if (!ratings.length) return null;
+  const average = ratings.reduce((sum, n) => sum + n, 0) / ratings.length;
+  const rounded = Math.round(average * 10) / 10;
+  return {
+    average: rounded,
+    count: ratings.length,
+    label: rounded.toFixed(1),
+  };
+}
+
 function pickOther(list, otherText) {
   const items = Array.isArray(list) ? [...list] : [];
   if (items.includes('Other') && String(otherText || '').trim()) {

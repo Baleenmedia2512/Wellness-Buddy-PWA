@@ -106,7 +106,6 @@ export const PREFERRED_ACTIONS = [
  */
 export const FORM_STEPS = [
   { id: 'hero', title: 'Hero', description: 'City & area' },
-  { id: 'photos', title: 'Photos', description: 'Albums + intro video' },
   { id: 'review', title: 'Publish', description: 'Publish live — edit anytime after' },
 ];
 

@@ -18,16 +18,12 @@ import {
   fetchMyPortfolioSubmission,
   requestPortfolioPublishOtp,
   savePortfolioDraft,
-  uploadPortfolioIntroVideo,
-  uploadPortfolioMedia,
 } from '../services/portfolioApi';
 import { fetchProfile } from '../../user/services/profileService';
 import {
   FieldLabel,
   FormCard,
-  PhotoField,
   ValueSelectInput,
-  VideoUploadField,
 } from './formFields';
 import { openPublicCoachUrl, resolvePublicCoachUrl } from '../utils/publicCoachUrl';
 import { publicWebsiteUrl } from '../domain/publicWebsiteUrl';
@@ -35,11 +31,6 @@ import PublishOtpModal from './PublishOtpModal';
 import RequiredProfileFieldsModal from './RequiredProfileFieldsModal';
 import SaveYourWebsiteReview from './SaveYourWebsiteReview';
 import { buildPublicPathPreview } from '../domain/publicPathPreview';
-
-async function uploadFormPhoto(userId, slot, file) {
-  const data = await uploadPortfolioMedia({ userId, slot, file });
-  return data?.url || null;
-}
 
 /** Absolute URL for app avatar / portfolio media shown in the form. */
 function displayMediaUrl(url) {
@@ -113,7 +104,7 @@ function Progress({ stepIndex, steps }) {
 }
 
 /**
- * Coach website CMS form. Paid coaches can edit anytime (photos, copy, hours).
+ * Coach website CMS form. Paid coaches can edit anytime (city/area, hours, publish).
  */
 export default function CoachPortfolioForm({
   userId,
@@ -879,60 +870,6 @@ export default function CoachPortfolioForm({
                 This coach name already has a website in this City & Area — choose another place
               </p>
             ) : null}
-          </FormCard>
-        ) : null}
-
-        {!loading && step.id === 'photos' ? (
-          <FormCard title="Photos">
-            <PhotoField
-              label="Centre Entrance Photo"
-              value={form.mediaBrand.entrancePhoto}
-              disabled={!canEdit}
-              onUpload={(file) => uploadFormPhoto(userId, 'entrance', file)}
-              onChange={(v) => canEdit && setForm(setSection(form, 'mediaBrand', { entrancePhoto: v }))}
-            />
-            <PhotoField
-              label="Centre Interior Photos"
-              multiple
-              values={form.mediaBrand.interiorPhotos}
-              disabled={!canEdit}
-              onUpload={(file) => uploadFormPhoto(userId, 'interior', file)}
-              onChangeMultiple={(v) => canEdit && setForm(setSection(form, 'mediaBrand', { interiorPhotos: v }))}
-            />
-            <PhotoField
-              label="Centre Name Board Photo"
-              value={form.mediaBrand.nameBoardPhoto}
-              disabled={!canEdit}
-              onUpload={(file) => uploadFormPhoto(userId, 'nameboard', file)}
-              onChange={(v) => canEdit && setForm(setSection(form, 'mediaBrand', { nameBoardPhoto: v }))}
-            />
-            <PhotoField
-              label="Wellness Activity Photos"
-              multiple
-              values={form.mediaBrand.activityPhotos}
-              disabled={!canEdit}
-              onUpload={(file) => uploadFormPhoto(userId, 'activity', file)}
-              onChangeMultiple={(v) => canEdit && setForm(setSection(form, 'mediaBrand', { activityPhotos: v }))}
-            />
-            <VideoUploadField
-              label="Introduction Videos"
-              values={form.mediaBrand.introVideos || []}
-              disabled={!canEdit}
-              onUpload={async (file) => {
-                const data = await uploadPortfolioIntroVideo({ userId, file });
-                return data?.url || null;
-              }}
-              onChangeMultiple={(urls) => {
-                if (!canEdit) return;
-                const list = Array.isArray(urls) ? urls.filter(Boolean) : [];
-                setForm(setSection(form, 'mediaBrand', {
-                  introVideos: list,
-                  introVideoUrl: list[0] || null,
-                  introVideoLink: list[0] || '',
-                  introVideoKey: list.length ? form.mediaBrand.introVideoKey : null,
-                }));
-              }}
-            />
           </FormCard>
         ) : null}
 
