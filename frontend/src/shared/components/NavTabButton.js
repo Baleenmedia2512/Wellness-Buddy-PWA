@@ -21,6 +21,7 @@ const NavTabButton = ({
       active ? activeBg : hoverBg
     }`}
     ariaLabel={ariaLabel || label}
+    aria-current={active ? 'page' : undefined}
   >
     <Icon className={`h-4 w-4 xs:h-5 xs:w-5 ${active ? iconActiveClass : iconClass}`} />
     <span className={`text-[9px] xxs:text-[10px] font-semibold leading-tight text-center ${active ? labelActiveClass : labelClass}`}>

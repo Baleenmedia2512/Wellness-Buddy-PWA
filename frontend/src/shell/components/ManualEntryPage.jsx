@@ -60,7 +60,8 @@ import { useNutritionRefreshOptional } from '../../shared/context/NutritionRefre
 import { refreshDailyWellnessScoreAfterSave } from '../../features/wellness-score-sheet/services/refreshDailyWellnessScoreNow';
 import GoodHabitFlow from './GoodHabitFlow';
 import ManualFoodAiAnalysisModal from './ManualFoodAiAnalysisModal';
-import { saveGoodHabit } from '../../features/good-habits';
+import { requestGoodHabitOtp } from '../../features/good-habits';
+import GoodHabitOtpModal from '../../features/good-habits/components/GoodHabitOtpModal';
 import {
   MANUAL_LOG_CATEGORY,
   DRY_SALAD_META,
@@ -110,7 +111,7 @@ const CATEGORIES = [
     isImgIcon: true,
     Icon: Dumbbell,
   },
-  { id: MANUAL_LOG_CATEGORY.GOOD_HABIT, Icon: Star, label: 'Good Habit' },
+  { id: MANUAL_LOG_CATEGORY.GOOD_HABIT, Icon: Star, label: 'Task by Coach' },
 ];
 
 /** Home hero banner greens — keep classify screen on-brand with Take Photo card. */
@@ -289,6 +290,9 @@ export default function ManualEntryPage({
   const [pendingLogAsId, setPendingLogAsId] = useState(null);
   /** True while waiting for captureId after user tapped Food (AI path). */
   const [pendingFoodAi, setPendingFoodAi] = useState(false);
+  /** Task by Coach coach-OTP gate (apps ≥ 3.5.7). */
+  const [habitOtp, setHabitOtp] = useState(null);
+  const [habitOtpResending, setHabitOtpResending] = useState(false);
 
   // New capture while this screen stays mounted — close any open sub-form.
   // Do not clear pendingLogAsId / pendingFoodAi here: captureId often flips null → id
@@ -445,11 +449,15 @@ export default function ManualEntryPage({
     return loadWorkoutToday({ showLoading: !workoutSummaryReadyRef.current });
   }, [activeForm, loadWorkoutToday]);
 
-  const exit = (shareMeta = null) => {
-    // Leave classify immediately — share sheet opens from App in the background.
-    // onSaved must read imageBase64 synchronously before onBack clears the payload.
-    onSaved?.(shareMeta);
-    onBack?.();
+  const exit = async (shareMeta = null) => {
+    // Await share on web so navigator.share({ files }) stays in the Save gesture
+    // window (otherwise the photo is dropped and only wa.me text opens).
+    // onSaved must read imageBase64 before onBack clears the payload.
+    try {
+      await onSaved?.(shareMeta);
+    } finally {
+      onBack?.();
+    }
   };
 
   /** Close classify — optionally discard a new capture (not when opened from Diary). */
@@ -1004,6 +1012,7 @@ export default function ManualEntryPage({
         idealWeight: pickIdealWeightKg(weightValue, idealRange),
       }),
       currentMarathonDay0Weight: weightValue,
+      shareImage: img,
     });
 
     void saveWeight({
@@ -1031,6 +1040,7 @@ export default function ManualEntryPage({
       activityCaption: buildDiaryShareSuffix('workout', {
         caloriesBurned,
       }),
+      shareImage: img,
     });
 
     void saveLog({
@@ -1111,6 +1121,7 @@ export default function ManualEntryPage({
         platform,
         session: topic,
       }),
+      shareImage: img,
     });
 
     void saveLog({
@@ -1131,22 +1142,60 @@ export default function ManualEntryPage({
     imageBase64: habitImage,
     shareImage,
   }) => {
-    // Persist first, then refresh score, then leave — exiting early left Home
-    // on the pre-save total until a full page reload.
-    await saveGoodHabit({
+    // Coach OTP first — habit row + score only after verify (CreatedAt = verify IST day).
+    // Keep Task by Coach sheet open; OTP modal stacks on top (closing the sheet
+    // first dropped the verify UI on mobile before the modal could mount).
+    const payload = {
       userId,
       captureId,
       habitType,
       notes: '',
       imageBase64: habitImage,
-      clientTimestamp: originalCapturedAt || null,
+      clientTimestamp: null,
+    };
+    const data = await requestGoodHabitOtp(payload);
+    setHabitOtp({
+      otpKey: String(data.otpKey),
+      maskedEmail: data.maskedEmail || '',
+      coachName: data.coachName || '',
+      habitType,
+      shareImage: shareImage || habitImage || imageBase64,
+      requestPayload: payload,
     });
+  };
+
+  const finishGoodHabitAfterOtp = (habitType, shareImage) => {
+    setHabitOtp(null);
+    setActiveForm(null);
     refreshAfterPersist('manual-good-habit-persisted');
-    onToast?.('Good Habit saved to Diary');
+    onToast?.('Task by Coach saved to Diary');
     exit({
       activityCaption: buildDiaryShareSuffix('good-habit', { habitType }),
-      shareImage: shareImage || habitImage || imageBase64,
+      shareImage: shareImage || imageBase64,
     });
+  };
+
+  const handleHabitOtpResend = async () => {
+    if (!habitOtp?.requestPayload || habitOtpResending) return;
+    setHabitOtpResending(true);
+    try {
+      const data = await requestGoodHabitOtp(habitOtp.requestPayload);
+      const otpKey = data?.otpKey ?? data?.data?.otpKey;
+      if (!otpKey) {
+        throw new Error('Could not resend code. Try again.');
+      }
+      setHabitOtp((prev) => (prev ? {
+        ...prev,
+        otpKey: String(otpKey),
+        maskedEmail: data?.maskedEmail || data?.data?.maskedEmail || prev.maskedEmail,
+        coachName: data?.coachName || data?.data?.coachName || prev.coachName,
+      } : prev));
+      onToast?.('New code sent to your coach');
+    } catch (err) {
+      onToast?.(err?.message || "Couldn't resend code");
+    } finally {
+      setHabitOtpResending(false);
+    }
   };
 
   const logAsDisabled = closingWithoutLog || ((aiStarting || awaitingAutoAi) && !pendingFoodAi);
@@ -1287,6 +1336,18 @@ export default function ManualEntryPage({
         capturedPreview={previewSrc}
         onSave={handleGoodHabitSave}
       />
+      {habitOtp?.otpKey ? (
+        <GoodHabitOtpModal
+          userId={userId}
+          otpKey={habitOtp.otpKey}
+          maskedEmail={habitOtp.maskedEmail}
+          coachName={habitOtp.coachName}
+          resending={habitOtpResending}
+          onResend={handleHabitOtpResend}
+          onClose={() => setHabitOtp(null)}
+          onVerified={() => finishGoodHabitAfterOtp(habitOtp.habitType, habitOtp.shareImage)}
+        />
+      ) : null}
       <ManualWeightEntryModal
         isOpen={activeForm === MANUAL_LOG_CATEGORY.WEIGHT}
         onClose={() => setActiveForm(null)}

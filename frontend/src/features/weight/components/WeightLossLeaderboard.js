@@ -1,20 +1,49 @@
-﻿import React, {
+import React, {
   useState,
   useEffect,
   useCallback,
   forwardRef,
   useImperativeHandle,
+  useRef,
 } from "react";
-import { Scale } from "lucide-react";
+import { Scale, Share2, Loader2, Calendar } from "lucide-react";
+import { AnimatePresence } from 'framer-motion';
+import {
+  captureAndShare,
+  precaptureShareImage,
+  shareCachedDataUrl,
+} from '../../../shared/utils/shareUtils.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabels.js';
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
 import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js';
+import TeamMemberProfileModal from '../../../shared/components/TeamMemberProfileModal';
+import DateRangePicker from '../../../shared/components/common/DateRangePicker';
 import LeaderboardAvatar from '../../leaderboard/components/LeaderboardAvatar.js';
+import LeaderboardAvatarViewer from '../../leaderboard/components/LeaderboardAvatarViewer.js';
 import LeaderboardRankBadge from '../../leaderboard/components/LeaderboardRankBadge.js';
+import {
+  buildUserAvatarUrl,
+  getAvatarDisplayVersion,
+} from '../../user/services/avatarDisplayVersion';
 import { sortLeaderboardByRankAsc } from '../../leaderboard/utils/leaderboardOrder.js';
 import { LEADERBOARD_CONFIG } from '../../../config/leaderboardConfig.js';
 import { useRaceLeaderboardRealtime } from '../../leaderboard/hooks/useRaceLeaderboardRealtime.js';
+import {
+  LB_DATE_FILTER_OPTIONS,
+  LB_DATE_PRESETS,
+  LB_MAX_WINDOW_DAYS,
+  resolveLbDateFilter,
+} from '../../leaderboard/domain/leaderboardDateFilter.js';
+
+const WEIGHT_FILTER_LABELS = Object.freeze({
+  todaySubtitle: 'Today vs Yesterday',
+  todayButtonLabel: 'Today',
+});
+
+const resolveWeightFilter = (preset, customStart = null, customEnd = null) => (
+  resolveLbDateFilter(preset, customStart, customEnd, new Date(), undefined, WEIGHT_FILTER_LABELS)
+);
 
 // ---------------------------------------------------------------------------
 // SWR cache — hierarchy-scoped (per logged-in user).
@@ -55,7 +84,8 @@ const writeWeightLBCache = (userId, data) => {
 
 /**
  * WeightLossLeaderboard Component
- * Hierarchy-scoped weight loss leaderboard (Weight Loss Today vs Yesterday).
+ * Hierarchy-scoped weight loss leaderboard (Today vs Yesterday by default).
+ * Tile variant uses the same IST date filter as Top 10 Wellness Score.
  *
  * @param {'strip'|'tile'} variant - strip = auto-scroll headline (legacy); tile = static card list
  */
@@ -63,23 +93,62 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
   const [leaderboardData, setLeaderboardData] = useState(() => readWeightLBCache(userId) ?? []);
   const [isVisible, setIsVisible] = useState(() => (readWeightLBCache(userId)?.length ?? 0) > 0);
   const [hasEntered, setHasEntered] = useState(() => (readWeightLBCache(userId)?.length ?? 0) > 0);
+  const [expandedAvatar, setExpandedAvatar] = useState(null);
+  const [profileMember, setProfileMember] = useState(null);
   const isTile = variant === 'tile';
+  const cardRef = useRef(null);
+  const cachedDataUrlRef = useRef(null);
+  const [isSharing, setIsSharing] = useState(false);
+  const todayFilter = resolveWeightFilter(LB_DATE_PRESETS.TODAY);
+  const [filterPreset, setFilterPreset] = useState(LB_DATE_PRESETS.TODAY);
+  const [filterMeta, setFilterMeta] = useState(todayFilter);
+  const [rangeData, setRangeData] = useState([]);
+  const [rangeStatus, setRangeStatus] = useState('idle');
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [showCustomPicker, setShowCustomPicker] = useState(false);
+  const [customStartDate, setCustomStartDate] = useState(null);
+  const [customEndDate, setCustomEndDate] = useState(null);
+  const [rangeError, setRangeError] = useState(null);
+  const filterRef = useRef({
+    preset: LB_DATE_PRESETS.TODAY,
+    days: 1,
+    dateYmd: null,
+  });
+  const fetchInFlightRef = useRef({});
   const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
     enabled: !isTile && isVisible && leaderboardData.length > 0,
   });
 
-  // Fetch leaderboard data
-  const fetchLeaderboard = useCallback(async () => {
+  const isTodayFilter = filterPreset === LB_DATE_PRESETS.TODAY;
+
+  const fetchLeaderboard = useCallback(async (days = 1, dateYmd = null) => {
+    const windowDays = Number(days) >= 2 && Number(days) <= LB_MAX_WINDOW_DAYS
+      ? Number(days)
+      : 1;
+    const endYmd = typeof dateYmd === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateYmd)
+      ? dateYmd
+      : null;
+    const isTodayBoard = windowDays === 1 && !endYmd;
+    const flightKey = endYmd ? `d${windowDays}:${endYmd}` : `d${windowDays}:today`;
     const emailTrim = String(email || '').trim();
     if ((userId == null || userId === '') && !emailTrim) {
-      setLeaderboardData([]);
-      setIsVisible(false);
+      if (isTodayBoard) {
+        setLeaderboardData([]);
+        setIsVisible(false);
+      } else {
+        setRangeData([]);
+        setRangeStatus('empty');
+      }
       return;
     }
+    if (fetchInFlightRef.current[flightKey]) return;
+    fetchInFlightRef.current[flightKey] = true;
     try {
       const params = new URLSearchParams({
         topN: String(topN),
       });
+      if (windowDays >= 2) params.set('days', String(windowDays));
+      if (endYmd) params.set('date', endYmd);
       if (userId != null && userId !== '') params.set('userId', String(userId));
       if (emailTrim) params.set('email', emailTrim);
       const response = await fetch(
@@ -94,10 +163,25 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
 
       if (!response.ok) {
         debugLog("[LEADERBOARD] API returned", response.status);
+        if (isTodayBoard) return;
+        setRangeData([]);
+        setRangeStatus('error');
         return;
       }
 
       const result = await response.json();
+
+      if (!isTodayBoard) {
+        if (result.success && result.data?.length > 0) {
+          setRangeData(sortLeaderboardByRankAsc(result.data));
+          setRangeStatus('ready');
+        } else {
+          debugLog('[LEADERBOARD] No filtered data:', result.message || 'Empty');
+          setRangeData([]);
+          setRangeStatus(result.success ? 'empty' : 'error');
+        }
+        return;
+      }
 
       if (result.success && result.data && result.data.length > 0) {
         const ordered = sortLeaderboardByRankAsc(result.data);
@@ -114,17 +198,102 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
       }
     } catch (error) {
       debugLog("[LEADERBOARD] Error fetching data:", error?.message || error);
-      setLeaderboardData([]);
-      setIsVisible(false);
+      if (isTodayBoard) {
+        setLeaderboardData([]);
+        setIsVisible(false);
+      } else {
+        setRangeData([]);
+        setRangeStatus('error');
+      }
+    } finally {
+      fetchInFlightRef.current[flightKey] = false;
     }
   }, [apiBaseUrl, topN, userId, email]);
+
+  const applyFilter = useCallback((resolved) => {
+    if (!resolved?.ok) return;
+    const prev = filterRef.current;
+    const sameQuery = prev.preset === resolved.preset
+      && prev.days === resolved.days
+      && prev.dateYmd === resolved.dateYmd;
+    filterRef.current = {
+      preset: resolved.preset,
+      days: resolved.days,
+      dateYmd: resolved.dateYmd,
+    };
+    setFilterPreset(resolved.preset);
+    setFilterMeta(resolved);
+    setRangeError(null);
+    setShowFilterPanel(false);
+
+    if (resolved.preset === LB_DATE_PRESETS.TODAY) {
+      setShowCustomPicker(false);
+      setRangeStatus('idle');
+      if (!sameQuery) fetchLeaderboard(1);
+      return;
+    }
+
+    setShowCustomPicker(false);
+    if (!sameQuery) {
+      setRangeStatus('loading');
+      fetchLeaderboard(resolved.days, resolved.dateYmd);
+    }
+  }, [fetchLeaderboard]);
+
+  const refreshBoards = useCallback(() => {
+    fetchLeaderboard(1);
+    const active = filterRef.current;
+    if (active.preset !== LB_DATE_PRESETS.TODAY) {
+      fetchLeaderboard(active.days, active.dateYmd);
+    }
+  }, [fetchLeaderboard]);
+
+  const openDateFilter = useCallback(() => {
+    setShowFilterPanel((open) => {
+      const next = !open;
+      if (!next) setShowCustomPicker(false);
+      return next;
+    });
+    setRangeError(null);
+  }, []);
+
+  const selectPreset = useCallback((preset) => {
+    if (preset === LB_DATE_PRESETS.CUSTOM) {
+      setFilterPreset(LB_DATE_PRESETS.CUSTOM);
+      setShowCustomPicker(true);
+      setRangeError(null);
+      return;
+    }
+    const resolved = resolveWeightFilter(preset);
+    if (!resolved.ok) return;
+    setShowCustomPicker(false);
+    applyFilter(resolved);
+  }, [applyFilter]);
+
+  const selectCustomRange = useCallback((start, end) => {
+    const resolved = resolveWeightFilter(
+      LB_DATE_PRESETS.CUSTOM,
+      start,
+      end || start,
+    );
+    if (!resolved.ok) {
+      setRangeError(
+        resolved.error === 'range_too_long'
+          ? `Select up to ${LB_MAX_WINDOW_DAYS} days only`
+          : 'Invalid date range',
+      );
+      return;
+    }
+    setCustomStartDate(start);
+    setCustomEndDate(end || start);
+    setShowCustomPicker(false);
+    applyFilter(resolved);
+  }, [applyFilter]);
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
     // refresh: re-fetches from server (retries after 4s for DB propagation)
-    refresh: () => {
-      fetchLeaderboard();
-    },
+    refresh: refreshBoards,
     // injectEntry: instantly show the current user's entry in the strip
     // without waiting for any API call. The next refresh will replace with real data.
     injectEntry: ({ userId: entryUserId, userName, email, weightLoss, profileImage, coachName }) => {
@@ -151,7 +320,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
     },
   }));
 
-  useRaceLeaderboardRealtime(fetchLeaderboard);
+  useRaceLeaderboardRealtime(refreshBoards);
 
   // Instant paint from SWR cache; Realtime pings + slower poll backup
   useEffect(() => {
@@ -160,9 +329,9 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
       setLeaderboardData(cached);
       setIsVisible(true);
     }
-    fetchLeaderboard();
-    return setVisibilityAwareInterval(fetchLeaderboard, POLL_MS);
-  }, [fetchLeaderboard, userId]);
+    fetchLeaderboard(1);
+    return setVisibilityAwareInterval(refreshBoards, POLL_MS);
+  }, [fetchLeaderboard, refreshBoards, userId]);
 
   // Smooth fade-in when the strip becomes visible
   useEffect(() => {
@@ -196,10 +365,121 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
     return "bg-gradient-to-br from-green-500 to-green-700 text-white";
   };
 
+  // Pre-capture card image off the click path to preserve browser user gesture
+  useEffect(() => {
+    cachedDataUrlRef.current = null;
+    if (!isTile || !cardRef.current || !hasEntered) return undefined;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      precaptureShareImage(cardRef.current, { scale: 1.5, quality: 0.85 }).then((dataUrl) => {
+        if (!cancelled && dataUrl) {
+          cachedDataUrlRef.current = dataUrl;
+        }
+      });
+    }, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [isTile, leaderboardData, rangeData, filterPreset, hasEntered]);
+
   // Don't render if no data or loading failed
   if (!isVisible || leaderboardData.length === 0) {
     return null;
   }
+
+  const handleShareCard = async () => {
+    if (isSharing || !cardRef.current) return;
+    setIsSharing(true);
+    try {
+      const modeSuffix = isTodayFilter
+        ? 'today'
+        : `${filterPreset}-${filterMeta?.endYmd || filterMeta?.days || 'range'}`;
+      const fileName = `top-${topN}-weight-loss-${modeSuffix}-${Date.now()}.jpg`;
+      const shareOpts = {
+        title: `Top ${topN} Weight Loss`,
+        text: `Top ${topN} Weight Loss - Wellness Valley`,
+        fileName,
+      };
+
+      const cached = cachedDataUrlRef.current;
+      if (cached) {
+        const ok = await shareCachedDataUrl(cached, shareOpts);
+        if (ok) return;
+      }
+
+      await captureAndShare(cardRef.current, shareOpts);
+    } catch (err) {
+      if (!err?.message?.toLowerCase().includes('cancel')) {
+        console.error('Share failed:', err);
+      }
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const openProfile = (user) => {
+    const memberEmail = String(user?.email || user?.Email || '').trim();
+    const memberUserId = user?.userId ?? user?.UserId ?? user?.userID ?? user?.id;
+    if (memberEmail || memberUserId != null) {
+      setProfileMember({ email: memberEmail || null, userId: memberUserId ?? null });
+    }
+  };
+
+  const openExpandedAvatar = (user) => {
+    const memberUserId = user?.userId ?? user?.UserId ?? user?.userID ?? user?.id;
+    setExpandedAvatar({
+      src: buildUserAvatarUrl(apiBaseUrl, memberUserId, getAvatarDisplayVersion()),
+      name: user?.userName || user?.UserName || 'User',
+      email: user?.email || user?.Email,
+      userId: memberUserId,
+    });
+  };
+
+  const renderTappableAvatar = (user) => (
+    <button
+      type="button"
+      className="flex-shrink-0 rounded-full p-0 m-0 border-0 bg-transparent cursor-pointer appearance-none leading-none"
+      onClick={(event) => {
+        event.stopPropagation();
+        openExpandedAvatar(user);
+      }}
+      aria-label={`View ${user.userName || 'user'}'s photo`}
+    >
+      <LeaderboardAvatar
+        apiBaseUrl={apiBaseUrl}
+        userId={user.userId ?? user.UserId ?? user.userID ?? user.id}
+        email={user.email || user.Email}
+        userName={user.userName || user.UserName}
+        profileImage={user.profileImage}
+        interactive={false}
+      />
+    </button>
+  );
+
+  const avatarViewer = (
+    <LeaderboardAvatarViewer
+      isOpen={Boolean(expandedAvatar)}
+      src={expandedAvatar?.src}
+      name={expandedAvatar?.name}
+      onClose={() => setExpandedAvatar(null)}
+      onViewProfile={() => {
+        const member = expandedAvatar;
+        setExpandedAvatar(null);
+        openProfile(member);
+      }}
+    />
+  );
+
+  const profileViewer = (
+    <TeamMemberProfileModal
+      isOpen={Boolean(profileMember)}
+      onClose={() => setProfileMember(null)}
+      memberEmail={profileMember?.email}
+      memberUserId={profileMember?.userId}
+      apiBaseUrl={apiBaseUrl}
+    />
+  );
 
   // Render leaderboard card (strip row)
   const renderLeaderboardCard = (user, key) => (
@@ -214,20 +494,23 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
 
       {/* Profile Avatar */}
       <div className="flex-shrink-0">
-        <LeaderboardAvatar
-          apiBaseUrl={apiBaseUrl}
-          userId={user.userId}
-          email={user.email}
-          userName={user.userName}
-          profileImage={user.profileImage}
-        />
+        {renderTappableAvatar(user)}
       </div>
 
       {/* User Details */}
       <div className="flex flex-col justify-center flex-shrink-0 min-w-0 max-w-[120px] sm:max-w-[150px] md:max-w-[180px]">
-        <span className="font-bold text-gray-800 text-xs sm:text-sm md:text-base truncate leading-tight">
+        <button
+          type="button"
+          className="truncate text-left font-bold text-gray-800 text-xs sm:text-sm md:text-base leading-tight hover:underline focus:outline-none focus-visible:underline"
+          onClick={(event) => {
+            event.stopPropagation();
+            openProfile(user);
+          }}
+          disabled={!user.email && user.userId == null}
+          aria-label={`View ${user.userName || 'user'}'s profile`}
+        >
           {user.userName}
-        </span>
+        </button>
         {(() => {
           const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
           if (!sponsorName && !idealCoachName) return null;
@@ -267,20 +550,22 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
           rank={user.rank}
           colorClass={getRankColor(user.rank)}
         />
-        <LeaderboardAvatar
-          apiBaseUrl={apiBaseUrl}
-          userId={user.userId}
-          email={user.email}
-          userName={user.userName}
-          profileImage={user.profileImage}
-        />
+        {renderTappableAvatar(user)}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-gray-800">{user.userName}</p>
+          <button
+            type="button"
+            className="block max-w-full truncate text-left text-sm font-semibold text-gray-800 hover:underline focus:outline-none focus-visible:underline"
+            onClick={() => openProfile(user)}
+            disabled={!user.email && user.userId == null}
+            aria-label={`View ${user.userName || 'user'}'s profile`}
+          >
+            {user.userName}
+          </button>
           {(() => {
             const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
             if (!sponsorName && !idealCoachName) return null;
             return (
-              <p className="truncate text-[10px] text-gray-500">
+              <p className="mt-0.5 text-[11px] leading-normal text-gray-500 break-words pb-0.5">
                 {[sponsorName && `Sponsor: ${sponsorName}`, idealCoachName && `Coach: ${idealCoachName}`]
                   .filter(Boolean)
                   .join(' · ')}
@@ -296,25 +581,118 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
   };
 
   if (isTile) {
+    const tileRows = isTodayFilter ? leaderboardData : rangeData;
+    const tileSubtitle = filterMeta?.subtitle || 'Today vs Yesterday';
+    const buttonLabel = filterMeta?.buttonLabel || 'Today';
+    const ariaPeriod = isTodayFilter ? null : (filterMeta?.subtitle || filterPreset);
     return (
       <section
+        ref={cardRef}
         className={`mx-1 rounded-2xl border border-emerald-100 bg-white p-3 shadow-sm transition-opacity duration-500 ease-out ${
           hasEntered ? 'opacity-100' : 'opacity-0'
         }`}
-        aria-label="Weight Loss Today vs Yesterday"
+        aria-label={ariaPeriod ? `Top ${topN} Weight Loss, ${ariaPeriod}` : 'Weight Loss Today vs Yesterday'}
       >
         <header className="mb-1 flex items-center gap-2 border-b border-emerald-50 pb-2">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100" aria-hidden>
             <Scale className="h-4 w-4 text-emerald-700" />
           </span>
-          <div className="min-w-0">
-            <h3 className="text-sm font-bold text-emerald-900">Top 10 Weight Loss</h3>
-            <p className="text-[11px] text-emerald-700/80">Today vs Yesterday</p>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-sm font-bold text-emerald-900">Top {topN} Weight Loss</h3>
+              <button
+                type="button"
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-emerald-600 hover:bg-emerald-100 hover:text-emerald-800 transition-colors focus:outline-none disabled:opacity-50"
+                onClick={handleShareCard}
+                disabled={isSharing}
+                data-html2canvas-ignore="true"
+                aria-label={`Share Top ${topN} Weight Loss as image`}
+                title="Share as image"
+              >
+                {isSharing ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Share2 className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </div>
+            <p className="text-[11px] text-emerald-700/80">{tileSubtitle}</p>
           </div>
+          <button
+            type="button"
+            className={`ml-auto inline-flex shrink-0 items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-center text-[11px] font-semibold leading-tight ${
+              showFilterPanel || !isTodayFilter
+                ? 'bg-emerald-600 text-white'
+                : 'bg-emerald-50 text-emerald-700'
+            }`}
+            onClick={openDateFilter}
+            aria-expanded={showFilterPanel}
+            aria-label="Open weight loss date filter"
+            data-html2canvas-ignore="true"
+          >
+            <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span className="truncate max-w-[6.5rem]">{buttonLabel}</span>
+          </button>
         </header>
+
+        {showFilterPanel && (
+          <div
+            className="mb-2 rounded-xl border border-emerald-100 bg-emerald-50/60 p-2"
+            data-html2canvas-ignore="true"
+          >
+            <div className="flex gap-1.5 overflow-x-auto pb-0.5 no-scrollbar" role="group" aria-label="Date filter">
+              {LB_DATE_FILTER_OPTIONS.map((option) => {
+                const selected = filterPreset === option.value
+                  || (option.value === LB_DATE_PRESETS.CUSTOM && showCustomPicker);
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => selectPreset(option.value)}
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold transition-colors ${
+                      selected
+                        ? 'bg-emerald-700 text-white'
+                        : 'bg-white text-emerald-800 border border-emerald-200'
+                    }`}
+                    aria-pressed={selected}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            {rangeError && (
+              <p className="mt-1.5 text-[10px] font-medium text-red-600">{rangeError}</p>
+            )}
+            <AnimatePresence>
+              {showCustomPicker && (
+                <div className="mt-2">
+                  <DateRangePicker
+                    startDate={customStartDate}
+                    endDate={customEndDate}
+                    onSelect={selectCustomRange}
+                    onClose={() => setShowCustomPicker(false)}
+                  />
+                </div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+
         <ul className="divide-y divide-emerald-50">
-          {leaderboardData.map(renderTileRow)}
+          {!isTodayFilter && rangeStatus === 'loading' && tileRows.length === 0 && (
+            <li className="py-3 text-center text-xs text-emerald-700">Loading ranking…</li>
+          )}
+          {!isTodayFilter && rangeStatus === 'empty' && tileRows.length === 0 && (
+            <li className="py-3 text-center text-xs text-gray-500">No weight loss for this date filter.</li>
+          )}
+          {!isTodayFilter && rangeStatus === 'error' && tileRows.length === 0 && (
+            <li className="py-3 text-center text-xs text-gray-500">Could not load this date filter.</li>
+          )}
+          {tileRows.map(renderTileRow)}
         </ul>
+        {avatarViewer}
+        {profileViewer}
       </section>
     );
   }
@@ -357,6 +735,8 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
           </div>
         </div>
       </div>
+      {avatarViewer}
+      {profileViewer}
     </div>
   );
 });

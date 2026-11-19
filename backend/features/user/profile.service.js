@@ -5,6 +5,7 @@
  * Preserves response shapes byte-identical to the legacy handlers.
  */
 import { cache, cacheKeys } from '../../utils/cache.js';
+import { clearUserProfileCache } from './profileCache.js';
 import logger from '../../shared/lib/logger.js';
 import { nowUtc, addUtcDays, utcInstantToLegacyIstWallStorage, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { VALID_DIETS, VALID_GOAL_MODES } from './user.validators.js';
@@ -68,39 +69,36 @@ import {
   shouldDeferHeightChangeToOtp,
 } from './domain/heightChange.rules.js';
 import { getWorkingPhysicalCentre } from '../nutrition-centers/workingPhysicalCentre.service.js';
+import { normalizeEventProfilePrefs } from './domain/eventProfilePrefs.rules.js';
+import { normalizeProfileIntroPatch } from './domain/profileIntro.rules.js';
+import {
+  COMMUNITY_POSITION_OTP_FLAG,
+  shouldDeferCommunityPositionToOtp,
+} from './domain/communityPosition.rules.js';
+import {
+  describeCommunityPosition,
+  getPublicPendingCommunityPositionRequest,
+} from './communityPosition.service.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
 /** Drop both email- and userId-keyed profile caches (clients often GET by userId). */
 function clearProfileCaches({ email, userId } = {}) {
-  const bases = [];
-  if (userId != null && String(userId).trim() !== '') {
-    bases.push(cacheKeys.userProfile(`id:${userId}`));
-  }
-  const emailKey = String(email || '').trim().toLowerCase();
-  if (emailKey) {
-    bases.push(cacheKeys.userProfile(emailKey));
-  }
-  for (const base of bases) {
-    try {
-      // Un-suffixed (legacy) + version-routed transformation-photo variants.
-      cache.delete(base);
-      cache.delete(`${base}:tp-r2`);
-      cache.delete(`${base}:tp-legacy`);
-    } catch { /* non-fatal */ }
-  }
+  clearUserProfileCache({ email, userId });
 }
 
-export async function getProfile({ email, userId = null, appVersion = null }) {
+export async function getProfile({ email, userId = null, appVersion = null, bypassCache = false }) {
   const preferTransformR2 = shouldPreferTransformationR2Urls({ appVersion });
   const cacheKeyBase = email
     ? cacheKeys.userProfile(String(email || '').toLowerCase())
     : cacheKeys.userProfile(`id:${userId}`);
   const cacheKey = `${cacheKeyBase}:tp-${preferTransformR2 ? 'r2' : 'legacy'}`;
-  try {
-    const cached = cache.get(cacheKey);
-    if (cached) return cached;
-  } catch { /* non-fatal */ }
+  if (!bypassCache) {
+    try {
+      const cached = cache.get(cacheKey);
+      if (cached) return cached;
+    } catch { /* non-fatal */ }
+  }
 
   const user = userId
     ? await repo.getProfileByUserId(userId)
@@ -199,9 +197,13 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
     cardFatPercent: latestBodyMetricsCard?.fat_percent,
     cardBmr: latestBodyMetricsCard?.bmr,
   });
+  const resolvedProfileBodyFat = hasValidBodyFatPercent(bodyMetrics?.fatPercent)
+    ? Number(bodyMetrics.fatPercent)
+    : resolvedWeightBodyFat;
   const needsBodyFat = !hasValidBodyFatSource({
     latestWeightBodyFat: resolvedWeightBodyFat,
     bodyMetrics,
+    bodyFat: resolvedProfileBodyFat,
   });
   const physicalActivityLevel = user.PhysicalActivityLevel || null;
   const calorieTarget = resolveCalorieTargetFromProfile({
@@ -261,9 +263,55 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
 
   let workingPhysicalCentre = { id: null, name: null, options: [] };
   try {
-    workingPhysicalCentre = await getWorkingPhysicalCentre(user.UserId);
+    const preferredCentreId = await repo.getWorkingPhysicalCentrePreference(user.UserId);
+    workingPhysicalCentre = await getWorkingPhysicalCentre(user.UserId, preferredCentreId);
   } catch (err) {
     logger.warn('[profile] working physical centre lookup failed', {
+      userId: user.UserId,
+      message: err?.message,
+    });
+  }
+
+  let eventProfilePrefs = {
+    eventTranslation: null,
+    eventYourCity: null,
+    eventLevel: null,
+  };
+  try {
+    eventProfilePrefs = await repo.getEventProfilePreferences(user.UserId);
+  } catch (err) {
+    logger.warn('[profile] event profile prefs lookup failed', {
+      userId: user.UserId,
+      message: err?.message,
+    });
+  }
+
+  let communityPosition = null;
+  let communityPositionRequest = null;
+  try {
+    communityPosition = await describeCommunityPosition(eventProfilePrefs.eventLevel);
+    communityPositionRequest = await getPublicPendingCommunityPositionRequest(user.UserId);
+  } catch (err) {
+    logger.warn('[profile] community position lookup failed', {
+      userId: user.UserId,
+      message: err?.message,
+    });
+  }
+
+  let profileIntro = {
+    professionalTitle: '',
+    instagram: '',
+    youtube: '',
+    linkedin: '',
+    herbalifeJoinedOn: '',
+    aboutMe: '',
+    qualification: '',
+    languages: [],
+  };
+  try {
+    profileIntro = await repo.getProfileIntro(user.UserId);
+  } catch (err) {
+    logger.warn('[profile] profile intro lookup failed', {
       userId: user.UserId,
       message: err?.message,
     });
@@ -314,7 +362,7 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
           bodyMetrics,
           profileImage,
           latestWeightBodyFat: resolvedWeightBodyFat,
-          // Body fat lives on weight rows; only require it once a weight exists (or will be collected with weight).
+          bodyFat: resolvedProfileBodyFat,
           bodyFatRequired: true,
         }),
         needsName: !nameComplete,
@@ -338,11 +386,17 @@ export async function getProfile({ email, userId = null, appVersion = null }) {
         initialWeight: Number.isFinite(initialWeightKg) ? initialWeightKg : null,
         initialWeightDate: initialWeightRow?.CreatedAt || null,
         latestWeightBodyFat: resolvedWeightBodyFat,
-        bodyFat: resolvedWeightBodyFat,
+        bodyFat: resolvedProfileBodyFat,
         latestBmr,
         physicalActivityLevel,
         communityId: user.CommunityId ?? null,
         workingPhysicalCentre,
+        eventTranslation: eventProfilePrefs.eventTranslation,
+        eventYourCity: eventProfilePrefs.eventYourCity,
+        eventLevel: eventProfilePrefs.eventLevel,
+        ...profileIntro,
+        communityPosition,
+        communityPositionRequest,
         communityIdRequest: communityIdRequest || null,
         communityIdPair: communityIdPair || null,
         timezone: profileTimezone,
@@ -476,19 +530,32 @@ export async function updateProfile(input) {
   const {
     email, userId: inputUserId, name, height, bmr, dietType, profileImage, phoneNumber, gender,
     weightGoalMode, physicalActivityLevel, communityId, timezoneIana, bodyFat,
-    currentWeight, transformationPhotos, bcmProfileReviewed = undefined, appVersion = null,
+    currentWeight, transformationPhotos, bcmProfileReviewed = undefined,
+    workingPhysicalCentreId = undefined,
+    eventTranslation = undefined,
+    eventYourCity = undefined,
+    eventLevel = undefined,
+    profileIntro = undefined,
+    appVersion = null,
+    skipOtp = false,
   } = input;
-  const deferCommunityId = shouldDeferCommunityIdToOtpFlow({
+  const deferCommunityId = !skipOtp && shouldDeferCommunityIdToOtpFlow({
     flagEnabled: isEnabled(COMMUNITY_ID_OTP_FLAG),
     appVersion,
   });
   const appliedCommunityId = deferCommunityId ? undefined : communityId;
+  const deferCommunityPosition = !skipOtp && shouldDeferCommunityPositionToOtp({
+    flagEnabled: isEnabled(COMMUNITY_POSITION_OTP_FLAG),
+    appVersion,
+  });
+  const appliedEventLevel = deferCommunityPosition ? undefined : eventLevel;
 
   logger.info('[profile/update] incoming request', {
     email: email || null,
     userId: inputUserId || null,
     receivedCommunityId: communityId !== undefined,
     deferredCommunityIdOtp: deferCommunityId,
+    deferredCommunityPositionOtp: deferCommunityPosition,
     receivedBodyFat: bodyFat !== undefined,
     receivedCurrentWeight: currentWeight !== undefined,
   });
@@ -505,19 +572,20 @@ export async function updateProfile(input) {
   const photoCols = '"UserId", "Email", "Height", transformation_photos';
   const idCols = '"UserId", "Email", "Height"';
   try {
-    // Prefer email when present (legacy clients); userId for phone / BCM without email.
-    if (email) {
-      user = await repo.findByEmail(email, photoCols);
-    } else {
+    // Prefer userId when present (matches GET profile). Email alone is for
+    // legacy clients; email+userId used to resolve the wrong account and drop Fat %.
+    if (inputUserId) {
       user = await repo.findByUserId(inputUserId, photoCols);
+    } else if (email) {
+      user = await repo.findByEmail(email, photoCols);
     }
   } catch (err) {
     const msg = String(err?.message || err || '');
     if (!/transformation_photos/i.test(msg)) throw err;
-    if (email) {
-      user = await repo.findByEmail(email, idCols);
-    } else {
+    if (inputUserId) {
       user = await repo.findByUserId(inputUserId, idCols);
+    } else if (email) {
+      user = await repo.findByEmail(email, idCols);
     }
   }
   if (!user) return notFound();
@@ -591,6 +659,75 @@ export async function updateProfile(input) {
     try { cache.delete(cacheKeys.userAvatar(userId)); } catch { /* non-fatal */ }
   }
 
+  // Optional Working Physical Centre preference — old clients omit → leave unchanged.
+  if (workingPhysicalCentreId !== undefined) {
+    if (workingPhysicalCentreId != null) {
+      const { findCenterById } = await import('../nutrition-centers/centers.repository.js');
+      const { data: centreRow, error: centreErr } = await findCenterById(workingPhysicalCentreId);
+      if (centreErr || !centreRow) {
+        throw new Error('Invalid Working Physical Centre. Please choose a valid club.');
+      }
+    }
+    const savedPref = await repo.setWorkingPhysicalCentrePreference(userId, workingPhysicalCentreId);
+    if (!savedPref) {
+      logger.warn('[profile/update] WorkingPhysicalCentreId column missing; preference not saved', {
+        userId,
+        workingPhysicalCentreId,
+      });
+    }
+  }
+
+  // Optional event registration prefs — old clients omit → leave unchanged.
+  if (
+    eventTranslation !== undefined
+    || eventYourCity !== undefined
+    || appliedEventLevel !== undefined
+  ) {
+    const normalized = normalizeEventProfilePrefs({
+      eventTranslation,
+      eventYourCity,
+      eventLevel: appliedEventLevel,
+    });
+    const toSave = {};
+    if (eventTranslation !== undefined) {
+      if (eventTranslation != null && String(eventTranslation).trim() !== '' && normalized.eventTranslation == null) {
+        throw new Error('Invalid Translation. Choose a listed language.');
+      }
+      toSave.eventTranslation = normalized.eventTranslation;
+    }
+    if (eventYourCity !== undefined) {
+      if (eventYourCity != null && String(eventYourCity).trim() !== '' && normalized.eventYourCity == null) {
+        throw new Error('Invalid Your City. Choose a listed city.');
+      }
+      toSave.eventYourCity = normalized.eventYourCity;
+    }
+    if (appliedEventLevel !== undefined) {
+      if (appliedEventLevel != null && String(appliedEventLevel).trim() !== '' && normalized.eventLevel == null) {
+        throw new Error('Invalid Community Position. Choose a listed option.');
+      }
+      toSave.eventLevel = normalized.eventLevel;
+    }
+    const savedEventPrefs = await repo.setEventProfilePreferences(userId, toSave);
+    if (!savedEventPrefs) {
+      logger.warn('[profile/update] event profile pref columns missing; not saved', {
+        userId,
+        keys: Object.keys(toSave),
+      });
+      if (toSave.eventLevel !== undefined) {
+        throw new Error('Community Position could not be saved. Add EventLevel on the profile table and try again.');
+      }
+    }
+  }
+
+  if (profileIntro && typeof profileIntro === 'object') {
+    const normalizedIntro = normalizeProfileIntroPatch(profileIntro);
+    if (!normalizedIntro.ok) throw new Error(normalizedIntro.message);
+    const savedIntro = await repo.setProfileIntro(userId, normalizedIntro.value);
+    if (!savedIntro) {
+      throw new Error('Profile details could not be saved. Run the profile intro migration and try again.');
+    }
+  }
+
   if (hasTransformPhotoIncoming) {
     try {
       // R2 keys only — front/left/right base64 left as orphan history.
@@ -619,7 +756,8 @@ export async function updateProfile(input) {
   let latestWeightRow = await repo.getLatestWeight(userId);
   const latestBodyMetricsCard = await findLatestLinkedBodyMetricsCard(userId);
 
-  // Body fat + current weight both live on weight_records_table (same row). Never team_table.
+  // Fat % is an independent profile field on team_table.BodyFat (already existed).
+  // When a weight row exists (or is created), Fat % is also mirrored for BMR/history.
   const incomingBodyFat = bodyFat !== undefined && hasValidBodyFatPercent(bodyFat)
     ? parseFloat(bodyFat)
     : null;
@@ -627,8 +765,46 @@ export async function updateProfile(input) {
     ? parseFloat(currentWeight)
     : null;
 
-  let savedBodyFat = incomingBodyFat;
+  let savedBodyFat = null;
+  let bodyFatError = null;
   let savedCurrentWeight = null;
+
+  if (incomingBodyFat != null) {
+    try {
+      await repo.updateUserById(userId, { BodyFat: incomingBodyFat });
+      savedBodyFat = incomingBodyFat;
+      logger.info('[profile/update] saved BodyFat on team_table', {
+        userId,
+        bodyFat: incomingBodyFat,
+      });
+    } catch (fatErr) {
+      const msg = String(fatErr?.message || fatErr || '');
+      if (/BodyFat|column/i.test(msg)) {
+        bodyFatError = 'Could not save Fat %. Please try again.';
+        logger.error('[profile/update] team_table.BodyFat update failed', {
+          userId,
+          message: msg,
+        });
+      } else {
+        throw fatErr;
+      }
+    }
+  }
+
+  let existingTeamFat = savedBodyFat;
+  if (existingTeamFat == null) {
+    try {
+      const fatRow = await repo.findByUserId(userId, '"BodyFat"');
+      if (hasValidBodyFatPercent(fatRow?.BodyFat)) {
+        existingTeamFat = parseFloat(fatRow.BodyFat);
+      }
+    } catch (fatReadErr) {
+      logger.warn('[profile/update] team BodyFat read skipped', {
+        userId,
+        message: fatReadErr?.message || String(fatReadErr),
+      });
+    }
+  }
 
   if (incomingWeight != null && !latestWeightRow?.ID) {
     const profileHeightRow = appliedHeight == null
@@ -638,14 +814,15 @@ export async function updateProfile(input) {
       ? parseFloat(appliedHeight)
       : (profileHeightRow?.Height ? parseFloat(profileHeightRow.Height) : null);
     const bmi = computeBmiFromHeightWeight(effectiveHeightForBmi, incomingWeight);
-    const weightBmr = computeKatchMcArdleBmr(incomingWeight, incomingBodyFat);
+    const fatForWeight = incomingBodyFat ?? existingTeamFat;
+    const weightBmr = computeKatchMcArdleBmr(incomingWeight, fatForWeight);
     const wallNow = utcInstantToLegacyIstWallStorage(nowUtc(), IANA_IST);
     try {
       const inserted = await weightRepo.insertEntry({
         UserId: parseInt(userId, 10),
         Weight: incomingWeight,
         Bmi: bmi,
-        BodyFat: incomingBodyFat,
+        BodyFat: fatForWeight,
         Bmr: weightBmr,
         CreatedAt: wallNow,
         UpdatedAt: wallNow,
@@ -653,13 +830,15 @@ export async function updateProfile(input) {
       latestWeightRow = {
         ID: inserted?.ID,
         Weight: incomingWeight,
-        BodyFat: incomingBodyFat,
+        BodyFat: fatForWeight,
         Bmi: bmi,
         Bmr: weightBmr,
         CreatedAt: wallNow,
       };
       savedCurrentWeight = incomingWeight;
-      savedBodyFat = incomingBodyFat;
+      if (fatForWeight != null && savedBodyFat == null) {
+        savedBodyFat = fatForWeight;
+      }
       if (weightBmr != null) {
         await repo.updateUserById(userId, { Bmr: weightBmr });
       }
@@ -667,7 +846,7 @@ export async function updateProfile(input) {
         userId,
         weightId: inserted?.ID,
         weightKg: incomingWeight,
-        bodyFat: incomingBodyFat,
+        bodyFat: fatForWeight,
       });
     } catch (weightErr) {
       logger.error('[profile/update] failed to save weight record', {
@@ -676,15 +855,14 @@ export async function updateProfile(input) {
       });
       throw weightErr;
     }
-  } else if (incomingBodyFat != null && latestWeightRow?.ID) {
-    // Weight already exists — attach body fat onto that same latest record.
+  } else if (incomingBodyFat != null && latestWeightRow?.ID && savedBodyFat != null) {
+    // Mirror profile Fat % onto the latest weight row for BMR (non-fatal if it fails).
     const weightKg = latestWeightRow.Weight ? parseFloat(latestWeightRow.Weight) : null;
     const weightBmr = weightKg != null
       ? computeKatchMcArdleBmr(weightKg, incomingBodyFat)
       : null;
     const updated = await repo.updateLatestWeightBodyFat(userId, incomingBodyFat, weightBmr);
     if (updated) {
-      savedBodyFat = incomingBodyFat;
       latestWeightRow = {
         ...latestWeightRow,
         BodyFat: incomingBodyFat,
@@ -693,9 +871,15 @@ export async function updateProfile(input) {
       if (weightBmr != null) {
         await repo.updateUserById(userId, { Bmr: weightBmr });
       }
-      logger.info('[profile/update] saved BodyFat on existing weight record', {
+      logger.info('[profile/update] mirrored team BodyFat onto weight record', {
         userId,
         weightId: updated.ID,
+        bodyFat: incomingBodyFat,
+      });
+    } else {
+      logger.warn('[profile/update] BodyFat saved on profile; weight mirror returned no row', {
+        userId,
+        weightId: latestWeightRow.ID,
         bodyFat: incomingBodyFat,
       });
     }
@@ -706,15 +890,13 @@ export async function updateProfile(input) {
         existingWeightId: latestWeightRow.ID,
       });
     }
-  } else if (incomingBodyFat != null && !latestWeightRow?.ID) {
-    logger.warn('[profile/update] bodyFat ignored; no weight record to attach it to', {
-      userId,
-      bodyFat: incomingBodyFat,
-    });
-    savedBodyFat = null;
-  } else if (latestWeightRow?.BodyFat != null) {
-    const existing = parseFloat(latestWeightRow.BodyFat);
-    if (hasValidBodyFatPercent(existing)) savedBodyFat = existing;
+  } else if (savedBodyFat == null) {
+    if (hasValidBodyFatPercent(existingTeamFat)) {
+      savedBodyFat = existingTeamFat;
+    } else if (latestWeightRow?.BodyFat != null) {
+      const existing = parseFloat(latestWeightRow.BodyFat);
+      if (hasValidBodyFatPercent(existing)) savedBodyFat = existing;
+    }
   }
 
   let savedBmr = null;
@@ -758,11 +940,11 @@ export async function updateProfile(input) {
     try {
       dbProfile = await repo.findByUserId(
         userId,
-        '"UserName", "Height", "Bmr", "Gender", "Age", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues',
+        '"UserName", "Height", "Bmr", "Gender", "Age", "BodyFat", "VisceralFat", "BodyAge", "ChestCm", "WaistCm", "HipCm", recovered_health_issues',
       );
     } catch (colErr) {
       const msg = String(colErr?.message || colErr || '');
-      if (!/column|Age|VisceralFat|recovered_health/i.test(msg)) throw colErr;
+      if (!/column|Age|BodyFat|VisceralFat|recovered_health/i.test(msg)) throw colErr;
       dbProfile = await repo.findByUserId(
         userId,
         '"UserName", "Height", "Bmr", "Gender"',
@@ -782,6 +964,7 @@ export async function updateProfile(input) {
         bmr: savedBmr ?? (dbProfile?.Bmr != null ? parseFloat(dbProfile.Bmr) : bmr),
         gender: gender ?? dbProfile?.Gender ?? null,
         age: numOrNull(dbProfile?.Age),
+        fatPercent: savedBodyFat ?? numOrNull(dbProfile?.BodyFat),
         visceralFat: numOrNull(dbProfile?.VisceralFat),
         bodyAge: numOrNull(dbProfile?.BodyAge),
         chestCm: numOrNull(dbProfile?.ChestCm),
@@ -911,6 +1094,8 @@ export async function updateProfile(input) {
           && transformationPhotos.front)
       ),
       bodyFat: savedBodyFat || undefined,
+      bodyFatSaved: incomingBodyFat != null ? savedBodyFat != null : undefined,
+      bodyFatError: bodyFatError || undefined,
       currentWeight: savedCurrentWeight || undefined,
       teamId: teamCodeSync?.teamId || undefined,
       teamSeat: teamCodeSync?.teamSeat || undefined,

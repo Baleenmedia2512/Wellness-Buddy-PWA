@@ -396,6 +396,15 @@ export async function updateTestimonial(id, payload) {
   if (payload.otpExpiresAt           !== undefined) updates.otp_expires_at           = payload.otpExpiresAt;
   if (payload.verifiedAt             !== undefined) updates.verified_at              = payload.verifiedAt;
   if (payload.recoveredHealthIssues  !== undefined) updates.recovered_health_issues  = payload.recoveredHealthIssues;
+  if (payload.websiteDisplayAgreed !== undefined) {
+    updates.website_display_agreed = payload.websiteDisplayAgreed === true;
+  }
+  if (payload.websiteDisplayConsentAt !== undefined) {
+    updates.website_display_consent_at = payload.websiteDisplayConsentAt;
+  }
+  if (payload.websiteDisplayConsentRevokedAt !== undefined) {
+    updates.website_display_consent_revoked_at = payload.websiteDisplayConsentRevokedAt;
+  }
 
   const { data, error } = await db
     .from(TABLE)
@@ -403,7 +412,29 @@ export async function updateTestimonial(id, payload) {
     .eq('id', id)
     .select()
     .single();
-  if (error) throw error;
+  if (error) {
+    // Migration not applied yet — strip consent fields and retry core updates.
+    if (
+      /website_display|does not exist|unknown column|42703/i.test(String(error.message || error))
+      && (
+        updates.website_display_agreed !== undefined
+        || updates.website_display_consent_at !== undefined
+        || updates.website_display_consent_revoked_at !== undefined
+      )
+    ) {
+      logger.warn('[testimonials.updateTestimonial] consent columns missing — run migration', {
+        id,
+        message: error.message || String(error),
+      });
+      delete updates.website_display_agreed;
+      delete updates.website_display_consent_at;
+      delete updates.website_display_consent_revoked_at;
+      const retry = await db.from(TABLE).update(updates).eq('id', id).select().single();
+      if (retry.error) throw retry.error;
+      return retry.data;
+    }
+    throw error;
+  }
   return data;
 }
 
@@ -462,7 +493,8 @@ export async function listForCoach(coachId, scope = 'direct') {
   const db = getMysqlClient();
 
   // Narrow select — never pull otp_hash / unused columns into list payloads.
-  const LIST_COLUMNS = [
+  // Consent columns are optional until migration add_website_display_consent_to_testimonials runs.
+  const LIST_COLUMNS_BASE = [
     'id',
     'user_id',
     'before_image_path',
@@ -480,14 +512,32 @@ export async function listForCoach(coachId, scope = 'direct') {
     'video_status',
     'video_verified_at',
     'recovered_health_issues',
-  ].join(', ');
+  ];
+  const LIST_COLUMNS_CONSENT = [
+    'website_display_agreed',
+    'website_display_consent_at',
+    'website_display_consent_revoked_at',
+  ];
 
-  const { data: testimonials, error: testErr } = await db
+  let testimonials = null;
+  let testErr = null;
+  ({ data: testimonials, error: testErr } = await db
     .from(TABLE)
-    .select(LIST_COLUMNS)
+    .select([...LIST_COLUMNS_BASE, ...LIST_COLUMNS_CONSENT].join(', '))
     .in('user_id', memberIds)
     .eq('is_deleted', false)
-    .order('id', { ascending: false });
+    .order('id', { ascending: false }));
+  if (testErr && /website_display|does not exist|unknown column|42703/i.test(String(testErr.message || testErr))) {
+    logger.warn('[testimonials.listForCoach] consent columns missing — run migration; falling back', {
+      message: testErr.message || String(testErr),
+    });
+    ({ data: testimonials, error: testErr } = await db
+      .from(TABLE)
+      .select(LIST_COLUMNS_BASE.join(', '))
+      .in('user_id', memberIds)
+      .eq('is_deleted', false)
+      .order('id', { ascending: false }));
+  }
   if (testErr) throw testErr;
 
   const testimonialMap = {};
@@ -601,12 +651,16 @@ export async function findCoachIdForUser(userId) {
   const db = getMysqlClient();
   const { data, error } = await db
     .from('team_table')
-    .select('"CoachId", "UserName"')
+    .select('"CoachId", "UserName", "PhoneNumber"')
     .eq('"UserId"', userId)
     .limit(1);
   if (error) throw error;
   if (!Array.isArray(data) || data.length === 0) return null;
-  return { coachId: data[0].CoachId, userName: data[0].UserName };
+  return {
+    coachId: data[0].CoachId,
+    userName: data[0].UserName,
+    phoneNumber: data[0].PhoneNumber || null,
+  };
 }
 
 /**

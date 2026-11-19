@@ -6,12 +6,14 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizeAppRole,
+  formatAppRoleLabel,
   isAdminLikeRole,
   ROLE_USER,
   ROLE_ADMIN,
   ROLE_DEVELOPER,
   ROLE_COACH,
   ROLE_UPLINE,
+  ROLE_SYSTEM_ADMIN,
 } from '../roles.js';
 
 describe('normalizeAppRole', () => {
@@ -23,9 +25,10 @@ describe('normalizeAppRole', () => {
     assert.equal(normalizeAppRole('superadmin'), ROLE_USER);
   });
 
-  it('maps customer/member aliases to user', () => {
+  it('maps customer/member aliases to user and sponsor to coach', () => {
     assert.equal(normalizeAppRole('customer'), ROLE_USER);
     assert.equal(normalizeAppRole('Member'), ROLE_USER);
+    assert.equal(normalizeAppRole('sponsor'), ROLE_COACH);
   });
 
   it('preserves known elevated roles (case-insensitive)', () => {
@@ -33,6 +36,8 @@ describe('normalizeAppRole', () => {
     assert.equal(normalizeAppRole('developer'), ROLE_DEVELOPER);
     assert.equal(normalizeAppRole('COACH'), ROLE_COACH);
     assert.equal(normalizeAppRole('upline'), ROLE_UPLINE);
+    assert.equal(normalizeAppRole('system_admin'), ROLE_SYSTEM_ADMIN);
+    assert.equal(normalizeAppRole('System Admin'), ROLE_SYSTEM_ADMIN);
   });
 });
 
@@ -44,5 +49,19 @@ describe('isAdminLikeRole', () => {
     assert.equal(isAdminLikeRole(''), false);
     assert.equal(isAdminLikeRole(null), false);
     assert.equal(isAdminLikeRole('coach'), false);
+    assert.equal(isAdminLikeRole('system_admin'), false);
+    assert.equal(isAdminLikeRole('System Admin'), false);
+  });
+});
+
+describe('formatAppRoleLabel', () => {
+  it('shows Customer / Sponsor / Admin / Developer for those roles', () => {
+    assert.equal(formatAppRoleLabel('user'), 'Customer');
+    assert.equal(formatAppRoleLabel('member'), 'Customer');
+    assert.equal(formatAppRoleLabel('Admin'), 'Admin');
+    assert.equal(formatAppRoleLabel('developer'), 'Developer');
+    assert.equal(formatAppRoleLabel('coach'), 'Sponsor');
+    assert.equal(formatAppRoleLabel('sponsor'), 'Sponsor');
+    assert.equal(formatAppRoleLabel(null), 'Customer');
   });
 });

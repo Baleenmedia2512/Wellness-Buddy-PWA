@@ -5,8 +5,10 @@
 const UPLOAD_FOLDERS = new Set([
   'avatars',
   'captures',
+  'coach-portfolio',
   'education',
   'food',
+  'gbp-requests',
   'good-habits',
   'transformation',
   'weight',

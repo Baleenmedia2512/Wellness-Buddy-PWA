@@ -26,6 +26,7 @@ import {
   TEAM_FILTERS,
 } from './domain/wellness-score-report.pagination.js';
 import { computeWeightDifferenceKg } from './domain/wellness-score-report.weight.js';
+import { redactWellnessScoreResponse } from './domain/report-details.redaction.js';
 import { isActiveTeamStatus } from '../../utils/teamHierarchyBuilder.js';
 import { todayInTimezone, shiftDateYmd, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { cache } from '../../utils/cache.js';
@@ -454,9 +455,10 @@ function warmYesterdayReport(rawQuery, todayYmd) {
  * GET /api/reports/wellness-score-report
  *
  * @param {object} rawQuery
+ * @param {{ hideDetails?: boolean }} [options]
  * @returns {{ httpStatus: number, body: object }}
  */
-export async function getWellnessScoreReport(rawQuery) {
+export async function getWellnessScoreReport(rawQuery, options = {}) {
   const {
     coachId,
     page,
@@ -484,7 +486,9 @@ export async function getWellnessScoreReport(rawQuery) {
 
   if (!exportAll) {
     const cached = cache.get(responseKey);
-    if (cached) return cached;
+    if (cached) {
+      return options.hideDetails ? redactWellnessScoreResponse(cached) : cached;
+    }
   }
 
   const result = await buildWellnessScoreReport(rawQuery);
@@ -495,5 +499,5 @@ export async function getWellnessScoreReport(rawQuery) {
       warmYesterdayReport(rawQuery, scoreDate);
     }
   }
-  return result;
+  return options.hideDetails ? redactWellnessScoreResponse(result) : result;
 }

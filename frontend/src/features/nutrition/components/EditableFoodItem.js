@@ -60,6 +60,8 @@ const EditableFoodItem = forwardRef(
       onSave,
       onCancel,
       hideButtons,
+      canEdit = true,
+      canDelete = true,
       user,
       onRestore,
       mealRow = null,
@@ -1076,9 +1078,9 @@ const EditableFoodItem = forwardRef(
             <button
               type="button"
               onClick={handleEdit}
-              disabled={disabled}
-              aria-label={`Edit ${foodItem.name}`}
-              className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 font-bold text-sm ${avatarColor} ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer active:scale-95 transition-transform'}`}
+              disabled={disabled || !canEdit}
+              aria-label={canEdit ? `Edit ${foodItem.name}` : foodItem.name}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 font-bold text-sm ${avatarColor} ${disabled || !canEdit ? 'opacity-70 cursor-default' : 'cursor-pointer active:scale-95 transition-transform'}`}
             >
               {initial}
             </button>
@@ -1189,59 +1191,65 @@ const EditableFoodItem = forwardRef(
             </div>
 
             {/* Action buttons */}
-            <div className="shrink-0 flex flex-col items-center gap-1.5 ml-1">
-              {isDeletePending ? (
-                <div className="flex flex-col items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
-                  <span className="text-[10px] text-amber-700 font-medium whitespace-nowrap">
-                    {deleteCountdown}s
-                  </span>
-                  <span className="block h-0.5 w-10 rounded-full bg-amber-200 overflow-hidden">
-                    <span
-                      key={deleteAnimKey}
-                      className="block h-full bg-amber-600"
-                      style={{
-                        transformOrigin: "left",
-                        animation: `countdown-shrink ${DELETE_UNDO_SECONDS}s linear forwards`,
-                      }}
-                    />
-                  </span>
-                  <TouchFeedbackButton
-                    onClick={handleUndoDelete}
-                    className="text-[10px] font-semibold text-amber-700 hover:text-amber-900"
-                    ariaLabel="Undo delete"
-                  >
-                    Undo
-                  </TouchFeedbackButton>
-                </div>
-              ) : (
-                <>
-                  <TouchFeedbackButton
-                    onClick={handleDelete}
-                    disabled={disabled}
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-colors ${
-                      disabled
-                        ? "bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed"
-                        : "text-red-400 hover:text-red-600 hover:bg-red-50 border-red-100"
-                    }`}
-                    ariaLabel="Delete food item"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </TouchFeedbackButton>
-                  <TouchFeedbackButton
-                    onClick={handleEdit}
-                    disabled={disabled}
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-colors ${
-                      disabled
-                        ? "bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed"
-                        : "text-green-500 hover:text-green-700 hover:bg-green-50 border-green-200"
-                    }`}
-                    ariaLabel="Edit food item"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </TouchFeedbackButton>
-                </>
-              )}
-            </div>
+            {(canEdit || canDelete || isDeletePending) && (
+              <div className="shrink-0 flex flex-col items-center gap-1.5 ml-1">
+                {isDeletePending ? (
+                  <div className="flex flex-col items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                    <span className="text-[10px] text-amber-700 font-medium whitespace-nowrap">
+                      {deleteCountdown}s
+                    </span>
+                    <span className="block h-0.5 w-10 rounded-full bg-amber-200 overflow-hidden">
+                      <span
+                        key={deleteAnimKey}
+                        className="block h-full bg-amber-600"
+                        style={{
+                          transformOrigin: "left",
+                          animation: `countdown-shrink ${DELETE_UNDO_SECONDS}s linear forwards`,
+                        }}
+                      />
+                    </span>
+                    <TouchFeedbackButton
+                      onClick={handleUndoDelete}
+                      className="text-[10px] font-semibold text-amber-700 hover:text-amber-900"
+                      ariaLabel="Undo delete"
+                    >
+                      Undo
+                    </TouchFeedbackButton>
+                  </div>
+                ) : (
+                  <>
+                    {canDelete && (
+                      <TouchFeedbackButton
+                        onClick={handleDelete}
+                        disabled={disabled}
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-colors ${
+                          disabled
+                            ? "bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed"
+                            : "text-red-400 hover:text-red-600 hover:bg-red-50 border-red-100"
+                        }`}
+                        ariaLabel="Delete food item"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </TouchFeedbackButton>
+                    )}
+                    {canEdit && (
+                      <TouchFeedbackButton
+                        onClick={handleEdit}
+                        disabled={disabled}
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-colors ${
+                          disabled
+                            ? "bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed"
+                            : "text-green-500 hover:text-green-700 hover:bg-green-50 border-green-200"
+                        }`}
+                        ariaLabel="Edit food item"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </TouchFeedbackButton>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
           <style>{`@keyframes countdown-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }`}</style>
         </div>

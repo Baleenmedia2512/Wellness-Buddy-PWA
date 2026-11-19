@@ -1,31 +1,51 @@
-import { useCallback, useEffect, useState } from 'react';
-import { premiumStatusStore } from '../services/premiumStatus';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { blankEntitlement } from '../domain/entitlementSnapshot';
+import { clearPremiumThemeClass, premiumStatusStore, watchEntitlementUser } from '../services/premiumStatus';
 
 /**
  * Premium state for one member, shared with every screen that shows it.
- * Pass null to skip the check. Any failure leaves the member as not Premium.
+ * Pass null to skip the check and clear the theme. A failed check keeps the
+ * last confirmed answer for this member.
  * @param {string|number|null} userId
- * @returns {{ premium: boolean, refresh: () => Promise<boolean> }}
  */
 export default function usePremiumStatus(userId) {
   const key = userId == null ? '' : String(userId).trim();
-  const [premium, setPremium] = useState(() => (key ? premiumStatusStore.get(key) : false));
+  const [version, setVersion] = useState(0);
+  const status = key ? premiumStatusStore.getStatus(key) : blankEntitlement();
+  void version;
 
   useEffect(() => {
+    if (!key) return undefined;
+    const unsubscribe = premiumStatusStore.subscribe(key, () => setVersion((value) => value + 1));
+    premiumStatusStore.load(key);
+    const stopWatch = watchEntitlementUser(key);
+    return () => {
+      unsubscribe();
+      stopWatch();
+    };
+  }, [key]);
+
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined') return undefined;
     if (!key) {
-      setPremium(false);
+      clearPremiumThemeClass();
       return undefined;
     }
-    setPremium(premiumStatusStore.get(key));
-    const unsubscribe = premiumStatusStore.subscribe(key, setPremium);
-    premiumStatusStore.load(key);
-    return unsubscribe;
-  }, [key]);
+    document.documentElement.classList.toggle('premium-theme', status.premium === true);
+    return undefined;
+  }, [key, status.premium]);
 
   const refresh = useCallback(
     () => (key ? premiumStatusStore.load(key, { force: true }) : Promise.resolve(false)),
     [key],
   );
 
-  return { premium, refresh };
+  return {
+    premium: status.premium === true,
+    daysLeft: status.daysLeft ?? null,
+    expiresAt: status.expiresAt ?? null,
+    expiresAtDisplay: status.expiresAtDisplay ?? null,
+    showExpiryWarning: status.showExpiryWarning === true,
+    refresh,
+  };
 }

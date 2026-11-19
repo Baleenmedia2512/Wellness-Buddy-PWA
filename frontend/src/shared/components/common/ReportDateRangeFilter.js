@@ -52,7 +52,7 @@ export default function ReportDateRangeFilter({
             className={`${pillClass} transition-all flex-shrink-0 ${
               dateRange === range.value
                 ? 'bg-green-600 text-white shadow-sm'
-                : 'bg-white text-gray-700 border border-gray-200 hover:border-green-400'
+                : 'bg-white text-gray-700 border border-[var(--wv-pill-border)]'
             }`}
             title={
               range.value === 'custom' && dateRange === 'custom'

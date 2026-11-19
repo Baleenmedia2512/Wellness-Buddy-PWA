@@ -1306,20 +1306,16 @@ test.describe('Homepage', () => {
     // Verify Classify page header
     await expect(page.getByRole('heading', { name: 'What is this image?' })).toBeVisible({ timeout: 15000 });
 
-    // Select Good Habit option tile
-    const goodHabitBtn = page.getByRole('button', { name: 'Good Habit', exact: true }).or(
-      page.getByRole('button', { name: /Good Habit/i })
-    );
+    // Select Task by Coach / Good Habit option tile
+    const goodHabitBtn = page.getByRole('button', { name: /Task by Coach|Good Habit/i });
     await expect(goodHabitBtn.first()).toBeVisible({ timeout: 10000 });
     await goodHabitBtn.first().click();
 
-    // Verify Good Habit modal dialog opens
-    const habitTitle = page.getByText('Good Habit', { exact: true }).or(
-      page.getByRole('dialog').getByText('Good Habit')
-    );
+    // Verify modal dialog opens
+    const habitTitle = page.getByText(/Task by Coach|Good Habit/i);
     await expect(habitTitle.first()).toBeVisible({ timeout: 10000 });
 
-    // Save Good Habit entry
+    // Save entry
     const saveHabitBtn = page.getByRole('button', { name: 'Save', exact: true }).or(
       page.locator('button').filter({ hasText: /^Save$/i })
     );
@@ -1331,7 +1327,7 @@ test.describe('Homepage', () => {
     expect(savedHabitPayloads.length).toBeGreaterThan(0);
 
     // ============================================================
-    // 2. NAVIGATE TO DIARY PAGE AND VERIFY GOOD HABIT IS STORED
+    // 2. NAVIGATE TO DIARY PAGE AND VERIFY ENTRY IS STORED
     // ============================================================
     const diaryTabBtn = page.getByRole('button', { name: 'Diary', exact: true }).or(
       page.getByText('Diary', { exact: true })
@@ -1339,11 +1335,11 @@ test.describe('Homepage', () => {
     await expect(diaryTabBtn.first()).toBeVisible({ timeout: 10000 });
     await diaryTabBtn.first().click();
 
-    // Verify Good Habit row appears in Diary feed
+    // Verify row appears in Diary feed
     const habitDiaryRow = page.getByTestId('diary-row-good-habit').or(
-      page.getByRole('heading', { name: 'Good Habit' })
+      page.getByRole('heading', { name: /Task by Coach|Good Habit/i })
     ).or(
-      page.getByText('Good Habit', { exact: true })
+      page.getByText(/Task by Coach|Good Habit/i)
     );
     await expect(habitDiaryRow.first()).toBeVisible({ timeout: 15000 });
   });

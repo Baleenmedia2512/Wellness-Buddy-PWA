@@ -26,15 +26,6 @@ export const REPORTS_TREND_METRICS = Object.freeze([
     noun: 'Fat % Trend',
   }),
   Object.freeze({
-    key: 'visceralFat',
-    label: 'V-Fat',
-    hint: 'Visceral fat',
-    unit: '',
-    field: 'visceralFat',
-    decimals: 1,
-    noun: 'V-Fat Trend',
-  }),
-  Object.freeze({
     key: 'bmr',
     label: 'BMR (kcal)',
     hint: null,
@@ -45,12 +36,12 @@ export const REPORTS_TREND_METRICS = Object.freeze([
   }),
   Object.freeze({
     key: 'bmi',
-    label: 'BMI',
+    label: 'Indian BMI',
     hint: null,
     unit: '',
     field: 'Bmi',
     decimals: 1,
-    noun: 'BMI Trend',
+    noun: 'Indian BMI Trend',
   }),
   Object.freeze({
     key: 'bodyAge',
@@ -115,12 +106,50 @@ export function formatTrendMetricValue(value, metricKey) {
   return `${number} ${metric.unit}`;
 }
 
-export function firstToCurrentMetricLabel(firstValue, latestValue, metricKey) {
-  const metric = getReportsTrendMetric(metricKey);
-  if (!Number.isFinite(firstValue) || !Number.isFinite(latestValue)) {
-    return `First ${metric.label} → Current ${metric.label}`;
+/**
+ * Compact date for the Trend summary line (`12 Nov`).
+ * @param {Date|string|null|undefined} date
+ * @returns {string}
+ */
+export function formatTrendSummaryDate(date) {
+  if (!date) return '';
+  if (typeof date === 'string' && date.trim() && Number.isNaN(Date.parse(date))) {
+    return date.trim();
   }
-  return `First ${formatTrendMetricValue(firstValue, metricKey)} → Current ${formatTrendMetricValue(latestValue, metricKey)}`;
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+/**
+ * Range endpoints for the Trend summary: `{date} {value} → {date} {value}`.
+ * Dates come from the selected period's first/last recorded points (5D/10D/…).
+ *
+ * @param {number|null|undefined} firstValue
+ * @param {number|null|undefined} latestValue
+ * @param {string} metricKey
+ * @param {{ firstDate?: Date|string|null, latestDate?: Date|string|null }} [dates]
+ * @returns {string}
+ */
+export function firstToCurrentMetricLabel(firstValue, latestValue, metricKey, dates = {}) {
+  const metric = getReportsTrendMetric(metricKey);
+  const firstDateLabel = formatTrendSummaryDate(dates.firstDate);
+  const latestDateLabel = formatTrendSummaryDate(dates.latestDate);
+
+  if (!Number.isFinite(firstValue) || !Number.isFinite(latestValue)) {
+    if (firstDateLabel && latestDateLabel) {
+      return `${firstDateLabel} → ${latestDateLabel}`;
+    }
+    return `${firstDateLabel || 'First'} ${metric.label} → ${latestDateLabel || 'Current'} ${metric.label}`;
+  }
+
+  const firstPart = firstDateLabel
+    ? `${firstDateLabel} ${formatTrendMetricValue(firstValue, metricKey)}`
+    : `First ${formatTrendMetricValue(firstValue, metricKey)}`;
+  const latestPart = latestDateLabel
+    ? `${latestDateLabel} ${formatTrendMetricValue(latestValue, metricKey)}`
+    : `Current ${formatTrendMetricValue(latestValue, metricKey)}`;
+  return `${firstPart} → ${latestPart}`;
 }
 
 export function bodyParamsCardToTrendEntry(card) {
@@ -134,7 +163,6 @@ export function bodyParamsCardToTrendEntry(card) {
     BodyFat: card.fatPercent ?? null,
     Bmi: card.bmi ?? null,
     Bmr: card.bmr ?? null,
-    visceralFat: card.visceralFat ?? null,
     bodyAge: card.bodyAge ?? null,
     chestCm: card.chestCm ?? null,
     waistCm: card.waistCm ?? null,

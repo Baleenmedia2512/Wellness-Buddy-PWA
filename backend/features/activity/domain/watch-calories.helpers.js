@@ -5,7 +5,20 @@
  * kcal value (not sum, not latest). Lower uploads are ignored for totals.
  */
 
-import { timestampToCalendarYmd } from '../../../shared/lib/datetime/index.js';
+import { resolveFoodTimestamp } from '../../../shared/lib/datetime/foodTimestamp.js';
+
+/**
+ * Calendar day for a watch row. Same reading as the Diary: a driver-added
+ * `Z` on an evening wall-clock (for example 22:44) stays that evening in IST
+ * and does not move the kcal onto the next morning.
+ *
+ * @param {string|Date|null|undefined} createdAt
+ * @param {string} timezoneIana
+ * @returns {string} YYYY-MM-DD
+ */
+function watchCalendarYmd(createdAt, timezoneIana) {
+  return resolveFoodTimestamp(createdAt, timezoneIana).calendarYmd;
+}
 
 const KCAL_TOPIC_RE = /(\d+(?:\.\d+)?)\s*kcal/i;
 
@@ -44,7 +57,7 @@ export function maxWatchCaloriesFromRows(rows) {
 export function filterWatchCalorieRowsForDate(rows, targetDate, timezoneIana) {
   return (rows || []).filter((row) => {
     try {
-      return timestampToCalendarYmd(row.CreatedAt, timezoneIana) === targetDate;
+      return watchCalendarYmd(row.CreatedAt, timezoneIana) === targetDate;
     } catch {
       return false;
     }
@@ -60,7 +73,7 @@ export function groupWatchCaloriesByDate(rows, startDate, endDate, timezoneIana)
   for (const row of rows || []) {
     let ymd;
     try {
-      ymd = timestampToCalendarYmd(row.CreatedAt, timezoneIana);
+      ymd = watchCalendarYmd(row.CreatedAt, timezoneIana);
     } catch {
       continue;
     }

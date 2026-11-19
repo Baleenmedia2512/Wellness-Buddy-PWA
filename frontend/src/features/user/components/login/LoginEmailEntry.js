@@ -58,6 +58,12 @@ const LoginEmailEntry = ({
     restorePhoneKeyboard();
   };
 
+  const handleCountryChange = (nextDial) => {
+    setCountryDial?.(nextDial);
+    // Country <select> steals focus and closes the pad — put it back.
+    restorePhoneKeyboard();
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!termsAccepted) return;
@@ -105,7 +111,8 @@ const LoginEmailEntry = ({
             <select
               aria-label="Country code"
               value={countryDial}
-              onChange={(e) => setCountryDial && setCountryDial(e.target.value)}
+              onChange={(e) => handleCountryChange(e.target.value)}
+              onBlur={restorePhoneKeyboard}
               className="bg-transparent px-2 py-3 text-sm text-gray-700 focus:outline-none cursor-pointer"
               style={{ minWidth: ios ? '72px' : '90px' }}
             >
@@ -124,15 +131,48 @@ const LoginEmailEntry = ({
             pattern="[0-9]*"
             autoComplete="off"
             autoFocus
-            name="tel"
+            // Progressive phone typing on web — do not select-all on focus/click.
+            data-no-select-all="true"
+            // Avoid browser "tel" autofill selecting/replacing digits mid-type.
+            name="wv-login-phone"
+            enterKeyHint="done"
             value={email}
+            onFocus={(e) => {
+              // Mobile web often selects the whole tel value on focus; keep caret at end.
+              const el = e.currentTarget;
+              const len = String(el.value || '').length;
+              requestAnimationFrame(() => {
+                try {
+                  if (typeof el.setSelectionRange === 'function') {
+                    el.setSelectionRange(len, len);
+                  }
+                } catch {
+                  /* some WebViews reject selection APIs */
+                }
+              });
+            }}
             onChange={(e) => {
               // Strip any non-numeric characters (except leading +) so only
               // digits reach the normalizer. This matches the E.164 expectation
               // in contactIdentifier.normalizePhone.
-              const raw = e.target.value;
+              const el = e.target;
+              const caret = el.selectionStart;
+              const raw = el.value;
               const cleaned = raw.replace(/[^\d+]/g, '');
               setEmail(cleaned);
+              if (cleaned !== raw) {
+                const pos = Math.min(
+                  typeof caret === 'number' ? caret : cleaned.length,
+                  cleaned.length,
+                );
+                requestAnimationFrame(() => {
+                  try {
+                    el.setSelectionRange(pos, pos);
+                  } catch {
+                    /* ignore */
+                  }
+                });
+              }
             }}
             onPaste={(e) => {
               e.preventDefault();
@@ -182,6 +222,9 @@ const LoginEmailEntry = ({
           <button
             type="button"
             className="inline compact-touch p-0 align-baseline font-medium text-[#2563eb] underline underline-offset-2"
+            onMouseDown={keepPhoneKeyboard}
+            onPointerDown={keepPhoneKeyboard}
+            onTouchStart={keepPhoneKeyboard}
             onClick={(e) => openDoc(e, onOpenTerms)}
           >
             Terms of Service
@@ -190,6 +233,9 @@ const LoginEmailEntry = ({
           <button
             type="button"
             className="inline compact-touch p-0 align-baseline font-medium text-[#2563eb] underline underline-offset-2"
+            onMouseDown={keepPhoneKeyboard}
+            onPointerDown={keepPhoneKeyboard}
+            onTouchStart={keepPhoneKeyboard}
             onClick={(e) => openDoc(e, onOpenPrivacy)}
           >
             Privacy Policy

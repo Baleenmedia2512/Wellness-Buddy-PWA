@@ -1,18 +1,19 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
 import { mapTeamRecoveredHealthIssues } from '../recoveredHealthIssues.rules.js';
 
 describe('mapTeamRecoveredHealthIssues', () => {
-  test('maps string array and trims', () => {
-    expect(mapTeamRecoveredHealthIssues([' Diabetes ', '', 1, 'BP'])).toEqual(['Diabetes', 'BP']);
+  it('maps string array and trims', () => {
+    assert.deepStrictEqual(mapTeamRecoveredHealthIssues([' Diabetes ', '', 1, 'BP']), ['Diabetes', 'BP']);
   });
 
-  test('parses JSON string arrays', () => {
-    expect(mapTeamRecoveredHealthIssues('["Thyroid","PCOS"]')).toEqual(['Thyroid', 'PCOS']);
+  it('parses JSON string arrays', () => {
+    assert.deepStrictEqual(mapTeamRecoveredHealthIssues('["Thyroid","PCOS"]'), ['Thyroid', 'PCOS']);
   });
 
-  test('returns empty for null / invalid', () => {
-    expect(mapTeamRecoveredHealthIssues(null)).toEqual([]);
-    expect(mapTeamRecoveredHealthIssues(undefined)).toEqual([]);
-    expect(mapTeamRecoveredHealthIssues('not-json')).toEqual([]);
-    expect(mapTeamRecoveredHealthIssues({})).toEqual([]);
+  it('returns empty for null / invalid', () => {
+    assert.deepStrictEqual(mapTeamRecoveredHealthIssues(null), []);
+    assert.deepStrictEqual(mapTeamRecoveredHealthIssues(undefined), []);
+    assert.deepStrictEqual(mapTeamRecoveredHealthIssues('not-json'), []);
   });
 });

@@ -60,6 +60,27 @@ html {
   --safe-area-inset-bottom: env(safe-area-inset-bottom);
   --safe-area-inset-left: env(safe-area-inset-left);
   --safe-area-inset-right: env(safe-area-inset-right);
+  --wv-hero: linear-gradient(135deg, #064e3b 0%, #065f46 45%, #047857 100%);
+  --wv-ring-start: #4ade80;
+  --wv-ring-end: #059669;
+  --wv-ink: #065f46;
+  --wv-page: #e8f5e9;
+  --wv-page-bar: #a8dbb5;
+  --wv-page-line: #93c9a1;
+  --wv-page-wash: linear-gradient(180deg, #ecfdf5 0%, #f0fdf4 100%);
+  --wv-pill-border: #e5e7eb;
+}
+
+html.premium-theme {
+  --wv-hero: linear-gradient(135deg, #0284c7 0%, #0ea5e9 48%, #7dd3fc 100%);
+  --wv-ring-start: #7dd3fc;
+  --wv-ring-end: #0284c7;
+  --wv-ink: #0369a1;
+  --wv-page: #E3F2FD;
+  --wv-page-bar: #E3F2FD;
+  --wv-page-line: #90CAF9;
+  --wv-page-wash: #E3F2FD;
+  --wv-pill-border: #38bdf8;
 }
 
 .app-safe {
@@ -613,4 +634,158 @@ header img {
       0 6px 16px rgba(6, 95, 70, 0.28);
   }
 }
+
+/* Paid members: green and teal options become a light blue gradient. */
+html.premium-theme .bg-green-500,
+html.premium-theme .bg-green-600,
+html.premium-theme .bg-green-700,
+html.premium-theme .bg-emerald-500,
+html.premium-theme .bg-emerald-600,
+html.premium-theme .bg-emerald-700,
+html.premium-theme .bg-teal-600,
+html.premium-theme .bg-teal-700,
+html.premium-theme .bg-teal-800,
+html.premium-theme .hover\:bg-green-500:hover,
+html.premium-theme .hover\:bg-green-600:hover,
+html.premium-theme .hover\:bg-green-700:hover,
+html.premium-theme .hover\:bg-emerald-600:hover,
+html.premium-theme .hover\:bg-emerald-700:hover,
+html.premium-theme .hover\:bg-teal-700:hover,
+html.premium-theme .hover\:bg-teal-800:hover {
+  background-color: #0284c7;
+  background-image: linear-gradient(90deg, #7dd3fc 0%, #38bdf8 42%, #0284c7 100%);
+}
+
+html.premium-theme .bg-green-50,
+html.premium-theme .hover\:bg-green-50:hover,
+html.premium-theme .bg-emerald-50,
+html.premium-theme .bg-teal-50,
+html.premium-theme .bg-green-100,
+html.premium-theme .hover\:bg-green-100:hover,
+html.premium-theme .bg-emerald-100,
+html.premium-theme .bg-teal-100 { background-color: #E3F2FD; }
+html.premium-theme .bg-green-200,
+html.premium-theme .bg-emerald-200,
+html.premium-theme .bg-teal-200 { background-color: #bae6fd; }
+
+html.premium-theme .text-green-500,
+html.premium-theme .text-emerald-500,
+html.premium-theme .text-teal-500 { color: #0ea5e9; }
+html.premium-theme .text-green-600,
+html.premium-theme .text-emerald-600,
+html.premium-theme .text-teal-600,
+html.premium-theme .hover\:text-green-600:hover,
+html.premium-theme .hover\:text-green-700:hover { color: #0284c7; }
+html.premium-theme .text-green-700,
+html.premium-theme .text-green-800,
+html.premium-theme .text-green-900,
+html.premium-theme .text-emerald-700,
+html.premium-theme .text-emerald-800,
+html.premium-theme .text-emerald-900,
+html.premium-theme .text-teal-700,
+html.premium-theme .text-teal-800,
+html.premium-theme .text-teal-900 { color: #0369a1; }
+html.premium-theme .text-green-100,
+html.premium-theme .text-emerald-100,
+html.premium-theme .text-teal-100 { color: #e0f2fe; }
+
+html.premium-theme .border-green-100,
+html.premium-theme .border-emerald-100,
+html.premium-theme .border-teal-100 { border-color: #e0f2fe; }
+html.premium-theme .border-green-200,
+html.premium-theme .border-emerald-200,
+html.premium-theme .border-teal-200 { border-color: #bae6fd; }
+html.premium-theme .border-green-300,
+html.premium-theme .border-emerald-300,
+html.premium-theme .border-teal-300,
+html.premium-theme .hover\:border-green-300:hover { border-color: #7dd3fc; }
+html.premium-theme .border-green-400,
+html.premium-theme .border-green-500,
+html.premium-theme .border-emerald-500,
+html.premium-theme .border-teal-500,
+html.premium-theme .focus\:border-green-500:focus { border-color: #0ea5e9; }
+html.premium-theme .border-green-600,
+html.premium-theme .border-green-700,
+html.premium-theme .border-teal-700 { border-color: #0284c7; }
+
+html.premium-theme .ring-green-100,
+html.premium-theme .ring-green-200,
+html.premium-theme .ring-teal-200 { --tw-ring-color: #bae6fd; }
+html.premium-theme .ring-green-300,
+html.premium-theme .ring-green-500,
+html.premium-theme .focus\:ring-green-500:focus { --tw-ring-color: #38bdf8; }
+
+html.premium-theme .from-green-400,
+html.premium-theme .from-green-500,
+html.premium-theme .from-green-600,
+html.premium-theme .from-green-700,
+html.premium-theme .from-emerald-400,
+html.premium-theme .from-emerald-500,
+html.premium-theme .from-emerald-600,
+html.premium-theme .from-emerald-700,
+html.premium-theme .from-teal-500,
+html.premium-theme .from-teal-600,
+html.premium-theme .from-teal-700 {
+  --tw-gradient-from: #7dd3fc var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(125 211 252 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+html.premium-theme .to-green-400,
+html.premium-theme .to-green-600,
+html.premium-theme .to-green-700,
+html.premium-theme .to-emerald-500,
+html.premium-theme .to-emerald-600,
+html.premium-theme .to-emerald-700,
+html.premium-theme .to-teal-600,
+html.premium-theme .to-teal-700 {
+  --tw-gradient-to: #0284c7 var(--tw-gradient-to-position);
+}
+html.premium-theme .from-green-50,
+html.premium-theme .from-emerald-50,
+html.premium-theme .from-teal-50,
+html.premium-theme .from-green-100,
+html.premium-theme .from-emerald-100,
+html.premium-theme .from-teal-100 {
+  --tw-gradient-from: #E3F2FD var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(227 242 253 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+html.premium-theme .to-green-50,
+html.premium-theme .to-green-100,
+html.premium-theme .to-emerald-50,
+html.premium-theme .to-emerald-100,
+html.premium-theme .to-teal-50,
+html.premium-theme .to-teal-100 {
+  --tw-gradient-to: #E3F2FD var(--tw-gradient-to-position);
+}
+html.premium-theme .via-green-500,
+html.premium-theme .via-emerald-500 {
+  --tw-gradient-to: rgb(56 189 248 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), #38bdf8 var(--tw-gradient-via-position), var(--tw-gradient-to);
+}
+
+html.premium-theme .bg-emerald-50\/50,
+html.premium-theme .bg-emerald-50\/60,
+html.premium-theme .bg-emerald-50\/80,
+html.premium-theme .hover\:bg-emerald-50:hover,
+html.premium-theme .bg-emerald-100\/70 { background-color: #E3F2FD; }
+html.premium-theme .bg-emerald-300,
+html.premium-theme .bg-emerald-400 { background-color: #38bdf8; }
+html.premium-theme .text-emerald-300 { color: #7dd3fc; }
+html.premium-theme .text-emerald-400 { color: #0ea5e9; }
+html.premium-theme .border-emerald-100\/90,
+html.premium-theme .border-emerald-200\/70,
+html.premium-theme .border-emerald-200\/80,
+html.premium-theme .border-emerald-200\/90,
+html.premium-theme .hover\:border-emerald-200:hover,
+html.premium-theme .hover\:border-emerald-300:hover { border-color: #7dd3fc; }
+html.premium-theme .ring-emerald-100,
+html.premium-theme .ring-emerald-100\/80,
+html.premium-theme .ring-emerald-200,
+html.premium-theme .hover\:ring-emerald-200:hover { --tw-ring-color: #bae6fd; }
+html.premium-theme .to-emerald-50\/70 { --tw-gradient-to: #E3F2FD var(--tw-gradient-to-position); }
+html.premium-theme .bg-emerald-600\/10 { background-color: rgb(14 165 233 / 0.12); }
+html.premium-theme .group:hover .group-hover\:bg-emerald-600\/15 { background-color: rgb(14 165 233 / 0.18); }
+html.premium-theme .bg-\[\#e8f5e9\] { background-color: #E3F2FD !important; }
+
 

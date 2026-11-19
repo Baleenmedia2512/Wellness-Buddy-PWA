@@ -31,6 +31,8 @@ PODS:
     - Capacitor
   - CapacitorStatusBar (8.0.3):
     - Capacitor
+  - CapawesomeCapacitorAndroidSmsRetriever (0.1.2):
+    - Capacitor
   - CapgoCapacitorNavigationBar (8.2.6):
     - Capacitor
   - GoogleSignIn (6.2.4):
@@ -61,6 +63,7 @@ DEPENDENCIES:
   - "CapacitorShare (from `../../node_modules/@capacitor/share`)"
   - "CapacitorSplashScreen (from `../../node_modules/@capacitor/splash-screen`)"
   - "CapacitorStatusBar (from `../../node_modules/@capacitor/status-bar`)"
+  - "CapawesomeCapacitorAndroidSmsRetriever (from `../../node_modules/@capawesome/capacitor-android-sms-retriever`)"
   - "CapgoCapacitorNavigationBar (from `../../node_modules/@capgo/capacitor-navigation-bar`)"
   - "SouthdevsCapacitorGoogleAuth (from `../../node_modules/@southdevs/capacitor-google-auth`)"
 
@@ -99,6 +102,8 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/@capacitor/splash-screen"
   CapacitorStatusBar:
     :path: "../../node_modules/@capacitor/status-bar"
+  CapawesomeCapacitorAndroidSmsRetriever:
+    :path: "../../node_modules/@capawesome/capacitor-android-sms-retriever"
   CapgoCapacitorNavigationBar:
     :path: "../../node_modules/@capgo/capacitor-navigation-bar"
   SouthdevsCapacitorGoogleAuth:
@@ -118,6 +123,7 @@ SPEC CHECKSUMS:
   CapacitorShare: 0c58305114538568059bfc07111f22dcb9cb2a82
   CapacitorSplashScreen: 4b46c72298db552b3c57ce021ef028b6dc7f1fa7
   CapacitorStatusBar: eca7bc2b58d9f886f1ef9edb66e57a9b29c121af
+  CapawesomeCapacitorAndroidSmsRetriever: bdf1fbee742fe8dcada86ff2d89ae6f149db7aac
   CapgoCapacitorNavigationBar: b2a0e0b37cfa4a080af05db377d021d9c9e45d4a
   GoogleSignIn: 5651ce3a61e56ca864160e79b484cd9ed3f49b7a
   GTMAppAuth: 0ff230db599948a9ad7470ca667337803b3fc4dd
@@ -127,6 +133,6 @@ SPEC CHECKSUMS:
   IONGeolocationLib: 6a7b6f76063fb1b01cfb14fae7d0f526e3c9b271
   SouthdevsCapacitorGoogleAuth: 6488c21faed47c2cf72404bfbfc0fe0e9af766bc
 
-PODFILE CHECKSUM: 32a723e31e61802c35554c6a87d8cb3cc48ca703
+PODFILE CHECKSUM: 27811153f4db77a87aaba8dda9ec173d580dbaef
 
 COCOAPODS: 1.16.2

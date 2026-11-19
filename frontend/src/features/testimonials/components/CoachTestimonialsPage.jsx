@@ -19,6 +19,9 @@ import {
 } from 'lucide-react';
 import CustomAlertModal from '../../../shared/components/CustomAlertModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import ProfilePhotoThumbnail from '../../../shared/components/ProfilePhotoThumbnail.jsx';
+import FullscreenProfilePhotoViewer from '../../../shared/components/FullscreenProfilePhotoViewer.jsx';
+import { TeamMemberProfileModal } from '../../../shared/components/TeamMemberProfileModal';
 import NativeInput from '../../../shared/components/NativeInput.jsx';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import {
@@ -92,6 +95,8 @@ import {
   subscribeAvatarDisplayVersion,
 } from '../../user/services/avatarDisplayVersion.js';
 import { seedMineTestimonialFromProfileSlots } from '../../user/domain/transformationBeforeAfter';
+import WebsiteDisplayConsentCard from './WebsiteDisplayConsentCard.jsx';
+import { isFlagEnabled } from '../../../config/featureFlags.js';
 
 // â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -256,16 +261,25 @@ function CompletenessBadge({ level, filledCount, totalSlots }) {
 
 // â”€â”€ Team compliance â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function TeamComplianceInline({ userName, teamStats, onComplianceClick }) {
+function TeamComplianceInline({ userName, teamStats, onComplianceClick, onProfileClick }) {
+  const memberName = onProfileClick ? (
+      <button
+        type="button"
+        onClick={onProfileClick}
+        className="font-semibold text-gray-900 truncate text-left hover:underline"
+      >
+        {userName}
+      </button>
+    ) : <span className="font-semibold text-gray-900 truncate">{userName}</span>;
   if (!teamStats?.totalMembers) {
-    return <p className="font-semibold text-gray-900 text-sm truncate">{userName}</p>;
+    return <p className="text-sm">{memberName}</p>;
   }
   const scoreNum   = Number(teamStats.uploadPercentage ?? 0);
   const colorClass = teamComplianceColorClass(scoreNum);
   const uploaded   = teamStats.uploaded ?? teamStats.uploadedMembers?.length ?? 0;
   return (
     <p className="text-sm font-medium flex items-baseline gap-2 min-w-0 flex-wrap">
-      <span className="font-semibold text-gray-900 truncate">{userName}</span>
+      {memberName}
       <button
         type="button"
         onClick={onComplianceClick}
@@ -277,7 +291,7 @@ function TeamComplianceInline({ userName, teamStats, onComplianceClick }) {
   );
 }
 
-function TeamComplianceModal({ userName, teamStats, onClose }) {
+function TeamComplianceModal({ userName, teamStats, onClose, onMemberProfile }) {
   const scoreColor  = teamComplianceColorClass(Number(teamStats.uploadPercentage ?? 0));
   const uploaded    = teamStats.uploaded    ?? teamStats.uploadedMembers?.length ?? 0;
   const total       = teamStats.totalMembers ?? 0;
@@ -317,7 +331,17 @@ function TeamComplianceModal({ userName, teamStats, onClose }) {
             <p className="text-xs font-bold text-green-800 mb-2">Uploaded ({uploaded})</p>
             <ul className="space-y-0.5">
               {teamStats.uploadedMembers.map((m) => (
-                <li key={m.userId} className="text-xs text-green-700 font-medium truncate">{m.userName}</li>
+                <li key={m.userId} className="text-xs text-green-700 font-medium truncate">
+                  {m.userId != null ? (
+                    <button
+                      type="button"
+                      onClick={() => onMemberProfile(m.userId)}
+                      className="text-left hover:underline"
+                    >
+                      {m.userName}
+                    </button>
+                  ) : m.userName}
+                </li>
               ))}
             </ul>
           </div>
@@ -327,7 +351,17 @@ function TeamComplianceModal({ userName, teamStats, onClose }) {
             <p className="text-xs font-bold text-red-800 mb-2">Not Uploaded ({notUploaded})</p>
             <ul className="space-y-0.5">
               {teamStats.notUploadedMembers.map((m) => (
-                <li key={m.userId} className="text-xs text-red-700 font-medium truncate">{m.userName}</li>
+                <li key={m.userId} className="text-xs text-red-700 font-medium truncate">
+                  {m.userId != null ? (
+                    <button
+                      type="button"
+                      onClick={() => onMemberProfile(m.userId)}
+                      className="text-left hover:underline"
+                    >
+                      {m.userName}
+                    </button>
+                  ) : m.userName}
+                </li>
               ))}
             </ul>
           </div>
@@ -338,47 +372,65 @@ function TeamComplianceModal({ userName, teamStats, onClose }) {
   );
 }
 
-function TeamComplianceSection({ userName, teamStats }) {
+function TeamComplianceSection({ userName, teamStats, onProfileClick }) {
   const [open, setOpen] = useState(false);
+  const [profileUserId, setProfileUserId] = useState(null);
   return (
     <>
-      <TeamComplianceInline userName={userName} teamStats={teamStats} onComplianceClick={() => setOpen(true)} />
-      {open && teamStats?.totalMembers && (
-        <TeamComplianceModal userName={userName} teamStats={teamStats} onClose={() => setOpen(false)} />
+      <TeamComplianceInline
+        userName={userName}
+        teamStats={teamStats}
+        onComplianceClick={() => setOpen(true)}
+        onProfileClick={onProfileClick}
+      />
+      {open && !profileUserId && teamStats?.totalMembers && (
+        <TeamComplianceModal
+          userName={userName}
+          teamStats={teamStats}
+          onClose={() => setOpen(false)}
+          onMemberProfile={(userId) => {
+            setOpen(false);
+            setProfileUserId(userId);
+          }}
+        />
       )}
+      <TeamMemberProfileModal
+        isOpen={Boolean(profileUserId)}
+        onClose={() => setProfileUserId(null)}
+        memberUserId={profileUserId}
+        apiBaseUrl={getApiBaseUrl()}
+      />
     </>
   );
 }
 
 /** Avatar via dedicated endpoint — keeps list-for-coach JSON tiny. */
-function MemberAvatar({ user }) {
-  const [failed, setFailed] = useState(false);
+function MemberAvatar({ user, onViewProfile }) {
   const [avatarVersion, setAvatarVersion] = useState(getAvatarDisplayVersion);
   useEffect(() => subscribeAvatarDisplayVersion(setAvatarVersion), []);
-  useEffect(() => { setFailed(false); }, [avatarVersion, user?.userId, user?.profileImage]);
 
   const userId = user?.userId;
   const inline = user?.profileImage;
   let remote = null;
   try {
-    if (userId != null && !failed && !inline) {
+    if (userId != null && !inline) {
       remote = buildUserAvatarUrl(getApiBaseUrl(), userId, avatarVersion, { profileOnly: true });
     }
   } catch {
     remote = null;
   }
-  const src = !failed ? (inline || remote) : null;
+  const src = inline || remote;
 
   if (src) {
     return (
-      <img
+      <ProfilePhotoThumbnail
         src={src}
         alt={user?.userName || 'User'}
-        className="h-11 w-11 rounded-full object-cover border-2 border-white shadow flex-shrink-0"
-        loading="lazy"
-        decoding="async"
-        referrerPolicy="no-referrer"
-        onError={() => setFailed(true)}
+        onViewProfile={onViewProfile}
+        className="h-11 w-11 rounded-full flex-shrink-0"
+        imageClassName="h-11 w-11 rounded-full object-cover border-2 border-white shadow"
+        fallbackClassName="h-11 w-11 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white font-bold text-base shadow flex-shrink-0"
+        fallback={(user?.userName || '?').charAt(0).toUpperCase()}
       />
     );
   }
@@ -391,34 +443,6 @@ function MemberAvatar({ user }) {
 }
 
 // â”€â”€ Photo viewer modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-function PhotoModal({ url, label, onClose }) {
-  useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
-
-  return (
-    <div
-      className="fixed inset-0 z-[80] bg-black/90 flex flex-col items-center justify-center"
-      onClick={onClose}
-    >
-      <div className="relative" onClick={(e) => e.stopPropagation()}>
-        <img src={url} alt={label} className="max-h-[85vh] max-w-[95vw] object-contain rounded-xl" />
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-2 right-2 p-1.5 rounded-full bg-black/50 text-white hover:bg-black/70"
-          aria-label="Close"
-        >
-          <X className="h-4 w-4" />
-        </button>
-        <p className="text-center text-white text-xs font-semibold mt-2 px-2">{label}</p>
-      </div>
-    </div>
-  );
-}
 
 // â”€â”€ Upload completeness filter chip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -779,6 +803,7 @@ function MemberCard({
   }, [testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
   const [expandedPhoto, setExpandedPhoto] = useState(null);
+  const [profileOpen, setProfileOpen] = useState(false);
   // After is shown only when it is a different file from Before.
   const hasAfterImage = hasDistinctTransformationAfter(testimonial);
   const hasAfter = hasAfterImage
@@ -954,8 +979,8 @@ function MemberCard({
   const mediaVersion = `${testimonial?.updatedAt ?? testimonial?.id ?? ''}-${mediaEpoch}`;
   const beforeRaw = draftBefore?.previewUrl
     || withTestimonialMediaCacheBust(testimonial?.beforeImageUrl, mediaVersion);
-  // No separate After file yet: show the Before photo in that column.
-  // This is display only. It is not saved as After and does not start coach approval.
+  // New users: Profile Left fills Before, and After shows the same Left until
+  // they upload a real After (product: Left in both frames by default).
   const afterRaw = draftAfter?.previewUrl
     || (hasAfterImage
       ? withTestimonialMediaCacheBust(testimonial?.afterImageUrl, mediaVersion)
@@ -1274,6 +1299,19 @@ function MemberCard({
         : {}),
       ...(!draftBefore && usableDurationForSubmit ? { durationText: usableDurationForSubmit } : {}),
     };
+    const visibleBeforeUrl = draftBefore?.previewUrl && /^https?:\/\//i.test(draftBefore.previewUrl)
+      ? draftBefore.previewUrl
+      : testimonial?.beforeImageUrl;
+    // Default Left-in-both: After display may reuse Before until a real After upload.
+    const visibleAfterUrl = draftAfter?.previewUrl && /^https?:\/\//i.test(draftAfter.previewUrl)
+      ? draftAfter.previewUrl
+      : (hasAfterImage ? testimonial?.afterImageUrl : visibleBeforeUrl);
+    if (!draftBefore?.imageBase64 && typeof visibleBeforeUrl === 'string') {
+      payload.displayedBeforeUrl = visibleBeforeUrl;
+    }
+    if (!draftAfter?.imageBase64 && typeof visibleAfterUrl === 'string') {
+      payload.displayedAfterUrl = visibleAfterUrl;
+    }
     if (
       payload.beforeWeightKg === undefined
       && (payload.afterWeightKg !== undefined || payload.durationText)
@@ -1353,12 +1391,15 @@ function MemberCard({
             : patched;
           clearDrafts();
           void reloadMine(cleared);
+          setSubmitError(
+            'Add a different After photo (change the right photo), then tap Submit for Approval again.',
+          );
           return;
         }
         const hasDuration = Boolean(usableDurationForSubmit);
         setSubmitError(
           hasDuration
-            ? 'Coach approval did not start. Please tap Submit again — if it still fails, add the Before/After photos once more.'
+            ? 'Coach approval did not start. Change the After photo (right side), then tap Submit again.'
             : 'Coach approval did not start. Add a duration in days or months, then submit again.',
         );
         return;
@@ -1586,9 +1627,16 @@ function MemberCard({
       {coverCrop.overlay}
       {/* Header strip — Direct/Full photo share top-right (Mine uses Transformation card row) */}
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-        <MemberAvatar user={user} />
+        <MemberAvatar
+          user={user}
+          onViewProfile={user?.userId != null ? () => setProfileOpen(true) : undefined}
+        />
         <div className="flex-1 min-w-0">
-          <TeamComplianceSection userName={user.userName} teamStats={teamStats} />
+          <TeamComplianceSection
+            userName={user.userName}
+            teamStats={teamStats}
+            onProfileClick={user?.userId != null ? () => setProfileOpen(true) : undefined}
+          />
           <div className="mt-0.5">
             <CompletenessBadge level={level} filledCount={filledCount} totalSlots={totalSlots} />
           </div>
@@ -2209,6 +2257,21 @@ function MemberCard({
             </p>
           )}
 
+          {/* Upline website consent — directly under Result Video / Videos verified */}
+          {editable
+            && isFlagEnabled('ff.testimonial-upline-display-consent')
+            && testimonial
+            && (testimonial.status === 'verified' || testimonial.videoStatus === 'verified') ? (
+            <WebsiteDisplayConsentCard
+              userId={userId}
+              testimonial={testimonial}
+              onChanged={() => {
+                if (typeof onMineRefresh === 'function') void onMineRefresh();
+                else if (typeof onOtpVerified === 'function') onOtpVerified();
+              }}
+            />
+          ) : null}
+
           {editable && !showUnifiedOtp && !unifiedOtpDismissed && testimonial?.videoStatus === 'pending' && testimonial?.id && (
             <div className="bg-white rounded-2xl border border-amber-200 shadow-sm px-4 py-4 space-y-1 mt-1">
               <p className="text-xs font-bold text-amber-700 uppercase tracking-wide flex items-center gap-1.5">
@@ -2357,8 +2420,25 @@ function MemberCard({
       )}
 
       {expandedPhoto && (
-        <PhotoModal url={expandedPhoto.url} label={expandedPhoto.label} onClose={() => setExpandedPhoto(null)} />
+        <FullscreenProfilePhotoViewer
+          isOpen
+          src={expandedPhoto.url}
+          alt={expandedPhoto.label}
+          title={expandedPhoto.label}
+          onClose={() => setExpandedPhoto(null)}
+          onViewProfile={user?.userId != null ? () => {
+            setExpandedPhoto(null);
+            setProfileOpen(true);
+          } : undefined}
+        />
       )}
+      <TeamMemberProfileModal
+        isOpen={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        memberEmail={user?.email || user?.Email}
+        memberUserId={user?.userId}
+        apiBaseUrl={getApiBaseUrl()}
+      />
       <CustomAlertModal
         isOpen={Boolean(videoSizeAlert)}
         onClose={() => setVideoSizeAlert(null)}
@@ -2462,7 +2542,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       if (Number.isFinite(latestWeightKg) && latestWeightKg > 0) {
         userPayload.latestWeightKg = latestWeightKg;
       }
-      // New users with Left/Centre/Right: Left defaults into Transformation Before (After mirrors until real After).
+      // New users with Left/Centre/Right: Left defaults into Before and After until a real After upload.
       const leftUrl = profileResult?.success
         ? profileResult?.data?.transformationPhotos?.left
         : null;
@@ -2534,23 +2614,39 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setListReloadKey((key) => key + 1);
     try {
       // First page only (limit 10) — never hydrate the full team on open.
-      const [directResult, mine] = await Promise.all([
+      // Mine must still load if team list fails (e.g. pending DB migration).
+      const [directOutcome, mineOutcome] = await Promise.allSettled([
         listForCoach(coachId, { scope: 'direct', page: 1, limit: 10 }),
         buildMineRow(),
       ]);
       if (generation !== loadGenerationRef.current) return;
 
-      const direct = Array.isArray(directResult?.data) ? directResult.data : [];
-      setDirectRows(direct);
-      setDirectPagination(directResult?.pagination || { page: 1, hasMore: false, total: direct.length });
-      setDirectUploadCounts(directResult?.uploadCounts || {
-        fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
-      });
-      setMineRow(mine);
-      const total = directResult?.pagination?.total ?? direct.length;
-      setDirectTeamMemberCount(total);
-      setHasDownline(total > 0);
-      if (total === 0) setTeamScope(TEAM_SCOPES.MINE);
+      if (mineOutcome.status === 'fulfilled') {
+        setMineRow(mineOutcome.value);
+      }
+
+      if (directOutcome.status === 'fulfilled') {
+        const directResult = directOutcome.value;
+        const direct = Array.isArray(directResult?.data) ? directResult.data : [];
+        setDirectRows(direct);
+        setDirectPagination(directResult?.pagination || { page: 1, hasMore: false, total: direct.length });
+        setDirectUploadCounts(directResult?.uploadCounts || {
+          fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
+        });
+        const total = directResult?.pagination?.total ?? direct.length;
+        setDirectTeamMemberCount(total);
+        setHasDownline(total > 0);
+        if (total === 0) setTeamScope(TEAM_SCOPES.MINE);
+      } else {
+        setDirectRows([]);
+        setDirectPagination({ page: 1, hasMore: false, total: 0 });
+        setDirectTeamMemberCount(0);
+        setHasDownline(false);
+        setTeamScope(TEAM_SCOPES.MINE);
+        if (isFirstLoad && mineOutcome.status !== 'fulfilled') {
+          setError(directOutcome.reason?.message || 'Failed to load testimonials');
+        }
+      }
     } catch (err) {
       if (generation !== loadGenerationRef.current) return;
       if (isFirstLoad) setError(err.message || 'Failed to load testimonials');
@@ -3128,6 +3224,3 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     </div>
   );
 }
-
-
-

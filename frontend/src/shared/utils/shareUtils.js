@@ -28,6 +28,83 @@ export {
 const PROFILE_USER_NAME_KEY = 'wv.profileUserName';
 
 /**
+ * Android system-chooser shares (Share.share / WhatsAppShare.shareImage) often
+ * send the photo twice when EXTRA_STREAM + EXTRA_TEXT are both set.
+ *
+ * Manual Log / classify uses shareViaCapacitorAPI → shareToWhatsApp (package-
+ * targeted), which can attach EXTRA_TEXT as the image caption safely.
+ * Chooser paths still omit text and keep a clipboard backup for paste.
+ */
+function isAndroidNative() {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+}
+
+function mimeTypeFromDataUrl(dataUrl, fallback = 'image/jpeg') {
+  if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
+    return fallback;
+  }
+  const semi = dataUrl.indexOf(';');
+  if (semi <= 5) return fallback;
+  return dataUrl.slice(5, semi) || fallback;
+}
+
+/** Sync data-URL → File so web share stays inside the user-gesture window. */
+function dataUrlToShareFile(dataUrl, fileName, fallbackType = 'image/jpeg') {
+  try {
+    const comma = dataUrl.indexOf(',');
+    if (comma < 0) return null;
+    const mime = mimeTypeFromDataUrl(dataUrl, fallbackType);
+    const b64 = dataUrl.slice(comma + 1);
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: mime });
+    return new File([blob], fileName, { type: mime });
+  } catch {
+    return null;
+  }
+}
+
+async function copyWebShareCaptionBackup(text) {
+  const caption = String(text || '').trim();
+  if (!caption || typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(caption);
+    debugLog('📋 [CapacitorShare] web caption copied for WhatsApp paste');
+  } catch (clipErr) {
+    console.warn(
+      '⚠️ [CapacitorShare] web clipboard caption failed:',
+      clipErr?.message || clipErr,
+    );
+  }
+}
+
+async function copyAndroidShareCaptionBackup(text) {
+  const caption = String(text || '').trim();
+  if (!caption || !isAndroidNative()) return;
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(caption);
+      debugLog('📋 Share caption copied to clipboard (Android backup)');
+    }
+  } catch (err) {
+    console.warn('⚠️ Could not copy share caption to clipboard:', err?.message || err);
+  }
+}
+
+/** Chooser / Share.share path: clipboard only — do not attach text to the intent. */
+async function prepareAndroidImageShareCaption(text) {
+  const caption = String(text || '').trim();
+  if (!caption || !isAndroidNative()) return undefined;
+  await copyAndroidShareCaptionBackup(caption);
+  return undefined;
+}
+
+/**
  * Brand line (Name · Wellness Valley v X.Y.Z) + activity suffix.
  * Resolves the display name from savedUserName / user / cached profile.
  */
@@ -311,6 +388,36 @@ export const shareViaCapacitorAPI = async (dataUrl, options = {}) => {
 
   // ── NATIVE (iOS / Android) ────────────────────────────────────────────
   if (Capacitor.isNativePlatform()) {
+    // Android Manual Log / classify: open WhatsApp directly with image + caption.
+    // Package-targeted send attaches EXTRA_TEXT as the photo caption without the
+    // duplicate-image bug seen on the system chooser path.
+    if (isAndroidNative()) {
+      try {
+        const { WhatsAppShare } = Capacitor.Plugins || {};
+        if (WhatsAppShare && typeof WhatsAppShare.shareToWhatsApp === "function") {
+          const caption = String(text || "").trim();
+          await copyAndroidShareCaptionBackup(caption);
+          await WhatsAppShare.shareToWhatsApp({
+            base64Data: dataUrl,
+            fileName,
+            text: caption,
+            mimeType: mimeTypeFromDataUrl(dataUrl),
+          });
+          debugLog("✅ [CapacitorShare] WhatsApp direct share with caption");
+          return { ok: true, dismissed: false };
+        }
+      } catch (waErr) {
+        if (isCanceled(waErr)) {
+          debugLog("ℹ️ [CapacitorShare] WhatsApp share cancelled");
+          return { ok: true, dismissed: true };
+        }
+        console.warn(
+          "⚠️ [CapacitorShare] WhatsApp direct share failed, falling back:",
+          waErr?.message || waErr,
+        );
+      }
+    }
+
     let writtenPath = null;
     try {
       const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
@@ -322,9 +429,14 @@ export const shareViaCapacitorAPI = async (dataUrl, options = {}) => {
       writtenPath = fileName;
       debugLog("📤 [CapacitorShare] file written:", writeResult.uri);
 
+      // Android chooser fallback: image only + clipboard (avoids duplicate photo).
+      const shareText = isAndroidNative()
+        ? await prepareAndroidImageShareCaption(text)
+        : text;
+
       await Share.share({
         title,
-        text,
+        text: shareText,
         files: [writeResult.uri],
         dialogTitle: title,
       });
@@ -351,22 +463,42 @@ export const shareViaCapacitorAPI = async (dataUrl, options = {}) => {
   }
 
   // ── WEB (navigator.share with file) ──────────────────────────────────
+  // Manual Log / classify: attach the photo (same caption style as native WA).
+  // Do not gate on canShare({ files }) — mobile Chrome often returns false
+  // even when file share works, which used to drop the image and send text only.
+  // Share the file FIRST (gesture-sensitive); clipboard caption is best-effort.
   try {
-    const blob = await (await fetch(dataUrl)).blob();
-    const file = new File([blob], fileName, { type: blob.type || "image/jpeg" });
-
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ title, text, files: [file] });
-      return { ok: true, dismissed: false };
+    if (!navigator.share) {
+      return { ok: false, error: new Error("Web Share API not available") };
     }
 
-    // Last-resort web fallback — share text/url only.
-    if (navigator.share) {
-      await navigator.share({ title, text });
+    const file = dataUrlToShareFile(dataUrl, fileName);
+    if (!file) {
+      return { ok: false, error: new Error("could not build share file") };
+    }
+    const caption = String(text || "").trim();
+
+    try {
+      await navigator.share(
+        caption
+          ? { title, text: caption, files: [file] }
+          : { title, files: [file] },
+      );
+      if (caption) void copyWebShareCaptionBackup(caption);
+      return { ok: true, dismissed: false };
+    } catch (mixErr) {
+      if (isCanceled(mixErr)) {
+        return { ok: true, dismissed: true };
+      }
+      // files+text is NotAllowed on some mobile browsers — retry image only.
+      debugLog(
+        "⚠️ [CapacitorShare] web files+text failed, retrying files only:",
+        mixErr?.name || mixErr?.message,
+      );
+      await navigator.share({ title, files: [file] });
+      if (caption) void copyWebShareCaptionBackup(caption);
       return { ok: true, dismissed: false };
     }
-
-    return { ok: false, error: new Error("Web Share API not available") };
   } catch (err) {
     if (isCanceled(err)) {
       return { ok: true, dismissed: true };
@@ -406,11 +538,36 @@ export const shareCachedDataUrl = async (dataUrl, options = {}) => {
       if (!WhatsAppShare) return false;
 
       const start = performance.now();
+      const shareText = await prepareAndroidImageShareCaption(text);
+
+      // Try package-targeted direct WhatsApp share first
+      if (typeof WhatsAppShare.shareToWhatsApp === "function") {
+        try {
+          await WhatsAppShare.shareToWhatsApp({
+            base64Data: dataUrl,
+            fileName: finalFileName,
+            text: shareText || '',
+            mimeType,
+          });
+          debugLog(`⚡ Direct WhatsApp share dispatched in ${Math.round(performance.now() - start)} ms`);
+          return true;
+        } catch (waErr) {
+          const isCanceled =
+            waErr?.message?.toLowerCase().includes("cancel") ||
+            waErr?.message?.toLowerCase().includes("cancelled");
+          if (isCanceled) {
+            debugLog("ℹ️ User cancelled WhatsApp direct share");
+            return true;
+          }
+          console.warn("⚠️ Direct WhatsApp share failed, falling back to shareImage:", waErr);
+        }
+      }
+
       await WhatsAppShare.shareImage({
         base64Data: dataUrl,
         fileName: finalFileName,
         title,
-        text,
+        text: shareText || '',
         mimeType,
       });
       debugLog(
@@ -430,11 +587,35 @@ export const shareCachedDataUrl = async (dataUrl, options = {}) => {
     }
   }
 
-  // iOS / web — convert dataURL to blob and reuse existing pipeline.
+  // Web fast path — synchronous File creation keeps user gesture active for navigator.share
+  const isNative = Capacitor.isNativePlatform();
+  if (!isNative && typeof navigator !== "undefined" && navigator.share) {
+    try {
+      const file = dataUrlToShareFile(dataUrl, finalFileName, mimeType);
+      if (file) {
+        await navigator.share({
+          title,
+          files: [file],
+        });
+        debugLog("✅ Cached Web Share API dispatched inside user gesture");
+        return true;
+      }
+    } catch (webErr) {
+      const isCanceled =
+        webErr?.name === "AbortError" ||
+        webErr?.message?.toLowerCase().includes("cancel");
+      if (isCanceled) {
+        debugLog("ℹ️ User cancelled web share");
+        return true;
+      }
+      console.warn("⚠️ Cached web share failed, falling back to blob pipeline:", webErr);
+    }
+  }
+
+  // iOS / web fallback — convert dataURL to blob and reuse existing pipeline.
   try {
     const resp = await fetch(dataUrl);
     const blob = await resp.blob();
-    const isNative = Capacitor.isNativePlatform();
     if (isNative) {
       await shareNative(blob, {
         title,
@@ -658,6 +839,31 @@ export const captureAndShare = async (element, options = {}) => {
         }
 
         const pluginStart = performance.now();
+        // Try direct WhatsApp share first if available
+        if (typeof WhatsAppShare.shareToWhatsApp === "function") {
+          try {
+            await WhatsAppShare.shareToWhatsApp({
+              base64Data: dataUrl,
+              fileName: fastFileName,
+              text: text || '',
+              mimeType: dataUrlMime,
+            });
+            debugLog(
+              `✅ Direct WhatsApp share launched in ${Math.round(performance.now() - pluginStart)} ms (fast path)`,
+            );
+            return;
+          } catch (waErr) {
+            const isCanceled =
+              waErr?.message?.toLowerCase().includes("cancel") ||
+              waErr?.message?.toLowerCase().includes("cancelled");
+            if (isCanceled) {
+              debugLog("ℹ️ User cancelled WhatsApp direct share");
+              return;
+            }
+            console.warn("⚠️ Direct WhatsApp share failed, falling back to shareImage:", waErr);
+          }
+        }
+
         const result = await WhatsAppShare.shareImage({
           base64Data: dataUrl,
           fileName: fastFileName,
@@ -786,11 +992,12 @@ const shareNative = async (
         );
 
         const pluginStart = performance.now();
+        const shareText = await prepareAndroidImageShareCaption(text);
         const result = await WhatsAppShare.shareImage({
           base64Data: base64Data,
           fileName: fileName,
           title: title,
-          text: text,
+          text: shareText || '',
           mimeType: mimeType,
         });
         debugLog(
@@ -857,11 +1064,14 @@ const shareNative = async (
           fileUri.startsWith("file://"),
         );
 
-        // When shareAsDocument is true, include text to trigger document mode in WhatsApp
-        // This prevents automatic compression and maintains full image quality
+        // Android WhatsApp duplicates the image when files + EXTRA_TEXT are both set.
+        // iOS can keep caption text with the file.
+        const shareText = isAndroidNative()
+          ? await prepareAndroidImageShareCaption(text)
+          : (shareAsDocument ? text : undefined);
         const shareOptions = {
           title: title,
-          text: shareAsDocument ? text : undefined, // Include text for document mode
+          text: shareText,
           files: [fileUri],
           dialogTitle: "Share via",
         };
@@ -996,10 +1206,20 @@ const downloadImage = async (blob, fileName) => {
 const shareWithRetryAndFallback = async (blob, options) => {
   const { title, fileName } = options;
 
+  const openWhatsAppFallback = () => {
+    try {
+      const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(
+        typeof navigator !== "undefined" ? navigator.userAgent : ""
+      );
+      window.open(isMobile ? "whatsapp://send" : "https://web.whatsapp.com", "_blank");
+    } catch {}
+  };
+
   // Check if Web Share API exists at all
   if (!navigator.share) {
-    debugLog("❌ Web Share API not supported in this browser, falling back to download");
+    debugLog("❌ Web Share API not supported in this browser, falling back to download and WhatsApp");
     await downloadImage(blob, fileName);
+    openWhatsAppFallback();
     return;
   }
 
@@ -1033,15 +1253,9 @@ const shareWithRetryAndFallback = async (blob, options) => {
     // NotAllowedError = gesture chain broken OR browser blocked.
     // With JPEG + scale:2, file is ~300-700 KB so size is NOT the issue here.
     if (error.name === "NotAllowedError") {
-      debugLog("⚠️ NotAllowedError — gesture context may have expired. Falling back to download.");
+      debugLog("⚠️ NotAllowedError — gesture context may have expired. Falling back to download and WhatsApp.");
       await downloadImage(blob, fileName);
-      alert(
-        "Image saved to your downloads! 📥\n\n" +
-        "To share on WhatsApp:\n" +
-        "1. Open WhatsApp\n" +
-        "2. Open the chat\n" +
-        "3. Tap 📎 → Gallery → select the downloaded image"
-      );
+      openWhatsAppFallback();
       return;
     }
 
@@ -1188,9 +1402,12 @@ export const shareImageWithLink = async (dataUrl, shareUrl, options = {}) => {
         data: base64String,
         directory: Directory.Cache,
       });
+      const shareText = isAndroidNative()
+        ? await prepareAndroidImageShareCaption(textWithLink)
+        : textWithLink;
       await Share.share({
         title,
-        text: textWithLink,
+        text: shareText,
         files: [writeResult.uri],
         dialogTitle: "Share Meal Analysis",
       });

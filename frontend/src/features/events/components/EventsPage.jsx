@@ -1,0 +1,1739 @@
+import React, { useEffect, useState } from 'react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  CalendarDays,
+  CheckCircle2,
+  Hash,
+  MapPin,
+  Plus,
+  Users,
+} from 'lucide-react';
+import CreateEventPage from './CreateEventPage.jsx';
+import { isFlagEnabled } from '../../../config/featureFlags';
+import { canAccessNavPage } from '../../nav-page-access/domain/navAccess.rules.js';
+import { getUserId } from '../../../shared/services/getUserId.js';
+import { fetchProfile, saveProfile } from '../../user/services/profileService.js';
+import WorkingPhysicalCentreField from '../../user/components/profile/WorkingPhysicalCentreField.js';
+import {
+  COMMUNITY_ID_PLACEHOLDER,
+  COMMUNITY_ID_MAX_LENGTH,
+  COMMUNITY_ID_MIN_LENGTH,
+  sanitizeCommunityIdInput,
+} from '../../user/domain/communityId.js';
+import { pickEventProfilePrefs, EVENT_LEVEL_OPTIONS, EVENT_TRANSLATION_OPTIONS, EVENT_YOUR_CITY_OPTIONS } from '../../user/domain/eventProfilePrefs.js';
+import { getCachedProfile } from '../../user/services/user.api.js';
+import { fetchWallet } from '../../wallet/services/walletApi.js';
+import { WalletButton } from '../../wallet/index.js';
+import {
+  createEventRegistration,
+  EVENTS_UPDATED_EVENT,
+  formatEventPlacesSummary,
+  formatEventTimeRange,
+  eventSpeakerNames,
+  getEventDatesList,
+  isEventFinished,
+  listMyEventRegistrations,
+  listOpenEvents,
+  notifyEventsUpdated,
+} from '../services/events.api.js';
+import MemberSearchPicker from './MemberSearchPicker.jsx';
+import MyBookingsPanel from './MyBookingsPanel.jsx';
+import RegistrationQrCard from './RegistrationQrCard.jsx';
+import { shareTicketQrImage, ticketShareCaption } from '../utils/shareTicketQr.js';
+import RegistrationSelect from './RegistrationSelect.jsx';
+import { cancelledBookingNotes } from '../domain/eventCancelNotice.rules.js';
+import { markEventCancellationsSeen, readSeenEventCancellationIds } from '../domain/eventCancelSeen.js';
+import { selfBookingAlreadyTaken } from '../domain/registrationBooking.rules.js';
+
+const CARD_STYLES = [
+  {
+    card: 'border-teal-300 bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-700',
+    badge: 'bg-white/20 text-white',
+    button: 'bg-white text-teal-800 hover:bg-teal-50 focus-visible:ring-white',
+  },
+  {
+    card: 'border-amber-300 bg-gradient-to-br from-orange-500 via-amber-500 to-rose-500',
+    badge: 'bg-white/20 text-white',
+    button: 'bg-white text-orange-800 hover:bg-orange-50 focus-visible:ring-white',
+  },
+  {
+    card: 'border-violet-300 bg-gradient-to-br from-violet-600 via-purple-600 to-fuchsia-600',
+    badge: 'bg-white/20 text-white',
+    button: 'bg-white text-violet-800 hover:bg-violet-50 focus-visible:ring-white',
+  },
+];
+
+const STATUS_STYLES = {
+  scheduled: 'bg-white/20 text-white',
+  postponed: 'bg-amber-100 text-amber-900',
+  cancelled: 'bg-rose-100 text-rose-900',
+};
+
+const STATUS_LABELS = {
+  scheduled: 'Scheduled',
+  postponed: 'Postponed',
+  cancelled: 'Cancelled',
+};
+
+/** Hanging SOLD / OUT sign — matches the red-white board look. */
+function SoldOutSign({ className = '' }) {
+  return (
+    <div
+      className={`pointer-events-none flex w-[4.5rem] flex-col items-center ${className}`}
+      aria-hidden="true"
+    >
+      <span className="mb-0.5 h-1.5 w-1.5 rounded-full bg-red-800 shadow-sm" />
+      <span className="h-2 w-px bg-red-800/80" />
+      <div className="relative w-full overflow-hidden rounded-md border-2 border-red-700 shadow-md">
+        <div className="bg-white px-1.5 py-1 text-center">
+          <p className="text-[11px] font-black leading-none tracking-wide text-red-600">SOLD</p>
+        </div>
+        <div className="bg-red-600 px-1.5 py-1 text-center">
+          <p className="text-[12px] font-black leading-none tracking-wide text-white">OUT</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Hanging EVENT / ENDED sign — matches the board look for completed events. */
+function EventFinishedSign({ className = '' }) {
+  return (
+    <div
+      className={`pointer-events-none flex w-[4.8rem] flex-col items-center ${className}`}
+      aria-hidden="true"
+    >
+      <span className="mb-0.5 h-1.5 w-1.5 rounded-full bg-slate-700 shadow-sm" />
+      <span className="h-2 w-px bg-slate-700/80" />
+      <div className="relative w-full overflow-hidden rounded-md border-2 border-slate-700 shadow-md">
+        <div className="bg-white px-1 py-0.5 text-center">
+          <p className="text-[10px] font-black leading-none tracking-wider text-slate-800">EVENT</p>
+        </div>
+        <div className="bg-slate-700 px-1 py-1 text-center">
+          <p className="text-[11px] font-black leading-none tracking-wider text-white">ENDED</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const FOOD_TYPE_OPTIONS = [
+  'VEG',
+  'NON VEG',
+  'NO PREFERENCE',
+  'VEG & NON VEG',
+];
+
+const FOOD_TYPE_SELECT_OPTIONS = [
+  { value: 'VEG', label: 'Veg' },
+  { value: 'NON VEG', label: 'Non-Veg' },
+  { value: 'NO PREFERENCE', label: 'No Preference' },
+];
+
+/** Profile-autofilled fields stay in state + API payload; not shown on the form UI. */
+
+/** Default PD Attend City — always allowed alongside the event place. */
+const ATTEND_CITY_ONLINE = 'online';
+
+const registrationFieldBase =
+  'mt-2 box-border w-full max-w-full min-w-0 min-h-11 rounded-lg border bg-white px-3 py-2.5 text-base leading-normal text-gray-900 outline-none focus:ring-2';
+
+const registrationInputClass = (hasError) =>
+  `${registrationFieldBase} ${
+    hasError
+      ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-100'
+      : 'border-gray-300 focus:border-emerald-600 focus:ring-emerald-100'
+  }`;
+
+function isAttendOnline(value) {
+  return String(value || '').trim().toLowerCase() === ATTEND_CITY_ONLINE;
+}
+
+function buildAttendCityOptions(eventOrPlace) {
+  const options = [ATTEND_CITY_ONLINE];
+  if (!eventOrPlace) return options;
+  if (typeof eventOrPlace === 'string') {
+    const trimmed = eventOrPlace.trim();
+    if (trimmed && !isAttendOnline(trimmed)) options.push(trimmed);
+    return options;
+  }
+  const seen = new Set();
+  const places = Array.isArray(eventOrPlace.places) && eventOrPlace.places.length > 0
+    ? eventOrPlace.places
+    : (eventOrPlace.place || eventOrPlace.city ? [{ city: eventOrPlace.place || eventOrPlace.city }] : []);
+
+  for (const p of places) {
+    const city = typeof p === 'string' ? p.trim() : String(p?.city || p?.place || '').trim();
+    if (city && !isAttendOnline(city) && !seen.has(city.toLowerCase())) {
+      seen.add(city.toLowerCase());
+      options.push(city);
+    }
+  }
+  return options;
+}
+
+function toAttendCitySelectOptions(values) {
+  return values.map((value) => ({
+    value,
+    label: isAttendOnline(value) ? 'Online' : value,
+  }));
+}
+
+/** Profile fields the registration form never asks — they must already be saved. */
+function getMissingProfileGaps(source) {
+  const text = (value) => String(value ?? '').trim();
+  const list = [
+    { key: 'name', label: 'Full Name', value: source?.name, type: 'text', placeholder: 'Enter your name' },
+    { key: 'zoomEmail', label: 'Email', value: source?.zoomEmail, type: 'email', placeholder: 'e.g. name@example.com' },
+    { key: 'phoneNumber', label: 'Phone Number', value: source?.phoneNumber, type: 'tel', placeholder: '10-digit phone number' },
+    { key: 'idNo', label: 'Community ID', value: source?.idNo, type: 'communityId', placeholder: COMMUNITY_ID_PLACEHOLDER },
+    { key: 'eventTranslation', label: 'Translation', value: source?.eventTranslation, type: 'select', options: EVENT_TRANSLATION_OPTIONS, placeholder: 'Choose translation' },
+    { key: 'eventYourCity', label: 'Living city', value: source?.eventYourCity, type: 'select', options: EVENT_YOUR_CITY_OPTIONS, placeholder: 'Choose living city' },
+    { key: 'eventLevel', label: 'Community Position', value: source?.eventLevel, type: 'select', options: EVENT_LEVEL_OPTIONS, placeholder: 'Choose community position' },
+    { key: 'clubNo', label: 'Working Physical Centre', value: source?.clubNo, type: 'centre', placeholder: 'Choose physical centre' },
+  ];
+  return list.filter((item) => !text(item.value));
+}
+
+function profileGapMessages(source) {
+  return getMissingProfileGaps(source).map((g) => `Set ${g.label} in Profile`);
+}
+
+function ticketCharge(event) {
+  const price = Number(event?.ticketPrice);
+  if (!Number.isFinite(price) || price <= 0) return 0;
+  return Math.round(price * 100) / 100;
+}
+
+function formatTicketPrice(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return 'Not specified';
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+function pickProfileText(...values) {
+  for (const value of values) {
+    const text = String(value ?? '').trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+/** Map profile Diet Preference → registration Food Type options. */
+function mapDietPreferenceToFoodType(dietPreference) {
+  const diet = String(dietPreference || '').trim().toLowerCase();
+  if (!diet) return '';
+  if (diet === 'vegetarian' || diet === 'vegan' || diet === 'veg') return 'VEG';
+  if (
+    diet === 'non-vegetarian'
+    || diet === 'non vegetarian'
+    || diet === 'non-veg'
+    || diet === 'non veg'
+    || diet === 'pescatarian'
+  ) {
+    return 'NON VEG';
+  }
+  if (
+    diet === 'no preference'
+    || diet === 'none'
+    || diet === 'any'
+    || diet === 'no_preference'
+  ) {
+    return 'NO PREFERENCE';
+  }
+  if (FOOD_TYPE_OPTIONS.includes(String(dietPreference || '').trim().toUpperCase())) {
+    return String(dietPreference).trim().toUpperCase();
+  }
+  return '';
+}
+
+function buildRegistrationDefaults(profileData, user, userId) {
+  const data = profileData && typeof profileData === 'object' ? profileData : {};
+  const dietPreference = pickProfileText(
+    data.dietType,
+    data.DietType,
+    data.dietPreference,
+    data.DietPreference,
+    data?.counselling?.dietType,
+    user?.dietType,
+    user?.DietType,
+  );
+  return {
+    name: pickProfileText(
+      data.userName,
+      data.UserName,
+      user?.userName,
+      user?.UserName,
+      user?.name,
+      user?.displayName,
+    ),
+    zoomEmail: pickProfileText(
+      data.email,
+      data.Email,
+      user?.email,
+      user?.Email,
+    ),
+    phoneNumber: pickProfileText(
+      data.phoneNumber,
+      data.PhoneNumber,
+      user?.phoneNumber,
+      user?.PhoneNumber,
+      user?.phone,
+    ),
+    // Community ID field on the form — from Profile Community ID.
+    idNo: pickProfileText(
+      data.communityId,
+      data.CommunityId,
+      user?.communityId,
+      user?.CommunityId,
+    ),
+    // Club No — from Profile Working Physical Centre (name, then id).
+    clubNo: pickProfileText(
+      data?.workingPhysicalCentre?.name,
+      data?.workingPhysicalCentre?.Name,
+      data?.WorkingPhysicalCentre?.name,
+      data?.WorkingPhysicalCentre?.Name,
+      data?.workingPhysicalCentre?.id != null
+        ? String(data.workingPhysicalCentre.id)
+        : '',
+      data?.WorkingPhysicalCentre?.id != null
+        ? String(data.WorkingPhysicalCentre.id)
+        : '',
+    ),
+    workingPhysicalCentreId: pickProfileText(
+      data?.workingPhysicalCentre?.id != null
+        ? String(data.workingPhysicalCentre.id)
+        : '',
+      data?.WorkingPhysicalCentre?.id != null
+        ? String(data.WorkingPhysicalCentre.id)
+        : '',
+    ),
+    foodType: mapDietPreferenceToFoodType(dietPreference),
+    ...pickEventProfilePrefs(data),
+  };
+}
+
+function EventsPage({ user, initialTab = 'events', allowedPages = null }) {
+  const canCreateEvent = isFlagEnabled('ff.create-event') && canAccessNavPage(allowedPages, 'create-event');
+  const [showCreateForm, setShowCreateForm] = useState(initialTab === 'create' && canCreateEvent);
+  const [events, setEvents] = useState([]);
+  const [cancelNotes, setCancelNotes] = useState([]);
+  const [myRegistrations, setMyRegistrations] = useState([]);
+  const [bookingFor, setBookingFor] = useState('self');
+  const [registerChoice, setRegisterChoice] = useState(null);
+  const [profileGapEvent, setProfileGapEvent] = useState(null);
+  const [missingGaps, setMissingGaps] = useState([]);
+  const [gapForm, setGapForm] = useState({
+    name: '',
+    zoomEmail: '',
+    phoneNumber: '',
+    idNo: '',
+    eventTranslation: '',
+    eventYourCity: '',
+    eventLevel: '',
+    workingPhysicalCentreId: '',
+  });
+  const [gapFormErrors, setGapFormErrors] = useState({});
+  const [savingGapProfile, setSavingGapProfile] = useState(false);
+  const [seenCancelIds, setSeenCancelIds] = useState(() => readSeenEventCancellationIds());
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [viewerUserId, setViewerUserId] = useState(null);
+  const [profileDefaults, setProfileDefaults] = useState(() => buildRegistrationDefaults(null, user, null));
+  const [mainTab, setMainTab] = useState(initialTab === 'bookings' ? 'bookings' : 'events');
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [registrationStep, setRegistrationStep] = useState('form');
+  const [name, setName] = useState('');
+  const [clubNo, setClubNo] = useState('');
+  const [zoomEmail, setZoomEmail] = useState('');
+  const [idNo, setIdNo] = useState('');
+  const [level, setLevel] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [participantCount] = useState('1');
+  const [ticketNo, setTicketNo] = useState('');
+  const [yourCity, setYourCity] = useState('');
+  const [translation, setTranslation] = useState('');
+  const [attendCity, setAttendCity] = useState('');
+  const [foodType, setFoodType] = useState('');
+  const [uplinePresidentTeam, setUplinePresidentTeam] = useState(null);
+  const [uplineMillTeam, setUplineMillTeam] = useState(null);
+  const [teamIncharge, setTeamIncharge] = useState(null);
+  const [daicyTeamIncharge, setDaicyTeamIncharge] = useState(null);
+  const [submittedName, setSubmittedName] = useState('');
+  const [savedRegistration, setSavedRegistration] = useState(null);
+  const [qrImage, setQrImage] = useState('');
+  const [shareNote, setShareNote] = useState('');
+  const [walletBalance, setWalletBalance] = useState(null);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [savingRegistration, setSavingRegistration] = useState(false);
+  const [formErrors, setFormErrors] = useState({});
+  const [profileGapMessage, setProfileGapMessage] = useState('');
+  const [walletBlock, setWalletBlock] = useState(null);
+  const [registerCheckId, setRegisterCheckId] = useState(null);
+  const [walletOpenSignal, setWalletOpenSignal] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadEvents = async ({ soft = false } = {}) => {
+      // Soft refresh keeps the current list visible (no full-page "Loading events…").
+      if (!soft) {
+        setLoading(true);
+      }
+      setLoadError('');
+
+      try {
+        const userId = await getUserId(user);
+        if (!userId) {
+          throw new Error('Could not identify your account to load events.');
+        }
+
+        // Show events as soon as open-list returns — do not wait on profile.
+        const [result, bookings] = await Promise.all([
+          listOpenEvents(userId),
+          listMyEventRegistrations(userId).catch(() => ({ registrations: [] })),
+        ]);
+        if (!active) return;
+        setViewerUserId(userId);
+        setEvents(Array.isArray(result.events) ? result.events : []);
+        const registrations = Array.isArray(bookings?.registrations) ? bookings.registrations : [];
+        setMyRegistrations(registrations);
+        setCancelNotes(cancelledBookingNotes(registrations));
+        setLoading(false);
+
+        // Instant defaults from shared profile cache (Home/Header often already loaded it).
+        const cached = getCachedProfile({ userId, email: user?.email });
+        if (cached?.data) {
+          setProfileDefaults(buildRegistrationDefaults(cached.data, user, userId));
+        }
+
+        // Profile defaults load in the background for the registration form only.
+        fetchProfile({ userId })
+          .then((profileResult) => {
+            if (!active) return;
+            setProfileDefaults(buildRegistrationDefaults(profileResult?.data, user, userId));
+          })
+          .catch(() => {
+            /* keep existing defaults */
+          });
+      } catch (error) {
+        if (active) {
+          setLoadError(error?.message || 'Could not load events. Please try again.');
+          setLoading(false);
+        }
+      }
+    };
+
+    loadEvents({ soft: false });
+    const onEventsUpdated = () => loadEvents({ soft: true });
+    window.addEventListener(EVENTS_UPDATED_EVENT, onEventsUpdated);
+    return () => {
+      active = false;
+      window.removeEventListener(EVENTS_UPDATED_EVENT, onEventsUpdated);
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (initialTab === 'create' && canCreateEvent) {
+      setShowCreateForm(true);
+    } else if (initialTab === 'bookings') {
+      setShowCreateForm(false);
+      setMainTab('bookings');
+    } else if (initialTab === 'events') {
+      setShowCreateForm(false);
+      setMainTab('events');
+    }
+  }, [initialTab, canCreateEvent]);
+
+  useEffect(() => {
+    if (mainTab !== 'bookings' || cancelNotes.length === 0) return;
+    markEventCancellationsSeen(cancelNotes.map((note) => note.id));
+    setSeenCancelIds(readSeenEventCancellationIds());
+  }, [mainTab, cancelNotes]);
+
+  const unseenCancelNotes = cancelNotes.filter(
+    (note) => !seenCancelIds.includes(String(note.id)),
+  );
+
+  const applyPersonalDefaults = (defaults = profileDefaults) => {
+    setName(defaults?.name || '');
+    setClubNo(defaults?.clubNo || '');
+    setZoomEmail(defaults?.zoomEmail || '');
+    setIdNo(defaults?.idNo || '');
+    setPhoneNumber(defaults?.phoneNumber || '');
+    setFoodType(defaults?.foodType || '');
+    setTranslation(defaults?.eventTranslation || '');
+    setYourCity(defaults?.eventYourCity || '');
+    setLevel(defaults?.eventLevel || '');
+  };
+
+  // Profile often arrives after Register is already open — fill empty autofill fields only.
+  useEffect(() => {
+    if (!selectedEvent || registrationStep !== 'form' || bookingFor === 'friend') return;
+    if (profileDefaults?.name) setName((prev) => prev || profileDefaults.name);
+    if (profileDefaults?.zoomEmail) setZoomEmail((prev) => prev || profileDefaults.zoomEmail);
+    if (profileDefaults?.phoneNumber) setPhoneNumber((prev) => prev || profileDefaults.phoneNumber);
+    if (profileDefaults?.foodType) setFoodType((prev) => prev || profileDefaults.foodType);
+    if (profileDefaults?.clubNo) setClubNo((prev) => prev || profileDefaults.clubNo);
+    if (profileDefaults?.idNo) setIdNo((prev) => prev || profileDefaults.idNo);
+    if (profileDefaults?.eventTranslation) {
+      setTranslation((prev) => prev || profileDefaults.eventTranslation);
+    }
+    if (profileDefaults?.eventYourCity) {
+      setYourCity((prev) => prev || profileDefaults.eventYourCity);
+    }
+    if (profileDefaults?.eventLevel) {
+      setLevel((prev) => prev || profileDefaults.eventLevel);
+    }
+  }, [profileDefaults, selectedEvent, registrationStep, bookingFor]);
+
+  const resetRegistrationForm = (options = {}) => {
+    const { keepPersonalDefaults = false, defaults = null } = options;
+    if (defaults) {
+      applyPersonalDefaults(defaults);
+    } else if (keepPersonalDefaults) {
+      applyPersonalDefaults();
+    } else {
+      setName('');
+      setClubNo('');
+      setZoomEmail('');
+      setIdNo('');
+      setPhoneNumber('');
+      setFoodType('');
+      setLevel('');
+      setYourCity('');
+      setTranslation('');
+    }
+    setTicketNo('');
+    setAttendCity(ATTEND_CITY_ONLINE);
+    setUplinePresidentTeam(null);
+    setUplineMillTeam(null);
+    setTeamIncharge(null);
+    setDaicyTeamIncharge(null);
+    setSubmittedName('');
+    setSavedRegistration(null);
+    setQrImage('');
+    setShareNote('');
+    setRegistrationStep('form');
+    setWalletBalance(null);
+    setSubmitError('');
+    setSavingRegistration(false);
+    setFormErrors({});
+    setProfileGapMessage('');
+    setWalletBlock(null);
+  };
+
+  const clearFieldError = (field) => {
+    setFormErrors((prev) => ({ ...prev, [field]: undefined }));
+  };
+
+  const chargeAmount = (() => {
+    const price = ticketCharge(selectedEvent);
+    const count = Number(participantCount) || 1;
+    return Math.round(price * count * 100) / 100;
+  })();
+
+  const closeRegisterDialog = () => {
+    setProfileGapMessage('');
+    setWalletBlock(null);
+    setProfileGapEvent(null);
+    setMissingGaps([]);
+  };
+
+  const openWalletToRecharge = () => {
+    closeRegisterDialog();
+    setWalletOpenSignal((current) => current + 1);
+  };
+
+  const openRegisterChoice = (event) => {
+    if (event?.soldOut || event?.isFinished || isEventFinished(event) || registerCheckId != null) return;
+    if (!viewerUserId) {
+      setWalletBlock(null);
+      setProfileGapMessage('Could not identify your account. Try again.');
+      return;
+    }
+    const alreadySelf = myRegistrations.some((row) => (
+      Number(row.eventId) === Number(event.id) && selfBookingAlreadyTaken(row)
+    ));
+    if (alreadySelf) {
+      setRegisterChoice({ event, alreadySelf: true });
+      return;
+    }
+    beginRegistration(event, 'self');
+  };
+
+  const handleSaveGapProfileAndContinue = async (e) => {
+    e.preventDefault();
+    if (!viewerUserId || !profileGapEvent) return;
+
+    const errors = {};
+    for (const gap of missingGaps) {
+      const val = gap.key === 'clubNo'
+        ? gapForm.workingPhysicalCentreId
+        : gapForm[gap.key];
+      if (!String(val || '').trim()) {
+        errors[gap.key] = `${gap.label} is required`;
+      }
+    }
+    if (Object.keys(errors).length > 0) {
+      setGapFormErrors(errors);
+      return;
+    }
+
+    setSavingGapProfile(true);
+    setGapFormErrors({});
+    try {
+      const payload = {
+        userId: viewerUserId,
+        email: (gapForm.zoomEmail || user?.email || '').trim(),
+        skipOtp: true,
+        directSave: true,
+      };
+      if (gapForm.name) payload.name = gapForm.name.trim();
+      if (gapForm.phoneNumber) payload.phoneNumber = gapForm.phoneNumber.trim();
+      if (gapForm.idNo) payload.communityId = gapForm.idNo.trim();
+      if (gapForm.eventTranslation) payload.eventTranslation = gapForm.eventTranslation.trim();
+      if (gapForm.eventYourCity) payload.eventYourCity = gapForm.eventYourCity.trim();
+      if (gapForm.eventLevel) payload.eventLevel = gapForm.eventLevel.trim();
+      if (gapForm.workingPhysicalCentreId) payload.workingPhysicalCentreId = gapForm.workingPhysicalCentreId.trim();
+
+      await saveProfile(payload);
+
+      const freshDefaults = await loadFreshProfile();
+      setProfileDefaults(freshDefaults);
+
+      if (freshDefaults.name || gapForm.name) setName(freshDefaults.name || gapForm.name);
+      if (freshDefaults.zoomEmail || gapForm.zoomEmail) setZoomEmail(freshDefaults.zoomEmail || gapForm.zoomEmail);
+      if (freshDefaults.phoneNumber || gapForm.phoneNumber) setPhoneNumber(freshDefaults.phoneNumber || gapForm.phoneNumber);
+      if (freshDefaults.idNo || gapForm.idNo) setIdNo(freshDefaults.idNo || gapForm.idNo);
+      if (freshDefaults.eventTranslation || gapForm.eventTranslation) setTranslation(freshDefaults.eventTranslation || gapForm.eventTranslation);
+      if (freshDefaults.eventYourCity || gapForm.eventYourCity) setYourCity(freshDefaults.eventYourCity || gapForm.eventYourCity);
+      if (freshDefaults.eventLevel || gapForm.eventLevel) setLevel(freshDefaults.eventLevel || gapForm.eventLevel);
+      if (freshDefaults.clubNo) setClubNo(freshDefaults.clubNo);
+
+      const targetEvent = profileGapEvent;
+      setProfileGapEvent(null);
+      setMissingGaps([]);
+
+      const needed = ticketCharge(targetEvent);
+      if (needed > 0) {
+        try {
+          const wallet = await fetchWallet(viewerUserId);
+          const balance = Number(wallet?.balance);
+          if (!Number.isFinite(balance) || balance + 1e-9 < needed) {
+            setWalletBlock({
+              needed,
+              balance: Number.isFinite(balance) ? balance : 0,
+              unavailable: false,
+            });
+            return;
+          }
+        } catch {
+          setWalletBlock({ needed, balance: 0, unavailable: true });
+          return;
+        }
+      }
+
+      setSelectedEvent(targetEvent);
+      resetRegistrationForm({ defaults: freshDefaults });
+    } catch (err) {
+      setGapFormErrors({ form: err?.message || 'Could not save profile details.' });
+    } finally {
+      setSavingGapProfile(false);
+    }
+  };
+
+  const beginRegistration = async (event, mode) => {
+    if (event?.soldOut || registerCheckId != null) return;
+    if (!viewerUserId) {
+      setWalletBlock(null);
+      setProfileGapMessage('Could not identify your account. Try again.');
+      return;
+    }
+
+    const forFriend = mode === 'friend';
+    setRegisterChoice(null);
+    setBookingFor(forFriend ? 'friend' : 'self');
+    setRegisterCheckId(event.id);
+    setProfileGapMessage('');
+    setWalletBlock(null);
+    try {
+      const defaults = forFriend ? null : await loadFreshProfile();
+      if (!forFriend && !defaults) {
+        setProfileGapMessage('Could not load your profile. Try again.');
+        return;
+      }
+
+      const gaps = forFriend ? [] : getMissingProfileGaps(defaults);
+      if (gaps.length > 0) {
+        setProfileGapEvent(event);
+        setMissingGaps(gaps);
+        setGapForm({
+          name: defaults.name || user?.name || user?.displayName || '',
+          zoomEmail: defaults.zoomEmail || user?.email || '',
+          phoneNumber: defaults.phoneNumber || user?.phoneNumber || user?.phone || '',
+          idNo: defaults.idNo || user?.communityId || '',
+          eventTranslation: defaults.eventTranslation || '',
+          eventYourCity: defaults.eventYourCity || '',
+          eventLevel: defaults.eventLevel || '',
+          workingPhysicalCentreId: defaults.workingPhysicalCentreId || '',
+        });
+        setGapFormErrors({});
+        return;
+      }
+
+      let nextWalletBlock = null;
+      const needed = ticketCharge(event);
+      if (needed > 0) {
+        try {
+          const wallet = await fetchWallet(viewerUserId);
+          const balance = Number(wallet?.balance);
+          if (!Number.isFinite(balance) || balance + 1e-9 < needed) {
+            nextWalletBlock = {
+              needed,
+              balance: Number.isFinite(balance) ? balance : 0,
+              unavailable: false,
+            };
+          }
+        } catch {
+          nextWalletBlock = { needed, balance: 0, unavailable: true };
+        }
+      }
+
+      if (nextWalletBlock) {
+        setWalletBlock(nextWalletBlock);
+        return;
+      }
+
+      setSelectedEvent(event);
+      if (forFriend) resetRegistrationForm();
+      else resetRegistrationForm({ defaults });
+    } finally {
+      setRegisterCheckId(null);
+    }
+  };
+
+  const closeRegistration = () => {
+    setSelectedEvent(null);
+    setBookingFor('self');
+    resetRegistrationForm();
+  };
+
+  const buildValidatedPayload = (fresh = null) => {
+    const profileText = (current, fromFresh) => (
+      fresh ? String(fromFresh || '').trim() : String(current || '').trim()
+    );
+    const trimmedName = profileText(name, fresh?.name);
+    const trimmedClubNo = profileText(clubNo, fresh?.clubNo);
+    const trimmedZoomEmail = profileText(zoomEmail, fresh?.zoomEmail);
+    const trimmedIdNo = profileText(idNo, fresh?.idNo);
+    const trimmedLevel = profileText(level, fresh?.eventLevel);
+    const trimmedPhone = profileText(phoneNumber, fresh?.phoneNumber);
+    const translationValue = profileText(translation, fresh?.eventTranslation);
+    const yourCityValue = profileText(yourCity, fresh?.eventYourCity);
+    const trimmedTicketNo = ticketNo.trim();
+    const place = String(selectedEvent?.place || '').trim();
+    const nextErrors = {};
+
+    const forFriend = bookingFor === 'friend';
+    const required = 'This is a required question';
+    if (!translationValue) nextErrors.translation = forFriend ? required : 'Set Translation in Profile';
+    if (!attendCity) nextErrors.attendCity = required;
+    // Online attendance has no venue meal — Food Type is hidden and not required.
+    if (!isAttendOnline(attendCity) && !foodType) {
+      nextErrors.foodType = required;
+    }
+    if (!uplinePresidentTeam?.name) nextErrors.uplinePresidentTeam = required;
+    if (!uplineMillTeam?.name) nextErrors.uplineMillTeam = required;
+    if (!teamIncharge?.name) nextErrors.teamIncharge = required;
+    if (teamIncharge?.name && !daicyTeamIncharge?.name) {
+      nextErrors.daicyTeamIncharge = required;
+    }
+    if (!trimmedClubNo) nextErrors.clubNo = forFriend ? required : 'Set Working Physical Centre in Profile';
+    if (!trimmedZoomEmail) nextErrors.zoomEmail = forFriend ? required : 'Set Email in Profile';
+    else if (!trimmedZoomEmail.includes('@')) nextErrors.zoomEmail = 'Enter an email address';
+    if (!trimmedName) nextErrors.name = forFriend ? required : 'Set Name in Profile';
+    if (!trimmedIdNo) nextErrors.idNo = forFriend ? required : 'Set Community ID in Profile';
+    if (!trimmedLevel) nextErrors.level = forFriend ? required : 'Set Community Position in Profile';
+    if (!trimmedPhone) nextErrors.phoneNumber = forFriend ? required : 'Set Phone Number in Profile';
+    if (!participantCount) nextErrors.participantCount = 'This is a required question';
+    if (!trimmedTicketNo) nextErrors.ticketNo = 'This is a required question';
+    if (!yourCityValue) nextErrors.yourCity = 'Set Living city in Profile';
+    if (attendCity && place && attendCity !== place && !isAttendOnline(attendCity)) {
+      nextErrors.attendCity = 'Choose the event city or Online';
+    }
+    if (!viewerUserId || !selectedEvent?.id) {
+      nextErrors.name = nextErrors.name || 'Could not identify your account or event.';
+    }
+
+    const profileGapKeys = [
+      'translation',
+      'clubNo',
+      'zoomEmail',
+      'name',
+      'idNo',
+      'level',
+      'phoneNumber',
+      'yourCity',
+    ];
+    const profileGaps = profileGapKeys
+      .map((key) => nextErrors[key])
+      .filter((message) => message && message.startsWith('Set '));
+    profileGapKeys.forEach((key) => {
+      if (String(nextErrors[key] || '').startsWith('Set ')) delete nextErrors[key];
+    });
+    setProfileGapMessage(profileGaps.length > 0 ? profileGaps.join(' · ') : '');
+
+    if (profileGaps.length > 0 || Object.keys(nextErrors).length > 0) {
+      setFormErrors(nextErrors);
+      return null;
+    }
+
+    setFormErrors({});
+    return {
+      userId: viewerUserId,
+      eventId: selectedEvent.id,
+      translation: translationValue,
+      attendCity,
+      foodType: isAttendOnline(attendCity) ? '' : foodType,
+      uplinePresidentTeam,
+      uplineMillTeam,
+      clubNo: trimmedClubNo,
+      zoomEmail: trimmedZoomEmail,
+      name: trimmedName,
+      idNo: trimmedIdNo,
+      level: trimmedLevel,
+      phoneNumber: trimmedPhone,
+      participantCount: Number(participantCount),
+      ticketNo: trimmedTicketNo,
+      yourCity: yourCityValue,
+      teamIncharge,
+      daicyTeamIncharge,
+      confirmPayment: true,
+      bookingFor: forFriend ? 'friend' : 'self',
+    };
+  };
+
+  const loadFreshProfile = async () => {
+    if (!viewerUserId) return null;
+    try {
+      const profileResult = await fetchProfile({ userId: viewerUserId, cacheBust: true });
+      const defaults = buildRegistrationDefaults(profileResult?.data, user, viewerUserId);
+      setProfileDefaults(defaults);
+      setName(defaults?.name || '');
+      setClubNo(defaults?.clubNo || '');
+      setZoomEmail(defaults?.zoomEmail || '');
+      setIdNo(defaults?.idNo || '');
+      setPhoneNumber(defaults?.phoneNumber || '');
+      setTranslation(defaults?.eventTranslation || '');
+      setYourCity(defaults?.eventYourCity || '');
+      setLevel(defaults?.eventLevel || '');
+      return defaults;
+    } catch {
+      return null;
+    }
+  };
+
+  const goToPaymentStep = async (formEvent) => {
+    formEvent.preventDefault();
+    if (savingRegistration) return;
+    const fresh = bookingFor === 'friend' ? null : await loadFreshProfile();
+    const payload = buildValidatedPayload(fresh);
+    if (!payload) return;
+
+    setSubmitError('');
+    setRegistrationStep('pay');
+    setWalletLoading(true);
+    try {
+      const wallet = await fetchWallet(viewerUserId);
+      setWalletBalance(Number(wallet?.balance));
+    } catch (error) {
+      setWalletBalance(null);
+      setSubmitError(error?.message || 'Could not load wallet balance.');
+    } finally {
+      setWalletLoading(false);
+    }
+  };
+
+  const confirmPaymentAndSubmit = async () => {
+    if (savingRegistration) return;
+    const payload = buildValidatedPayload();
+    if (!payload) {
+      setRegistrationStep('form');
+      return;
+    }
+
+    setSubmitError('');
+    setSavingRegistration(true);
+    try {
+      const data = await createEventRegistration(payload);
+      setSubmittedName(payload.name);
+      setSavedRegistration(data.registration || null);
+      setMyRegistrations((prev) => [...prev, {
+        id: data.registration?.id,
+        eventId: selectedEvent.id,
+        paymentStatus: 'paid',
+        entryCode: data.registration?.entryCode,
+        bookingFor: payload.bookingFor,
+      }]);
+      if (data.balanceAfter != null) setWalletBalance(Number(data.balanceAfter));
+      setRegistrationStep('success');
+      notifyEventsUpdated();
+    } catch (error) {
+      setSubmitError(error?.message || 'Could not complete payment. Please try again.');
+    } finally {
+      setSavingRegistration(false);
+    }
+  };
+
+  const attendCityOptions = buildAttendCityOptions(selectedEvent);
+
+  if (showCreateForm && canCreateEvent) {
+    return (
+      <main className="min-h-full overflow-x-hidden bg-gray-50 px-3 py-5 sm:px-5">
+        <CreateEventPage
+          user={user}
+          onBack={() => setShowCreateForm(false)}
+        />
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-full overflow-x-hidden bg-gray-50 px-3 py-5 sm:px-5">
+      <div className="mx-auto w-full max-w-2xl min-w-0">
+        {selectedEvent ? (
+          <section aria-labelledby="event-registration-title" className="min-w-0">
+            <button
+              type="button"
+              onClick={closeRegistration}
+              className="mb-4 inline-flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              Back to events
+            </button>
+
+            <div className="min-w-0 overflow-x-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-700 p-4 shadow-sm sm:p-6">
+              <span className="inline-flex rounded-full bg-white/20 px-3 py-1 text-xs font-semibold text-white">
+                {STATUS_LABELS[selectedEvent.status] || selectedEvent.status}
+              </span>
+              <h1 id="event-registration-title" className="mt-3 text-xl font-bold text-white">
+                {bookingFor === 'friend'
+                  ? `Book for a friend: ${selectedEvent.eventName}`
+                  : `Event registration: ${selectedEvent.eventName}`}
+              </h1>
+              <p className="mt-2 text-xs font-medium text-rose-100">* Indicates required question</p>
+
+              {registrationStep === 'success' && submittedName ? (
+                <div role="status" className="mt-5 space-y-3 rounded-xl border border-white/80 bg-white/90 p-4 text-sm text-gray-800">
+                  <p className="flex items-center gap-2 font-semibold text-emerald-800">
+                    <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
+                    Successfully Submitted
+                  </p>
+                  <p>Thank you, {submittedName}. Your entry pass is ready.</p>
+                  <RegistrationQrCard
+                    qrPayload={savedRegistration?.qrPayload}
+                    entryCode={savedRegistration?.entryCode}
+                    eventName={selectedEvent.eventName}
+                    onImageReady={setQrImage}
+                  />
+                  <p className="text-sm text-gray-700">
+                    Send the QR picture on WhatsApp so they can show it at the entrance.
+                  </p>
+                  {shareNote ? (
+                    <p className="text-sm text-amber-900" role="status">{shareNote}</p>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={!qrImage}
+                    onClick={async () => {
+                      const code = savedRegistration?.entryCode || 'ticket';
+                      setShareNote('');
+                      const result = await shareTicketQrImage({
+                        dataUrl: qrImage,
+                        title: `${selectedEvent.eventName} ticket`,
+                        text: ticketShareCaption({
+                          name: submittedName,
+                          eventName: selectedEvent.eventName,
+                          entryCode: code,
+                        }),
+                        fileName: `event-ticket-${code}.png`,
+                      });
+                      if (result.saved) {
+                        setShareNote('The QR picture is saved. Open WhatsApp and attach that picture.');
+                      } else if (result.ok) {
+                        setShareNote('WhatsApp has the QR picture. Choose the chat and send. The ticket words are copied so you can paste them.');
+                      } else {
+                        setShareNote('The QR picture could not be attached. Try again.');
+                      }
+                    }}
+                    className="w-full rounded-lg bg-emerald-800 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                  >
+                    {qrImage ? 'Send QR on WhatsApp' : 'Preparing QR…'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      closeRegistration();
+                      setMainTab('bookings');
+                    }}
+                    className="w-full rounded-lg border border-emerald-700 px-4 py-2.5 text-sm font-semibold text-emerald-900"
+                  >
+                    View in My Bookings
+                  </button>
+                </div>
+              ) : registrationStep === 'pay' ? (
+                <div className="mt-5 space-y-3 rounded-xl border border-white/80 bg-white p-4 text-sm text-gray-800">
+                  <h2 className="text-base font-bold text-gray-900">Confirm wallet payment</h2>
+                  <p>Ticket amount: <span className="font-semibold">{formatTicketPrice(chargeAmount)}</span></p>
+                  <p>
+                    Wallet balance:{' '}
+                    <span className="font-semibold">
+                      {walletLoading
+                        ? 'Loading…'
+                        : walletBalance == null
+                          ? 'Unavailable'
+                          : formatTicketPrice(walletBalance)}
+                    </span>
+                  </p>
+                  {!walletLoading && walletBalance != null && walletBalance + 1e-9 < chargeAmount ? (
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900" role="alert">
+                      Insufficient balance. Add cash in Wallet, then try again.
+                    </p>
+                  ) : null}
+                  {submitError ? (
+                    <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-800" role="alert">
+                      {submitError}
+                    </p>
+                  ) : null}
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSubmitError('');
+                        setRegistrationStep('form');
+                      }}
+                      className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-800"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      disabled={savingRegistration || walletLoading}
+                      onClick={confirmPaymentAndSubmit}
+                      className="w-full rounded-lg bg-emerald-800 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                    >
+                      {savingRegistration ? 'Paying…' : 'Pay & submit'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={goToPaymentStep} className="mt-5 min-w-0 space-y-3" noValidate>
+                  {bookingFor === 'friend' ? (
+                    <div className="space-y-3">
+                      <p className="text-sm font-semibold text-white">
+                        Fill the friend’s details. Their entry QR is created from this.
+                      </p>
+                      {[
+                        ['event-registration-friend-name', 'Friend’s name', name, setName, formErrors.name],
+                        ['event-registration-friend-phone', 'Phone number', phoneNumber, setPhoneNumber, formErrors.phoneNumber],
+                        ['event-registration-friend-email', 'Email', zoomEmail, setZoomEmail, formErrors.zoomEmail],
+                        ['event-registration-friend-id', 'Community ID', idNo, setIdNo, formErrors.idNo],
+                        ['event-registration-friend-club', 'Club / centre', clubNo, setClubNo, formErrors.clubNo],
+                      ].map(([id, label, value, setter, error]) => (
+                        <div key={id} className={`rounded-xl border bg-white p-4 ${error ? 'border-rose-400' : 'border-white/80'}`}>
+                          <label htmlFor={id} className="block text-sm font-semibold text-gray-900">
+                            {label} <span className="text-rose-600">*</span>
+                          </label>
+                          <input
+                            id={id}
+                            type="text"
+                            value={value}
+                            onChange={(inputEvent) => {
+                              setter(inputEvent.target.value);
+                              clearFieldError(id.includes('name') ? 'name'
+                                : id.includes('phone') ? 'phoneNumber'
+                                : id.includes('email') ? 'zoomEmail'
+                                : id.includes('id') ? 'idNo'
+                                : 'clubNo');
+                            }}
+                            className={registrationInputClass(Boolean(error))}
+                          />
+                          {error ? <p className="mt-2 text-sm text-rose-600" role="alert">{error}</p> : null}
+                        </div>
+                      ))}
+                      <div className={`rounded-xl border bg-white p-4 ${formErrors.level ? 'border-rose-400' : 'border-white/80'}`}>
+                        <label htmlFor="event-registration-friend-level-trigger" className="block text-sm font-semibold text-gray-900">
+                          Community position <span className="text-rose-600">*</span>
+                        </label>
+                        <RegistrationSelect
+                          id="event-registration-friend-level"
+                          name="level"
+                          required
+                          value={level}
+                          options={EVENT_LEVEL_OPTIONS.map((value) => ({ value, label: value }))}
+                          hasError={Boolean(formErrors.level)}
+                          onChange={(next) => {
+                            setLevel(next);
+                            clearFieldError('level');
+                          }}
+                        />
+                        {formErrors.level ? <p className="mt-2 text-sm text-rose-600" role="alert">{formErrors.level}</p> : null}
+                      </div>
+                      <div className={`rounded-xl border bg-white p-4 ${formErrors.translation ? 'border-rose-400' : 'border-white/80'}`}>
+                        <label htmlFor="event-registration-friend-translation-trigger" className="block text-sm font-semibold text-gray-900">
+                          Translation <span className="text-rose-600">*</span>
+                        </label>
+                        <RegistrationSelect
+                          id="event-registration-friend-translation"
+                          name="translation"
+                          required
+                          value={translation}
+                          options={EVENT_TRANSLATION_OPTIONS.map((value) => ({ value, label: value }))}
+                          hasError={Boolean(formErrors.translation)}
+                          onChange={(next) => {
+                            setTranslation(next);
+                            clearFieldError('translation');
+                          }}
+                        />
+                        {formErrors.translation ? <p className="mt-2 text-sm text-rose-600" role="alert">{formErrors.translation}</p> : null}
+                      </div>
+                      <div className={`rounded-xl border bg-white p-4 ${formErrors.yourCity ? 'border-rose-400' : 'border-white/80'}`}>
+                        <label htmlFor="event-registration-friend-city-trigger" className="block text-sm font-semibold text-gray-900">
+                          Your city <span className="text-rose-600">*</span>
+                        </label>
+                        <RegistrationSelect
+                          id="event-registration-friend-city"
+                          name="yourCity"
+                          required
+                          value={yourCity}
+                          options={EVENT_YOUR_CITY_OPTIONS.map((value) => ({ value, label: value }))}
+                          hasError={Boolean(formErrors.yourCity)}
+                          onChange={(next) => {
+                            setYourCity(next);
+                            clearFieldError('yourCity');
+                          }}
+                        />
+                        {formErrors.yourCity ? <p className="mt-2 text-sm text-rose-600" role="alert">{formErrors.yourCity}</p> : null}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div
+                    className={`rounded-xl border bg-white p-4 ${
+                      formErrors.attendCity ? 'border-rose-400' : 'border-white/80'
+                    }`}
+                  >
+                    <label htmlFor="event-registration-attend-city-trigger" className="block text-sm font-semibold text-gray-900">
+                      Attending City <span className="text-rose-600">*</span>
+                    </label>
+                    <RegistrationSelect
+                      id="event-registration-attend-city"
+                      name="attendCity"
+                      required
+                      value={attendCity}
+                      options={toAttendCitySelectOptions(attendCityOptions)}
+                      hasError={Boolean(formErrors.attendCity)}
+                      onChange={(next) => {
+                        setAttendCity(next);
+                        setFormErrors((prev) => ({
+                          ...prev,
+                          attendCity: undefined,
+                          ...(isAttendOnline(next) ? { foodType: undefined } : {}),
+                        }));
+                      }}
+                    />
+                    {formErrors.attendCity ? (
+                      <p className="mt-2 text-sm text-rose-600" role="alert">
+                        {formErrors.attendCity}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  {!isAttendOnline(attendCity) ? (
+                    <div
+                      className={`rounded-xl border bg-white p-4 ${
+                        formErrors.foodType ? 'border-rose-400' : 'border-white/80'
+                      }`}
+                    >
+                      <label htmlFor="event-registration-food-type-trigger" className="block text-sm font-semibold text-gray-900">
+                        Food Type <span className="text-rose-600">*</span>
+                      </label>
+                      <RegistrationSelect
+                        id="event-registration-food-type"
+                        name="foodType"
+                        required
+                        placeholder="Choose food type"
+                        value={foodType}
+                        options={FOOD_TYPE_SELECT_OPTIONS}
+                        hasError={Boolean(formErrors.foodType)}
+                        onChange={(next) => {
+                          setFoodType(next);
+                          setFormErrors((prev) => ({ ...prev, foodType: undefined }));
+                        }}
+                      />
+                      {formErrors.foodType ? (
+                        <p className="mt-2 text-sm text-rose-600" role="alert">
+                          {formErrors.foodType}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <div className="rounded-xl border border-white/80 bg-white p-4">
+                    <p className="text-sm font-extrabold uppercase tracking-wide text-gray-900">
+                      Upline Detail
+                    </p>
+                    <div className="mt-3 space-y-4">
+                      <MemberSearchPicker
+                        userId={viewerUserId}
+                        label="Upline President Team"
+                        inputId="event-registration-upline-president"
+                        value={uplinePresidentTeam}
+                        required
+                        error={formErrors.uplinePresidentTeam || ''}
+                        hint="Type a name to find the president team member."
+                        onChange={(person) => {
+                          setUplinePresidentTeam(person);
+                          setFormErrors((prev) => ({ ...prev, uplinePresidentTeam: undefined }));
+                        }}
+                      />
+                      <MemberSearchPicker
+                        userId={viewerUserId}
+                        label="Upline Mill Team"
+                        inputId="event-registration-upline-mill"
+                        value={uplineMillTeam}
+                        required
+                        error={formErrors.uplineMillTeam || ''}
+                        hint="Type a name to find the mill team member."
+                        onChange={(person) => {
+                          setUplineMillTeam(person);
+                          setFormErrors((prev) => ({ ...prev, uplineMillTeam: undefined }));
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-white/80 bg-white p-4">
+                    <label htmlFor="event-registration-ticket-no" className="block text-sm font-semibold text-gray-900">
+                      {bookingFor === 'friend' ? "Friend's ticket number" : 'Your Ticket Number'} <span className="text-rose-600">*</span>
+                    </label>
+                    <input
+                      id="event-registration-ticket-no"
+                      name="ticketNo"
+                      type="text"
+                      maxLength={80}
+                      required
+                      value={ticketNo}
+                      onChange={(event) => {
+                        setTicketNo(event.target.value);
+                        clearFieldError('ticketNo');
+                      }}
+                      className={registrationInputClass(Boolean(formErrors.ticketNo))}
+                      placeholder="Enter ticket number"
+                    />
+                    {formErrors.ticketNo ? (
+                      <p className="mt-2 text-sm text-rose-600" role="alert">{formErrors.ticketNo}</p>
+                    ) : null}
+                  </div>
+
+                  <div className="rounded-xl border border-white/80 bg-white p-4">
+                    <p className="text-sm font-extrabold uppercase tracking-wide text-gray-900">
+                      Team Incharge Detail
+                    </p>
+                    <div className="mt-3">
+                      <MemberSearchPicker
+                        userId={viewerUserId}
+                        label="Team Incharge"
+                        inputId="event-registration-team-incharge"
+                        value={teamIncharge}
+                        required
+                        error={formErrors.teamIncharge || ''}
+                        hint="Type a name to find the team incharge."
+                        onChange={(person) => {
+                          setTeamIncharge(person);
+                          setDaicyTeamIncharge(null);
+                          setFormErrors((prev) => ({
+                            ...prev,
+                            teamIncharge: undefined,
+                            daicyTeamIncharge: undefined,
+                          }));
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {teamIncharge?.name ? (
+                    <div className="rounded-xl border border-white/80 bg-white p-4">
+                      <p
+                        id="event-registration-daicy-heading"
+                        className="text-sm font-extrabold uppercase tracking-wide text-gray-900"
+                      >
+                        {teamIncharge.name} Team Sub Incharge
+                      </p>
+                      <div className="mt-3">
+                        <MemberSearchPicker
+                          userId={viewerUserId}
+                          label=""
+                          labelledBy="event-registration-daicy-heading"
+                          inputId="event-registration-daicy-team-incharge"
+                          value={daicyTeamIncharge}
+                          required
+                          showUpline
+                          error={formErrors.daicyTeamIncharge || ''}
+                          hint="Type a name. Results show name + upline above them."
+                          onChange={(person) => {
+                            setDaicyTeamIncharge(person);
+                            setFormErrors((prev) => ({ ...prev, daicyTeamIncharge: undefined }));
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {submitError ? (
+                    <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800" role="alert">
+                      {submitError}
+                    </p>
+                  ) : null}
+
+                  <button
+                    type="submit"
+                    disabled={savingRegistration}
+                    className="w-full rounded-lg bg-emerald-800 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Next
+                  </button>
+                </form>
+              )}
+            </div>
+          </section>
+        ) : (
+          <>
+            <header className="mb-4">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100">
+                  <CalendarDays className="h-5 w-5 text-emerald-800" aria-hidden="true" />
+                </span>
+                <h1 className="min-w-0 flex-1 text-xl font-bold leading-tight text-gray-900 sm:text-2xl">
+                  Upcoming Events
+                </h1>
+                {/* Same wallet as Profile — compact, right side only. */}
+                <div className="shrink-0">
+                  <WalletButton
+                    userId={viewerUserId}
+                    variant="events"
+                    openSignal={walletOpenSignal}
+                  />
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl border border-gray-200 bg-white p-1 text-xs font-semibold">
+                {[
+                  { id: 'events', label: 'Events' },
+                  { id: 'bookings', label: 'My Bookings' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setMainTab(tab.id)}
+                    className={`relative rounded-lg px-2 py-2 ${
+                      mainTab === tab.id ? 'bg-emerald-800 text-white' : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {tab.label}
+                    {tab.id === 'bookings' && unseenCancelNotes.length > 0 ? (
+                      <span
+                        className={`ml-1 inline-flex min-w-[1.1rem] items-center justify-center rounded-full px-1 text-[10px] font-bold ${
+                          mainTab === tab.id ? 'bg-white text-rose-700' : 'bg-rose-600 text-white'
+                        }`}
+                      >
+                        {unseenCancelNotes.length}
+                      </span>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            </header>
+
+            {unseenCancelNotes.length > 0 && mainTab === 'events' ? (
+              <div
+                role="status"
+                className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-950"
+              >
+                <p className="font-bold">Event cancelled</p>
+                <ul className="mt-1 space-y-1">
+                  {unseenCancelNotes.map((note) => (
+                    <li key={note.id}>
+                      {note.name} is cancelled.
+                      {note.refunded ? ' Your ticket credit is back in your wallet.' : ''}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  onClick={() => setMainTab('bookings')}
+                  className="mt-2 text-sm font-semibold text-rose-800 underline"
+                >
+                  See My Bookings
+                </button>
+              </div>
+            ) : null}
+
+            {mainTab === 'bookings' ? (
+              <MyBookingsPanel user={user} />
+            ) : loading ? (
+              <p role="status" className="py-6 text-center text-sm text-gray-600">Loading events…</p>
+            ) : loadError ? (
+              <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+                {loadError}
+              </p>
+            ) : (() => {
+              const visibleEvents = events.filter((event) => {
+                const isFinished = Boolean(event.isFinished ?? isEventFinished(event));
+                if (!isFinished) return true;
+                return viewerUserId != null && Number(event.createdByUserId) === Number(viewerUserId);
+              });
+
+              if (visibleEvents.length === 0) {
+                return (
+                  <p className="rounded-xl border border-gray-200 bg-white p-5 text-center text-sm text-gray-600">
+                    No upcoming events found.
+                  </p>
+                );
+              }
+
+              return (
+                <section aria-label="Wellness events" className="mx-auto max-w-lg space-y-2.5">
+                  {visibleEvents.map((event, index) => {
+                    const style = CARD_STYLES[index % CARD_STYLES.length];
+                    const status = String(event.status || 'scheduled').toLowerCase();
+                    const isFinished = Boolean(event.isFinished ?? isEventFinished(event));
+                    const soldOut = Boolean(event.soldOut);
+                    const seatsLeft = event.seatsLeft;
+                    const designatedNames = (event.designatedPersons || [])
+                      .map((person) => person?.name)
+                      .filter(Boolean);
+                    const registerDisabled = isFinished || status === 'cancelled' || soldOut;
+
+                    return (
+                      <article
+                        key={event.id}
+                        className={`relative isolate overflow-hidden rounded-xl border p-3 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md sm:p-4 ${style.card} ${
+                          isFinished ? 'opacity-90 saturate-[0.85]' : ''
+                        }`}
+                      >
+                        {isFinished ? (
+                          <EventFinishedSign className="absolute right-2 top-1 z-20 rotate-[-8deg]" />
+                        ) : soldOut ? (
+                          <SoldOutSign className="absolute right-2 top-1 z-20 rotate-[-8deg]" />
+                        ) : null}
+                        <div aria-hidden="true" className="pointer-events-none absolute -right-5 -top-6 -z-10 h-24 w-24 rounded-full bg-white/10 blur-sm" />
+                        <div aria-hidden="true" className="pointer-events-none absolute -bottom-10 right-12 -z-10 h-20 w-20 rounded-full bg-cyan-200/20 blur-sm" />
+                        <div className={`flex items-start gap-2.5 ${soldOut || isFinished ? 'pr-16' : ''}`}>
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/30 bg-white/15 text-white shadow-inner">
+                            <CalendarDays className="h-4 w-4" aria-hidden="true" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${style.badge}`}>
+                                Wellness event
+                              </span>
+                              {!isFinished && (
+                                <span className={`inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${STATUS_STYLES[status] || STATUS_STYLES.scheduled}`}>
+                                  {STATUS_LABELS[status] || status}
+                                </span>
+                              )}
+                            </div>
+                            <h2 className="mt-1 truncate text-sm font-bold text-white sm:text-base">
+                              {event.eventName}
+                            </h2>
+                            <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] leading-4 text-white/95 sm:text-xs">
+                              <MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />
+                              {formatEventPlacesSummary(event) || event.place}
+                            </p>
+                            <p className="mt-1 text-[10px] leading-4 text-white/85">
+                              {getEventDatesList(event).length > 1 ? (
+                                <span>
+                                  {getEventDatesList(event).length} dates: {getEventDatesList(event).map((d) => d.date).join(', ')}
+                                </span>
+                              ) : (
+                                <span>
+                                  {event.eventDate}
+                                  {formatEventTimeRange(event.startTime, event.endTime)
+                                    ? ` · ${formatEventTimeRange(event.startTime, event.endTime)}`
+                                    : ''}
+                                </span>
+                              )}
+                              {' · Speaker: '}
+                              {eventSpeakerNames(event).join(', ') || event.hostName} · {formatTicketPrice(event.ticketPrice)} ·{' '}
+                              {event.seatCount} seats
+                            </p>
+                            {designatedNames.length > 0 && (
+                              <p className="mt-1 flex items-start gap-1 text-[10px] leading-4 text-white/85">
+                                <Users className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                                <span className="truncate">For: {designatedNames.join(', ')}</span>
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2 border-t border-white/20 pt-2">
+                          {!isFinished && !soldOut && seatsLeft != null ? (
+                            <span className="inline-flex items-center rounded-lg border-2 border-white bg-emerald-50 px-2.5 py-1.5 text-[11px] font-extrabold tracking-wide text-emerald-900 shadow-sm">
+                              {seatsLeft} seat{seatsLeft === 1 ? '' : 's'} left
+                            </span>
+                          ) : (
+                            <span />
+                          )}
+                          {isFinished ? (
+                            <span className="inline-flex items-center rounded-md bg-white/25 px-3 py-1.5 text-[11px] font-bold text-white shadow-sm border border-white/30 cursor-default">
+                              Registration closed
+                            </span>
+                          ) : soldOut ? (
+                            <span className="sr-only">Sold out — registration closed</span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => openRegisterChoice(event)}
+                              disabled={registerDisabled || registerCheckId != null}
+                              className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-[11px] font-bold shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${style.button}`}
+                            >
+                              Register
+                              <ArrowRight className="h-3 w-3" aria-hidden="true" />
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </section>
+              );
+            })()}
+          </>
+        )}
+      </div>
+      {registerChoice ? (
+        <div
+          className="fixed inset-0 z-[10080] flex items-center justify-center bg-black/50 px-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="event-register-choice-title"
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+            <h2 id="event-register-choice-title" className="text-lg font-bold text-gray-900">
+              Already Registered
+            </h2>
+            <p className="mt-2 text-sm text-gray-700" role="alert">
+              You are already registered for this event.
+            </p>
+            <div className="mt-5 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => setRegisterChoice(null)}
+                className="w-full rounded-xl bg-emerald-700 py-2.5 text-sm font-bold text-white hover:bg-emerald-800"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {profileGapEvent && missingGaps.length > 0 ? (
+        <div
+          className="fixed inset-0 z-[10080] flex items-center justify-center bg-black/50 px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="event-profile-gap-form-title"
+        >
+          <div className="w-full max-w-md max-h-[90vh] flex flex-col rounded-2xl bg-white p-5 shadow-xl">
+            <div className="text-center mb-3">
+              <h2 id="event-profile-gap-form-title" className="text-lg font-bold text-gray-900">
+                Please fill to register
+              </h2>
+              <p className="mt-1 text-xs text-gray-500">
+                Fill these details to continue. They will also be saved to your profile.
+              </p>
+            </div>
+
+            <form onSubmit={handleSaveGapProfileAndContinue} className="flex-1 overflow-y-auto space-y-3 pr-1">
+              {gapFormErrors.form && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700" role="alert">
+                  {gapFormErrors.form}
+                </div>
+              )}
+
+              {missingGaps.map((gap) => (
+                <div key={gap.key} className="space-y-1">
+                  <label className="block text-xs font-semibold text-gray-700">
+                    {gap.label} <span className="text-rose-600">*</span>
+                  </label>
+
+                  {gap.type === 'select' ? (
+                    <select
+                      value={gapForm[gap.key]}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setGapForm((prev) => ({ ...prev, [gap.key]: val }));
+                        setGapFormErrors((prev) => ({ ...prev, [gap.key]: undefined }));
+                      }}
+                      className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                    >
+                      <option value="">{gap.placeholder}</option>
+                      {gap.options.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  ) : gap.key === 'clubNo' ? (
+                    <WorkingPhysicalCentreField
+                      userId={viewerUserId}
+                      value={gapForm.workingPhysicalCentreId}
+                      onChange={(id) => {
+                        setGapForm((prev) => ({ ...prev, workingPhysicalCentreId: id }));
+                        setGapFormErrors((prev) => ({ ...prev, clubNo: undefined }));
+                      }}
+                    />
+                  ) : gap.key === 'idNo' ? (
+                    <div>
+                      <div className="relative">
+                        <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                        <input
+                          type="text"
+                          autoComplete="off"
+                          autoCapitalize="characters"
+                          spellCheck={false}
+                          value={gapForm.idNo || ''}
+                          onChange={(e) => {
+                            const val = sanitizeCommunityIdInput(e.target.value);
+                            setGapForm((prev) => ({ ...prev, idNo: val }));
+                            setGapFormErrors((prev) => ({ ...prev, idNo: undefined }));
+                          }}
+                          maxLength={COMMUNITY_ID_MAX_LENGTH}
+                          placeholder={COMMUNITY_ID_PLACEHOLDER}
+                          className="w-full rounded-xl border border-gray-300 pl-9 pr-3 py-2 text-sm font-mono tracking-wide uppercase text-gray-900 outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-gray-400">
+                        {(gapForm.idNo || '').length}/{COMMUNITY_ID_MAX_LENGTH} · Min {COMMUNITY_ID_MIN_LENGTH} · Letters and numbers only
+                      </p>
+                    </div>
+                  ) : (
+                    <input
+                      type={gap.type}
+                      value={gapForm[gap.key]}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setGapForm((prev) => ({ ...prev, [gap.key]: val }));
+                        setGapFormErrors((prev) => ({ ...prev, [gap.key]: undefined }));
+                      }}
+                      placeholder={gap.placeholder}
+                      className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                    />
+                  )}
+
+                  {gapFormErrors[gap.key] && (
+                    <p className="text-[11px] text-rose-600">{gapFormErrors[gap.key]}</p>
+                  )}
+                </div>
+              ))}
+
+              <div className="pt-3 flex flex-col gap-2">
+                <button
+                  type="submit"
+                  disabled={savingGapProfile}
+                  className="w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                >
+                  {savingGapProfile ? 'Saving & continuing…' : 'Save & continue'}
+                </button>
+                <button
+                  type="button"
+                  disabled={savingGapProfile}
+                  onClick={() => {
+                    setProfileGapEvent(null);
+                    setMissingGaps([]);
+                  }}
+                  className="w-full rounded-xl py-2 text-xs font-semibold text-gray-500 hover:text-gray-700"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+      {profileGapMessage || walletBlock ? (
+        <div
+          className="fixed inset-0 z-[10080] flex items-center justify-center bg-black/50 px-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="event-profile-gap-title"
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+            <h2 id="event-profile-gap-title" className="text-lg font-bold text-gray-900">
+              {profileGapMessage ? 'Please fill to register' : 'Recharge to register'}
+            </h2>
+            {profileGapMessage ? (
+              <>
+                <p className="mt-2 text-sm text-gray-700">{profileGapMessage}</p>
+                {profileGapMessage.includes('Set ') ? (
+                  <p className="mt-2 text-sm text-gray-500">
+                    Save these in Profile, then come back and register.
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+            {walletBlock ? (
+              <p className="mt-2 text-sm text-gray-700">
+                {walletBlock.unavailable
+                  ? 'Could not check your wallet. Try again, then register.'
+                  : `This ticket is ${formatTicketPrice(walletBlock.needed)}. Your wallet has ${formatTicketPrice(walletBlock.balance)}. Recharge, then tap Register.`}
+              </p>
+            ) : null}
+            <div className="mt-5 flex flex-col gap-2">
+              {walletBlock && !walletBlock.unavailable ? (
+                <button
+                  type="button"
+                  onClick={openWalletToRecharge}
+                  className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-bold text-white"
+                >
+                  Recharge
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={closeRegisterDialog}
+                className={`w-full rounded-xl py-3 text-sm font-bold ${
+                  walletBlock && !walletBlock.unavailable
+                    ? 'border border-gray-300 text-gray-800'
+                    : 'bg-emerald-600 text-white'
+                }`}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Floating Action Button (+) to Create Event */}
+      {canCreateEvent && !selectedEvent && (
+        <button
+          type="button"
+          onClick={() => setShowCreateForm(true)}
+          className="fixed bottom-24 right-5 sm:bottom-8 sm:right-8 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-xl hover:bg-emerald-700 active:scale-95 transition-all focus:outline-none focus:ring-4 focus:ring-emerald-300"
+          aria-label="Create Event"
+          title="Create Event"
+        >
+          <Plus className="h-7 w-7 text-white stroke-[2.5]" />
+        </button>
+      )}
+    </main>
+  );
+}
+
+export default EventsPage;

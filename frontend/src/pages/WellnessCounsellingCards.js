@@ -143,7 +143,7 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({
             <p className="text-sm font-semibold text-green-900">{card.weightKg} kg</p>
           </div>
           <div className="bg-purple-50 rounded-lg p-2">
-            <p className="text-xs text-purple-600 font-medium">BMI</p>
+            <p className="text-xs text-purple-600 font-medium">Indian BMI</p>
             <p className="text-sm font-semibold text-purple-900">{card.bmi}</p>
           </div>
           <div className="bg-orange-50 rounded-lg p-2">

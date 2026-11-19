@@ -6,6 +6,7 @@ import { getProfile } from '../features/user/services/user.api.js';
 import { getCachedProfileUserName } from '../shared/utils/shareUtils.js';
 import { getApiBaseUrl } from '../config/api.config.js';
 import { parseNumericDbUserId, readNumericDbUserId } from '../shared/services/numericDbUserId.js';
+import { TeamMemberProfileModal } from '../shared/components/TeamMemberProfileModal';
 
 const ENROLLMENT_MEMBER_KEY = 'wv.universityEnrollment.member';
 
@@ -131,6 +132,7 @@ const WellnessUniversityEnrollment = ({
   const onClose = onBack;
 
   const [selectedMember, setSelectedMember] = useState(readStoredEnrollmentMember);
+  const [showMemberProfile, setShowMemberProfile] = useState(false);
 
   // Numeric team_table id only. Firebase uid is not a database user, and
   // user.id can be missing after the auth object is copied into React state.
@@ -341,6 +343,7 @@ const WellnessUniversityEnrollment = ({
     : 'bg-white rounded-2xl shadow-2xl w-full max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1rem)] overflow-hidden flex flex-col my-2 sm:my-8';
 
   const formPanel = (
+    <>
     <motion.div
       initial={embedded ? false : { opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -400,9 +403,17 @@ const WellnessUniversityEnrollment = ({
           <div className="bg-gray-50 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs sm:text-sm text-gray-600 font-semibold">Name:</span>
-              <span className="text-xs sm:text-sm text-gray-800 break-words">
-                {viewedUserName}
-              </span>
+              {isViewingOther ? (
+                <button
+                  type="button"
+                  onClick={() => setShowMemberProfile(true)}
+                  className="text-xs sm:text-sm text-gray-800 break-words text-left hover:underline"
+                >
+                  {viewedUserName}
+                </button>
+              ) : (
+                <span className="text-xs sm:text-sm text-gray-800 break-words">{viewedUserName}</span>
+              )}
             </div>
             {coachName && (
               <div className="flex items-center gap-2 mb-2">
@@ -550,6 +561,14 @@ const WellnessUniversityEnrollment = ({
           </div>
         </div>
       </motion.div>
+      <TeamMemberProfileModal
+        isOpen={showMemberProfile}
+        onClose={() => setShowMemberProfile(false)}
+        memberEmail={selectedMember?.email}
+        memberUserId={selectedMember?.userId || selectedMember?.id}
+        apiBaseUrl={getApiBaseUrl()}
+      />
+    </>
   );
 
   if (embedded) {

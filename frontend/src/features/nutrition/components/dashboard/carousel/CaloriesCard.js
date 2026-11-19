@@ -59,8 +59,8 @@ const CompactCircularProgress = ({ percentage, size = 72, strokeWidth = 7, bmrTa
       >
         <defs>
           <linearGradient id="compactCalGreen" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#4ade80" />
-            <stop offset="100%" stopColor="#059669" />
+            <stop offset="0%" style={{ stopColor: 'var(--wv-ring-start)' }} />
+            <stop offset="100%" style={{ stopColor: 'var(--wv-ring-end)' }} />
           </linearGradient>
           <linearGradient id="compactCalRed" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#f87171" />

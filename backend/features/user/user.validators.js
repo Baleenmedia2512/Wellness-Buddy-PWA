@@ -12,6 +12,8 @@ import {
   isStoredTransformationPhoto,
 } from './domain/transformationPhotos.rules.js';
 import { validateHeightCm as validateHeightCmInput } from './domain/heightChange.rules.js';
+import { isValidPositionCode, normalizePositionCode } from './domain/communityPosition.rules.js';
+import { normalizeProfileIntroPatch, PROFILE_INTRO_KEYS } from './domain/profileIntro.rules.js';
 
 const VALID_DIETS = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
 const VALID_GOAL_MODES = ['loss', 'gain', 'maintain'];
@@ -224,6 +226,64 @@ export function validateUpdateProfile(body) {
     bcmProfileReviewed = raw === true || raw === 'true' || raw === 1 || raw === '1';
   }
 
+  // Working Physical Centre preference — optional; old clients omit it (leave unchanged).
+  let workingPhysicalCentreId;
+  if (
+    'workingPhysicalCentreId' in body
+    || 'WorkingPhysicalCentreId' in body
+    || 'working_physical_centre_id' in body
+  ) {
+    const raw = body.workingPhysicalCentreId !== undefined
+      ? body.workingPhysicalCentreId
+      : (body.WorkingPhysicalCentreId !== undefined
+        ? body.WorkingPhysicalCentreId
+        : body.working_physical_centre_id);
+    if (raw == null || raw === '') {
+      workingPhysicalCentreId = null;
+    } else {
+      const id = Number(raw);
+      if (!Number.isFinite(id) || id <= 0 || !Number.isInteger(id)) {
+        throw new ValidationError(400, 'Invalid workingPhysicalCentreId.');
+      }
+      workingPhysicalCentreId = id;
+    }
+  }
+
+  // Event registration prefs — optional; old clients omit (leave unchanged).
+  let eventTranslation;
+  let eventYourCity;
+  let eventLevel;
+  if ('eventTranslation' in body || 'EventTranslation' in body) {
+    eventTranslation = body.eventTranslation !== undefined
+      ? body.eventTranslation
+      : body.EventTranslation;
+  }
+  if ('eventYourCity' in body || 'EventYourCity' in body) {
+    eventYourCity = body.eventYourCity !== undefined
+      ? body.eventYourCity
+      : body.EventYourCity;
+  }
+  if ('eventLevel' in body || 'EventLevel' in body) {
+    eventLevel = body.eventLevel !== undefined
+      ? body.eventLevel
+      : body.EventLevel;
+  }
+
+  const introInput = {};
+  let hasIntro = false;
+  for (const key of PROFILE_INTRO_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      introInput[key] = body[key];
+      hasIntro = true;
+    }
+  }
+  let profileIntro;
+  if (hasIntro) {
+    const normalizedIntro = normalizeProfileIntroPatch(introInput);
+    if (!normalizedIntro.ok) throw new ValidationError(400, normalizedIntro.message);
+    profileIntro = normalizedIntro.value;
+  }
+
   return {
     email,
     userId: resolvedUserId,
@@ -249,6 +309,12 @@ export function validateUpdateProfile(body) {
     recoveredHealthIssues,
     transformationPhotos,
     bcmProfileReviewed,
+    workingPhysicalCentreId,
+    eventTranslation,
+    eventYourCity,
+    eventLevel,
+    profileIntro,
+    skipOtp: Boolean(body.skipOtp || body.directSave),
   };
 }
 
@@ -445,6 +511,27 @@ export function validateCommunityIdVerify(body) {
   const otp = body?.otp != null ? String(body.otp).trim() : '';
   if (!otp || !/^\d{4}$/.test(otp)) {
     throw new ValidationError(400, 'Enter the 4-digit approval code from your sponsor');
+  }
+  return { ...identity, otp };
+}
+
+export function validateCommunityPositionRequest(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const raw = body.positionCode !== undefined ? body.positionCode : body.position_code;
+  const positionCode = normalizePositionCode(raw);
+  if (!isValidPositionCode(positionCode)) {
+    throw new ValidationError(400, 'Choose a community position.');
+  }
+  return { ...identity, positionCode };
+}
+
+export function validateCommunityPositionVerify(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const otp = body?.otp != null ? String(body.otp).trim() : '';
+  if (!otp || !/^\d{4}$/.test(otp)) {
+    throw new ValidationError(400, 'Enter the 4-digit approval code from your coach');
   }
   return { ...identity, otp };
 }

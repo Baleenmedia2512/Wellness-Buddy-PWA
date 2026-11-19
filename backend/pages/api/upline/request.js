@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Send Upline Coach Approval Request
  * POST /api/upline/request
  *
@@ -359,6 +359,7 @@ export default async function handler(req, res) {
     const mail = buildSponsorOtpEmail({
       otp,
       memberName: requester.UserName,
+      memberPhone: requester.PhoneNumber,
       expiresHours: 24,
     });
     const emailResult = await sendEmail({

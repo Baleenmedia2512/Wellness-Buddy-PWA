@@ -17,7 +17,7 @@ import {
 
 export default function TeamSearchResults({
   dropdownRef, loading, loadError = false, rosterReady = true, suggestions,
-  selectedMemberId, onSelect, resultVariant = 'default',
+  selectedMemberId, onSelect, onViewProfile, resultVariant = 'default',
 }) {
   return (
     <div
@@ -48,40 +48,57 @@ export default function TeamSearchResults({
               : formatMemberSubtitle(member.email, subtitleCommunityId(member));
             return (
             <li key={`${member.userId}-${index}`}>
-              <button
-                onClick={() => onSelect(member)}
-                className="w-full px-4 py-2.5 text-left hover:bg-gray-50 transition-colors flex items-start gap-3"
-              >
+              <div className="w-full px-4 py-2.5 hover:bg-gray-50 transition-colors flex items-start gap-3">
                 <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
                   <User className="h-4 w-4 text-green-600" />
                 </div>
                 <div className="flex-1 min-w-0">
                   {resultVariant === 'diary' ? (
                     <>
-                      <p className="text-sm font-medium text-gray-900 break-words">
+                      <button
+                        type="button"
+                        className="text-sm font-medium text-gray-900 break-words text-left hover:underline disabled:no-underline disabled:cursor-default"
+                        onClick={() => onViewProfile?.(member)}
+                        disabled={!member.email && !member.userId}
+                        aria-label={`View ${member.userName}'s profile`}
+                      >
                         {member.userName}
                         {member.isSelf && <span className="ml-2 text-xs text-green-600">(Me)</span>}
-                      </p>
+                      </button>
                       {diaryDetails ? (
                         <p className="text-xs text-gray-500 break-words">{diaryDetails}</p>
                       ) : null}
                     </>
                   ) : (
                     <>
-                      <p className="text-sm font-medium text-gray-900 truncate">
+                      <button
+                        type="button"
+                        className="block max-w-full text-sm font-medium text-gray-900 truncate text-left hover:underline disabled:no-underline disabled:cursor-default"
+                        onClick={() => onViewProfile?.(member)}
+                        disabled={!member.email && !member.userId}
+                        aria-label={`View ${member.userName}'s profile`}
+                      >
                         {member.userName}
                         {member.isSelf && <span className="ml-2 text-xs text-green-600">(Me)</span>}
-                      </p>
+                      </button>
                       {subtitle ? (
                         <p className="text-xs text-gray-500 truncate">{subtitle}</p>
                       ) : null}
                     </>
                   )}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => onSelect(member)}
+                  className="flex-shrink-0 self-center rounded-lg border border-green-200 px-2.5 py-1 text-xs font-semibold text-green-700 hover:bg-green-50"
+                  aria-label={`Select ${member.userName}`}
+                >
+                  Select
+                </button>
                 {selectedMemberId === member.userId && (
                   <div className="flex-shrink-0 w-2 h-2 rounded-full bg-green-500" />
                 )}
-              </button>
+              </div>
             </li>
             );
           })}

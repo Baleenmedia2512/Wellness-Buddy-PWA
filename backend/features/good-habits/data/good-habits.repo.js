@@ -3,7 +3,7 @@ import logger from '../../../shared/lib/logger.js';
 import { applyDayFilterWidened } from '../../../shared/lib/datetime/applyDayFilter.js';
 import {
   IANA_IST,
-  filterRowsByCalendarDay,
+  filterFoodRowsByCalendarDay,
   filterRowsByCalendarDateRange,
   shiftDateYmd,
 } from '../../../shared/lib/datetime/index.js';
@@ -145,6 +145,20 @@ export async function getHabitImage(id, userId) {
   return data;
 }
 
+export async function findHabitById(id, userId) {
+  const db = getMysqlClient();
+  let q = db
+    .from('good_habits_table')
+    .select('"ID", "UserId", "CreatedAt", "IsDeleted"')
+    .eq('"ID"', id);
+  if (userId) {
+    q = q.eq('"UserId"', String(userId));
+  }
+  const { data, error } = await q.limit(1);
+  if (error) throw error;
+  return Array.isArray(data) && data[0] ? data[0] : null;
+}
+
 export async function softDeleteHabit(id, userId, updatedAt) {
   const db = getMysqlClient();
   const { data, error } = await db
@@ -177,7 +191,8 @@ export async function listHabitsForDate(userId, date, timezoneIana = IANA_IST) {
     });
     return [];
   }
-  return filterRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
+  // IST wall-clock CreatedAt (same as diary) — do not treat …Z as real UTC.
+  return filterFoodRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
 }
 
 export async function restoreHabit(id, userId, updatedAt) {

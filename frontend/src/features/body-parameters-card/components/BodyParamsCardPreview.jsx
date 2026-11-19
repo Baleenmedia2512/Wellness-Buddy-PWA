@@ -17,8 +17,8 @@ import {
 } from '../domain/bodyMetricReferences.js';
 import {
   formatBcmShareCardDateTime,
+  formatBcmAppointmentDisplay,
   resolveBcmCardDisplayTimestamp,
-  resolveBcmCardAppointmentDate,
 } from '../domain/bcmCardDateTime.rules.js';
 
 const G          = '#16a34a';
@@ -328,7 +328,7 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null, tim
       timezoneIana,
     );
 
-  const appointmentDate = resolveBcmCardAppointmentDate(card);
+  const appointmentDate = formatBcmAppointmentDisplay(card);
 
   /* ── Status helpers ── */
   const bmiVal = parseFloat(card.bmi);
@@ -533,7 +533,7 @@ const BodyParamsCardPreview = React.forwardRef(({ card, previousCard = null, tim
           {card.bmi != null && card.bmi !== '' && (
             <MetricRow
               icon="🧍" iconBg="#dcfce7"
-              label="BMI"
+              label="Indian BMI"
               value={String(card.bmi)}
               rangeLabel="18.5 to 23"
               status={bmiStatus}
