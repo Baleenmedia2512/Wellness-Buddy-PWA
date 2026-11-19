@@ -801,8 +801,8 @@ export function invalidateActivityReportCachesForViewer(_viewerUserId) {
 }
 
 /**
- * Team scope for the report with globally hidden members removed.
- * Hidden users stay out regardless of date / attendance / column filters.
+ * Team scope for the report with globally hidden members tracked.
+ * Counts include all members in scope; Not Posted detail table excludes hidden members.
  */
 async function resolveVisibleActivityReportUserIds({ userId, role, teamScope }) {
   const [scope, hiddenIds] = await Promise.all([
@@ -811,7 +811,7 @@ async function resolveVisibleActivityReportUserIds({ userId, role, teamScope }) 
   ]);
   return {
     ...scope,
-    userIds: excludeHiddenActivityReportUserIds(scope.userIds, hiddenIds),
+    userIds: scope.userIds,
     hiddenIds,
     hiddenCacheToken: activityReportHiddenCacheToken(hiddenIds),
   };
@@ -892,7 +892,7 @@ async function getActivityReportBootstrapUncached({
     ? hiddenCacheToken
     : activityReportHiddenCacheToken(resolvedHiddenIds);
   const { teamScope: resolvedScope, teamScopeCounts, memberMeta } = scope;
-  const userIds = excludeHiddenActivityReportUserIds(scope.userIds, resolvedHiddenIds);
+  const userIds = scope.userIds || [];
   const baseBody = {
     success: true,
     dateRange,
@@ -977,6 +977,7 @@ async function getActivityReportBootstrapUncached({
       attendanceStatus,
       userIds,
       attendedUserIds,
+      resolvedHiddenIds,
     );
 
     // Empty detail tab → skip member fetch + sponsor/ideal-coach chain walks.
@@ -1393,6 +1394,7 @@ export async function getActivityDetails({
     attendanceStatus,
     userIds,
     attendedUserIds,
+    scope.hiddenIds,
   );
 
   if (tableUserIds.length === 0) {
