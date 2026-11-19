@@ -30,6 +30,8 @@ export function toClubListRow(saved, ownerNameFallback = '') {
     owner_user_id: saved.owner_user_id ?? saved.ownerUserId ?? null,
     owner_phone: saved.owner_phone ?? saved.ownerPhone ?? null,
     ownerName: saved.ownerName || ownerNameFallback || 'Unknown',
+    area: saved.area || null,
+    city: saved.city || null,
   };
   if (saved.todayAttendance != null) row.todayAttendance = saved.todayAttendance;
   if (saved.attendancePercentage != null) row.attendancePercentage = saved.attendancePercentage;
