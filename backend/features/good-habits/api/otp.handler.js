@@ -14,8 +14,9 @@ import { findByUserId } from '../../user/user.repository.js';
 import { maskEmailForDisplay } from '../../user/domain/heightChange.rules.js';
 import {
   GOOD_HABIT_OTP_CONTACT_TYPE,
-  GOOD_HABIT_OTP_TTL_MINUTES,
   goodHabitOtpExpiryIst,
+  goodHabitOtpExpiryLabelIst,
+  goodHabitOtpExpiryUtcIso,
   goodHabitOtpRecipientKey,
 } from '../domain/otp.rules.js';
 import {
@@ -95,7 +96,9 @@ export async function requestGoodHabitOtp(rawBody) {
   const coach = await resolveMemberCoachApprover(member);
 
   const otpKey = crypto.randomBytes(12).toString('hex');
-  const expiresAtUtc = new Date(Date.now() + GOOD_HABIT_OTP_TTL_MINUTES * 60 * 1000);
+  const expiresAtUtcIso = goodHabitOtpExpiryUtcIso();
+  const expiresAtIst = goodHabitOtpExpiryIst();
+  const expiresLabel = goodHabitOtpExpiryLabelIst();
   await pendingRepo.upsertPending({
     otpKey,
     userId: input.userId,
@@ -110,7 +113,7 @@ export async function requestGoodHabitOtp(rawBody) {
       // Business day = verify time (IST), not gallery capture time.
       clientTimestamp: null,
     },
-    expiresAtUtcIso: expiresAtUtc.toISOString(),
+    expiresAtUtcIso,
   });
 
   const recipient = goodHabitOtpRecipientKey(input.userId, otpKey);
@@ -120,7 +123,7 @@ export async function requestGoodHabitOtp(rawBody) {
   await authRepo.insertOtpToken({
     Recipient: recipient,
     OTPHash: otpHash,
-    ExpiresAt: goodHabitOtpExpiryIst(GOOD_HABIT_OTP_TTL_MINUTES),
+    ExpiresAt: expiresAtIst,
     ContactType: GOOD_HABIT_OTP_CONTACT_TYPE,
     IsActive: true,
     CreatedAt: nowUtc(),
@@ -129,8 +132,9 @@ export async function requestGoodHabitOtp(rawBody) {
   const mail = buildGoodHabitOtpEmail({
     otp,
     memberName: member.UserName,
+    memberPhone: member.PhoneNumber,
     coachName: coach.name,
-    expiresMinutes: GOOD_HABIT_OTP_TTL_MINUTES,
+    expiresLabel,
   });
   const photo = buildGoodHabitPhotoAttachment(
     input.imageBase64 || input.afterImageBase64 || input.beforeImageBase64,
@@ -147,6 +151,7 @@ export async function requestGoodHabitOtp(rawBody) {
     userId: String(input.userId),
     coachUserId: coach.userId,
     otpKey,
+    expiresAtIst,
   });
 
   return {
@@ -159,7 +164,9 @@ export async function requestGoodHabitOtp(rawBody) {
         otpKey,
         maskedEmail: maskEmailForDisplay(coach.email),
         coachName: coach.name,
-        otpExpiresAtMinutes: GOOD_HABIT_OTP_TTL_MINUTES,
+        // End of IST day (not a fixed minute TTL). Kept for older clients that ignore unknown fields.
+        otpExpiresAtIst: expiresAtIst,
+        otpExpiresLabel: expiresLabel,
       },
     },
   };

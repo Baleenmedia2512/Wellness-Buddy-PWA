@@ -29,7 +29,7 @@ async function compressPayload(payload) {
 }
 
 /**
- * Legacy immediate save (apps &lt; 3.5.7 / no version header on server).
+ * Legacy immediate save (apps &lt; 3.5.6 / no version header on server).
  * New apps should use requestGoodHabitOtp → verifyGoodHabitOtp.
  */
 export async function saveGoodHabit(payload) {
