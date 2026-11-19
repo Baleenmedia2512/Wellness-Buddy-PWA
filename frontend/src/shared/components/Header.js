@@ -20,6 +20,10 @@ import PremiumExpiryBanner from "../../features/payments/components/PremiumExpir
 import usePremiumStatus from "../../features/payments/hooks/usePremiumStatus";
 import * as Session from "../services/sessionStorage";
 import { shareAppInvite } from "../../features/user/services/appInviteShare.service";
+import {
+  communityPositionFromProfile,
+  readSavedCommunityPosition,
+} from "../../features/user/domain/communityPosition";
 
 const Header = ({
   user,
@@ -55,6 +59,16 @@ const Header = ({
 }) => {
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
+  const [savedCommunityPosition, setSavedCommunityPosition] = useState(() => {
+    const fromUser = user?.communityPosition?.code
+      || (typeof user?.communityPosition === 'string' ? user.communityPosition : '')
+      || user?.eventLevel
+      || user?.EventLevel
+      || '';
+    if (fromUser) return String(fromUser).trim();
+    const uid = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
+    return readSavedCommunityPosition(uid) || '';
+  });
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [avatarVersion, setAvatarVersion] = useState(getAvatarDisplayVersion);
   const [isSharingInvite, setIsSharingInvite] = useState(false);
@@ -62,6 +76,20 @@ const Header = ({
 
   // Premium members get a light blue header. Tab-only bars use the same check.
   const premiumUserId = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
+
+  useEffect(() => {
+    const fromUser = user?.communityPosition?.code
+      || (typeof user?.communityPosition === 'string' ? user.communityPosition : '')
+      || user?.eventLevel
+      || user?.EventLevel
+      || '';
+    if (fromUser) {
+      setSavedCommunityPosition(String(fromUser).trim());
+    } else if (premiumUserId) {
+      const fromSaved = readSavedCommunityPosition(premiumUserId);
+      if (fromSaved) setSavedCommunityPosition(fromSaved);
+    }
+  }, [user?.communityPosition, user?.eventLevel, user?.EventLevel, premiumUserId]);
 
   useEffect(() => subscribeAvatarDisplayVersion(setAvatarVersion), []);
   useEffect(() => {
@@ -117,6 +145,18 @@ const Header = ({
           const nextImage = data.data.profileImage || null;
           if (nextImage) setSavedProfileImage(nextImage);
           else if (shouldBust) setSavedProfileImage(null);
+
+          // Community position for header display below avatar
+          const pos = communityPositionFromProfile(data.data, userId);
+          const resolvedPos = pos
+            || data.data.eventLevel
+            || data.data.EventLevel
+            || data.data.communityPosition?.code
+            || (typeof data.data.communityPosition === 'string' ? data.data.communityPosition : '')
+            || '';
+          if (resolvedPos) {
+            setSavedCommunityPosition(String(resolvedPos).trim());
+          }
         }
       } catch (err) {
         console.error("Error fetching user profile for header:", err);
@@ -162,6 +202,8 @@ const Header = ({
     const colors = ["bg-blue-500", "bg-green-500", "bg-purple-500", "bg-pink-500", "bg-indigo-500", "bg-yellow-500", "bg-red-500", "bg-teal-500"];
     return colors[(userName || userEmail || "").length % colors.length];
   };
+
+  const displayCommunityPosition = (savedCommunityPosition || '').trim() || 'Guest';
 
   const avatarNode = headerAvatarSrc ? (
     <img
@@ -300,23 +342,39 @@ const Header = ({
             <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
           </TouchFeedbackButton>
 
-          <span className="relative inline-flex">
-            <PremiumAvatarRing enabled={isPremiumMember}>
-              <TouchFeedbackButton
-                type="button"
-                onClick={(e) => {
-                  if (e && typeof e.preventDefault === 'function') e.preventDefault();
-                  if (typeof onOpenProfile === 'function') onOpenProfile();
-                }}
-                className="block aspect-square h-9 w-9 sm:h-10 sm:w-10 shrink-0 overflow-hidden rounded-full p-0 leading-none focus:outline-none"
-                title="My Profile"
-                ariaLabel="My Profile"
-              >
-                {avatarNode}
-              </TouchFeedbackButton>
-            </PremiumAvatarRing>
-            {isPremiumMember ? <PremiumCrownMark /> : null}
-          </span>
+          <div className="relative flex flex-col items-center">
+            <span className="relative inline-flex">
+              <PremiumAvatarRing enabled={isPremiumMember}>
+                <TouchFeedbackButton
+                  type="button"
+                  onClick={(e) => {
+                    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+                    if (typeof onOpenProfile === 'function') onOpenProfile();
+                  }}
+                  className="block aspect-square h-9 w-9 sm:h-10 sm:w-10 shrink-0 overflow-hidden rounded-full p-0 leading-none focus:outline-none"
+                  title="My Profile"
+                  ariaLabel="My Profile"
+                >
+                  {avatarNode}
+                </TouchFeedbackButton>
+              </PremiumAvatarRing>
+              {isPremiumMember ? <PremiumCrownMark /> : null}
+            </span>
+            <span
+              className={`absolute -bottom-3 text-[8.5px] xs:text-[9px] font-bold text-center whitespace-nowrap leading-none select-none tracking-tight max-w-[64px] truncate cursor-pointer ${
+                isPremiumMember ? 'text-sky-700' : 'text-green-700'
+              }`}
+              title={`Community Position: ${displayCommunityPosition}`}
+              aria-label={`Community Position: ${displayCommunityPosition}`}
+              data-testid="header-community-position"
+              onClick={(e) => {
+                if (e && typeof e.preventDefault === 'function') e.preventDefault();
+                if (typeof onOpenProfile === 'function') onOpenProfile();
+              }}
+            >
+              {displayCommunityPosition}
+            </span>
+          </div>
         </div>
       </div>
 
