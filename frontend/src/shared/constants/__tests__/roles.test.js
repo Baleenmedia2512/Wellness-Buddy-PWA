@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizeAppRole,
+  formatAppRoleLabel,
   isAdminLikeRole,
   ROLE_USER,
   ROLE_ADMIN,
@@ -24,9 +25,10 @@ describe('normalizeAppRole', () => {
     assert.equal(normalizeAppRole('superadmin'), ROLE_USER);
   });
 
-  it('maps customer/member aliases to user', () => {
+  it('maps customer/member aliases to user and sponsor to coach', () => {
     assert.equal(normalizeAppRole('customer'), ROLE_USER);
     assert.equal(normalizeAppRole('Member'), ROLE_USER);
+    assert.equal(normalizeAppRole('sponsor'), ROLE_COACH);
   });
 
   it('preserves known elevated roles (case-insensitive)', () => {
@@ -49,5 +51,17 @@ describe('isAdminLikeRole', () => {
     assert.equal(isAdminLikeRole('coach'), false);
     assert.equal(isAdminLikeRole('system_admin'), false);
     assert.equal(isAdminLikeRole('System Admin'), false);
+  });
+});
+
+describe('formatAppRoleLabel', () => {
+  it('shows Customer / Sponsor / Admin / Developer for those roles', () => {
+    assert.equal(formatAppRoleLabel('user'), 'Customer');
+    assert.equal(formatAppRoleLabel('member'), 'Customer');
+    assert.equal(formatAppRoleLabel('Admin'), 'Admin');
+    assert.equal(formatAppRoleLabel('developer'), 'Developer');
+    assert.equal(formatAppRoleLabel('coach'), 'Sponsor');
+    assert.equal(formatAppRoleLabel('sponsor'), 'Sponsor');
+    assert.equal(formatAppRoleLabel(null), 'Customer');
   });
 });

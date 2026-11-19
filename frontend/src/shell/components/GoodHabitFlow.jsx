@@ -135,7 +135,7 @@ export default function GoodHabitFlow({
           <div>
             <p id="good-habit-title" className="text-sm font-bold leading-snug text-emerald-900">Task by Coach</p>
             <p className="mt-0.5 text-[11px] leading-snug text-emerald-700/70">
-              Save sends this photo to your coach for a verification code, then logs it for today.
+              This photo is sent to your coach. Enter their verification code.
             </p>
           </div>
           <button

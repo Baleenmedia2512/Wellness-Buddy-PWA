@@ -78,9 +78,34 @@ export const ROLE_RANK = {
 export function normalizeAppRole(role) {
   const r = String(role || '').trim().toLowerCase();
   if (r === 'member' || r === 'customer') return ROLE_USER;
+  // Product UI calls coach "Sponsor"; accept that alias too.
+  if (r === 'sponsor') return ROLE_COACH;
   if (r === 'system admin' || r === 'systemadmin') return ROLE_SYSTEM_ADMIN;
   if (KNOWN_APP_ROLES.includes(r)) return r;
   return ROLE_USER;
+}
+
+/** Profile / chrome labels for account roles. */
+export const APP_ROLE_LABELS = Object.freeze({
+  [ROLE_USER]: 'Customer',
+  [ROLE_MEMBER]: 'Customer',
+  // DB role is `coach`; product UI label is Sponsor (same as nav-page-access matrix).
+  [ROLE_COACH]: 'Sponsor',
+  [ROLE_UPLINE]: 'Upline',
+  [ROLE_SYSTEM_ADMIN]: 'System Admin',
+  [ROLE_ADMIN]: 'Admin',
+  [ROLE_DEVELOPER]: 'Developer',
+});
+
+/**
+ * UI label for an account role (Profile badge, etc.).
+ * `user` → Customer · `coach` → Sponsor · `admin` → Admin · `developer` → Developer.
+ * @param {string|null|undefined} role
+ * @returns {string}
+ */
+export function formatAppRoleLabel(role) {
+  const normalized = normalizeAppRole(role);
+  return APP_ROLE_LABELS[normalized] || APP_ROLE_LABELS[ROLE_USER];
 }
 
 /**

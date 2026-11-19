@@ -3,7 +3,27 @@
  * Today vs Yesterday stays the default; days=10 uses a net loss over the window.
  */
 
+/** Preset length for home "Last 10 Days". */
 export const WEIGHT_LEADERBOARD_WINDOW_DAYS = 10;
+
+/** Inclusive custom-range / API window cap (IST). */
+export const WEIGHT_LEADERBOARD_MAX_WINDOW_DAYS = 30;
+
+/**
+ * Resolve `days` for weight leaderboard.
+ * Missing / invalid / 1 → Today vs Yesterday (legacy).
+ * 2..30 → multi-day IST window. 31+ → legacy today (do not expand).
+ * Released apps only omit `days` or send `days=10` — both stay unchanged.
+ *
+ * @param {unknown} rawDays
+ * @returns {number}
+ */
+export function resolveWeightLeaderboardWindowDays(rawDays) {
+  const n = parseInt(rawDays, 10);
+  if (!Number.isFinite(n) || n < 2) return 1;
+  if (n > WEIGHT_LEADERBOARD_MAX_WINDOW_DAYS) return 1;
+  return n;
+}
 
 /** Plausibility cap for the Today vs Yesterday strip (OCR / bad reads). */
 export const MAX_TODAY_VS_YESTERDAY_LOSS_KG = 3;
