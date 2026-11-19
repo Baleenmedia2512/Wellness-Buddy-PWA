@@ -6,6 +6,7 @@
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import { isR2Configured } from '../../shared/lib/r2/config.js';
 import { uploadStoredImageToR2 } from '../../shared/lib/r2/putCompressedJpeg.js';
+import { compressTransformationJpeg } from '../../shared/lib/images/clarityJpeg.js';
 import { publicObjectUrl, avatarRedirectUrl } from '../../shared/lib/r2/s3.js';
 import {
   buildTransformationObjectKey,
@@ -79,6 +80,8 @@ export async function persistTransformationPhotoKeys(userId, photosRaw) {
         imageBase64: dataUri,
         folder: R2_FOLDERS.transformation,
         buildKey: (hash) => buildTransformationObjectKey(userId, slot, hash, 'jpg'),
+        // Do not re-crush with the 22 KB diary avatar compressor.
+        compress: compressTransformationJpeg,
       });
       if (!key) return;
       const keyField = TRANSFORMATION_PHOTO_KEY_FIELDS[slot];
