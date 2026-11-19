@@ -34,7 +34,7 @@ export function validateGetCenters(query) {
   };
 }
 
-export function validateRegister(body) {
+export function validateRegister(body, appVersion = null) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
   const { centerName, latitude, longitude, ownerUserId } = body;
   if (!centerName || !latitude || !longitude || !ownerUserId) {
@@ -48,7 +48,12 @@ export function validateRegister(body) {
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
     throw new ValidationError(400, 'Invalid coordinates');
   }
-  return { ...body, latitude: lat, longitude: lng };
+  return {
+    ...body,
+    latitude: lat,
+    longitude: lng,
+    appVersion: appVersion || null,
+  };
 }
 
 export function validateUnregister(body) {
@@ -72,29 +77,59 @@ export function validateGetAttendees(query) {
   };
 }
 
-export function validateUpdate(body) {
+export function validateUpdate(body, appVersion = null) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
-  const { centerId, userId, centerName, latitude, longitude, ownerPhone, educationHour } = body;
+  const {
+    centerId, userId, centerName, latitude, longitude, ownerPhone, educationHour,
+    centerCode, photos, openingHours, facilities, features, seatingCount, area, city,
+  } = body;
   if (!centerId) throw new ValidationError(400, 'Missing required field: centerId');
   if (!userId) throw new ValidationError(400, 'Missing required field: userId');
   const hasAtLeastOneField = centerName !== undefined
     || latitude !== undefined
     || longitude !== undefined
     || ownerPhone !== undefined
-    || educationHour !== undefined;
+    || educationHour !== undefined
+    || centerCode !== undefined
+    || photos !== undefined
+    || openingHours !== undefined
+    || facilities !== undefined
+    || features !== undefined
+    || seatingCount !== undefined
+    || area !== undefined
+    || city !== undefined;
   if (!hasAtLeastOneField) {
     throw new ValidationError(400, 'At least one updatable field must be provided');
   }
   if (centerName !== undefined && !centerName.trim()) {
     throw new ValidationError(400, 'centerName cannot be empty');
   }
+  const profile = {
+    centerCode,
+    photos,
+    openingHours,
+    facilities,
+    features,
+    seatingCount,
+    area,
+    city,
+    appVersion: appVersion || null,
+  };
   if (latitude !== undefined || longitude !== undefined) {
     const lat = parseFloat(latitude);
     const lng = parseFloat(longitude);
     if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
       throw new ValidationError(400, 'Invalid coordinates');
     }
-    return { centerId, userId, centerName, latitude: lat, longitude: lng, ownerPhone, educationHour };
+    return { centerId, userId, centerName, latitude: lat, longitude: lng, ownerPhone, educationHour, ...profile };
   }
-  return { centerId, userId, centerName, latitude, longitude, ownerPhone, educationHour };
+  return { centerId, userId, centerName, latitude, longitude, ownerPhone, educationHour, ...profile };
+}
+
+export function validateGetCenterPhotos(query) {
+  if (!query?.centerId) throw new ValidationError(400, 'Missing required parameter: centerId');
+  if (!query?.userId) throw new ValidationError(400, 'Missing required parameter: userId');
+  const id = parseInt(query.centerId, 10);
+  if (!Number.isFinite(id) || id <= 0) throw new ValidationError(400, 'centerId must be a positive integer');
+  return { centerId: id, userId: query.userId };
 }

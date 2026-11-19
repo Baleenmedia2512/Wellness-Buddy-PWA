@@ -5,6 +5,29 @@ import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { cache } from '../../utils/cache.js';
 import { paginateCentersListRecords } from './domain/centers.pagination.js';
 import { canUnregisterCenter } from './domain/center-access.rules.js';
+import { prepareCentreProfile } from './domain/centreProfile.rules.js';
+import {
+  CENTRE_FACILITIES,
+  CENTRE_FEATURES,
+  parseStoredCatalogIds,
+  parseStoredOpeningHours,
+  prepareCentreListing,
+} from './domain/centreListing.rules.js';
+import {
+  centrePhotoUrls,
+  removeCentrePhotoFiles,
+  saveCentrePhotoFiles,
+} from './centre-photo-storage.service.js';
+import { normalizeSeatingCount } from './domain/centreApproval.rules.js';
+import { normalizePlaceName } from './domain/placeLocation.rules.js';
+import {
+  assertCentreCoachApproved,
+  consumeCentreCoachApproval,
+} from './centre-approval.service.js';
+import {
+  assertCentrePhoneVerified,
+  consumeCentrePhoneOtp,
+} from './centre-phone.service.js';
 
 /** Global geo list for GPS check-in — identical for all users. */
 const GEO_LIST_CACHE_TTL_MS = 2 * 60 * 1000;
@@ -21,20 +44,100 @@ export async function checkName({ name }) {
 }
 
 // ─── register ────────────────────────────────────────────────────────────────
+function listingColumns(listing) {
+  const columns = {};
+  if (listing.openingHours !== undefined) {
+    columns.opening_hours_json = listing.openingHours ? JSON.stringify(listing.openingHours) : null;
+  }
+  if (listing.facilities !== undefined) {
+    columns.facilities_json = listing.facilities ? JSON.stringify(listing.facilities) : null;
+  }
+  if (listing.features !== undefined) {
+    columns.features_json = listing.features ? JSON.stringify(listing.features) : null;
+  }
+  return columns;
+}
+
+function publicListing(row) {
+  return {
+    openingHours: parseStoredOpeningHours(row?.opening_hours_json),
+    facilities: parseStoredCatalogIds(row?.facilities_json, CENTRE_FACILITIES),
+    features: parseStoredCatalogIds(row?.features_json, CENTRE_FEATURES),
+    seatingCount: storedSeatingCount(row?.seating_count),
+  };
+}
+
+function storedSeatingCount(raw) {
+  if (raw == null || raw === '') return null;
+  const count = Number(raw);
+  return Number.isInteger(count) && count >= 0 ? count : null;
+}
+
+function duplicateCentreMessage(err) {
+  const message = String(err?.message || '');
+  if (/center_code|uq_nutrition_centers_center_code/i.test(message)) {
+    return 'This centre code is already used. Please choose a different code.';
+  }
+  return null;
+}
+
 export async function register(input) {
   const {
     centerName, latitude, longitude, educationHour, ownerUserId, ownerPhone,
+    centerCode, photos, openingHours, facilities, features, seatingCount, area, city, appVersion,
   } = input;
 
-  const [{ data: user, error: userErr }, { data: existing, error: dupErr }] = await Promise.all([
+  const profile = prepareCentreProfile({
+    centerCode, photos, appVersion, mode: 'register',
+  });
+  if (profile.error) {
+    return { httpStatus: 400, body: { success: false, message: profile.error } };
+  }
+  const listing = prepareCentreListing({
+    openingHours, facilities, features, appVersion, mode: 'register',
+  });
+  if (listing.error) {
+    return { httpStatus: 400, body: { success: false, message: listing.error } };
+  }
+  const seating = normalizeSeatingCount(seatingCount);
+  if (seating.error) {
+    return { httpStatus: 400, body: { success: false, message: seating.error } };
+  }
+  const approvalError = await assertCentreCoachApproved({
+    userId: ownerUserId,
+    appVersion,
+    openingHours: listing.openingHours,
+  });
+  if (approvalError) {
+    return { httpStatus: 400, body: { success: false, message: approvalError } };
+  }
+  const phoneError = await assertCentrePhoneVerified({
+    userId: ownerUserId,
+    ownerPhone,
+    savedPhone: null,
+    appVersion,
+    openingHours: listing.openingHours,
+  });
+  if (phoneError) {
+    return { httpStatus: 400, body: { success: false, message: phoneError } };
+  }
+
+  const codeLookup = profile.centerCode
+    ? repo.findByCode(profile.centerCode)
+    : Promise.resolve({ data: null, error: null });
+  const [{ data: user, error: userErr }, { data: existing, error: dupErr }, { data: codeOwner, error: codeErr }] = await Promise.all([
     repo.findUserById(ownerUserId),
     repo.findByName(centerName.trim()),
+    codeLookup,
   ]);
   if (userErr || !user) {
     return { httpStatus: 500, body: { success: false, message: 'User not found' } };
   }
   if (dupErr) {
     return { httpStatus: 500, body: { success: false, message: dupErr.message } };
+  }
+  if (codeErr) {
+    return { httpStatus: 500, body: { success: false, message: codeErr.message } };
   }
   if (existing) {
     return {
@@ -46,18 +149,57 @@ export async function register(input) {
       },
     };
   }
+  if (codeOwner) {
+    return {
+      httpStatus: 409,
+      body: {
+        success: false,
+        message: 'This centre code is already used. Please choose a different code.',
+        duplicate: true,
+      },
+    };
+  }
 
-  const center = await repo.insertCenter({
-    center_name: centerName,
-    latitude,
-    longitude,
-    education_hour: educationHour || null,
-    owner_user_id: ownerUserId,
-    owner_phone: ownerPhone || null,
-    status: 'active',
-    is_deleted: false,
-  });
+  let center;
+  try {
+    center = await repo.insertCenter({
+      center_name: centerName,
+      center_code: profile.centerCode,
+      latitude,
+      longitude,
+      education_hour: educationHour || null,
+      owner_user_id: ownerUserId,
+      owner_phone: ownerPhone || null,
+      status: 'active',
+      is_deleted: false,
+      seating_count: seating.value,
+      area: normalizePlaceName(area),
+      city: normalizePlaceName(city),
+      ...listingColumns(listing),
+    });
+  } catch (err) {
+    const duplicateMessage = duplicateCentreMessage(err);
+    if (duplicateMessage) {
+      return { httpStatus: 409, body: { success: false, message: duplicateMessage, duplicate: true } };
+    }
+    throw err;
+  }
 
+  if (profile.photos) {
+    try {
+      await saveCentrePhotoFiles(center.id, profile.photos);
+    } catch (err) {
+      await repo.softDeleteCenter(center.id).catch(() => {});
+      logger.error({ message: err?.message, centerId: center.id }, 'centre photos save failed');
+      return {
+        httpStatus: 500,
+        body: { success: false, message: 'Centre photos could not be saved. Please try again.' },
+      };
+    }
+  }
+
+  await consumeCentreCoachApproval(ownerUserId);
+  await consumeCentrePhoneOtp(ownerUserId, ownerPhone);
   invalidateNutritionCentersListCache();
 
   return {
@@ -104,6 +246,7 @@ export async function unregister({ centerId, userId }) {
   if (!guard.allowed) {
     return { httpStatus: guard.httpStatus, body: { success: false, message: guard.message } };
   }
+  await removeCentrePhotoFiles(centerId);
   await repo.softDeleteCenter(centerId);
   invalidateNutritionCentersListCache();
   return {
@@ -114,7 +257,45 @@ export async function unregister({ centerId, userId }) {
 
 // ─── update ──────────────────────────────────────────────────────────────────
 export async function updateCenter(input) {
-  const { centerId, userId, centerName, latitude, longitude, ownerPhone, educationHour } = input;
+  const {
+    centerId, userId, centerName, latitude, longitude, ownerPhone, educationHour,
+    centerCode, photos, openingHours, facilities, features, seatingCount, area, city, appVersion,
+  } = input;
+
+  const profile = prepareCentreProfile({
+    centerCode, photos, appVersion, mode: 'update',
+  });
+  if (profile.error) {
+    return { httpStatus: 400, body: { success: false, message: profile.error } };
+  }
+  const listing = prepareCentreListing({
+    openingHours, facilities, features, appVersion, mode: 'update',
+  });
+  if (listing.error) {
+    return { httpStatus: 400, body: { success: false, message: listing.error } };
+  }
+  const seating = seatingCount === undefined ? { value: undefined } : normalizeSeatingCount(seatingCount);
+  if (seating.error) {
+    return { httpStatus: 400, body: { success: false, message: seating.error } };
+  }
+  let savedPhone = null;
+  if (ownerPhone !== undefined) {
+    const existingCenter = await repo.findCenterById(centerId);
+    if (existingCenter.error) {
+      return { httpStatus: 500, body: { success: false, message: 'Centre could not be loaded' } };
+    }
+    savedPhone = existingCenter.data?.owner_phone || null;
+  }
+  const phoneError = await assertCentrePhoneVerified({
+    userId,
+    ownerPhone,
+    savedPhone,
+    appVersion,
+    openingHours: listing.openingHours,
+  });
+  if (phoneError) {
+    return { httpStatus: 400, body: { success: false, message: phoneError } };
+  }
 
   const nameLookup = centerName !== undefined
     ? repo.findByName(centerName.trim())
@@ -141,18 +322,78 @@ export async function updateCenter(input) {
     }
   }
 
+  if (profile.centerCode) {
+    const { data: codeOwner, error: codeErr } = await repo.findByCode(profile.centerCode);
+    if (codeErr) {
+      return { httpStatus: 500, body: { success: false, message: codeErr.message } };
+    }
+    if (codeOwner && codeOwner.id !== parseInt(centerId, 10)) {
+      return {
+        httpStatus: 409,
+        body: {
+          success: false,
+          message: 'This centre code is already used. Please choose a different code.',
+          duplicate: true,
+        },
+      };
+    }
+  }
+
   const payload = {};
   if (centerName !== undefined) payload.center_name = centerName.trim();
   if (latitude !== undefined) payload.latitude = latitude;
   if (longitude !== undefined) payload.longitude = longitude;
   if (ownerPhone !== undefined) payload.owner_phone = ownerPhone || null;
   if (educationHour !== undefined) payload.education_hour = educationHour || null;
+  if (profile.centerCode) payload.center_code = profile.centerCode;
+  if (seating.value !== undefined) payload.seating_count = seating.value;
+  if (area !== undefined) payload.area = normalizePlaceName(area);
+  if (city !== undefined) payload.city = normalizePlaceName(city);
+  Object.assign(payload, listingColumns(listing));
 
-  const updated = await repo.updateCenter(centerId, payload);
+  let updated;
+  try {
+    updated = Object.keys(payload).length
+      ? await repo.updateCenter(centerId, payload)
+      : (await repo.findCenterById(centerId)).data;
+  } catch (err) {
+    const duplicateMessage = duplicateCentreMessage(err);
+    if (duplicateMessage) {
+      return { httpStatus: 409, body: { success: false, message: duplicateMessage, duplicate: true } };
+    }
+    throw err;
+  }
+  if (profile.photos) {
+    await saveCentrePhotoFiles(centerId, profile.photos);
+  }
+  await consumeCentrePhoneOtp(userId, ownerPhone);
   invalidateNutritionCentersListCache();
   return {
     httpStatus: 200,
     body: { success: true, data: updated, message: 'Nutrition center updated successfully' },
+  };
+}
+
+export async function getCenterPhotos({ centerId, userId }) {
+  const guard = await assertOwnerOrAdmin(centerId, userId);
+  if (!guard.allowed) {
+    return { httpStatus: guard.httpStatus, body: { success: false, message: guard.message } };
+  }
+  const { data: center, error } = await repo.findCenterById(centerId);
+  if (error || !center) {
+    return { httpStatus: 404, body: { success: false, message: 'Center not found' } };
+  }
+  const rows = await repo.listCenterPhotos(centerId);
+  return {
+    httpStatus: 200,
+    body: {
+      success: true,
+      data: {
+        centerCode: center.center_code || null,
+        photos: await centrePhotoUrls(rows),
+        ...publicListing(center),
+      },
+    },
   };
 }
 
@@ -349,6 +590,7 @@ async function listCentersImpl(input, epochAtStart = centersListEpoch) {
     return {
       id: center.id,
       center_name: center.center_name,
+      center_code: center.center_code || null,
       latitude: center.latitude,
       longitude: center.longitude,
       education_hour: center.education_hour,
@@ -358,6 +600,9 @@ async function listCentersImpl(input, epochAtStart = centersListEpoch) {
       totalParticipants: todayAttendance,
       todayAttendance,
       attendancePercentage: todayAttendance > 0 ? 100 : 0,
+      area: center.area || null,
+      city: center.city || null,
+      ...publicListing(center),
     };
   });
 
