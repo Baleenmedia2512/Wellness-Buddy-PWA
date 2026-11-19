@@ -37,5 +37,25 @@ export function buildUserAvatarUrl(apiBaseUrl, userId, version = generation, opt
   params.set('userId', String(userId));
   if (Number(version) > 0) params.set('_v', String(version));
   if (options.inline) params.set('inline', '1');
+  if (options.profileOnly) params.set('profileOnly', '1');
   return `${apiBaseUrl}/api/user/avatar?${params.toString()}`;
+}
+
+/**
+ * Avatar for html2canvas share cards.
+ * Prefer data: URIs — R2/Google https URLs fail browser CORS on canvas capture.
+ * Order: legacy base64 ProfileImage → CORS-safe sharePhotoBase64 → other https.
+ */
+export function pickShareAvatarSrc({
+  savedProfileImage = null,
+  sharePhotoBase64 = null,
+  photoURL = null,
+} = {}) {
+  const saved = typeof savedProfileImage === 'string' ? savedProfileImage.trim() : '';
+  const share = typeof sharePhotoBase64 === 'string' ? sharePhotoBase64.trim() : '';
+  const photo = typeof photoURL === 'string' ? photoURL.trim() : '';
+  if (saved.startsWith('data:image/')) return saved;
+  if (share.startsWith('data:image/')) return share;
+  if (share) return share;
+  return saved || photo || null;
 }

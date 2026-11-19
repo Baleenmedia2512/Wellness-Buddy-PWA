@@ -5,26 +5,33 @@ PODS:
   - AppAuth/Core (1.7.6)
   - AppAuth/ExternalUserAgent (1.7.6):
     - AppAuth/Core
-  - Capacitor (8.3.4):
+  - Capacitor (8.4.2):
     - CapacitorCordova
-  - CapacitorApp (7.1.2):
+  - CapacitorApp (8.1.1):
     - Capacitor
-  - CapacitorCamera (7.0.5):
+  - CapacitorCamera (8.2.1):
     - Capacitor
-  - CapacitorCordova (8.3.4)
-  - CapacitorFilesystem (6.0.4):
+    - IONCameraLib (~> 1.0.4)
+  - CapacitorCommunityContacts (8.0.0):
     - Capacitor
-  - CapacitorGeolocation (5.0.8):
+  - CapacitorCordova (8.4.2)
+  - CapacitorFilesystem (8.1.2):
     - Capacitor
-  - CapacitorPushNotifications (7.0.6):
+    - IONFilesystemLib (~> 1.1.1)
+  - CapacitorGeolocation (8.2.0):
+    - Capacitor
+    - IONGeolocationLib (= 2.1.0)
+  - CapacitorKeyboard (8.0.6):
+    - Capacitor
+  - CapacitorPushNotifications (8.1.2):
     - Capacitor
   - CapacitorShare (8.0.1):
     - Capacitor
   - CapacitorSplashScreen (8.0.1):
     - Capacitor
-  - CapacitorStatusBar (7.0.6):
+  - CapacitorStatusBar (8.0.3):
     - Capacitor
-  - CapgoCapacitorNavigationBar (7.3.18):
+  - CapgoCapacitorNavigationBar (8.2.6):
     - Capacitor
   - GoogleSignIn (6.2.4):
     - AppAuth (~> 1.5)
@@ -34,6 +41,9 @@ PODS:
     - AppAuth/Core (~> 1.6)
     - GTMSessionFetcher/Core (< 3.0, >= 1.5)
   - GTMSessionFetcher/Core (2.3.0)
+  - IONCameraLib (1.0.5)
+  - IONFilesystemLib (1.1.4)
+  - IONGeolocationLib (2.1.0)
   - SouthdevsCapacitorGoogleAuth (0.0.1):
     - Capacitor
     - GoogleSignIn (~> 6.2.4)
@@ -42,9 +52,11 @@ DEPENDENCIES:
   - "Capacitor (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorApp (from `../../node_modules/@capacitor/app`)"
   - "CapacitorCamera (from `../../node_modules/@capacitor/camera`)"
+  - "CapacitorCommunityContacts (from `../../node_modules/@capacitor-community/contacts`)"
   - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorFilesystem (from `../../node_modules/@capacitor/filesystem`)"
   - "CapacitorGeolocation (from `../../node_modules/@capacitor/geolocation`)"
+  - "CapacitorKeyboard (from `../../node_modules/@capacitor/keyboard`)"
   - "CapacitorPushNotifications (from `../../node_modules/@capacitor/push-notifications`)"
   - "CapacitorShare (from `../../node_modules/@capacitor/share`)"
   - "CapacitorSplashScreen (from `../../node_modules/@capacitor/splash-screen`)"
@@ -58,6 +70,9 @@ SPEC REPOS:
     - GoogleSignIn
     - GTMAppAuth
     - GTMSessionFetcher
+    - IONCameraLib
+    - IONFilesystemLib
+    - IONGeolocationLib
 
 EXTERNAL SOURCES:
   Capacitor:
@@ -66,12 +81,16 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/@capacitor/app"
   CapacitorCamera:
     :path: "../../node_modules/@capacitor/camera"
+  CapacitorCommunityContacts:
+    :path: "../../node_modules/@capacitor-community/contacts"
   CapacitorCordova:
     :path: "../../node_modules/@capacitor/ios"
   CapacitorFilesystem:
     :path: "../../node_modules/@capacitor/filesystem"
   CapacitorGeolocation:
     :path: "../../node_modules/@capacitor/geolocation"
+  CapacitorKeyboard:
+    :path: "../../node_modules/@capacitor/keyboard"
   CapacitorPushNotifications:
     :path: "../../node_modules/@capacitor/push-notifications"
   CapacitorShare:
@@ -87,22 +106,27 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   AppAuth: d4f13a8fe0baf391b2108511793e4b479691fb73
-  Capacitor: d13cad5fa09155679672808cc4ca9fbc2997e1b4
-  CapacitorApp: f01a913211780e0718dae9750442c3e23f96e106
-  CapacitorCamera: 9e952270be355797f769aa835bb7643a96c871fe
-  CapacitorCordova: c07921bdcfec6f691bae22274446b4d606ebf6a4
-  CapacitorFilesystem: 5b9aec35c0212bd0064e26d278c93e925864f212
-  CapacitorGeolocation: 6beed87d5d2b80745f03a84db4ab2269bc872c9c
-  CapacitorPushNotifications: b8e30637549ce91468b8c4dddbef2657be831f4c
+  Capacitor: 52f999235b8bd6a7d01694753f4f4d54d182e3a3
+  CapacitorApp: 305bd13c44f6f9d164e2ee66a4faa956ed8c0e06
+  CapacitorCamera: 1b9dde3aaffbd1f051486f4cee2b4cdd962662ae
+  CapacitorCommunityContacts: 87559fd3d6d829cc38bea834ea4d2242a0995ac2
+  CapacitorCordova: 345eacdc4c8282415446aea4acd8c77d82480bd4
+  CapacitorFilesystem: 2db285a1ac6e475cc27cae2e1bea999000f9e2be
+  CapacitorGeolocation: b36f6287bfc9f2eefa04dc900496f2c8ae666136
+  CapacitorKeyboard: f9e85e685082e9f63404de15db4a4291448b0912
+  CapacitorPushNotifications: 32a7f840815f319fd9ba1c1c9b0b914be9d95237
   CapacitorShare: 0c58305114538568059bfc07111f22dcb9cb2a82
   CapacitorSplashScreen: 4b46c72298db552b3c57ce021ef028b6dc7f1fa7
-  CapacitorStatusBar: 416e9e53fd6397e668d4a181cd2131617d949bd6
-  CapgoCapacitorNavigationBar: 3c59704af4b6774bebb36beaab82643c141dfa83
+  CapacitorStatusBar: eca7bc2b58d9f886f1ef9edb66e57a9b29c121af
+  CapgoCapacitorNavigationBar: b2a0e0b37cfa4a080af05db377d021d9c9e45d4a
   GoogleSignIn: 5651ce3a61e56ca864160e79b484cd9ed3f49b7a
   GTMAppAuth: 0ff230db599948a9ad7470ca667337803b3fc4dd
   GTMSessionFetcher: 3a63d75eecd6aa32c2fc79f578064e1214dfdec2
+  IONCameraLib: ecbd8ef0077d481df429cee267bbeb1a7b9bddd0
+  IONFilesystemLib: e6610c2b260d15e4b9cb9d5e37a87095479b669e
+  IONGeolocationLib: 6a7b6f76063fb1b01cfb14fae7d0f526e3c9b271
   SouthdevsCapacitorGoogleAuth: 6488c21faed47c2cf72404bfbfc0fe0e9af766bc
 
-PODFILE CHECKSUM: 245907d0cd4032cd05474d5bb48535380a52f459
+PODFILE CHECKSUM: 32a723e31e61802c35554c6a87d8cb3cc48ca703
 
 COCOAPODS: 1.16.2

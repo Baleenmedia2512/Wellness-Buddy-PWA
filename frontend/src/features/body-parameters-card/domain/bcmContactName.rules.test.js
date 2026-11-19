@@ -33,36 +33,36 @@ describe('abbreviateVenue', () => {
 });
 
 describe('buildBcmContactDisplayName', () => {
-  it('joins name + venueShort + yymmdd with no space before date', () => {
+  it('joins name, venue short, WV, and yymmdd', () => {
     assert.equal(
       buildBcmContactDisplayName({
         name: 'praveen',
         venue: 'st.louis church',
         recordedDate: '2026-08-20',
       }),
-      'praveen slc260820',
+      'praveen slc WV 260820',
     );
   });
 
-  it('keeps single-word venue glued to date', () => {
+  it('keeps a single-word venue before WV and the date', () => {
     assert.equal(
       buildBcmContactDisplayName({
         name: 'ADHITYA',
         venue: 'adyar',
         recordedDate: '2026-08-19',
       }),
-      'ADHITYA adyar260819',
+      'ADHITYA adyar WV 260819',
     );
   });
 
-  it('omits empty venue but keeps date', () => {
+  it('omits empty venue but keeps WV and the date', () => {
     assert.equal(
       buildBcmContactDisplayName({
         name: 'praveen',
         venue: '',
         recordedDate: '2026-08-20',
       }),
-      'praveen 260820',
+      'praveen WV 260820',
     );
   });
 });

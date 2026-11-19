@@ -111,11 +111,13 @@ function extractShakeProducts(foodData, analysisData) {
     const formula1 = Number(products.formula1);
     const shakemate = Number(products.shakemate);
     const protein = Number(products.protein);
-    if (![formula1, shakemate, protein].some((n) => Number.isFinite(n))) continue;
+    const activeFibre = Number(products.activeFibre);
+    if (![formula1, shakemate, protein, activeFibre].some((n) => Number.isFinite(n))) continue;
     return {
       formula1: Math.max(0, Math.round(formula1) || 0),
       shakemate: Math.max(0, Math.round(shakemate) || 0),
       protein: Math.max(0, Math.round(protein) || 0),
+      activeFibre: Math.max(0, Math.round(activeFibre) || 0),
     };
   }
   return null;

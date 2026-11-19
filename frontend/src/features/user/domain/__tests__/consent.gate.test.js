@@ -15,8 +15,8 @@ describe('shouldOpenConsentGate', () => {
     assert.equal(shouldOpenConsentGate(true, { consentRequired: false }), false);
   });
 
-  it('returns true when consent required and user not yet cleared', () => {
-    assert.equal(shouldOpenConsentGate(true, { consentRequired: true }), true);
-    assert.equal(shouldOpenConsentGate(true, null), true);
+  it('does not open a second consent page after login', () => {
+    assert.equal(shouldOpenConsentGate(true, { consentRequired: true }), false);
+    assert.equal(shouldOpenConsentGate(true, null), false);
   });
 });

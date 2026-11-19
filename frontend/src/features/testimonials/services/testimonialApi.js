@@ -172,7 +172,7 @@ export async function getTestimonialDetail(userId, coachId) {
 }
 
 /**
- * Request signed Supabase Storage upload URLs for testimonial videos.
+ * Request signed MySQL Storage upload URLs for testimonial videos.
  * @param {{ userId, uploadHealth?: boolean, uploadBusiness?: boolean }} payload
  */
 export async function prepareTestimonialVideoUpload(payload) {
@@ -191,7 +191,7 @@ export async function prepareTestimonialVideoUpload(payload) {
 }
 
 /**
- * Upload a video file in chunks via the backend (Capacitor-safe, no direct Supabase fetch).
+ * Upload a video file in chunks via the backend (Capacitor-safe, no direct MySQL fetch).
  * @param {File} file
  * @param {{ path: string, sessionId: string }} uploadInfo
  * @param {'health'|'business'} slot
@@ -277,6 +277,7 @@ export async function getTeamTestimonialReport(coachId) {
  *   healthVideoPath?: string,
  *   businessVideoPath?: string,
  *   recoveredHealthIssues?: string[],
+ *   shareCardImageBase64?: string,
  * }} payload
  */
 export async function submitAllEdits(payload) {
@@ -316,7 +317,20 @@ export async function resendUnifiedOtp(payload) {
 }
 
 /**
- * Coach: update a reporting member's recovered health issues (no OTP).
+ * Cancel pending unified OTP and revert pending photo/video edits.
+ * @param {{ userId: number, restoreData?: object }} payload
+ */
+export async function cancelUnifiedOtp(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/cancel-unified-otp`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  return parseApiResponse(res, 'Failed to cancel OTP');
+}
+
+/**
+ * Legacy coach health-issue update (API always rejects — members edit on Mine).
  * @param {{ coachId: number, userId: number, recoveredHealthIssues: string[] }} payload
  */
 export async function updateMemberHealthIssues(payload) {

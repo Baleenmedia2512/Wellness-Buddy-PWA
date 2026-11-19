@@ -2,7 +2,7 @@
  * Cross-feature user activity helpers.
  * Used by every feature that mutates user data (weight, education, screen, etc.).
  */
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
@@ -13,8 +13,8 @@ import { cache, cacheKeys } from '../../utils/cache.js';
 export async function touchUserActivity(userId) {
   if (!userId) return;
   try {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase
+    const db = getMysqlClient();
+    const { error } = await db
       .from('team_table')
       .update({ LastActiveAt: nowUtc() })
       .eq('UserId', userId);
@@ -31,8 +31,8 @@ export async function touchUserActivity(userId) {
 export async function invalidateUserProfileCache(userId) {
   if (!userId) return;
   try {
-    const supabase = getSupabaseClient();
-    const { data: user } = await supabase
+    const db = getMysqlClient();
+    const { data: user } = await db
       .from('team_table')
       .select('Email')
       .eq('UserId', userId)

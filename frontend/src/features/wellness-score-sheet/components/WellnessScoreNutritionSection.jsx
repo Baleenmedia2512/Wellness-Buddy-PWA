@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
 import ScoreCategoryRow from './ScoreCategoryRow';
 import ParameterContributionModal from './ParameterContributionModal';
@@ -43,6 +43,14 @@ export default function WellnessScoreNutritionSection({
   const showMultiDayCarousel = isMultiDay && historyDays.length > 1;
   // Multi-day ranges show period average only — no per-day picker or day detail cards.
   const showDayDetailCards = !showMultiDayCarousel;
+  const contributionEnabled = Boolean(userId);
+
+  const mealDates = useMemo(
+    () => (showMultiDayCarousel
+      ? historyDays.map((day) => day?.date).filter(Boolean)
+      : (dateStr ? [dateStr] : [])),
+    [showMultiDayCarousel, historyDays, dateStr],
+  );
 
   const {
     selectedParam,
@@ -55,14 +63,26 @@ export default function WellnessScoreNutritionSection({
   } = useParameterContribution({
     userId,
     dateStr,
+    mealDates,
+    periodDayCount: showMultiDayCarousel ? historyDays.length : 1,
     apiBaseUrl,
     nutritionRefreshKey,
     timeWindows,
     viewerUserId,
   });
 
+  const sectionSourceParams = useMemo(() => {
+    if (showMultiDayCarousel && historyDays.length > 0) {
+      const sorted = [...historyDays].sort((a, b) =>
+        String(a?.date || '').localeCompare(String(b?.date || '')),
+      );
+      return sorted[sorted.length - 1]?.parameters || [];
+    }
+    return scoreData?.parameters || [];
+  }, [showMultiDayCarousel, historyDays, scoreData]);
+
   const sections = REPORTS_NUTRITION_SECTIONS.map((section) => {
-    const parameters = (scoreData?.parameters || []).filter(
+    const parameters = sectionSourceParams.filter(
       (p) => getParameterMeta(p.key)?.section === section.id,
     );
     return {
@@ -81,6 +101,7 @@ export default function WellnessScoreNutritionSection({
         <WellnessScoreMultiDayCarousel
           historyDays={historyDays}
           sections={sections}
+          onOpenContribution={contributionEnabled ? handleOpenContribution : undefined}
         />
       )}
 
@@ -155,11 +176,12 @@ export default function WellnessScoreNutritionSection({
       })}
 
       <ParameterContributionModal
-        isOpen={showDayDetailCards && !!selectedParam}
+        isOpen={contributionEnabled && !!selectedParam}
         onClose={handleCloseContribution}
         view={contributionView}
         loading={!!selectedParam && needsMeals && mealsLoading}
         error={selectedParam && needsMeals ? mealsError : null}
+        pointsAreAverage={showMultiDayCarousel}
       />
     </div>
   );

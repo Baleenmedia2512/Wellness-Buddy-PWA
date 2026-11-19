@@ -40,6 +40,8 @@ import {
 } from '../captures/domain/permissions/retry.policy.js';
 import { isEnabled } from '../../shared/lib/feature-flags.js';
 import logger from '../../shared/lib/logger.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
+import { assertViewerCanAccessMember } from '../../utils/reportingHierarchyService.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { dedupePendingDiaryEntries } from './domain/diary-feed-dedup.js';
 import {
@@ -60,6 +62,16 @@ import {
 } from '../../shared/lib/datetime/index.js';
 
 export { dedupePendingDiaryEntries } from './domain/diary-feed-dedup.js';
+
+/**
+ * Platform roles that may read any diary. Looked up from team_table, not from the client.
+ * @param {string|null|undefined} role
+ * @returns {boolean}
+ */
+export function isPlatformDiaryReader(role) {
+  const value = String(role || '').trim().toLowerCase();
+  return value === 'admin' || value === 'developer';
+}
 
 /**
  * Shared-team diary access for Sponsor/Co-Sponsor partners.
@@ -87,6 +99,128 @@ export async function canAccessDiaryViaSharedLead(
 }
 
 /**
+ * Upline of a downline coach may read that coach's co-coach, and anyone
+ * whose CoachId chain runs through that co-coach (the co-coach's teammates).
+ *
+ * ownerCoachChain is owner-first, matching getCoachChain. For each person
+ * on that chain, allow when their Sponsor/Co-Sponsor partner's upline
+ * includes the viewer.
+ *
+ * @param {string|number|null|undefined} viewerUserId
+ * @param {Array<string|number>} ownerCoachChain
+ * @param {(userId: string) => Promise<string|number|null>} findPartnerId
+ * @param {(userId: string) => Promise<Array<string|number>>} getChain
+ * @returns {Promise<boolean>}
+ */
+export async function canAccessDiaryViaDownlineCoCoach(
+  viewerUserId,
+  ownerCoachChain = [],
+  findPartnerId,
+  getChain,
+) {
+  if (viewerUserId == null || viewerUserId === '') return false;
+  if (typeof findPartnerId !== 'function' || typeof getChain !== 'function') return false;
+  const viewer = String(viewerUserId);
+  const seenPairs = new Set();
+
+  for (const chainId of ownerCoachChain || []) {
+    const person = chainId == null || chainId === '' ? '' : String(chainId);
+    if (!person) continue;
+    const partnerRaw = await findPartnerId(person);
+    if (partnerRaw == null || partnerRaw === '') continue;
+    const partner = String(partnerRaw);
+    if (!partner || partner === person) continue;
+
+    const a = Number(person);
+    const b = Number(partner);
+    const pairKey = Number.isFinite(a) && Number.isFinite(b)
+      ? (a < b ? `${a}:${b}` : `${b}:${a}`)
+      : (person < partner ? `${person}:${partner}` : `${partner}:${person}`);
+    if (seenPairs.has(pairKey)) continue;
+    seenPairs.add(pairKey);
+
+    const partnerChain = await getChain(partner);
+    if ((partnerChain || []).map((id) => String(id)).includes(viewer)) return true;
+  }
+  return false;
+}
+
+/**
+ * Diary read gate: owner, CoachId upline, the viewer's own co-coach team,
+ * or a downline coach's co-coach and that co-coach's teammates.
+ *
+ * @param {string|number} viewerUserId
+ * @param {string|number} ownerUserId
+ * @param {Array<string|number>} coachChain
+ * @returns {Promise<{ allowed: boolean, decision: object, via: string|null }>}
+ */
+async function viewerCanReadDiary(viewerUserId, ownerUserId, coachChain) {
+  const decision = canRetryCapture({
+    viewerId: viewerUserId,
+    ownerId: ownerUserId,
+    coachChain,
+  });
+  if (decision.allowed) return { allowed: true, decision, via: 'chain' };
+  if (decision.reason === 'NO_VIEWER' || decision.reason === 'NO_OWNER') {
+    return { allowed: false, decision, via: null };
+  }
+  const viewerRole = await repo.findUserRole(viewerUserId);
+  if (isPlatformDiaryReader(viewerRole)) {
+    return {
+      allowed: true,
+      decision: { allowed: true, actorRole: 'ADMIN' },
+      via: 'admin',
+    };
+  }
+  if (await canAccessDiaryViaSharedLead(viewerUserId, coachChain)) {
+    return { allowed: true, decision, via: 'shared-lead' };
+  }
+  if (await canAccessDiaryViaDownlineCoCoach(
+    viewerUserId,
+    coachChain,
+    repo.findCoCoachPartnerId,
+    repo.getCoachChain,
+  )) {
+    return { allowed: true, decision, via: 'downline-co-coach' };
+  }
+  // Same visibility as Diary search / team reports: reporting downline,
+  // co-coach partner downline, and shared coach-team id.
+  if (await allowDiaryViaReportingAccess(viewerUserId, ownerUserId)) {
+    return { allowed: true, decision, via: 'reporting' };
+  }
+  return { allowed: false, decision, via: null };
+}
+
+/**
+ * @param {string|number} viewerUserId
+ * @param {string|number} ownerUserId
+ * @param {(viewerUserId: string|number, ownerUserId: string|number) => Promise<void>} [assertAccess]
+ * @returns {Promise<boolean>}
+ */
+export async function allowDiaryViaReportingAccess(
+  viewerUserId,
+  ownerUserId,
+  assertAccess = (viewerId, ownerId) => assertViewerCanAccessMember(
+    getMysqlClient(),
+    viewerId,
+    ownerId,
+  ),
+) {
+  try {
+    await assertAccess(viewerUserId, ownerUserId);
+    return true;
+  } catch (err) {
+    if (err?.status === 403) return false;
+    logger.warn('viewerCanReadDiary: reporting access check failed', {
+      actorId: viewerUserId,
+      ownerId: ownerUserId,
+      err: err?.message,
+    });
+    throw err;
+  }
+}
+
+/**
  * Lazy capture photo for diary thumbs (unknown / pending).
  * Auth: owner or upline coach (same gate as listDiaryEntries).
  *
@@ -110,13 +244,9 @@ export async function getCaptureImageForDiary({ captureId, viewerUserId }) {
   }
 
   const coachChain = await repo.getCoachChain(ownerUserId);
-  const decision = canRetryCapture({
-    viewerId: viewerUserId,
-    ownerId: ownerUserId,
-    coachChain,
-  });
-  if (!decision.allowed) {
-    if (decision.reason === 'NO_VIEWER') {
+  const read = await viewerCanReadDiary(viewerUserId, ownerUserId, coachChain);
+  if (!read.allowed) {
+    if (read.decision.reason === 'NO_VIEWER') {
       const err = new Error('Authentication required');
       err.status = 401;
       err.code = 'UNAUTHENTICATED';
@@ -131,10 +261,8 @@ export async function getCaptureImageForDiary({ captureId, viewerUserId }) {
   let r2Url = null;
   if (row.ImageKey) {
     try {
-      const { r2CapturesEnabled, captureImageRedirectUrl } = await import(
-        '../captures/capture-image-storage.service.js'
-      );
-      if (r2CapturesEnabled()) r2Url = captureImageRedirectUrl(row.ImageKey);
+      const { redirectUrlForImageKey } = await import('../../shared/lib/milesweb/storedImage.js');
+      r2Url = await redirectUrlForImageKey(row.ImageKey, 'ff.r2-captures');
     } catch {
       r2Url = null;
     }
@@ -440,31 +568,27 @@ export async function listDiaryEntries(input) {
   // must cover all of them — same gate `canRetryCapture` uses for the
   // single-capture mutation path (ADR-0003 §"Pinned product answers").
   const coachChain = await repo.getCoachChain(ownerUserId);
-  const decision = canRetryCapture({
-    viewerId: viewerUserId,
-    ownerId:  ownerUserId,
-    coachChain,
-  });
-  if (!decision.allowed) {
-    const sharedLeadAllowed = await canAccessDiaryViaSharedLead(viewerUserId, coachChain);
-    if (sharedLeadAllowed) {
-      logger.info('listDiaryEntries: shared-team co-coach reading member diary', {
-        actorId: viewerUserId,
-        ownerId: ownerUserId,
-        date,
-      });
-    } else {
-      if (decision.reason === 'NO_VIEWER') {
-        const err = new Error('Authentication required');
-        err.status = 401; err.code = 'UNAUTHENTICATED';
-        throw err;
-      }
-      const err = new Error('You do not have access to this diary');
-      err.status = 403; err.code = 'FORBIDDEN_DIARY';
-      err.reason = decision.reason;
+  const read = await viewerCanReadDiary(viewerUserId, ownerUserId, coachChain);
+  if (!read.allowed) {
+    if (read.decision.reason === 'NO_VIEWER') {
+      const err = new Error('Authentication required');
+      err.status = 401; err.code = 'UNAUTHENTICATED';
       throw err;
     }
+    const err = new Error('You do not have access to this diary');
+    err.status = 403; err.code = 'FORBIDDEN_DIARY';
+    err.reason = read.decision.reason;
+    throw err;
   }
+  if (read.via === 'shared-lead' || read.via === 'downline-co-coach') {
+    logger.info('listDiaryEntries: shared-team co-coach reading member diary', {
+      actorId: viewerUserId,
+      ownerId: ownerUserId,
+      date,
+      via: read.via,
+    });
+  }
+  const decision = read.decision;
   const isSelf = decision.actorRole === 'OWNER';
 
   // 2. Audit-log coach-on-member reads, same posture as
@@ -567,6 +691,31 @@ export async function listDiaryEntries(input) {
 }
 
 /**
+ * Diary kinds whose CreatedAt column is timezone-less IST wall clock.
+ * The MySQL read path stamps a spurious `Z` on those digits. Captures
+ * (pending/unknown) stay real UTC and must not be rewritten.
+ */
+const IST_WALL_CLOCK_KINDS = new Set([
+  'food',
+  'weight',
+  'education',
+  'watch',
+  'good-habit',
+]);
+
+/**
+ * @param {string} kind
+ * @param {string|Date|null|undefined} raw
+ * @returns {string} UTC ISO
+ */
+function diaryCapturedAt(kind, raw) {
+  if (IST_WALL_CLOCK_KINDS.has(kind)) {
+    return normalizeFoodCreatedAt(raw);
+  }
+  return normalizeStoredTimestampToUtcIso(raw, IANA_IST);
+}
+
+/**
  * Pure projection — given a kind + row, build the diary envelope.
  * No DB, no I/O. Exported only for tests; production callers should
  * always go through `listDiaryEntries`.
@@ -581,13 +730,8 @@ export function toDiaryEntry(
   row,
   { isPendingAnalysis = false, timezoneIana = IANA_IST } = {},
 ) {
-  // Food rows use the canonical food CreatedAt helper (legacy IST wall +
-  // spurious driver Z). Weight/education use the same IST storage contract.
-  // Captures (pending/unknown) are timestamptz — offset-aware / Date paths.
   void timezoneIana;
-  const capturedAt = kind === 'food'
-    ? normalizeFoodCreatedAt(row.CreatedAt)
-    : normalizeStoredTimestampToUtcIso(row.CreatedAt, IANA_IST);
+  const capturedAt = diaryCapturedAt(kind, row.CreatedAt);
   switch (kind) {
     case 'food': {
       const listSummary = extractFoodListSummary(row.AnalysisData, row.ProcessedBy);
@@ -620,6 +764,7 @@ export function toDiaryEntry(
             glycemicIndex: row.GlycemicIndex ?? null,
           },
           processedBy: row.ProcessedBy,
+          source:      row.Source ?? null,
           deviceInfo:  row.DeviceInfo,
         },
       };
@@ -785,10 +930,8 @@ export async function resolveUnknownShare({ token, viewerUserId }) {
   let r2Url = null;
   if (capture.ImageKey) {
     try {
-      const { r2CapturesEnabled, captureImageRedirectUrl } = await import(
-        '../captures/capture-image-storage.service.js'
-      );
-      if (r2CapturesEnabled()) r2Url = captureImageRedirectUrl(capture.ImageKey);
+      const { redirectUrlForImageKey } = await import('../../shared/lib/milesweb/storedImage.js');
+      r2Url = await redirectUrlForImageKey(capture.ImageKey, 'ff.r2-captures');
     } catch {
       r2Url = null;
     }

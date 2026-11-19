@@ -6,12 +6,19 @@ import { formatCalculationReason } from '../domain/formatCalculationReason';
  * Bottom sheet — same interaction pattern as nutrition FoodBreakdownModal.
  * Shows how a wellness parameter earned its points + contributing foods/logs.
  */
+function formatPoints(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '0';
+  return n % 1 === 0 ? String(Math.round(n)) : n.toFixed(1);
+}
+
 export default function ParameterContributionModal({
   isOpen,
   onClose,
   view = null,
   loading = false,
   error = null,
+  pointsAreAverage = false,
 }) {
   if (!isOpen || !view) return null;
 
@@ -30,6 +37,10 @@ export default function ParameterContributionModal({
     showAmountPercent = true,
     amountIsLabel = false,
   } = view;
+
+  const earnedLabel = formatPoints(earnedPoints);
+  const maxLabel = formatPoints(maxPoints);
+  const ptsCaption = pointsAreAverage ? 'avg pts/day' : 'pts';
 
   const formatAmount = (amount, amountLabel) => {
     if (amountIsLabel && amountLabel) return amountLabel;
@@ -61,7 +72,7 @@ export default function ParameterContributionModal({
             <h2 className="text-lg font-bold text-gray-900">{title}</h2>
             <div className="mt-0.5 flex flex-wrap items-baseline gap-2">
               <span className="text-sm text-gray-600">
-                {earnedPoints}/{maxPoints} pts
+                {earnedLabel}/{maxLabel} {ptsCaption}
               </span>
               <span
                 className={`text-xs font-semibold ${
@@ -72,7 +83,7 @@ export default function ParameterContributionModal({
               </span>
               {totalConsumed != null && unit && (
                 <span className="text-xs text-gray-500">
-                  · {formatAmount(totalConsumed)} total
+                  · {formatAmount(totalConsumed)} {pointsAreAverage ? 'period total' : 'total'}
                 </span>
               )}
             </div>
@@ -152,12 +163,12 @@ export default function ParameterContributionModal({
         <div className="border-t border-gray-200 bg-gray-50 px-4 py-3">
           <div className="flex items-center justify-between text-xs">
             <div className="text-center">
-              <p className="mb-0.5 text-gray-500">Max</p>
-              <p className="font-semibold text-gray-900">{maxPoints} pts</p>
+              <p className="mb-0.5 text-gray-500">{pointsAreAverage ? 'Max / day' : 'Max'}</p>
+              <p className="font-semibold text-gray-900">{maxLabel} pts</p>
             </div>
             <div className="text-center">
-              <p className="mb-0.5 text-gray-500">Earned</p>
-              <p className="font-semibold text-emerald-600">{earnedPoints} pts</p>
+              <p className="mb-0.5 text-gray-500">{pointsAreAverage ? 'Avg earned' : 'Earned'}</p>
+              <p className="font-semibold text-emerald-600">{earnedLabel} pts</p>
             </div>
             <div className="text-center">
               <p className="mb-0.5 text-gray-500">Score</p>

@@ -48,7 +48,10 @@ export function formatMarathonDayChangeSuffix(direction, weightDifference) {
   if (direction === 'unchanged' || weightDifference == null) return '';
   const abs = roundMarathonWeightKg(Math.abs(weightDifference));
   const arrow = direction === 'decrease' ? '⬇️' : '⬆️';
-  return ` ${arrow} ${abs.toFixed(2)} kg`;
+  const amount = abs < 1
+    ? `${Math.round(abs * 1000)} g`
+    : `${abs.toFixed(2)} kg`;
+  return ` ${arrow} ${amount}`;
 }
 
 /**
@@ -61,17 +64,17 @@ export function formatMarathonDayComparisonLine(day0Weight, dayWeight) {
   const dayLabel = formatMarathonKgValue(dayWeight);
   const hasDay0 = isValidMarathonWeightKg(day0Weight);
   const hasDay = isValidMarathonWeightKg(dayWeight);
+  const baseLine = `Day 0 : ${day0Label} → Curr: ${dayLabel}`;
 
-  if (!hasDay0 && !hasDay) return MARATHON_WEIGHT_MISSING_LABEL;
-  if (!hasDay0 && hasDay) return `${MARATHON_WEIGHT_MISSING_LABEL} → ${dayLabel}`;
-  if (hasDay0 && !hasDay) return `${day0Label} → ${MARATHON_WEIGHT_MISSING_LABEL}`;
+  if (!hasDay0 && !hasDay) return `Day 0 : ${MARATHON_WEIGHT_MISSING_LABEL} → Curr: ${MARATHON_WEIGHT_MISSING_LABEL}`;
+  if (!hasDay0 || !hasDay) return baseLine;
 
   const baseline = roundMarathonWeightKg(Number(day0Weight));
   const current = roundMarathonWeightKg(Number(dayWeight));
   const weightDifference = roundMarathonWeightKg(current - baseline);
   const direction = resolveMarathonWeightDirection(baseline, current);
-  if (direction === 'unchanged') return `${day0Label} → ${dayLabel}`;
-  return `${day0Label} → ${dayLabel}${formatMarathonDayChangeSuffix(direction, weightDifference)}`;
+  if (direction === 'unchanged') return baseLine;
+  return `${baseLine}${formatMarathonDayChangeSuffix(direction, weightDifference)}`;
 }
 
 /**
@@ -325,20 +328,24 @@ export function formatMarathonCrossMarathonWhatsAppLines(progress) {
 export function formatMarathonWeightWhatsAppNoticeLines(progress, state = {}) {
   if (!progress || typeof progress !== 'object') return [];
 
+  let lines = [];
   if (progress.mode === 'running' && state.inMarathon && Number.isInteger(state.marathonDay)) {
     if (state.marathonDay === 0) {
-      return formatMarathonCrossMarathonWhatsAppLines(progress);
+      lines = formatMarathonCrossMarathonWhatsAppLines(progress);
+    } else {
+      const dayEntry = progress.currentDay
+        ?? progress.days?.[state.marathonDay]
+        ?? null;
+      if (dayEntry?.displayLine) {
+        lines = [dayEntry.displayLine];
+      }
     }
-
-    const dayEntry = progress.currentDay
-      ?? progress.days?.[state.marathonDay]
-      ?? null;
-    if (!dayEntry?.displayLine) return [];
-    return [dayEntry.displayLine];
+  } else if (progress.mode === 'gap' && !state.inMarathon) {
+    lines = formatMarathonCrossMarathonWhatsAppLines(progress);
   }
 
-  if (progress.mode === 'gap' && !state.inMarathon) {
-    return formatMarathonCrossMarathonWhatsAppLines(progress);
+  if (lines.length > 0) {
+    return ['*Lap progress*', ...lines];
   }
 
   return [];

@@ -8,6 +8,9 @@ import { getProfile } from "../../features/user/services/user.api";
 import { isFlagEnabled } from "../../config/featureFlags";
 import { canAccessReportsModule } from "../../features/reports/domain/reportsAccess.rules.js";
 import { hasValidProfileName } from "../../features/user/domain/profileCompleteness";
+import { PremiumCrownMark, PremiumHeaderTag } from "../../features/payments/components/PremiumBadge";
+import usePremiumStatus from "../../features/payments/hooks/usePremiumStatus";
+import * as Session from "../services/sessionStorage";
 
 const Header = ({
   user,
@@ -20,6 +23,7 @@ const Header = ({
   onShowNutritionCentersMap,
   onShowActivityReport,
   onShowTestimonials,
+  onShowBroadcast,
   onShowReports,
   onShowWellnessScoreSetup,
   wellnessScoreSetupEnabled = false,
@@ -39,11 +43,17 @@ const Header = ({
   const [savedProfileImage, setSavedProfileImage] = useState(null);
   const prevProfileKeyRef = useRef(profileKey);
 
+  // Premium crown on the avatar. Tab-only headers skip the check.
+  const premiumUserId = navOnly
+    ? null
+    : (user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null);
+  const { premium: isPremiumMember } = usePremiumStatus(premiumUserId);
+
   // Reports: common module for every signed-in user when the flag is on.
   const reportsEnabled = isFlagEnabled('ff.reports-module')
     && canAccessReportsModule(userRole);
 
-  // After Centre / profile photo save, App updates user.profileImage immediately —
+  // After profile photo save, App updates user.profileImage immediately —
   // apply it here so header does not keep a stale getProfile avatar until refetch.
   useEffect(() => {
     const fromUser = user?.profileImage || user?.ProfileImage || user?.photoURL;
@@ -64,7 +74,9 @@ const Header = ({
         const shouldBust = profileKey !== prevProfileKeyRef.current;
         prevProfileKeyRef.current = profileKey;
         const data = await getProfile(
-          email ? { email, cacheBust: shouldBust } : { userId, cacheBust: shouldBust },
+          email
+            ? { email, userId: userId || undefined, cacheBust: shouldBust }
+            : { userId, cacheBust: shouldBust },
         );
         if (data.success && data.data) {
           const phoneNumber = data.data.phoneNumber || user?.phoneNumber || user?.phone;
@@ -75,10 +87,8 @@ const Header = ({
           } else {
             setSavedUserName(null);
           }
-          // Same display preference as leaderboard avatar: profileImage, else Centre transform.
-          const nextImage = data.data.profileImage
-            || data.data.transformationPhotos?.front
-            || null;
+          // Profile avatar only — Centre transformation photo is independent.
+          const nextImage = data.data.profileImage || null;
           if (nextImage) setSavedProfileImage(nextImage);
           else if (shouldBust) setSavedProfileImage(null);
         }
@@ -103,7 +113,7 @@ const Header = ({
       || userEmail
       || "User";
   })();
-  // Prefer fetched profile; fall back to session user after Centre photo save (before refetch lands).
+  // Prefer fetched profile; fall back to session user after profile photo save (before refetch lands).
   const headerAvatarSrc = savedProfileImage
     || user?.profileImage
     || user?.ProfileImage
@@ -120,6 +130,32 @@ const Header = ({
     const colors = ["bg-blue-500", "bg-green-500", "bg-purple-500", "bg-pink-500", "bg-indigo-500", "bg-yellow-500", "bg-red-500", "bg-teal-500"];
     return colors[(userName || userEmail || "").length % colors.length];
   };
+
+  const avatarNode = headerAvatarSrc ? (
+    <img
+      src={headerAvatarSrc}
+      alt="User Avatar"
+      className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm pointer-events-none"
+      loading="lazy"
+      decoding="async"
+      draggable="false"
+      referrerPolicy="no-referrer"
+      style={{
+        WebkitUserSelect: "none",
+        userSelect: "none",
+        WebkitTouchCallout: "none",
+        WebkitUserDrag: "none",
+        pointerEvents: "none",
+        WebkitTapHighlightColor: "transparent",
+      }}
+    />
+  ) : (
+    <div
+      className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}
+    >
+      {getInitial()}
+    </div>
+  );
 
   // navOnly mode: render only the tab navigation row (Row 2).
   // Used by full-page sub-views so they display the full nav without
@@ -139,6 +175,7 @@ const Header = ({
           onShowWellnessCounselling={onShowWellnessCounselling}
           onShowNutritionCentersMap={onShowNutritionCentersMap}
           onShowTestimonials={onShowTestimonials}
+          onShowBroadcast={onShowBroadcast}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}
           allowedPages={allowedPages}
@@ -187,28 +224,23 @@ const Header = ({
 
         {/* Profile avatar — tap to navigate to full profile page */}
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          {isPremiumMember ? <PremiumHeaderTag /> : null}
           <TouchFeedbackButton
-            onClick={onOpenProfile}
+            type="button"
+            onClick={(e) => {
+              if (e && typeof e.preventDefault === 'function') e.preventDefault();
+              if (typeof onOpenProfile === 'function') onOpenProfile();
+            }}
             className="focus:outline-none rounded-full"
             title="My Profile"
             ariaLabel="My Profile"
           >
-            {headerAvatarSrc ? (
-              <img
-                src={headerAvatarSrc}
-                alt="User Avatar"
-                className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
-                loading="lazy"
-                decoding="async"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div
-                className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}
-              >
-                {getInitial()}
-              </div>
-            )}
+            {isPremiumMember ? (
+              <span className="relative inline-flex">
+                {avatarNode}
+                <PremiumCrownMark />
+              </span>
+            ) : avatarNode}
           </TouchFeedbackButton>
         </div>
       </div>
@@ -224,6 +256,7 @@ const Header = ({
           onShowWellnessCounselling={onShowWellnessCounselling}
           onShowNutritionCentersMap={onShowNutritionCentersMap}
           onShowTestimonials={onShowTestimonials}
+          onShowBroadcast={onShowBroadcast}
           onShowReports={onShowReports}
           reportsEnabled={reportsEnabled}
           allowedPages={allowedPages}

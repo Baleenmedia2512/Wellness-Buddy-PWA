@@ -134,7 +134,13 @@ export function shouldRegisterCoachTeamForCommunityId({
 /**
  * Whether assignLeadSeat should run during profile Community ID sync.
  *
- * @param {{ role?: string|null, teamSeat?: string|null, resolvedFound?: boolean, communityIdExplicitlyUpdated?: boolean, targetCode?: string|null, teamId?: string|null }} args
+ * Community ID ≠ Co-Coach. Joining an existing community only links
+ * CommunityId / TeamId / CoachTeamId for shared Team visibility.
+ * Sponsor seats are claimed when creating a new code; Co-Sponsor seats
+ * are claimed via the explicit OTP co-sponsor flow (ADR-0013), not by
+ * typing the same Community ID on profile save.
+ *
+ * @param {{ role?: string|null, teamSeat?: string|null, resolvedFound?: boolean, communityIdExplicitlyUpdated?: boolean }} args
  * @returns {boolean}
  */
 export function shouldEnsureCoachTeamRowOnCommunityIdSync({
@@ -142,20 +148,15 @@ export function shouldEnsureCoachTeamRowOnCommunityIdSync({
   teamSeat = null,
   resolvedFound = false,
   communityIdExplicitlyUpdated = false,
-  targetCode = null,
-  teamId = null,
 } = {}) {
-  if (communityIdExplicitlyUpdated) return true;
+  // Creating a brand-new community/team code → claim Sponsor seat.
   if (shouldRegisterCoachTeamForCommunityId({ resolvedFound, communityIdExplicitlyUpdated })) {
     return true;
   }
-  if (
-    !teamSeat
-    && resolvedFound
-    && normalizeStoredTeamCode(teamId) === normalizeStoredTeamCode(targetCode)
-  ) {
-    return true;
-  }
+  // Already holds a Sponsor/Co-Sponsor seat → keep seat sync path.
+  if (teamSeat) return true;
+  // Joining an existing community: link codes only — do not auto Co-Sponsor.
+  if (resolvedFound) return false;
   return shouldClaimLeadSeatOnExplicitCommunityIdUpdate({ role, teamSeat });
 }
 

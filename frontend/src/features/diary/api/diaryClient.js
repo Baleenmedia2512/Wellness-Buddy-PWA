@@ -56,10 +56,20 @@ export async function fetchDiary({
     date,
     limit: String(limit),
     offset: String(offset),
+    // Android WebView can reuse the previous GET. A new photo must not
+    // come back as the list from before that save.
+    _t: String(Date.now()),
   };
 
   debugLog('[diary] fetchDiary →', params);
-  const res = await axios.get(url, { params, signal });
+  const res = await axios.get(url, {
+    params,
+    signal,
+    headers: {
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache',
+    },
+  });
   // Backend envelope: { ok: true, data: {...} }. We unwrap to data so
   // the hook stays focused on UI state, not transport plumbing.
   const body = res?.data;

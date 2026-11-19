@@ -35,5 +35,7 @@ export const isFoodLiquidOrShake = (food) => {
   if (food.volume_ml !== null && food.volume_ml !== undefined) return true;
   if (food.unit && String(food.unit).toLowerCase().trim() === 'ml') return true;
   const nameLower = (food.name || '').toLowerCase();
+  if (nameLower.includes('shakemate') || nameLower.includes('shake mate')) return false;
+  if (nameLower.includes('formula 1') || nameLower.includes('formula1')) return false;
   return LIQUID_KEYWORDS.some((kw) => nameLower.includes(kw));
 };

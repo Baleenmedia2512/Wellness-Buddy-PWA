@@ -158,4 +158,21 @@ export const cacheKeys = {
   educationSummary: (userId) => `education:summary:${userId}`,
 };
 
+/** Drop Top-10 race scoreboard caches after weight / wellness score writes. */
+export function bustRaceLeaderboardCaches(reason = 'update') {
+  try {
+    cache.deletePattern('lb:hierarchy:');
+  } catch {
+    /* non-fatal */
+  }
+  try {
+    // Lazy import avoids a circular init with the MySQL client in some routes.
+    import('../shared/lib/race-leaderboard-realtime.js')
+      .then((m) => m.publishRaceLeaderboardInvalidate(reason))
+      .catch(() => {});
+  } catch {
+    /* non-fatal */
+  }
+}
+
 export default cache;

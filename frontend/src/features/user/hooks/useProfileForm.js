@@ -8,6 +8,7 @@ import {
   MAX_BODY_FAT_PCT,
 } from '../domain/profileCompleteness';
 import { normalizeCommunityId, validateCommunityId, COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
+import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked } from '../domain/heightChange';
 import { isFlagEnabled } from '../../../config/featureFlags';
 
 const cleanPhone = (s) => s.trim().replace(/[\s\-()]/g, '');
@@ -58,6 +59,7 @@ export default function useProfileForm(initial = {}) {
   const [weightGoalMode, setWeightGoalMode] = useState(initial.weightGoalMode || 'loss');
   const [email, setEmail] = useState(initial.email || '');
   const [communityId, setCommunityId] = useState(initial.communityId || '');
+  const [workingPhysicalCentreId, setWorkingPhysicalCentreId] = useState(initial.workingPhysicalCentreId || '');
   const [bodyMetrics, setBodyMetrics] = useState(() => metricsFromProfile(initial));
   const [recoveredHealthIssues, setRecoveredHealthIssues] = useState(() => (
     Array.isArray(initial.recoveredHealthIssues) ? initial.recoveredHealthIssues : []
@@ -83,6 +85,7 @@ export default function useProfileForm(initial = {}) {
     setWeightGoalMode(p.weightGoalMode ?? 'loss');
     setEmail(p.email ?? '');
     setCommunityId(p.communityId != null ? String(p.communityId) : '');
+    setWorkingPhysicalCentreId(p.workingPhysicalCentreId != null ? String(p.workingPhysicalCentreId) : '');
     setBodyMetrics(metricsFromProfile(p));
     setRecoveredHealthIssues(
       Array.isArray(p.recoveredHealthIssues) ? p.recoveredHealthIssues : [],
@@ -124,10 +127,11 @@ export default function useProfileForm(initial = {}) {
   };
 
   const payload = (emailArg, extras = {}) => {
+    const skipHeightOnSave = isFlagEnabled(HEIGHT_CHANGE_OTP_FLAG)
+      && isHeightLocked(extras.lockedHeight);
     const body = {
       email: emailArg,
       name: name || undefined,
-      height: height ? parseFloat(height) : undefined,
       bmr: bmr && bmr.trim() !== '' ? parseFloat(bmr) : undefined,
       physicalActivityLevel: physicalActivityLevel || undefined,
       dietType: dietType || undefined,
@@ -143,9 +147,18 @@ export default function useProfileForm(initial = {}) {
       recoveredHealthIssues: Array.isArray(recoveredHealthIssues) ? recoveredHealthIssues : [],
       ...extras,
     };
+    delete body.lockedHeight;
+
+    if (!skipHeightOnSave) {
+      body.height = height ? parseFloat(height) : undefined;
+    }
 
     if (!isFlagEnabled(COMMUNITY_ID_OTP_FLAG)) {
       body.communityId = normalizeCommunityId(communityId);
+    }
+
+    if (workingPhysicalCentreId && String(workingPhysicalCentreId).trim() !== '') {
+      body.workingPhysicalCentreId = String(workingPhysicalCentreId).trim();
     }
 
     if (fatPercentValid) {
@@ -162,6 +175,7 @@ export default function useProfileForm(initial = {}) {
     weightGoalMode, setWeightGoalMode,
     email, setEmail,
     communityId, setCommunityId,
+    workingPhysicalCentreId, setWorkingPhysicalCentreId,
     bodyMetrics,
     setBodyMetricField,
     recoveredHealthIssues,

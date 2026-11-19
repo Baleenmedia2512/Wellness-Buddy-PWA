@@ -5,7 +5,7 @@
  * Sponsor / Co-Sponsor leads keep Mine/Direct/Full UI even with 0 own members
  * (shared-team partner roster may still populate).
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { resolveLeadSeatForUser } from '../../../utils/coachTeamSeats.js';
 import {
   buildActivityReportCoachScope,
@@ -61,10 +61,10 @@ function buildTeamScopeCounts(directIds, fullIds, { isSharedLead = false } = {})
  * Coach / upline / admin — same dual-coaching tree (Active downline only).
  */
 async function resolveTeamScope(userId) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const [{ directIds, fullIds, memberMeta }, seat] = await Promise.all([
     buildActivityReportCoachScope(userId),
-    resolveLeadSeatForUser(supabase, userId),
+    resolveLeadSeatForUser(db, userId),
   ]);
   const isSharedLead = seat.seat === 'sponsor' || seat.seat === 'co-sponsor';
   return {

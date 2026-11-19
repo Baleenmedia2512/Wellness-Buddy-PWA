@@ -1,4 +1,4 @@
-﻿/**
+/**
  * testimonials.validators.js â€” Input validation for the testimonials feature.
  * Uses the same manual-validation pattern as other features in this codebase.
  *
@@ -99,9 +99,10 @@ function validateOptionalBase64Image(value, fieldName) {
 }
 
 function validateWeight(value, fieldName) {
-  const n = parseFloat(value);
-  if (isNaN(n) || n <= 0 || n > 500) throw new ValidationError(422, `${fieldName} must be a positive number â‰¤ 500`);
-  return n;
+  // Accept decimals (72.5) and locale commas (72,5). DB column is numeric(5,2).
+  const n = parseFloat(String(value ?? '').trim().replace(',', '.'));
+  if (isNaN(n) || n <= 0 || n > 500) throw new ValidationError(422, `${fieldName} must be a positive number ≤ 500`);
+  return Math.round(n * 100) / 100;
 }
 
 /**
@@ -131,6 +132,8 @@ export function validateSubmitTestimonial(body) {
   }
   const normalizedDuration = validateDurationText(durationText);
 
+  const shareCardImage = validateOptionalBase64Image(body.shareCardImageBase64, 'shareCardImageBase64');
+
   return {
     userId:                userIdN,
     beforeImageBase64,
@@ -140,7 +143,8 @@ export function validateSubmitTestimonial(body) {
     goalType,
     durationText:          normalizedDuration,
     hasAfter,
-    recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues, { required: hasAfter }),
+    recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues, { required: false }),
+    ...(shareCardImage !== undefined ? { shareCardImageBase64: shareCardImage } : {}),
   };
 }
 
@@ -199,6 +203,9 @@ export function validateEditTestimonial(body) {
   if (recoveredHealthIssues !== undefined) {
     result.recoveredHealthIssues = validateRecoveredHealthIssues(recoveredHealthIssues);
   }
+
+  const shareCardImage = validateOptionalBase64Image(body.shareCardImageBase64, 'shareCardImageBase64');
+  if (shareCardImage !== undefined) result.shareCardImageBase64 = shareCardImage;
 
   return result;
 }
@@ -443,7 +450,7 @@ export function validateTeamReport(query) {
 
 // ─── Unified edit + OTP validators ───────────────────────────────────────────
 
-const VALID_DIRTY_SLOTS = new Set(['before', 'after', 'health', 'business', 'issues']);
+const VALID_DIRTY_SLOTS = new Set(['before', 'after', 'health', 'business', 'issues', 'duration', 'weight', 'goal']);
 
 /**
  * Validate payload for POST /api/testimonials/submit-all-edits
@@ -551,12 +558,15 @@ const result = {
     result.durationText = validateDurationText(durationText);
   }
 
+  const shareCardImage = validateOptionalBase64Image(body.shareCardImageBase64, 'shareCardImageBase64');
+  if (shareCardImage !== undefined) result.shareCardImageBase64 = shareCardImage;
+
   return result;
 }
 
 /**
  * Validate payload for POST /api/testimonials/update-health-issues
- * Coach updates a reporting member's recovered health issues (no OTP).
+ * Payload shape kept for older clients; service always rejects with 403.
  */
 export function validateUpdateMemberHealthIssues(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing');
@@ -579,7 +589,7 @@ export function validateUpdateMemberHealthIssues(body) {
   return {
     coachId: coachIdN,
     userId: userIdN,
-    recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues, { required: true }),
+    recoveredHealthIssues: validateRecoveredHealthIssues(recoveredHealthIssues, { required: false }),
   };
 }
 
@@ -655,6 +665,24 @@ export function validateSyncProfilePhotos(body) {
     result.recoveredHealthIssues = validateRecoveredHealthIssues(recoveredHealthIssues);
   }
 
+  return result;
+}
+
+/**
+ * Validate payload for POST /api/testimonials/cancel-unified-otp
+ */
+export function validateCancelUnifiedOtp(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+
+  const { userId, restoreData } = body;
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  const userIdN = parseInt(userId, 10);
+  if (isNaN(userIdN) || userIdN < 1) throw new ValidationError(400, 'userId must be a valid integer');
+
+  const result = { userId: userIdN };
+  if (restoreData && typeof restoreData === 'object') {
+    result.restoreData = restoreData;
+  }
   return result;
 }
 

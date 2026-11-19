@@ -1,6 +1,6 @@
 // src/pages/WellnessCounsellingCards.js
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
-import { Plus, RefreshCw, FileHeart, Edit2, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, FileHeart, Edit2, Trash2, Share2, Loader2, BadgeCheck } from "lucide-react";
 import {
   BodyParamsForm,
   BodyParamsShareSheet,
@@ -10,7 +10,9 @@ import {
   getBodyParamsCard,
   deleteBodyParamsCard,
   buildBpcSearchSuggestions,
+  buildOnboardingShareUrl,
 } from "../features/body-parameters-card";
+import { getApiBaseUrl } from "../config/api.config.js";
 import { debugLog } from '../shared/utils/logger.js';
 import { getUserId } from '../shared/services/userIdentity.js';
 import CustomAlertModal from '../shared/components/CustomAlertModal';
@@ -18,7 +20,10 @@ import PhoneContactActions from '../shared/components/PhoneContactActions.jsx';
 import {
   formatBcmListCardDateTime,
   resolveBcmDisplayTimezone,
+  resolveBcmCardAppointmentDate,
 } from '../features/body-parameters-card/domain/bcmCardDateTime.rules.js';
+import { dismissNetworkFailure } from '../shared/services/networkNotice.js';
+import { isBcmDeviceContactSaved } from '../features/body-parameters-card/utils/bcmDeviceContact.js';
 
 const PAGE_SIZE = 20;
 
@@ -45,7 +50,10 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({
   card,
   onEdit,
   onDelete,
+  onShare,
   isDeleting = false,
+  isSharing = false,
+  contactStatus = 'idle',
   timezoneIana,
 }) {
   return (
@@ -69,6 +77,36 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({
             ) : null}
           </div>
           <div className="flex items-center gap-0.5 flex-shrink-0">
+            {contactStatus === 'saving' ? (
+              <span
+                className="p-1.5"
+                role="status"
+                aria-label="Saving contact"
+                title="Saving contact"
+              >
+                <Loader2 size={16} className="text-green-600 animate-spin" />
+              </span>
+            ) : contactStatus === 'saved' ? (
+              <span
+                className="p-1.5"
+                aria-label="Contact saved"
+                title="Contact saved"
+              >
+                <BadgeCheck size={16} className="text-green-600" />
+              </span>
+            ) : null}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onShare(card);
+              }}
+              disabled={isSharing}
+              className="p-1.5 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
+              aria-label={`Share ${card.name || 'card'}`}
+            >
+              <Share2 size={16} className={isSharing ? 'text-green-300 animate-pulse' : 'text-green-600'} />
+            </button>
             <button
               type="button"
               onClick={(e) => {
@@ -127,6 +165,14 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({
               Venue: <span className="font-medium text-gray-800">{card.locationName}</span>
             </p>
           ) : null}
+          {(() => {
+            const appt = resolveBcmCardAppointmentDate(card);
+            return appt ? (
+              <p className="text-xs text-gray-600 truncate">
+                Appointment: <span className="font-medium text-gray-800">{appt}</span>
+              </p>
+            ) : null;
+          })()}
         </div>
       </div>
     </div>
@@ -151,6 +197,16 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
   const [deletingCardId, setDeletingCardId] = useState(null);
   const [cardPendingDelete, setCardPendingDelete] = useState(null);
   const [deleteErrorMessage, setDeleteErrorMessage] = useState(null);
+  const [sharingCardId, setSharingCardId] = useState(null);
+  /** Card ids whose phone contact write is in flight. */
+  const [contactSavingIds, setContactSavingIds] = useState(() => new Set());
+  /** Card ids whose phone contact was saved in this session. */
+  const [contactSavedIds, setContactSavedIds] = useState(() => new Set());
+  const [shareErrorMessage, setShareErrorMessage] = useState(null);
+  /** List-card share should not reload the grid when the sheet closes. */
+  const skipRefreshOnShareCloseRef = useRef(false);
+  /** True from the moment a share sheet is requested until it closes. */
+  const shareSessionRef = useRef(false);
   const [pagination, setPagination] = useState({
     totalRecords: 0,
     currentPage: 0,
@@ -176,6 +232,10 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
   const requestIdRef = useRef(0);
   /** Keys currently fetching — prevents duplicate load-more, not remount. */
   const inFlightPagesRef = useRef(new Set());
+
+  useEffect(() => {
+    preloadBodyParamsShareAssets();
+  }, []);
 
   useEffect(() => {
     if (!isBodyParamsFormOpen) return;
@@ -441,28 +501,105 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
     return () => observer.disconnect();
   }, [loadMore, bodyParamsCards.length]);
 
+  const handleContactSaveState = useCallback(({ cardId, state }) => {
+    if (cardId == null) return;
+    const id = String(cardId);
+    setContactSavingIds((prev) => {
+      const next = new Set(prev);
+      if (state === 'saving') next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    if (state === 'saved') {
+      setContactSavedIds((prev) => {
+        if (prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+    }
+  }, []);
+
   const handleEditCard = async (card) => {
+    // Open immediately with list data so Edit never waits on the network.
+    // Detail fields (fat%, BMR, etc.) merge in when the refresh succeeds —
+    // BodyParamsForm already re-hydrates from a late existingCard snapshot.
+    headerVenueInitializedRef.current = true;
+    setHeaderVenue(String(card.locationName || '').trim());
+    setSelectedCard(card);
+    setIsBodyParamsFormOpen(true);
+
     try {
       const userId = await resolveCoachId();
+      if (!userId || !card?.id) return;
       const fresh = await getBodyParamsCard(userId, card.id);
+      if (!fresh || typeof fresh !== 'object' || Array.isArray(fresh)) return;
       const merged = {
         ...card,
         ...fresh,
         phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null,
         locationName: fresh.locationName ?? card.locationName ?? null,
+        appointmentDate: resolveBcmCardAppointmentDate(fresh) || resolveBcmCardAppointmentDate(card) || null,
       };
-      // Sync header to THIS card's venue so header doesn't force an old value.
-      headerVenueInitializedRef.current = true;
+      setSelectedCard((prev) => (prev?.id === card.id ? merged : prev));
       setHeaderVenue(String(merged.locationName || '').trim());
-      setSelectedCard(merged);
-      setIsBodyParamsFormOpen(true);
-    } catch {
-      headerVenueInitializedRef.current = true;
-      setHeaderVenue(String(card.locationName || '').trim());
-      setSelectedCard(card);
-      setIsBodyParamsFormOpen(true);
+    } catch (err) {
+      // List card is enough to edit; do not keep the global connection overlay up.
+      dismissNetworkFailure();
+      debugLog('[WellnessCounselling] edit using list card', err?.message);
     }
   };
+
+  const handleShareCard = useCallback(async (card) => {
+    if (!card?.id || shareSessionRef.current) return;
+    shareSessionRef.current = true;
+    setSharingCardId(card.id);
+    setShareErrorMessage(null);
+    preloadBodyParamsShareAssets();
+    try {
+      const coachId = await resolveCoachId();
+      let full = card;
+      if (coachId) {
+        try {
+          const fresh = await getBodyParamsCard(coachId, card.id);
+          if (fresh && typeof fresh === 'object' && !Array.isArray(fresh)) {
+            full = {
+              ...card,
+              ...fresh,
+              phoneNumber: fresh.phoneNumber ?? card.phoneNumber ?? null,
+              locationName: fresh.locationName ?? card.locationName ?? null,
+              appointmentDate: fresh.appointmentDate ?? fresh.appointment_date ?? card.appointmentDate ?? card.appointment_date ?? null,
+            };
+          }
+        } catch (err) {
+          dismissNetworkFailure();
+          debugLog('[WellnessCounselling] share using list card', err?.message);
+        }
+      }
+      const { previousCard: prevCard = null, ...cardCore } = full;
+      const creatorName = String(
+        user?.userName || user?.name || user?.username || user?.displayName || ''
+      ).trim();
+      const resolvedAppointment = resolveBcmCardAppointmentDate(full);
+      skipRefreshOnShareCloseRef.current = true;
+      setBodyParamsPreCapCard(null);
+      setBodyParamsShareData({
+        card: {
+          ...cardCore,
+          appointmentDate: resolvedAppointment,
+          creatorName: cardCore.creatorName || creatorName,
+        },
+        shareUrl: buildOnboardingShareUrl(getApiBaseUrl()),
+        previousCard: prevCard,
+      });
+    } catch (err) {
+      shareSessionRef.current = false;
+      skipRefreshOnShareCloseRef.current = false;
+      setShareErrorMessage(err?.message || 'Failed to share card. Please try again.');
+    } finally {
+      setSharingCardId(null);
+    }
+  }, [resolveCoachId, user]);
 
   const handleDeleteCard = useCallback((card) => {
     if (!card?.id || deletingCardId != null) return;
@@ -603,7 +740,16 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
                   card={card}
                   onEdit={handleEditCard}
                   onDelete={handleDeleteCard}
+                  onShare={handleShareCard}
                   isDeleting={deletingCardId === card.id}
+                  isSharing={sharingCardId === card.id}
+                  contactStatus={
+                    contactSavingIds.has(String(card.id))
+                      ? 'saving'
+                      : contactSavedIds.has(String(card.id)) || isBcmDeviceContactSaved(card.phoneNumber)
+                        ? 'saved'
+                        : 'idle'
+                  }
                   timezoneIana={displayTimezone}
                 />
               ))}
@@ -645,6 +791,7 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
           headerVenueInitializedRef.current = true;
           setHeaderVenue(venue);
         }}
+        onContactSaveState={handleContactSaveState}
         onSaveStart={(formData) => {
           const venue = String(formData.locationName || '').trim();
           if (venue) {
@@ -681,6 +828,8 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
           });
 
           setSelectedCard(null);
+          shareSessionRef.current = true;
+          skipRefreshOnShareCloseRef.current = false;
           setBodyParamsShareData({
             card: {
               ...card,
@@ -695,8 +844,12 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
       <BodyParamsShareSheet
         isOpen={!!bodyParamsShareData}
         onClose={() => {
+          const skipRefresh = skipRefreshOnShareCloseRef.current;
+          skipRefreshOnShareCloseRef.current = false;
+          shareSessionRef.current = false;
           setBodyParamsShareData(null);
           setBodyParamsPreCapCard(null);
+          if (skipRefresh) return;
           pageCacheRef.current.clear();
           fetchPage({
             page: 1,
@@ -730,6 +883,15 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         onClose={() => setDeleteErrorMessage(null)}
         title="Delete failed"
         message={deleteErrorMessage || ''}
+        type="error"
+        confirmText="OK"
+      />
+
+      <CustomAlertModal
+        isOpen={!!shareErrorMessage}
+        onClose={() => setShareErrorMessage(null)}
+        title="Share failed"
+        message={shareErrorMessage || ''}
         type="error"
         confirmText="OK"
       />

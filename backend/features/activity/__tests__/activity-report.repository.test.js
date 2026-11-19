@@ -9,6 +9,7 @@ import {
   dedupeFirstLogPerMemberPerDay,
   filterFoodByMealTime,
   isReportBeverageRecord,
+  isReportNonMealRecord,
 } from '../activity-report.repository.js';
 
 const DINNER_WINDOWS = {
@@ -72,5 +73,34 @@ describe('isReportBeverageRecord', () => {
       ProcessedBy: 'manual_app',
       AnalysisData: { foods: [{ name: 'water', volume_ml: 250, calories: 0 }] },
     }), true);
+  });
+});
+
+describe('isReportNonMealRecord', () => {
+  it('skips Target Nutrition Triphala for meal windows', () => {
+    assert.equal(isReportNonMealRecord({
+      ProcessedBy: 'manual_app',
+      AnalysisData: {
+        mealKind: 'dry-salad',
+        foods: [{ name: '*Vritilife Triphala* (Digestive Health)' }],
+      },
+    }), true);
+  });
+
+  it('keeps Formula 1 shake as a meal', () => {
+    assert.equal(isReportNonMealRecord({
+      ProcessedBy: 'shake_calculator',
+      AnalysisData: { foods: [{ name: 'Protein Shake' }] },
+    }), false);
+  });
+
+  it('does not treat Triphala as a water beverage', () => {
+    assert.equal(isReportBeverageRecord({
+      ProcessedBy: 'manual_app',
+      AnalysisData: {
+        mealKind: 'dry-salad',
+        foods: [{ name: '*Vritilife Triphala* (Digestive Health)' }],
+      },
+    }), false);
   });
 });

@@ -9,11 +9,11 @@
  *     → worker picks job       ← /api/ai/worker (cron or direct trigger)
  *     → enrichNutrition runs
  *     → persistEnrichment      ← writes back to food_nutrition_data_table
- *     → notifyComplete         ← Supabase Realtime broadcast / polling
+ *     → notifyComplete         ← MySQL Realtime broadcast / polling
  *
  * Backing store (two-tier):
  *   1. In-process Map  — zero-latency, survives within a Vercel function lifetime.
- *   2. Supabase table  — durable, survives cold starts & multi-instance Vercel.
+ *   2. MySQL table  — durable, survives cold starts & multi-instance Vercel.
  *      Table: ai_analysis_jobs_table (see migration in docs/migrations/)
  *      Falls back gracefully if the table does not exist (e.g., local dev without migration).
  *
@@ -115,9 +115,9 @@ export class JobQueue {
       traceId:   job.traceId,
     });
 
-    // Best-effort persist to Supabase (non-blocking, non-fatal)
-    this._persistToSupabase(job).catch(err => {
-      logger.warn('jobQueue: Supabase persist failed (in-memory only)', { jobId, error: err.message });
+    // Best-effort persist to MySQL (non-blocking, non-fatal)
+    this._persistJob(job).catch(err => {
+      logger.warn('jobQueue: MySQL persist failed (in-memory only)', { jobId, error: err.message });
     });
 
     return { jobId };
@@ -260,15 +260,15 @@ export class JobQueue {
   }
 
   /**
-   * Best-effort persist to Supabase ai_analysis_jobs_table.
+   * Best-effort persist to MySQL ai_analysis_jobs_table.
    * Fails silently if the table does not yet exist.
    */
-  async _persistToSupabase(job) {
-    // Dynamic import avoids circular dependency with supabaseClient at module load
-    const { getSupabaseClient } = await import('../../../utils/supabaseClient.js');
-    const supabase = getSupabaseClient();
+  async _persistJob(job) {
+    // Dynamic import avoids a circular dependency with the MySQL client at module load
+    const { getMysqlClient } = await import('../../../utils/mysqlClient.js');
+    const db = getMysqlClient();
 
-    const { error } = await supabase
+    const { error } = await db
       .from('ai_analysis_jobs_table')
       .upsert({
         JobId:        job.jobId,

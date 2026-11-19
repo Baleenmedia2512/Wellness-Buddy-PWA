@@ -5,7 +5,7 @@ import { todayInTimezone, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { getUserTimezoneIana } from '../user/domain/userTimezone.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import * as userRepo from '../user/user.repository.js';
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { compareSemver } from '../app-version/domain/version.rules.js';
 import { assertAiCreditsAdmin } from './domain/permissions/credits.policy.js';
 import {
@@ -42,8 +42,8 @@ async function loadAiFoodAccessContext(
   availabilityWindows = null,
 ) {
   const row = await userRepo.findByUserId(userId, ACCESS_COLUMNS);
-  const supabase = getSupabaseClient();
-  const { count, error } = await supabase
+  const db = getMysqlClient();
+  const { count, error } = await db
     .from('team_table')
     .select('UserId', { count: 'exact', head: true })
     .eq('CoachId', userId);

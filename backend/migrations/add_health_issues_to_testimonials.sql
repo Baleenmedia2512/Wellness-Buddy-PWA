@@ -3,7 +3,7 @@
 -- Stores a list of disease/condition names the member recovered from during their wellness journey.
 -- Each element is a plain string (disease label). Example: ["Diabetes Type 2", "High Blood Pressure"]
 --
--- Run ONCE in the Supabase SQL editor.
+-- Run ONCE on MySQL.
 
 -- ─── 1. Add column ────────────────────────────────────────────────────────────
 

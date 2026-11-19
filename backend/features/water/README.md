@@ -33,15 +33,15 @@ Body shape is documented in the JSDoc on `domain/intake.rules.js → computeDail
 api/intake.handler.js         orchestration only
 domain/intake.rules.js        pure calc — NO I/O, NO Date.now in business path
 validation/intake.schema.js   ValidationError on bad input
-data/water.repo.js            ONLY file that talks to Supabase
+data/water.repo.js            ONLY file that talks to MySQL
 __tests__/intake.rules.test.js
 ```
 
 ## Dependencies
 - Internal pure helpers: `backend/utils/foodTypeDetection.js` (used by domain).
-- Data sources: Supabase tables `weight_records_table`, `food_nutrition_data_table`.
+- Data sources: MySQL tables `weight_records_table`, `food_nutrition_data_table`.
 - Shared: `shared/lib/logger.js`, `shared/lib/ValidationError.js`, `shared/lib/handler.js`.
-- Env vars: whatever `supabaseClient.js` consumes (no new vars in this feature).
+- Env vars: whatever `mysqlClient.js` consumes (no new vars in this feature).
 
 ## Threat model (claude.md §8.5)
 - **Auth:** TODO — currently the handler trusts the `userId` query param. This

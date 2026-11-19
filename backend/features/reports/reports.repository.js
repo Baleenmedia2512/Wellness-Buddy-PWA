@@ -2,15 +2,17 @@
  * reports.repository.js — Data layer for the Reports feature.
  * Owns: team_table (hierarchy lookup) + weight_records_table (latest weight).
  */
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import logger from '../../shared/lib/logger.js';
 import {
   loadReportingContext,
   loadReportingContextForCoach,
-  getFullReportingMembers,
-  getDirectReportingMembers,
   buildReportingChildrenIndex,
 } from '../../utils/reportingHierarchyService.js';
+import {
+  getSharedTeamDirectMembers,
+  getSharedTeamFullMembers,
+} from '../../utils/sharedTeamReporting.js';
 import { shiftDateYmd, IANA_IST } from '../../shared/lib/datetime/index.js';
 import { classifyWeightsForScoreDate } from './domain/wellness-score-report.weight.js';
 
@@ -26,8 +28,8 @@ export async function getUserNamesByIds(userIds) {
     .filter((id) => Number.isFinite(id) && id > 0))];
   if (ids.length === 0) return map;
 
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"UserId", "UserName"')
     .in('"UserId"', ids);
@@ -42,7 +44,7 @@ export async function getUserNamesByIds(userIds) {
   return map;
 }
 
-/** Supabase `.in()` URL length safety — batch user id lookups. */
+/** MySQL `.in()` URL length safety — batch user id lookups. */
 const WEIGHT_USER_ID_CHUNK = 150;
 
 /**
@@ -60,29 +62,40 @@ function getPartnerRootIds(context, rootCoachId) {
 }
 
 /**
+ * Same-community independent coach ids (visibility only).
+ * @param {object} context
+ * @param {number} rootCoachId
+ * @returns {number[]}
+ */
+function getCommunityPeerRootIds(context, rootCoachId) {
+  const rootId = Number(rootCoachId);
+  const peers = Array.isArray(context?.communityPeerRootIds) ? context.communityPeerRootIds : [];
+  return peers
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id !== rootId);
+}
+
+/**
  * Walk the reporting hierarchy and derive parent links plus direct-to-root flags.
- * When a Sponsor/Co-Sponsor partner exists, Direct includes both leads' direct
- * members (and the partner lead) so Ideal Weight Mine/Direct/Full match the
- * shared-team model.
+ * Direct includes:
+ * - own CoachId directs
+ * - Sponsor/Co-Sponsor partner lead + partner directs
+ * - same-Community-ID peer coaches' directs (peer coaches themselves excluded)
  */
 function extractReportingHierarchyMeta(context, rootCoachId) {
   const rootId = Number(rootCoachId);
   const partnerIds = getPartnerRootIds(context, rootId);
+  const communityPeerIds = getCommunityPeerRootIds(context, rootId);
   const parentByUserId = new Map();
   const childrenByParentId = buildReportingChildrenIndex(context, rootId);
   const directToRoot = new Set(
-    getDirectReportingMembers(rootId, context)
+    getSharedTeamDirectMembers(rootId, context)
       .map((m) => Number(m.UserId))
       .filter((id) => id !== rootId),
   );
 
-  for (const partnerId of partnerIds) {
-    directToRoot.add(partnerId);
-    for (const m of getDirectReportingMembers(partnerId, context)) {
-      const id = Number(m.UserId);
-      if (id !== rootId) directToRoot.add(id);
-    }
-    const partnerIndex = buildReportingChildrenIndex(context, partnerId);
+  for (const mergeRootId of [...partnerIds, ...communityPeerIds]) {
+    const partnerIndex = buildReportingChildrenIndex(context, mergeRootId);
     for (const [parentId, childIds] of partnerIndex) {
       if (!childrenByParentId.has(parentId)) {
         childrenByParentId.set(parentId, childIds);
@@ -101,32 +114,14 @@ function extractReportingHierarchyMeta(context, rootCoachId) {
 
 /**
  * Full reporting roster for Ideal Weight / Wellness Score reports.
- * Unions the viewer's tree with Sponsor/Co-Sponsor partner downline when linked.
+ * Unions the viewer's tree with Sponsor/Co-Sponsor partner downline and
+ * same-Community-ID peer coach downlines when linked.
  * @param {number} coachId
  * @param {object} context
  * @returns {import('../../utils/reportingHierarchyService.js').TeamUser[]}
  */
 function collectReportTeamMembers(coachId, context) {
-  const rootId = Number(coachId);
-  const byId = new Map();
-
-  for (const m of getFullReportingMembers(rootId, context)) {
-    byId.set(Number(m.UserId), m);
-  }
-
-  for (const partnerId of getPartnerRootIds(context, rootId)) {
-    const partner = context.userById?.get(partnerId);
-    if (partner && Number(partner.UserId) !== rootId) {
-      byId.set(Number(partner.UserId), partner);
-    }
-    for (const m of getFullReportingMembers(partnerId, context)) {
-      const id = Number(m.UserId);
-      if (id === rootId) continue;
-      if (!byId.has(id)) byId.set(id, m);
-    }
-  }
-
-  return [...byId.values()];
+  return getSharedTeamFullMembers(coachId, context);
 }
 
 function mapReportingMembersToRaw(reportingMembers, coachId, parentByUserId, directToRoot) {
@@ -154,8 +149,8 @@ function mapReportingMembersToRaw(reportingMembers, coachId, parentByUserId, dir
  * @returns {Promise<{ UserId: number, UserName: string, Height: string|null, CoachId?: number|null, Role?: string|null }|null>}
  */
 export async function getCoachMember(coachId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('"UserId", "UserName", "Email", "CommunityId", "Height", "CoachId", "Role", "Status"')
     .eq('"UserId"', coachId)
@@ -175,8 +170,8 @@ export async function getCoachMember(coachId) {
  * }>}
  */
 export async function getFullTeamMembersIndexed(coachId) {
-  const supabase = getSupabaseClient();
-  const context = await loadReportingContextForCoach(supabase, coachId);
+  const db = getMysqlClient();
+  const context = await loadReportingContextForCoach(db, coachId);
   const reportingMembers = collectReportTeamMembers(coachId, context);
   const { parentByUserId, childrenByParentId, directToRoot } = extractReportingHierarchyMeta(
     context,
@@ -218,8 +213,8 @@ export async function getFullTeamMembers(coachId) {
     });
   }
 
-  const supabase = getSupabaseClient();
-  const context = await loadReportingContext(supabase);
+  const db = getMysqlClient();
+  const context = await loadReportingContext(db);
   const reportingMembers = collectReportTeamMembers(coachId, context);
   const { parentByUserId, childrenByParentId, directToRoot } = extractReportingHierarchyMeta(
     context,
@@ -247,9 +242,9 @@ export async function getFullTeamMembers(coachId) {
  * @returns {Promise<Array<{ UserId: number, UserName: string, Height: string|null }>>}
  */
 export async function getDirectDownline(coachId) {
-  const supabase = getSupabaseClient();
-  const context = await loadReportingContextForCoach(supabase, coachId);
-  return getDirectReportingMembers(coachId, context)
+  const db = getMysqlClient();
+  const context = await loadReportingContextForCoach(db, coachId);
+  return getSharedTeamDirectMembers(coachId, context)
     .filter((member) => member.UserId !== coachId)
     .map((member) => ({
       UserId: member.UserId,
@@ -288,7 +283,7 @@ export async function getLatestWeightsForUsers(userIds) {
   const uniqueIds = [...new Set(userIds.filter((id) => Number.isFinite(Number(id))))];
   if (uniqueIds.length === 0) return map;
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const chunks = [];
   for (let i = 0; i < uniqueIds.length; i += WEIGHT_USER_ID_CHUNK) {
     chunks.push(uniqueIds.slice(i, i + WEIGHT_USER_ID_CHUNK));
@@ -296,7 +291,7 @@ export async function getLatestWeightsForUsers(userIds) {
 
   const results = await Promise.all(
     chunks.map(async (chunk) => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('weight_records_table')
         .select('"UserId", "Weight", "CreatedAt"')
         .in('"UserId"', chunk)
@@ -310,6 +305,59 @@ export async function getLatestWeightsForUsers(userIds) {
   for (const rows of results) {
     mergeLatestWeightRows(rows, map);
   }
+  return map;
+}
+
+/**
+ * Batch-load IdealWeightReachedAt for Ideal Weight Report rows.
+ * Missing column → empty map (migration not applied yet).
+ *
+ * @param {number[]} userIds
+ * @returns {Promise<Map<number, string|null>>}
+ */
+export async function getIdealWeightReachedAtForUsers(userIds) {
+  const map = new Map();
+  if (!userIds || userIds.length === 0) return map;
+
+  const uniqueIds = [...new Set(
+    userIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0),
+  )];
+  if (uniqueIds.length === 0) return map;
+
+  const db = getMysqlClient();
+  const chunks = [];
+  for (let i = 0; i < uniqueIds.length; i += WEIGHT_USER_ID_CHUNK) {
+    chunks.push(uniqueIds.slice(i, i + WEIGHT_USER_ID_CHUNK));
+  }
+
+  try {
+    const results = await Promise.all(
+      chunks.map(async (chunk) => {
+        const { data, error } = await db
+          .from('team_table')
+          .select('"UserId", "IdealWeightReachedAt"')
+          .in('"UserId"', chunk);
+        if (error) throw error;
+        return data || [];
+      }),
+    );
+
+    for (const rows of results) {
+      for (const row of rows) {
+        const uid = Number(row.UserId);
+        if (!Number.isFinite(uid)) continue;
+        map.set(uid, row.IdealWeightReachedAt ?? null);
+      }
+    }
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/IdealWeightReachedAt/i.test(msg) && /column|does not exist|not find|unknown/i.test(msg)) {
+      logger.warn('[reports] IdealWeightReachedAt missing — run add_ideal_weight_reached_columns.sql');
+      return map;
+    }
+    throw err;
+  }
+
   return map;
 }
 
@@ -371,10 +419,10 @@ export async function getLatestTwoWeightsForUsers(userIds, scoreDateYmd = null) 
 
   // Page-sized lookups: few rows/user only — avoids full history download.
   if (uniqueIds.length <= 40) {
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
     const results = await Promise.all(
       uniqueIds.map(async (uid) => {
-        let query = supabase
+        let query = db
           .from('weight_records_table')
           .select('"UserId", "Weight", "CreatedAt"')
           .eq('"UserId"', uid)
@@ -395,7 +443,7 @@ export async function getLatestTwoWeightsForUsers(userIds, scoreDateYmd = null) 
     return normalizeWeightMapKeys(map);
   }
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const chunks = [];
   for (let i = 0; i < uniqueIds.length; i += WEIGHT_USER_ID_CHUNK) {
     chunks.push(uniqueIds.slice(i, i + WEIGHT_USER_ID_CHUNK));
@@ -403,7 +451,7 @@ export async function getLatestTwoWeightsForUsers(userIds, scoreDateYmd = null) 
 
   const results = await Promise.all(
     chunks.map(async (chunk) => {
-      let query = supabase
+      let query = db
         .from('weight_records_table')
         .select('"UserId", "Weight", "CreatedAt"')
         .in('"UserId"', chunk)
@@ -453,7 +501,7 @@ export async function getWellnessScoresForUsers(userIds, scoreDate) {
   const uniqueIds = [...new Set(userIds.filter((id) => Number.isFinite(Number(id))))];
   if (uniqueIds.length === 0) return map;
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const chunks = [];
   for (let i = 0; i < uniqueIds.length; i += WEIGHT_USER_ID_CHUNK) {
     chunks.push(uniqueIds.slice(i, i + WEIGHT_USER_ID_CHUNK));
@@ -461,7 +509,7 @@ export async function getWellnessScoresForUsers(userIds, scoreDate) {
 
   const results = await Promise.all(
     chunks.map(async (chunk) => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('wellness_score_daily_table')
         .select('user_id, percentage, total_earned, total_possible, computed_at')
         .eq('score_date', scoreDate)

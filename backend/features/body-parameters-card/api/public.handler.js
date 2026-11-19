@@ -3,7 +3,7 @@
  * Also handles the profile-save path (POST with requestingUserId).
  */
 import { validateToken } from '../validation/card.schema.js';
-import { isCardShareValid } from '../domain/card.rules.js';
+import { isCardShareValid, computeDefaultAppointmentDate } from '../domain/card.rules.js';
 import { canSaveCardToProfile } from '../domain/permissions/card.policy.js';
 import { findCardByToken, findTeamPhoneByUserId } from '../data/card.repo.js';
 import { syncCardToProfile } from '../data/sync.repo.js';
@@ -98,6 +98,9 @@ async function _safeCard(card) {
     waistCm:      card.waist_cm,
     hipCm:        card.hip_cm,
     recordedDate: card.recorded_date,
+    appointmentDate: (card.appointment_date && String(card.appointment_date).trim().slice(0, 10))
+      || computeDefaultAppointmentDate(card.created_at || card.recorded_date)
+      || null,
     locationName: card.location_name,
     recoveredHealthIssues: Array.isArray(card.recovered_health_issues)
       ? card.recovered_health_issues

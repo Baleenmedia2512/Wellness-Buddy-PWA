@@ -231,6 +231,7 @@ export function mapTestimonialsListLeanFields(row) {
       businessVideoPath: null,
       recoveredHealthIssues: [],
       uploadLevel: 'not_uploaded',
+      canEditHealthIssues: false,
     };
   }
 
@@ -257,5 +258,7 @@ export function mapTestimonialsListLeanFields(row) {
     businessVideoPath: t.business_video_path ?? null,
     recoveredHealthIssues: t.recovered_health_issues ?? [],
     uploadLevel: completeness.level,
+    // Coaches never edit team-member health issues; Mine uses the member edit flow.
+    canEditHealthIssues: row.canEditHealthIssues === true,
   };
 }

@@ -192,7 +192,7 @@ export async function ensureMarathonWeightComparisonForShare({
 /**
  * Weight comparison lines (Previous Marathon End / Current Weight, or Day 0 vs today)
  * belong only on weight shares. Food, water, education, and other captions still get
- * the Day N / Tomorrow marathon sequence.
+ * the Marathon Day N / Tomorrow marathon sequence.
  *
  * @param {string|{ includeWeightComparison?: boolean, currentMarathonDay0Weight?: unknown }|null|undefined} ymdOrOptions
  * @param {unknown} currentMarathonDay0Weight

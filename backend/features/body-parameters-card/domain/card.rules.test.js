@@ -13,6 +13,14 @@ import {
   shouldDetachCounsellorCoachAssignment,
   isMemberActivatedForBcmExclusion,
   BCM_ACTIVATED_MEMBER_MESSAGE,
+  BCM_COUNSELLED_BY_OTHER_MESSAGE,
+  allowsActivatedBcmCreate,
+  canOverrideBcmForMember,
+  shouldForceNewBcmCard,
+  computeDefaultAppointmentDate,
+  isCardShareValid,
+  buildNewCardShareDefaults,
+  SHARE_TTL_DAYS,
 } from './card.rules.js';
 
 describe('buildTeamMemberInsert', () => {
@@ -107,6 +115,49 @@ describe('isMemberActivatedForBcmExclusion', () => {
 
   it('exposes a stable user-facing message', () => {
     assert.equal(BCM_ACTIVATED_MEMBER_MESSAGE, 'User already exists');
+  });
+});
+
+describe('phoneConflictAction helpers', () => {
+  it('never allows BCM create or override for an activated member', () => {
+    assert.equal(allowsActivatedBcmCreate('override'), false);
+    assert.equal(allowsActivatedBcmCreate('new'), false);
+    assert.equal(allowsActivatedBcmCreate(null), false);
+    assert.equal(allowsActivatedBcmCreate(undefined), false);
+    assert.equal(allowsActivatedBcmCreate('reuse'), false);
+  });
+
+  it('forces a new card only for new', () => {
+    assert.equal(shouldForceNewBcmCard('new'), true);
+    assert.equal(shouldForceNewBcmCard('override'), false);
+    assert.equal(shouldForceNewBcmCard(null), false);
+  });
+});
+
+describe('canOverrideBcmForMember', () => {
+  it('allows override only for a card this coach counselled before the member starts the app', () => {
+    assert.equal(canOverrideBcmForMember({
+      activated: false,
+      counselledByViewer: true,
+    }), true);
+  });
+
+  it('blocks activated members and cards counselled by someone else, including a co-sponsor', () => {
+    assert.equal(canOverrideBcmForMember({
+      activated: true,
+      counselledByViewer: true,
+    }), false);
+    assert.equal(canOverrideBcmForMember({
+      activated: false,
+      counselledByViewer: false,
+    }), false);
+    assert.equal(canOverrideBcmForMember({}), false);
+  });
+});
+
+describe('BCM_COUNSELLED_BY_OTHER_MESSAGE', () => {
+  it('tells the coach they cannot override another counsellor\'s BCM', () => {
+    assert.match(BCM_COUNSELLED_BY_OTHER_MESSAGE, /someone else/i);
   });
 });
 
@@ -223,5 +274,41 @@ describe('buildFormPrefillFromMember', () => {
     assert.equal(patch.age, undefined);
     assert.equal(patch.visceralFat, undefined);
     assert.equal(patch.chestCm, undefined);
+  });
+});
+
+describe('buildNewCardShareDefaults', () => {
+  const TOKEN = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+
+  it('sets a 36-character token and 30-day expiry', () => {
+    const now = new Date('2026-10-26T00:00:00.000Z');
+    const share = buildNewCardShareDefaults({ now, token: TOKEN });
+    assert.equal(share.publicShareToken, TOKEN);
+    assert.equal(SHARE_TTL_DAYS, 30);
+    assert.equal(share.shareExpiresAt.toISOString(), '2026-11-25T00:00:00.000Z');
+    assert.equal(isCardShareValid(share.shareExpiresAt, now), true);
+  });
+
+  it('rejects a missing or short token', () => {
+    assert.throws(() => buildNewCardShareDefaults({ token: '' }), /36-character/);
+    assert.throws(() => buildNewCardShareDefaults({}), /36-character/);
+  });
+});
+
+describe('computeDefaultAppointmentDate', () => {
+  it('computes next day (+1 day)', () => {
+    assert.equal(computeDefaultAppointmentDate('2026-10-21'), '2026-10-22');
+    assert.equal(computeDefaultAppointmentDate('2026-10-23'), '2026-10-24');
+  });
+
+  it('rolls forward to Monday (+2 days) when next day is Sunday', () => {
+    // 2026-10-24 is Saturday -> next day Sunday 2026-10-25 -> rolls to Monday 2026-10-26
+    assert.equal(computeDefaultAppointmentDate('2026-10-24'), '2026-10-26');
+  });
+
+  it('handles null and invalid inputs gracefully', () => {
+    assert.equal(computeDefaultAppointmentDate(null), null);
+    assert.equal(computeDefaultAppointmentDate(''), null);
+    assert.equal(computeDefaultAppointmentDate('invalid'), null);
   });
 });

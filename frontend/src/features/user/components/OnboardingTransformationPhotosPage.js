@@ -3,7 +3,7 @@
  * Shown after Complete Profile for new users, and on login for existing users
  * who still have any empty slot (so we do not miss transformation photo data).
  * Compact no-scroll layout; Continue only when all three photos are set.
- * Left photo still seeds testimonial Before.
+ * Left photo also syncs to Transformation Before.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Camera } from 'lucide-react';
@@ -12,7 +12,6 @@ import TransformationPhotosSection from './profile/TransformationPhotosSection';
 import useTransformationPhotos from '../hooks/useTransformationPhotos';
 import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
 import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
-import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
 import {
   DEFAULT_POSE_SLOT,
   POSE_SLOT_KEYS,
@@ -49,7 +48,7 @@ export default function OnboardingTransformationPhotosPage({
   const doneCount = useMemo(
     () => POSE_SLOT_KEYS.filter((key) => {
       const value = transformationPhotos.previews?.[key];
-      return typeof value === 'string' && value.trim().length > 0;
+      return Boolean(value);
     }).length,
     [transformationPhotos.previews],
   );
@@ -103,20 +102,16 @@ export default function OnboardingTransformationPhotosPage({
         throw new Error('Cannot save photos. Please sign in again.');
       }
       // Pending-only: existing DB photos stay via server-side merge (avoids huge re-POSTs).
+      // Centre is a transformation slot only — do not treat it as ProfileImage/avatar.
       const extras = transformationPhotos.payloadExtras();
-      const centrePending = extras.transformationPhotos?.front || null;
       const hasPhotoUpdates = Boolean(extras.transformationPhotos);
-      // Existing users adding only Left/Right must not re-POST an old Centre as profileImage.
       if (hasPhotoUpdates) {
         await saveProfile({
           ...(email ? { email } : {}),
           ...(userId ? { userId } : {}),
           ...extras,
-          ...(centrePending ? { profileImage: centrePending } : {}),
         });
         transformationPhotos.clearPending();
-        // Bust Leaderboard / Top 10 avatar URLs (centre may drive /api/user/avatar).
-        bumpAvatarDisplayVersion();
       }
       const leftForTestimonial = extras.transformationPhotos?.left
         || transformationPhotos.leftImageBase64();
@@ -132,8 +127,7 @@ export default function OnboardingTransformationPhotosPage({
           recoveredHealthIssues: healthIssues,
         });
       }
-      const centreForUi = centrePending || transformationPhotos.frontImageBase64();
-      await onComplete?.({ profileImage: centreForUi || undefined });
+      await onComplete?.({});
     } catch (e) {
       setError(e.message || 'Failed to save photos. Please try again.');
     } finally {

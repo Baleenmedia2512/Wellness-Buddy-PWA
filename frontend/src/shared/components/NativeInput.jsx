@@ -68,13 +68,12 @@ const NativeInput = forwardRef(function NativeInput(
 
 /** OTP first cell: one-time-code so iOS QuickType + Android SMS suggestion can appear. */
 export function otpAutoCompleteForCell(index, _length = 6, { emailOtp: _emailOtp = false } = {}) {
-  if (index !== 0) return 'off';
   return 'one-time-code';
 }
 
 /** First OTP cell must accept the full code — maxLength=1 truncates paste/autofill on all platforms. */
 export function otpMaxLengthForCell(index, length = 6) {
-  return index === 0 ? length : 1;
+  return length;
 }
 
 export default NativeInput;

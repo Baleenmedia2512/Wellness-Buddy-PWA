@@ -1,35 +1,56 @@
 #!/usr/bin/env node
 /**
- * migration-apply.js — apply numbered SQL files in backend/migrations.
- * Forward-only (claude.md §2.7). Tracks applied migrations in `_migrations` table.
+ * Confirms the MySQL Prisma connection (MYSQL_DATABASE_URL).
+ * backend/migrations/*.sql is PostgreSQL and is not executed.
+ * Schema changes belong in backend/prisma/schema.prisma.
  */
 const fs = require('fs');
 const path = require('path');
-const { Client } = require('pg');
+const { createRequire } = require('module');
 
-(async () => {
-  const dir = path.resolve('backend/migrations');
-  const files = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).sort();
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
-  await client.connect();
-  await client.query(`CREATE TABLE IF NOT EXISTS _migrations (name text primary key, applied_at timestamptz default now())`);
-  const { rows } = await client.query('SELECT name FROM _migrations');
-  const done = new Set(rows.map(r => r.name));
-  for (const f of files) {
-    if (done.has(f)) { console.log('· skip', f); continue; }
-    const sql = fs.readFileSync(path.join(dir, f), 'utf8');
-    console.log('→ apply', f);
-    await client.query('BEGIN');
-    try {
-      await client.query(sql);
-      await client.query('INSERT INTO _migrations(name) VALUES ($1)', [f]);
-      await client.query('COMMIT');
-    } catch (e) {
-      await client.query('ROLLBACK');
-      console.error('FAIL', f, e.message);
-      process.exit(1);
+const backendRoot = path.resolve(__dirname, '../backend');
+
+function loadEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  const text = fs.readFileSync(filePath, 'utf8');
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq < 1) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"'))
+      || (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
     }
+    if (!(key in process.env)) process.env[key] = value;
   }
-  await client.end();
-  console.log('Migrations OK.');
-})().catch(e => { console.error(e); process.exit(1); });
+}
+
+loadEnvFile(path.join(backendRoot, '.env.local'));
+loadEnvFile(path.join(backendRoot, '.env'));
+
+async function main() {
+  const url = process.env.MYSQL_DATABASE_URL;
+  if (!url) throw new Error('MYSQL_DATABASE_URL is required');
+
+  const requireBackend = createRequire(path.join(backendRoot, 'package.json'));
+  const { PrismaClient } = requireBackend('@prisma/client');
+  const prisma = new PrismaClient({ datasources: { db: { url } } });
+  try {
+    await prisma.$queryRawUnsafe('SELECT 1 AS ok');
+    const dir = path.join(backendRoot, 'migrations');
+    const files = fs.readdirSync(dir).filter((name) => name.endsWith('.sql')).sort();
+    console.log(`MySQL Prisma connection ok. Skipped ${files.length} PostgreSQL files in backend/migrations/.`);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+main().catch((err) => {
+  console.error(err.message || err);
+  process.exit(1);
+});

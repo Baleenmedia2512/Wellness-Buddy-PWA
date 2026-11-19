@@ -4,9 +4,9 @@
 --
 -- STORAGE BUCKET NOTE:
 --   The existing 'testimonials' bucket is reused for videos.
---   Update the bucket Max File Size to 50 MB in the Supabase dashboard to support video files.
+--   Update the bucket max file size to 50 MB in object storage to support video files.
 --
--- Run ONCE in the Supabase SQL editor.
+-- Run ONCE on MySQL.
 
 -- ─── 1. Add video columns ─────────────────────────────────────────────────────
 

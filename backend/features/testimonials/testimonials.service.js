@@ -1,4 +1,4 @@
-﻿/**
+/**
  * testimonials.service.js â€” Business logic for the testimonials feature.
  * Orchestrates validation â†’ permissions â†’ data â†’ side-effects (email).
  * Zero HTTP concerns.
@@ -6,17 +6,18 @@
 import bcrypt from 'bcryptjs';
 import { generateEmailOtp } from '../auth/domain/otp-length.rules.js';
 import crypto from 'node:crypto';
-import nodemailer from 'nodemailer';
 import * as repo from './testimonials.repository.js';
 import {
   hasCompletePhotoTestimonial,
-  hasRealBeforePhoto,
-  hasVisibleAfterCard,
   isPhotoPairComplete,
   resolveHealthIssueOtpChannel,
   shouldHydratePhotosFromProfile,
   shouldSendPhotoApprovalOtp,
 } from './domain/photoCompleteness.rules.js';
+import {
+  previousEmailCardPaths,
+  shouldShowPreviousNewEmailCards,
+} from './domain/emailPreviousCard.rules.js';
 import {
   resolveOtpRecipientIds,
   toPositiveUserId,
@@ -26,6 +27,7 @@ import {
   syncTestimonialPathsToProfileSafe,
 } from './profilePhotoSync.service.js';
 import logger from '../../shared/lib/logger.js';
+import { sendTransactionalMail } from '../../shared/lib/smtp-mail.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import {
   validateSubmitTestimonial,
@@ -43,6 +45,7 @@ import {
   validateSubmitAllEdits,
   validateVerifyUnifiedOtp,
   validateResendUnifiedOtp,
+  validateCancelUnifiedOtp,
   validateUpdateMemberHealthIssues,
   MAX_HEALTH_VIDEO_BYTES,
   MAX_BUSINESS_VIDEO_BYTES,
@@ -56,6 +59,11 @@ import {
   countTestimonialsUploadLevels,
 } from './domain/testimonials-list.pagination.js';
 import { isInlineImageReference } from './domain/profileTransformationPhotos.seed.js';
+import {
+  bufferFromOptionalBase64,
+  composeTransformationShareCardJpeg,
+} from './domain/composeTransformationShareCard.js';
+import { scheduleDeferredCoachDelivery } from './deferredCoachDelivery.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import {
   buildTestimonialCoachEmailHtml,
@@ -154,6 +162,237 @@ function storagePath(userId, side, timestamp) {
   return `${userId}/${side}_${timestamp}.jpg`;
 }
 
+/** Inline CIDs for Before/After photos in the Transformation card email block. */
+const BEFORE_PHOTO_CID = 'transformation-before@wellnessvalley';
+const AFTER_PHOTO_CID = 'transformation-after@wellnessvalley';
+const PREV_BEFORE_PHOTO_CID = 'transformation-before-prev@wellnessvalley';
+const PREV_AFTER_PHOTO_CID = 'transformation-after-prev@wellnessvalley';
+const SHARE_CARD_CID = 'transformation-card@wellnessvalley';
+const PREV_SHARE_CARD_CID = 'transformation-card-prev@wellnessvalley';
+
+/**
+ * Resolve Before/After photo buffers for share-card compose + email thumbs.
+ * Prefers submit base64, else downloads the storage path (same source for both).
+ */
+async function resolveShareCardPhotoBuffers(composeFromPhotos = null) {
+  const beforePath = composeFromPhotos?.beforeImagePath;
+  const afterPath = composeFromPhotos?.afterImagePath;
+  if (
+    (beforePath && repo.isVideoOnlyPlaceholder?.(beforePath))
+    || (afterPath && repo.isVideoOnlyPlaceholder?.(afterPath))
+  ) {
+    return { beforeBuffer: null, afterBuffer: null };
+  }
+
+  let beforeBuffer = bufferFromOptionalBase64(composeFromPhotos?.beforeImageBase64);
+  let afterBuffer = bufferFromOptionalBase64(composeFromPhotos?.afterImageBase64);
+  const downloads = [];
+  if (!beforeBuffer && beforePath) {
+    downloads.push(
+      repo.downloadBuffer(beforePath, { retries: 2 }).then((buf) => { beforeBuffer = buf; }),
+    );
+  }
+  if (!afterBuffer && afterPath) {
+    downloads.push(
+      repo.downloadBuffer(afterPath, { retries: 2 }).then((buf) => { afterBuffer = buf; }),
+    );
+  }
+  if (downloads.length) await Promise.all(downloads);
+  return {
+    beforeBuffer: beforeBuffer?.length ? beforeBuffer : null,
+    afterBuffer: afterBuffer?.length ? afterBuffer : null,
+  };
+}
+
+/**
+ * Upload Transformation share card for coach email Previous | New compare.
+ * Always composes from the same Before/After photo bytes the email thumbs use
+ * (submit base64 or storage paths). Client capture is fallback only — it can
+ * diverge from persisted paths and make "NEW" thumbs disagree with tap-preview.
+ * Rotates the prior card to share_card_prev.jpg when it differs.
+ *
+ * @param {number} userId
+ * @param {string|null|undefined} shareCardImageBase64 - client capture (fallback)
+ * @param {{
+ *   beforeImagePath?: string|null,
+ *   afterImagePath?: string|null,
+ *   beforeImageBase64?: string|null,
+ *   afterImageBase64?: string|null,
+ *   memberName?: string|null,
+ *   beforeWeightKg?: number|null,
+ *   afterWeightKg?: number|null,
+ *   goalType?: string|null,
+ *   durationText?: string|null,
+ *   recoveredHealthIssues?: string[]|null,
+ * }|null} [composeFromPhotos]
+ * @returns {Promise<string|null>} storage path when uploaded
+ */
+async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPhotos = null) {
+  let newJpeg = null;
+
+  const beforePath = composeFromPhotos?.beforeImagePath;
+  const afterPath = composeFromPhotos?.afterImagePath;
+  const canCompose = Boolean(
+    (composeFromPhotos?.beforeImageBase64 || beforePath)
+    && (composeFromPhotos?.afterImageBase64 || afterPath)
+    && !(beforePath && repo.isVideoOnlyPlaceholder?.(beforePath))
+    && !(afterPath && repo.isVideoOnlyPlaceholder?.(afterPath)),
+  );
+
+  // Prefer path/base64 compose so tap-preview matches NEW Before|After thumbs.
+  if (canCompose) {
+    try {
+      const { beforeBuffer, afterBuffer } = await resolveShareCardPhotoBuffers(composeFromPhotos);
+      if (beforeBuffer && afterBuffer) {
+        newJpeg = await composeTransformationShareCardJpeg({
+          beforeBuffer,
+          afterBuffer,
+          memberName: composeFromPhotos.memberName,
+          beforeWeightKg: composeFromPhotos.beforeWeightKg,
+          afterWeightKg: composeFromPhotos.afterWeightKg,
+          goalType: composeFromPhotos.goalType,
+          durationText: composeFromPhotos.durationText,
+          recoveredHealthIssues: composeFromPhotos.recoveredHealthIssues,
+        });
+      }
+    } catch (err) {
+      logger.warn('[testimonials.service] Server share-card compose failed', {
+        userId,
+        message: err?.message || String(err),
+      });
+    }
+  }
+
+  if (!newJpeg?.length) {
+    newJpeg = bufferFromOptionalBase64(shareCardImageBase64);
+  }
+
+  if (!newJpeg?.length) {
+    logger.warn('[testimonials.service] No share card for email (compose and client capture both missing)', {
+      userId,
+      hadClientCapture: Boolean(shareCardImageBase64),
+      canCompose,
+    });
+    return null;
+  }
+
+  const path = repo.shareCardStoragePath(userId);
+  const prevPath = repo.previousShareCardStoragePath(userId);
+  // Always rotate the prior full card → share_card_prev.jpg so Previous tap-preview
+  // can open the last card, and cancel can restore it.
+  try {
+    const existing = await repo.downloadBuffer(path, { retries: 1 });
+    if (existing?.length && !existing.equals(newJpeg)) {
+      await repo.uploadBuffer(prevPath, existing, 'image/jpeg');
+    }
+  } catch {
+    // No previous card yet — first upload.
+  }
+  await repo.uploadBuffer(path, newJpeg, 'image/jpeg');
+  return path;
+}
+
+/**
+ * After cancel/revert, restore share_card.jpg to match restored Before/After paths.
+ * Prefer the archived previous card; otherwise recompose from restored photo paths.
+ * Does not rotate current → prev (that would wipe the archive we are restoring from).
+ */
+async function restoreShareCardAfterCancel(userId, composeFromPhotos = null) {
+  const path = repo.shareCardStoragePath(userId);
+  const prevPath = repo.previousShareCardStoragePath(userId);
+  try {
+    const prev = await repo.downloadBuffer(prevPath, { retries: 1 });
+    if (prev?.length > 2000) {
+      await repo.uploadBuffer(path, prev, 'image/jpeg');
+      return true;
+    }
+  } catch {
+    // No archive — try compose below.
+  }
+
+  if (!composeFromPhotos?.beforeImagePath || !composeFromPhotos?.afterImagePath) {
+    return false;
+  }
+  try {
+    const { beforeBuffer, afterBuffer } = await resolveShareCardPhotoBuffers(composeFromPhotos);
+    if (!beforeBuffer || !afterBuffer) return false;
+    const jpeg = await composeTransformationShareCardJpeg({
+      beforeBuffer,
+      afterBuffer,
+      memberName: composeFromPhotos.memberName,
+      beforeWeightKg: composeFromPhotos.beforeWeightKg,
+      afterWeightKg: composeFromPhotos.afterWeightKg,
+      goalType: composeFromPhotos.goalType,
+      durationText: composeFromPhotos.durationText,
+      recoveredHealthIssues: composeFromPhotos.recoveredHealthIssues,
+    });
+    if (!jpeg?.length) return false;
+    await repo.uploadBuffer(path, jpeg, 'image/jpeg');
+    return true;
+  } catch (err) {
+    logger.warn('[testimonials.service] Could not restore share card after cancel', {
+      userId,
+      message: err?.message || String(err),
+    });
+    return false;
+  }
+}
+
+/**
+ * Load a storage photo as an inline email attachment (Gmail-safe).
+ * @param {string|null|undefined} path
+ * @param {string} cid
+ * @param {string} filename
+ * @returns {Promise<{ cid: string, content: Buffer, filename: string, contentType: string, contentDisposition: string }|null>}
+ */
+async function loadPhotoEmailAttachment(path, cid, filename) {
+  if (!path || repo.isVideoOnlyPlaceholder?.(path)) return null;
+  try {
+    const content = await repo.downloadBuffer(path, { retries: 2 });
+    if (!content?.length) return null;
+    return {
+      cid,
+      content,
+      filename,
+      contentType: 'image/jpeg',
+      contentDisposition: 'inline',
+    };
+  } catch (err) {
+    logger.info('[testimonials.service] Photo not available for email CID', {
+      path,
+      message: err?.message || String(err),
+    });
+    return null;
+  }
+}
+
+/**
+ * Resolve Before/After src for an email Transformation card.
+ * Prefer inline CID attachments so left/right always show the uploaded photos.
+ * @param {string|null|undefined} beforeImagePath
+ * @param {string|null|undefined} afterImagePath
+ * @param {{ beforeCid?: string, afterCid?: string, beforeFile?: string, afterFile?: string }} [ids]
+ * @returns {Promise<{ beforeSrc: string|null, afterSrc: string|null, attachments: object[] }>}
+ */
+async function resolveTransformationCardEmailPhotos(beforeImagePath, afterImagePath, ids = {}) {
+  const beforeCid = ids.beforeCid || BEFORE_PHOTO_CID;
+  const afterCid = ids.afterCid || AFTER_PHOTO_CID;
+  const beforeFile = ids.beforeFile || 'before.jpg';
+  const afterFile = ids.afterFile || 'after.jpg';
+  const [beforeAtt, afterAtt, beforeSigned, afterSigned] = await Promise.all([
+    loadPhotoEmailAttachment(beforeImagePath, beforeCid, beforeFile),
+    loadPhotoEmailAttachment(afterImagePath, afterCid, afterFile),
+    beforeImagePath ? repo.getEmailSignedUrl(beforeImagePath) : Promise.resolve(null),
+    afterImagePath ? repo.getEmailSignedUrl(afterImagePath) : Promise.resolve(null),
+  ]);
+  const attachments = [beforeAtt, afterAtt].filter(Boolean);
+  return {
+    beforeSrc: beforeAtt ? `cid:${beforeCid}` : beforeSigned,
+    afterSrc: afterAtt ? `cid:${afterCid}` : afterSigned,
+    attachments,
+  };
+}
+
 function healthIssuesEqual(left, right) {
   const normalize = (value) => (
     (Array.isArray(value) ? value : [])
@@ -204,7 +443,7 @@ async function sendHealthIssueOtpEmail({
 
     await repo.updateTestimonial(existing.id, saveUpdates);
 
-    await sendCoachEmail({
+    scheduleDeferredCoachDelivery('health-issue photo OTP email', () => sendCoachEmail({
       coachEmail:      coachInfo.email,
       memberName:      userInfo.userName,
       goalType:        existing.goal_type,
@@ -215,9 +454,10 @@ async function sendHealthIssueOtpEmail({
       beforeImagePath: existing.before_image_path,
       afterImagePath:  existing.after_image_path,
       recoveredHealthIssues,
-    });
+      userId:          existing.user_id ?? userInfo?.userId ?? null,
+    }));
 
-    return 'Health issues updated. Your coach received a new photo OTP by email with your latest images.';
+    return 'Health issues updated. Your coach will receive a new photo OTP by email with your latest images.';
   }
 
   await repo.updateTestimonial(existing.id, saveUpdates);
@@ -228,16 +468,16 @@ async function sendHealthIssueOtpEmail({
     videoVerifiedAt:   null,
   });
 
-  await sendVideoCoachEmail({
+  scheduleDeferredCoachDelivery('health-issue video OTP email', () => sendVideoCoachEmail({
     coachEmail:        coachInfo.email,
     memberName:        userInfo.userName,
     otp,
     healthVideoPath:   existing.health_video_path   ?? null,
     businessVideoPath: existing.business_video_path ?? null,
     recoveredHealthIssues,
-  });
+  }));
 
-  return 'Health issues updated. Your coach received a new video OTP by email with your latest videos.';
+  return 'Health issues updated. Your coach will receive a new video OTP by email with your latest videos.';
 }
 
 async function resolveDisplayImageUrl(path) {
@@ -284,6 +524,8 @@ async function enrichTestimonialForDisplay(testimonial, opts = {}) {
     updatedAt:              testimonial.updated_at,
     beforeImageUrl:         beforeUrl,
     afterImageUrl:          afterUrl,
+    beforeImagePath:        testimonial.before_image_path   ?? null,
+    afterImagePath:         testimonial.after_image_path    ?? null,
     healthVideoPath:        testimonial.health_video_path   ?? null,
     businessVideoPath:      testimonial.business_video_path ?? null,
     healthVideoUrl:         healthVideoUrl,
@@ -303,11 +545,21 @@ async function enrichTestimonialForDisplay(testimonial, opts = {}) {
   };
 }
 
-async function sendCoachEmail({ coachEmail, memberName, goalType, beforeWeight, afterWeight, durationText, otp, beforeImagePath, afterImagePath, recoveredHealthIssues }) {
-  const [beforeUrl, afterUrl] = await Promise.all([
-    repo.getEmailSignedUrl(beforeImagePath),
-    repo.getEmailSignedUrl(afterImagePath),
-  ]);
+async function sendCoachEmail({
+  coachEmail,
+  memberName,
+  goalType,
+  beforeWeight,
+  afterWeight,
+  durationText,
+  otp,
+  beforeImagePath,
+  afterImagePath,
+  recoveredHealthIssues,
+  userId = null,
+}) {
+  void userId;
+  const cardPhotos = await resolveTransformationCardEmailPhotos(beforeImagePath, afterImagePath);
 
   const emailParams = {
     memberName,
@@ -316,34 +568,26 @@ async function sendCoachEmail({ coachEmail, memberName, goalType, beforeWeight, 
     afterWeight,
     durationText,
     otp,
-    beforeUrl,
-    afterUrl,
+    beforeUrl: cardPhotos.beforeSrc,
+    afterUrl: cardPhotos.afterSrc,
     recoveredHealthIssues: recoveredHealthIssues ?? [],
+    shareCardSrc: null,
   };
 
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
-
-  await transporter.sendMail({
-    from:    '"Wellness Valley" <easy2work.india@gmail.com>',
-    to:      coachEmail,
+  await sendTransactionalMail({
+    to: coachEmail,
     subject: buildTestimonialCoachEmailSubject({ memberName }),
-    text:    {
-      content: buildTestimonialCoachEmailText(emailParams),
-      charset: 'utf-8',
-    },
-    html:    {
-      content: buildTestimonialCoachEmailHtml(emailParams),
-      charset: 'utf-8',
-    },
-    headers: {
-      'Content-Language': 'en',
-    },
+    text: buildTestimonialCoachEmailText(emailParams),
+    html: buildTestimonialCoachEmailHtml(emailParams),
+    attachments: cardPhotos.attachments,
   });
 
-  logger.info('[testimonials.service] Coach email dispatched', { coachEmail, memberName });
+  logger.info('[testimonials.service] Coach email dispatched', {
+    coachEmail,
+    memberName,
+    hasBeforePhoto: Boolean(cardPhotos.beforeSrc),
+    hasAfterPhoto: Boolean(cardPhotos.afterSrc),
+  });
 }
 
 // â”€â”€â”€ Service functions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -414,31 +658,53 @@ export async function submitTestimonial(rawBody) {
     row = await repo.insertTestimonial({
       userId:  payload.userId,
       coachId: userInfo.coachId,
-      // Placeholder paths for incomplete â€” will be replaced on completion
-      afterImagePath: afterPath ?? beforePath,
+      // After stays empty until a separate Transformation After is uploaded.
+      afterImagePath: afterPath ?? repo.videoOnlyPlaceholderPath(payload.userId),
       afterWeightKg:  payload.afterWeightKg ?? payload.beforeWeightKg,
       ...rowData,
     });
   }
 
-  // Only email coach (or co-coach fallback) when the testimonial is complete
+  // Share card + coach email must not block OTP UI — schedule after DB commit.
   if (payload.hasAfter) {
     const coachInfo = recipient.coachInfo;
-    if (coachInfo?.email) {
-      await sendCoachEmail({
-        coachEmail:    coachInfo.email,
-        coachName:     coachInfo.name,
-        memberName:    userInfo.userName,
-        goalType:      payload.goalType,
-        beforeWeight:  payload.beforeWeightKg,
-        afterWeight:   payload.afterWeightKg,
-        durationText:  payload.durationText,
-        otp,
-        beforeImagePath: beforePath,
-        afterImagePath:  afterPath,
-        recoveredHealthIssues: payload.recoveredHealthIssues,
-      });
-    }
+    scheduleDeferredCoachDelivery('submit share-card + coach email', async () => {
+      try {
+        await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
+          beforeImagePath: beforePath,
+          afterImagePath: afterPath,
+          beforeImageBase64: payload.beforeImageBase64,
+          afterImageBase64: payload.afterImageBase64,
+          memberName: userInfo.userName,
+          beforeWeightKg: payload.beforeWeightKg,
+          afterWeightKg: payload.afterWeightKg,
+          goalType: payload.goalType,
+          durationText: payload.durationText,
+          recoveredHealthIssues: payload.recoveredHealthIssues,
+        });
+      } catch (err) {
+        logger.warn('[testimonials.service] Submit share card failed; continuing with OTP email', {
+          userId: payload.userId,
+          message: err?.message || String(err),
+        });
+      }
+      if (coachInfo?.email) {
+        await sendCoachEmail({
+          coachEmail:    coachInfo.email,
+          coachName:     coachInfo.name,
+          memberName:    userInfo.userName,
+          goalType:      payload.goalType,
+          beforeWeight:  payload.beforeWeightKg,
+          afterWeight:   payload.afterWeightKg,
+          durationText:  payload.durationText,
+          otp,
+          beforeImagePath: beforePath,
+          afterImagePath:  afterPath,
+          recoveredHealthIssues: payload.recoveredHealthIssues,
+          userId:          payload.userId,
+        });
+      }
+    });
   }
 
   const message = payload.hasAfter
@@ -447,7 +713,13 @@ export async function submitTestimonial(rawBody) {
 
   return {
     httpStatus: 200,
-    body: { success: true, message, testimonialId: row.id, status: newStatus },
+    body: {
+      success: true,
+      message,
+      testimonialId: row.id,
+      status: newStatus,
+      ...(payload.hasAfter ? { otpSent: true } : {}),
+    },
   };
 }
 
@@ -588,6 +860,11 @@ export async function editTestimonial(rawBody) {
 
     if (!hasCompleteAfter) {
       updates.status = 'incomplete';
+      updates.verifiedAt = null;
+    } else if (existing.status === 'verified') {
+      // Content changed on an approved card — revoke share until coach re-approves.
+      updates.status = 'pending';
+      updates.verifiedAt = null;
     }
 
     await repo.updateTestimonial(existing.id, updates);
@@ -597,7 +874,9 @@ export async function editTestimonial(rawBody) {
       body: {
         success: true,
         message: hasCompleteAfter
-          ? 'Before photo details updated.'
+          ? (existing.status === 'verified'
+            ? 'Before photo details updated. Submit for coach approval before sharing again.'
+            : 'Before photo details updated.')
           : 'Before photo updated. Add your after photo when you\'re ready to complete your testimonial.',
         testimonialId: existing.id,
         status: updates.status ?? existing.status,
@@ -617,10 +896,6 @@ export async function editTestimonial(rawBody) {
   const isNowComplete = hasRealAfterPhoto;
   const afterWeightNow = updates.afterWeightKg ?? existing.after_weight_kg;
 
-  if (isNowComplete && resolvedHealthIssues.length === 0) {
-    throw new ValidationError(422, 'At least one recovered health issue is required');
-  }
-
   if (isNowComplete) {
     // Full testimonial â€” reset to pending and issue new OTP
     const otp       = generateOtp();
@@ -635,18 +910,40 @@ export async function editTestimonial(rawBody) {
 
     if (coachInfo?.email && userInfo?.userName) {
       const currentBeforePath = updates.beforeImagePath ?? existing.before_image_path;
-      await sendCoachEmail({
-        coachEmail:    coachInfo.email,
-        coachName:     coachInfo.name,
-        memberName:    userInfo.userName,
-        goalType:      updates.goalType    ?? existing.goal_type,
-        beforeWeight:  updates.beforeWeightKg ?? existing.before_weight_kg,
-        afterWeight:   afterWeightNow,
-        durationText:  updates.durationText ?? existing.duration_text,
-        otp,
-        beforeImagePath: currentBeforePath,
-        afterImagePath:  afterPathNow,
-        recoveredHealthIssues: resolvedHealthIssues,
+      scheduleDeferredCoachDelivery('edit share-card + coach email', async () => {
+        try {
+          await uploadShareCardImage(payload.userId, payload.shareCardImageBase64, {
+            beforeImagePath: currentBeforePath,
+            afterImagePath: afterPathNow,
+            beforeImageBase64: payload.beforeImageBase64,
+            afterImageBase64: payload.afterImageBase64,
+            memberName: userInfo.userName,
+            beforeWeightKg: updates.beforeWeightKg ?? existing.before_weight_kg,
+            afterWeightKg: afterWeightNow,
+            goalType: updates.goalType ?? existing.goal_type,
+            durationText: updates.durationText ?? existing.duration_text,
+            recoveredHealthIssues: resolvedHealthIssues,
+          });
+        } catch (err) {
+          logger.warn('[testimonials.service] Edit share card failed; continuing with OTP email', {
+            userId: payload.userId,
+            message: err?.message || String(err),
+          });
+        }
+        await sendCoachEmail({
+          coachEmail:    coachInfo.email,
+          coachName:     coachInfo.name,
+          memberName:    userInfo.userName,
+          goalType:      updates.goalType    ?? existing.goal_type,
+          beforeWeight:  updates.beforeWeightKg ?? existing.before_weight_kg,
+          afterWeight:   afterWeightNow,
+          durationText:  updates.durationText ?? existing.duration_text,
+          otp,
+          beforeImagePath: currentBeforePath,
+          afterImagePath:  afterPathNow,
+          recoveredHealthIssues: resolvedHealthIssues,
+          userId:          payload.userId,
+        });
       });
     }
 
@@ -654,9 +951,10 @@ export async function editTestimonial(rawBody) {
       httpStatus: 200,
       body: {
         success: true,
-        message: 'Testimonial updated! A new verification email has been sent to your coach.',
+        message: 'Testimonial updated! A new verification email will be sent to your coach.',
         testimonialId: existing.id,
         status: 'pending',
+        otpSent: true,
       },
     };
   }
@@ -820,6 +1118,7 @@ export async function listForCoach(rawQuery) {
         lastUpdated: lean.lastUpdated,
         uploadStatus: lean.uploadStatus,
         progress: lean.progress,
+        canEditHealthIssues: lean.canEditHealthIssues === true,
       };
     }),
   );
@@ -926,11 +1225,6 @@ async function sendVideoCoachEmail({ coachEmail, memberName, otp, healthVideoPat
     repo.getEmailSignedUrl(businessVideoPath ?? null),
   ]);
 
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
-
   const emailParams = {
     memberName,
     otp,
@@ -939,13 +1233,11 @@ async function sendVideoCoachEmail({ coachEmail, memberName, otp, healthVideoPat
     recoveredHealthIssues: recoveredHealthIssues ?? [],
   };
 
-  await transporter.sendMail({
-    from:    '"Wellness Valley" <easy2work.india@gmail.com>',
-    to:      coachEmail,
+  await sendTransactionalMail({
+    to: coachEmail,
     subject: buildVideoCoachEmailSubject({ memberName }),
-    text:    { content: buildVideoCoachEmailText(emailParams),  charset: 'utf-8' },
-    html:    { content: buildVideoCoachEmailHtml(emailParams),  charset: 'utf-8' },
-    headers: { 'Content-Language': 'en' },
+    text: buildVideoCoachEmailText(emailParams),
+    html: buildVideoCoachEmailHtml(emailParams),
   });
 
   logger.info('[testimonials.service] Video coach email dispatched', { coachEmail, memberName });
@@ -1032,7 +1324,7 @@ function assertAssembledVideoSize(buffer, slot) {
 }
 
 /**
- * Accept one chunk of a video upload, assemble on the final chunk, and store in Supabase.
+ * Accept one chunk of a video upload, assemble on the final chunk, and store in MySQL.
  */
 export async function uploadVideoChunk(rawBody) {
   const payload = validateUploadVideoChunk(rawBody);
@@ -1121,14 +1413,10 @@ export async function submitVideo(rawBody) {
     uploads.businessVideoPath = payload.businessVideoPath;
   }
 
-  // Replace directly so removals are honoured.
+  // Replace directly so removals are honoured. Health issues are optional.
   const resolvedHealthIssues = payload.recoveredHealthIssues !== undefined
     ? normalizeHealthIssuesList(payload.recoveredHealthIssues)
     : (existing.recovered_health_issues ?? []);
-
-  if (resolvedHealthIssues.length === 0) {
-    throw new ValidationError(422, 'At least one recovered health issue is required before uploading videos for verification.');
-  }
 
   const otp       = generateOtp();
   const otpHash   = await bcrypt.hash(otp, 10);
@@ -1148,14 +1436,14 @@ export async function submitVideo(rawBody) {
 
   const coachInfo = recipient.coachInfo;
   if (coachInfo?.email) {
-    await sendVideoCoachEmail({
+    scheduleDeferredCoachDelivery('video OTP email', () => sendVideoCoachEmail({
       coachEmail:        coachInfo.email,
       memberName:        userInfo.userName,
       otp,
       healthVideoPath:   uploads.healthVideoPath   ?? existing.health_video_path   ?? null,
       businessVideoPath: uploads.businessVideoPath ?? existing.business_video_path ?? null,
       recoveredHealthIssues: resolvedHealthIssues,
-    });
+    }));
   }
 
   return {
@@ -1280,7 +1568,7 @@ export async function getTeamTestimonialReport(rawQuery) {
 // ─── Unified edit + OTP ───────────────────────────────────────────────────────
 
 /**
- * Helper: build and send the unified coach email via nodemailer.
+ * Helper: build and send the unified coach email via shared SMTP helper.
  */
 async function sendUnifiedCoachEmail({
   coachEmail,
@@ -1295,22 +1583,160 @@ async function sendUnifiedCoachEmail({
   afterImagePath,
   previousBeforeImagePath,
   previousAfterImagePath,
+  previousBeforeWeight = null,
+  previousAfterWeight = null,
+  previousGoalType = null,
+  previousDurationText = null,
+  previousRecoveredHealthIssues = null,
   healthVideoPath,
   businessVideoPath,
   recoveredHealthIssues,
   isComplete,
+  userId = null,
+  /** When false, do not link tap-preview to a possibly stale share_card.jpg. */
+  shareCardReady = false,
 }) {
   const slots = new Set(changedSlots);
+  void userId;
 
-  const [beforeUrl, afterUrl, prevBeforeUrl, prevAfterUrl, healthVideoUrl, businessVideoUrl] =
-    await Promise.all([
-      (isComplete && beforeImagePath && slots.has('before')) ? repo.getEmailSignedUrl(beforeImagePath)         : Promise.resolve(null),
-      (isComplete && afterImagePath  && slots.has('after'))  ? repo.getEmailSignedUrl(afterImagePath)          : Promise.resolve(null),
-      (slots.has('before') && previousBeforeImagePath)       ? repo.getEmailSignedUrl(previousBeforeImagePath) : Promise.resolve(null),
-      (slots.has('after')  && previousAfterImagePath)        ? repo.getEmailSignedUrl(previousAfterImagePath)  : Promise.resolve(null),
-      (slots.has('health') && healthVideoPath)               ? repo.getEmailSignedUrl(healthVideoPath)         : Promise.resolve(null),
-      (slots.has('business') && businessVideoPath)           ? repo.getEmailSignedUrl(businessVideoPath)       : Promise.resolve(null),
-    ]);
+  // Previous card = DB state before this submit. Clone After (same path as Before) is kept.
+  const { beforePath: previousCardBeforePath, afterPath: previousCardAfterPath } = previousEmailCardPaths({
+    previousBeforePath: previousBeforeImagePath,
+    previousAfterPath: previousAfterImagePath,
+    currentBeforePath: beforeImagePath,
+    currentAfterPath: afterImagePath,
+  });
+
+  const photoSlotChanged = Boolean(
+    (slots.has('before') || slots.has('after'))
+    && (
+      (previousCardBeforePath && previousCardBeforePath !== beforeImagePath)
+      || (previousCardAfterPath && previousCardAfterPath !== afterImagePath)
+    ),
+  );
+
+  const prevBeforeWeightNum = previousBeforeWeight != null ? Number(previousBeforeWeight) : null;
+  const prevAfterWeightNum = previousAfterWeight != null ? Number(previousAfterWeight) : null;
+  const curBeforeWeightNum = beforeWeight != null ? Number(beforeWeight) : null;
+  const curAfterWeightNum = afterWeight != null ? Number(afterWeight) : null;
+
+  const weightChanged = Boolean(
+    slots.has('weight')
+    || (prevBeforeWeightNum !== null && curBeforeWeightNum !== null && prevBeforeWeightNum !== curBeforeWeightNum)
+    || (prevAfterWeightNum !== null && curAfterWeightNum !== null && prevAfterWeightNum !== curAfterWeightNum)
+    || (prevBeforeWeightNum === null && curBeforeWeightNum !== null)
+    || (prevAfterWeightNum === null && curAfterWeightNum !== null),
+  );
+
+  const prevDurationSafe = String(previousDurationText ?? '').trim();
+  const curDurationSafe = String(durationText ?? '').trim();
+  const durationChanged = Boolean(
+    slots.has('duration')
+    || (prevDurationSafe !== curDurationSafe && (prevDurationSafe !== '' || curDurationSafe !== '')),
+  );
+
+  const prevGoalSafe = String(previousGoalType ?? '').trim();
+  const curGoalSafe = String(goalType ?? '').trim();
+  const goalChanged = Boolean(
+    slots.has('goal')
+    || (prevGoalSafe !== curGoalSafe && prevGoalSafe !== '' && curGoalSafe !== ''),
+  );
+
+  const prevIssuesArr = Array.isArray(previousRecoveredHealthIssues) ? previousRecoveredHealthIssues : [];
+  const curIssuesArr = Array.isArray(recoveredHealthIssues) ? recoveredHealthIssues : [];
+  const issuesChanged = Boolean(
+    slots.has('issues')
+    || (
+      JSON.stringify([...prevIssuesArr].sort()) !== JSON.stringify([...curIssuesArr].sort())
+    ),
+  );
+
+  const cardDetailsChanged = photoSlotChanged || weightChanged || durationChanged || goalChanged || issuesChanged;
+
+  const previousPairDistinct = shouldShowPreviousNewEmailCards({
+    previousBeforePath: previousBeforeImagePath,
+    previousAfterPath: previousAfterImagePath,
+    cardDetailsChanged,
+  });
+
+  const [
+    currentBeforeHref,
+    currentAfterHref,
+    previousBeforeHref,
+    previousAfterHref,
+    currentSharePreviewHref,
+    healthVideoUrl,
+    businessVideoUrl,
+  ] = await Promise.all([
+    (isComplete && beforeImagePath) ? repo.getEmailSignedUrl(beforeImagePath) : Promise.resolve(null),
+    (isComplete && afterImagePath) ? repo.getEmailSignedUrl(afterImagePath) : Promise.resolve(null),
+    (previousPairDistinct && previousCardBeforePath)
+      ? repo.getEmailSignedUrl(previousCardBeforePath)
+      : Promise.resolve(null),
+    (previousPairDistinct && previousCardAfterPath)
+      ? repo.getEmailSignedUrl(previousCardAfterPath)
+      : Promise.resolve(null),
+    userId ? repo.getEmailSignedUrl(repo.shareCardStoragePath(userId)) : Promise.resolve(null),
+    (slots.has('health') && healthVideoPath) ? repo.getEmailSignedUrl(healthVideoPath) : Promise.resolve(null),
+    (slots.has('business') && businessVideoPath) ? repo.getEmailSignedUrl(businessVideoPath) : Promise.resolve(null),
+  ]);
+
+  // Previous full card: always compose from the same previous Before|After paths used
+  // for the Previous column — never link a stale archive that can disagree with thumbs.
+  let previousPreviewHref = null;
+  if (userId && previousPairDistinct && previousCardBeforePath && previousCardAfterPath) {
+    const prevSharePath = repo.previousShareCardStoragePath(userId);
+    try {
+      const [prevBeforeBuf, prevAfterBuf] = await Promise.all([
+        repo.downloadBuffer(previousCardBeforePath, { retries: 2 }),
+        repo.downloadBuffer(previousCardAfterPath, { retries: 2 }),
+      ]);
+      if (prevBeforeBuf?.length && prevAfterBuf?.length) {
+        const prevJpeg = await composeTransformationShareCardJpeg({
+          beforeBuffer: prevBeforeBuf,
+          afterBuffer: prevAfterBuf,
+          memberName,
+          beforeWeightKg: previousBeforeWeight ?? beforeWeight,
+          afterWeightKg: previousAfterWeight ?? afterWeight,
+          goalType: previousGoalType ?? goalType,
+          durationText: previousDurationText ?? durationText,
+          recoveredHealthIssues: previousRecoveredHealthIssues ?? recoveredHealthIssues,
+        });
+        if (prevJpeg?.length > 2000) {
+          await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
+          previousPreviewHref = await repo.getEmailSignedUrl(prevSharePath);
+        }
+      }
+    } catch (err) {
+      logger.warn('[testimonials.service] Could not compose Previous share card for email', {
+        userId,
+        message: err?.message || String(err),
+      });
+    }
+  }
+
+  // New full card: only when share_card.jpg was written for this email.
+  let currentPreviewHref = null;
+  if (userId && shareCardReady && currentSharePreviewHref) {
+    try {
+      const currentSharePath = repo.shareCardStoragePath(userId);
+      const currentShareBuf = await repo.downloadBuffer(currentSharePath, { retries: 1 });
+      if (currentShareBuf?.length > 2000) {
+        currentPreviewHref = currentSharePreviewHref;
+      }
+    } catch {
+      currentPreviewHref = null;
+    }
+  }
+
+  const hasPhotoCompare = Boolean(
+    previousPairDistinct
+    && (previousPreviewHref || (previousBeforeHref && previousAfterHref))
+    && (currentPreviewHref || (currentBeforeHref && currentAfterHref)),
+  );
+
+  // No CID photo attachments — HTTPS only (no "4 Attachments" strip in Gmail).
+  const attachments = [];
 
   const emailParams = {
     memberName,
@@ -1320,31 +1746,43 @@ async function sendUnifiedCoachEmail({
     beforeWeight,
     afterWeight,
     durationText,
-    beforeUrl,
-    afterUrl,
-    previousBeforeUrl: prevBeforeUrl,
-    previousAfterUrl:  prevAfterUrl,
+    beforeUrl: currentBeforeHref,
+    afterUrl: currentAfterHref,
+    previousBeforeUrl: hasPhotoCompare ? previousBeforeHref : null,
+    previousAfterUrl: hasPhotoCompare ? previousAfterHref : null,
+    previousBeforeWeight: hasPhotoCompare ? (previousBeforeWeight ?? beforeWeight) : null,
+    previousAfterWeight: hasPhotoCompare ? (previousAfterWeight ?? afterWeight) : null,
+    previousGoalType: hasPhotoCompare ? (previousGoalType ?? goalType) : null,
+    previousDurationText: hasPhotoCompare ? (previousDurationText ?? durationText) : null,
+    previousRecoveredHealthIssues: hasPhotoCompare ? (previousRecoveredHealthIssues ?? recoveredHealthIssues) : null,
+    // Prefer full share-card JPEGs in Previous | New so thumb === tap target.
+    previousCardImageUrl: hasPhotoCompare ? previousPreviewHref : null,
+    currentCardImageUrl: currentPreviewHref,
+    previousPreviewHref: hasPhotoCompare ? previousPreviewHref : null,
+    currentPreviewHref,
     healthVideoUrl,
     businessVideoUrl,
     recoveredHealthIssues: recoveredHealthIssues ?? [],
     isComplete,
+    shareCardSrc: null,
   };
 
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
-
-  await transporter.sendMail({
-    from:    '"Wellness Valley" <easy2work.india@gmail.com>',
-    to:      coachEmail,
+  await sendTransactionalMail({
+    to: coachEmail,
     subject: buildUnifiedSubmitEmailSubject({ memberName }),
-    text:    { content: buildUnifiedSubmitEmailText(emailParams),  charset: 'utf-8' },
-    html:    { content: buildUnifiedSubmitEmailHtml(emailParams),  charset: 'utf-8' },
-    headers: { 'Content-Language': 'en' },
+    text: buildUnifiedSubmitEmailText(emailParams),
+    html: buildUnifiedSubmitEmailHtml(emailParams),
+    attachments,
   });
 
-  logger.info('[testimonials.service] Unified coach email dispatched', { coachEmail, memberName, changedSlots });
+  logger.info('[testimonials.service] Unified coach email dispatched', {
+    coachEmail,
+    memberName,
+    changedSlots,
+    hasPhotoCompare,
+    hasPreviousSharePreview: Boolean(previousPreviewHref),
+    hasCurrentSharePreview: Boolean(currentPreviewHref),
+  });
 }
 
 /**
@@ -1497,9 +1935,7 @@ export async function submitAllEdits(rawBody) {
     afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
   });
 
-  // Visible Before+After (including a seeded clone) + Submit for Approval → OTP.
-  // Do not wait for a distinct after path or a weight change — that left
-  // seeded cards on silent save with no coach email.
+  // OTP only when Before and After are two different stored files.
   const photoNeedsOtp = (hasPhotoDirty || payload.submitForApproval)
     && shouldSendPhotoApprovalOtp(existing, {
     beforePath: newBeforePath,
@@ -1509,24 +1945,8 @@ export async function submitAllEdits(rawBody) {
     status: existing.status,
   });
 
-  // Persist the UI After clone so the pair exists when coach reviews the email.
-  if (
-    photoNeedsOtp
-    && !hasVisibleAfterCard({ after_image_path: newAfterPath })
-    && hasRealBeforePhoto({ before_image_path: newBeforePath })
-  ) {
-    photoUpdates.afterImagePath = newBeforePath;
-  }
-
-  // Validate health issues are present when completing a testimonial
+  // Health issues are optional — empty list is allowed on photo submit.
   const resolvedHealthIssues = mergedIssues;
-
-  if (photoNeedsOtp && resolvedHealthIssues.length === 0) {
-    throw new ValidationError(
-      422,
-      'At least one recovered health issue is required before submitting before + after photos.',
-    );
-  }
 
   // Capture previous photo paths for email diff BEFORE saving
   const prevBeforeImagePath = slots.has('before') ? existing.before_image_path : null;
@@ -1539,6 +1959,15 @@ export async function submitAllEdits(rawBody) {
     || existing.status === 'incomplete';
 
   const needsOtp = photoNeedsOtp || Boolean(issuesOtpChannel) || hasVideoDirty;
+
+  // A Before-only or After-only edit is saved below without OTP.
+  // Reject approval only when nothing was uploaded and the pair is still incomplete.
+  if (payload.submitForApproval && !needsOtp && !hasPhotoDirty && !hasVideoDirty && !hasIssuesDirty) {
+    throw new ValidationError(
+      422,
+      'Add before and after photos on Transformation, then submit for coach approval.',
+    );
+  }
 
   if (!needsOtp) {
     if (hasPhotoDirty && !isComplete) {
@@ -1558,6 +1987,25 @@ export async function submitAllEdits(rawBody) {
         testimonial: saved,
       },
     };
+  }
+
+  // Save baseline snapshot of existing record before applying pending updates
+  if (existing) {
+    await repo.saveBaselineSnapshot(payload.userId, {
+      status:                  existing.status,
+      verified_at:             existing.verified_at,
+      before_image_path:       existing.before_image_path,
+      after_image_path:        existing.after_image_path,
+      before_weight_kg:        existing.before_weight_kg,
+      after_weight_kg:         existing.after_weight_kg,
+      goal_type:               existing.goal_type,
+      duration_text:           existing.duration_text,
+      recovered_health_issues: existing.recovered_health_issues,
+      video_status:            existing.video_status,
+      video_verified_at:       existing.video_verified_at,
+      health_video_path:       existing.health_video_path,
+      business_video_path:     existing.business_video_path,
+    });
   }
 
   // Generate single unified OTP
@@ -1591,7 +2039,7 @@ export async function submitAllEdits(rawBody) {
     await repo.updateTestimonialVideos(existing.id, { videoOtpHash: otpHash, videoOtpExpiresAt: otpExpiry });
   }
 
-  // Send unified coach email (coach, or co-coach when member has no CoachId)
+  // Share card + unified coach email after response — OTP UI must not wait on SMTP.
   const coachInfo = recipient.coachInfo;
   if (coachInfo?.email && userInfo?.userName) {
     const finalBeforePath    = photoUpdates.beforeImagePath   ?? existing.before_image_path;
@@ -1608,23 +2056,89 @@ export async function submitAllEdits(rawBody) {
       emailChangedSlots.push('duration');
     }
 
-    await sendUnifiedCoachEmail({
-      coachEmail:             coachInfo.email,
-      memberName:             userInfo.userName,
-      otp,
-      changedSlots:           emailChangedSlots,
-      goalType:               photoUpdates.goalType    ?? existing.goal_type,
-      beforeWeight:           photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
-      afterWeight:            photoUpdates.afterWeightKg  ?? existing.after_weight_kg,
-      durationText:           resolvedDuration,
-      beforeImagePath:        finalBeforePath,
-      afterImagePath:         finalAfterPath,
-      previousBeforeImagePath: isBeforeFirstUpload ? null : prevBeforeImagePath,
-      previousAfterImagePath:  isAfterFirstUpload  ? null : prevAfterImagePath,
-      healthVideoPath:        finalHealthVideo,
-      businessVideoPath:      finalBusinessVideo,
-      recoveredHealthIssues:  resolvedHealthIssues,
-      isComplete,
+    const prevBeforeWeight = existing.before_weight_kg != null ? Number(existing.before_weight_kg) : null;
+    const prevAfterWeight = existing.after_weight_kg != null ? Number(existing.after_weight_kg) : null;
+    const newBeforeWeight = photoUpdates.beforeWeightKg !== undefined
+      ? (photoUpdates.beforeWeightKg != null ? Number(photoUpdates.beforeWeightKg) : null)
+      : prevBeforeWeight;
+    const newAfterWeight = photoUpdates.afterWeightKg !== undefined
+      ? (photoUpdates.afterWeightKg != null ? Number(photoUpdates.afterWeightKg) : null)
+      : prevAfterWeight;
+
+    const beforeWeightDiffers = photoUpdates.beforeWeightKg !== undefined && (
+      (prevBeforeWeight === null && newBeforeWeight !== null)
+      || (prevBeforeWeight !== null && newBeforeWeight !== null && newBeforeWeight !== prevBeforeWeight)
+    );
+    const afterWeightDiffers = photoUpdates.afterWeightKg !== undefined && (
+      (prevAfterWeight === null && newAfterWeight !== null)
+      || (prevAfterWeight !== null && newAfterWeight !== null && newAfterWeight !== prevAfterWeight)
+    );
+
+    if ((beforeWeightDiffers || afterWeightDiffers) && !emailChangedSlots.includes('weight')) {
+      emailChangedSlots.push('weight');
+    }
+
+    if (
+      photoUpdates.goalType !== undefined
+      && String(photoUpdates.goalType).trim() !== String(existing.goal_type ?? '').trim()
+      && !emailChangedSlots.includes('goal')
+    ) {
+      emailChangedSlots.push('goal');
+    }
+
+    scheduleDeferredCoachDelivery('unified share-card + coach email', async () => {
+      const shareCardExtras = {
+        beforeImagePath: finalBeforePath,
+        afterImagePath: finalAfterPath,
+        beforeImageBase64: payload.beforeImageBase64,
+        afterImageBase64: payload.afterImageBase64,
+        memberName: userInfo.userName,
+        beforeWeightKg: photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
+        afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
+        goalType: photoUpdates.goalType ?? existing.goal_type,
+        durationText: resolvedDuration,
+        recoveredHealthIssues: resolvedHealthIssues,
+      };
+      // Never let share-card compose/upload block the OTP email.
+      let shareCardPath = null;
+      try {
+        shareCardPath = await uploadShareCardImage(
+          payload.userId,
+          payload.shareCardImageBase64,
+          shareCardExtras,
+        );
+      } catch (err) {
+        logger.warn('[testimonials.service] Share card upload failed; sending OTP email without tap-preview', {
+          userId: payload.userId,
+          message: err?.message || String(err),
+        });
+      }
+      await sendUnifiedCoachEmail({
+        coachEmail:             coachInfo.email,
+        memberName:             userInfo.userName,
+        otp,
+        changedSlots:           emailChangedSlots,
+        goalType:               photoUpdates.goalType    ?? existing.goal_type,
+        beforeWeight:           photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
+        afterWeight:            photoUpdates.afterWeightKg  ?? existing.after_weight_kg,
+        durationText:           resolvedDuration,
+        beforeImagePath:        finalBeforePath,
+        afterImagePath:         finalAfterPath,
+        // Keep previous paths for the Previous Transformation Card (even if first real After).
+        previousBeforeImagePath: existing.before_image_path ?? null,
+        previousAfterImagePath:  existing.after_image_path ?? null,
+        previousBeforeWeight:    existing.before_weight_kg,
+        previousAfterWeight:     existing.after_weight_kg,
+        previousGoalType:        existing.goal_type,
+        previousDurationText:    existing.duration_text,
+        previousRecoveredHealthIssues: existing.recovered_health_issues ?? [],
+        healthVideoPath:        finalHealthVideo,
+        businessVideoPath:      finalBusinessVideo,
+        recoveredHealthIssues:  resolvedHealthIssues,
+        isComplete,
+        userId:                 payload.userId,
+        shareCardReady:         Boolean(shareCardPath),
+      });
     });
   }
 
@@ -1700,6 +2214,8 @@ export async function verifyUnifiedOtp(rawBody) {
     });
   }
 
+  await repo.clearBaselineSnapshot(userId);
+
   const verifiedItems = [
     photoPending   && 'photos',
     videoPending   && 'videos',
@@ -1773,6 +2289,30 @@ export async function resendUnifiedOtp(rawBody) {
     status: row.status,
   });
 
+  // Rebuild share card from current DB paths so Resend never links a stale JPEG.
+  // Failures must not block the OTP email.
+  let shareCardReady = false;
+  if (isComplete && row.before_image_path && row.after_image_path) {
+    try {
+      const shareCardPath = await uploadShareCardImage(userId, null, {
+        beforeImagePath: row.before_image_path,
+        afterImagePath: row.after_image_path,
+        memberName: userInfo.userName,
+        beforeWeightKg: row.before_weight_kg,
+        afterWeightKg: row.after_weight_kg,
+        goalType: row.goal_type,
+        durationText: row.duration_text,
+        recoveredHealthIssues: row.recovered_health_issues ?? [],
+      });
+      shareCardReady = Boolean(shareCardPath);
+    } catch (err) {
+      logger.warn('[testimonials.service] Resend share card failed; sending OTP email without tap-preview', {
+        userId,
+        message: err?.message || String(err),
+      });
+    }
+  }
+
   await sendUnifiedCoachEmail({
     coachEmail: coachInfo.email,
     memberName: userInfo.userName,
@@ -1790,6 +2330,8 @@ export async function resendUnifiedOtp(rawBody) {
     businessVideoPath: row.business_video_path,
     recoveredHealthIssues: row.recovered_health_issues ?? [],
     isComplete,
+    userId,
+    shareCardReady,
   });
 
   const display = await enrichTestimonialForDisplay(await repo.findByUserId(userId));
@@ -1811,33 +2353,149 @@ export async function resendUnifiedOtp(rawBody) {
 }
 
 /**
- * Coach updates a reporting member's recovered health issues (no OTP).
+ * Coach health-issue edits on Transformation are not allowed.
+ * Members edit their own issues via Mine submit/edit flows (OTP when needed).
+ * Endpoint kept so older clients get a clear 403 instead of a silent no-op.
  */
 export async function updateMemberHealthIssues(rawBody) {
-  const payload = validateUpdateMemberHealthIssues(rawBody);
+  validateUpdateMemberHealthIssues(rawBody);
+  throw new ValidationError(
+    403,
+    'Coaches cannot edit health issues for team members. Only the member can update their own health issues.',
+  );
+}
 
-  const allowed = await repo.isReportingMember(payload.coachId, payload.userId, 'full');
-  if (!allowed) {
-    throw new ValidationError(403, 'Member is not in your team hierarchy');
+/**
+ * Cancel a pending unified OTP approval flow and optionally restore pre-edit baseline data.
+ */
+export async function cancelUnifiedOtp(rawBody) {
+  const { userId, restoreData } = validateCancelUnifiedOtp(rawBody);
+
+  const row = await repo.findByUserId(userId);
+  if (!row) {
+    return {
+      httpStatus: 200,
+      body: {
+        success: true,
+        message: 'No testimonial found to cancel.',
+        testimonial: null,
+      },
+    };
   }
 
-  const existing = await repo.findByUserId(payload.userId);
-  if (!existing) {
-    throw new ValidationError(404, 'No testimonial found for this user');
+  // Load server-side baseline snapshot if restoreData is not provided or incomplete
+  const serverSnapshot = await repo.getBaselineSnapshot(userId);
+  const snapshot = (restoreData && typeof restoreData === 'object' && Object.keys(restoreData).length > 0)
+    ? restoreData
+    : serverSnapshot;
+
+  const updates = {
+    otpHash: null,
+    otpExpiresAt: null,
+  };
+  const videoUpdates = {
+    videoOtpHash: null,
+    videoOtpExpiresAt: null,
+  };
+
+  if (snapshot && typeof snapshot === 'object') {
+    const isComplete = hasCompletePhotoTestimonial(snapshot);
+    if (snapshot.status !== undefined) {
+      updates.status = snapshot.status;
+    } else {
+      updates.status = snapshot.verifiedAt || snapshot.verified_at || row.verified_at || isComplete ? 'verified' : 'incomplete';
+    }
+
+    if (snapshot.verifiedAt !== undefined) updates.verifiedAt = snapshot.verifiedAt;
+    else if (snapshot.verified_at !== undefined) updates.verifiedAt = snapshot.verified_at;
+    else if (updates.status === 'verified') updates.verifiedAt = row.verified_at || nowUtc();
+
+    const beforePath = snapshot.beforeImagePath ?? snapshot.before_image_path;
+    if (beforePath !== undefined) updates.beforeImagePath = beforePath;
+
+    const afterPath = snapshot.afterImagePath ?? snapshot.after_image_path;
+    if (afterPath !== undefined) updates.afterImagePath = afterPath;
+
+    const beforeKg = snapshot.beforeWeightKg ?? snapshot.before_weight_kg;
+    if (beforeKg !== undefined) updates.beforeWeightKg = beforeKg;
+
+    const afterKg = snapshot.afterWeightKg ?? snapshot.after_weight_kg;
+    if (afterKg !== undefined) updates.afterWeightKg = afterKg;
+
+    const goal = snapshot.goalType ?? snapshot.goal_type;
+    if (goal !== undefined) updates.goalType = goal;
+
+    const duration = snapshot.durationText ?? snapshot.duration_text;
+    if (duration !== undefined) updates.durationText = duration;
+
+    const issues = snapshot.recoveredHealthIssues ?? snapshot.recovered_health_issues;
+    if (issues !== undefined) updates.recoveredHealthIssues = normalizeHealthIssuesList(issues);
+
+    if (snapshot.videoStatus !== undefined || snapshot.video_status !== undefined) {
+      videoUpdates.videoStatus = snapshot.videoStatus ?? snapshot.video_status;
+    } else {
+      videoUpdates.videoStatus = row.video_verified_at ? 'verified' : 'none';
+    }
+    const healthVid = snapshot.healthVideoPath ?? snapshot.health_video_path;
+    if (healthVid !== undefined) videoUpdates.healthVideoPath = healthVid;
+    const bizVid = snapshot.businessVideoPath ?? snapshot.business_video_path;
+    if (bizVid !== undefined) videoUpdates.businessVideoPath = bizVid;
+
+    if (updates.beforeImagePath || updates.afterImagePath) {
+      await syncTestimonialPathsToProfileSafe({
+        userId,
+        beforeImagePath: updates.beforeImagePath || null,
+        afterImagePath: updates.afterImagePath || null,
+      });
+    }
+  } else {
+    // If no snapshot exists (e.g. legacy pending submission),
+    // and the row has complete photos or was previously verified, ensure it reverts to 'verified'
+    // so that the member can still share their transformation image!
+    const isComplete = hasCompletePhotoTestimonial(row);
+    if (row.verified_at || isComplete) {
+      updates.status = 'verified';
+      updates.verifiedAt = row.verified_at || nowUtc();
+    } else {
+      updates.status = 'incomplete';
+    }
+    if (row.video_verified_at) {
+      videoUpdates.videoStatus = 'verified';
+    } else {
+      videoUpdates.videoStatus = 'none';
+    }
   }
 
-  const mergedIssues = normalizeHealthIssuesList(payload.recoveredHealthIssues);
+  await repo.updateTestimonial(row.id, updates);
+  await repo.updateTestimonialVideos(row.id, videoUpdates);
+  await repo.clearBaselineSnapshot(userId);
 
-  await repo.updateTestimonial(existing.id, {
-    recoveredHealthIssues: resolvedIssues,
-  });
+  // DB paths revert, but share_card.jpg was already overwritten on submit —
+  // restore the archived card (or recompose) so tap-preview matches Before/After.
+  const restoredBefore = updates.beforeImagePath ?? row.before_image_path;
+  const restoredAfter = updates.afterImagePath ?? row.after_image_path;
+  if (restoredBefore && restoredAfter && !repo.isVideoOnlyPlaceholder(restoredBefore)) {
+    await restoreShareCardAfterCancel(userId, {
+      beforeImagePath: restoredBefore,
+      afterImagePath: restoredAfter,
+      memberName: null,
+      beforeWeightKg: updates.beforeWeightKg ?? row.before_weight_kg,
+      afterWeightKg: updates.afterWeightKg ?? row.after_weight_kg,
+      goalType: updates.goalType ?? row.goal_type,
+      durationText: updates.durationText ?? row.duration_text,
+      recoveredHealthIssues: updates.recoveredHealthIssues ?? row.recovered_health_issues ?? [],
+    });
+  }
+
+  const updatedRow = await repo.findByUserId(userId);
+  const display = await enrichTestimonialForDisplay(updatedRow);
 
   return {
     httpStatus: 200,
     body: {
       success: true,
-      message: 'Health issue updated.',
-      recoveredHealthIssues: resolvedIssues,
+      message: 'Pending approval cancelled and changes reverted.',
+      testimonial: display,
     },
   };
 }

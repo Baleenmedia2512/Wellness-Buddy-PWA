@@ -59,7 +59,7 @@ export default function useImageCropper({
       const cropped = await cropImage(rawImageSrc, croppedAreaPixels, rotation);
       setShowCropper(false);
       try {
-        onCropped?.(cropped);
+        onCropped?.(cropped, { croppedAreaPixels, rotation });
       } catch (callbackErr) {
         // eslint-disable-next-line no-console -- post-crop callback failures need device logs
         console.error('[profile-crop] onCropped callback failed:', callbackErr);

@@ -1,5 +1,6 @@
 // Editable body metrics (Age, Fat %, V-Fat, Body Age, Chest/Waist/Hip).
-// Fat % is required. BMI is calculated from height + weight (BCM formula) — not editable.
+// Fat % is required. BMI is calculated from height + weight — read-only.
+// hideReadOnly omits that calculated field (initial Complete Profile).
 import React, { useMemo } from 'react';
 import {
   evaluateChestCm,
@@ -101,6 +102,7 @@ const MetricField = ({
  *   gender?: string|null,
  *   onChange?: (key: string, value: string) => void,
  *   readOnly?: boolean,
+ *   hideReadOnly?: boolean,
  *   heightCm?: number|string|null,
  *   weightKg?: number|string|null,
  * }} props
@@ -110,6 +112,7 @@ const UserProfileBodyMetrics = ({
   gender = null,
   onChange,
   readOnly = false,
+  hideReadOnly = false,
   heightCm = null,
   weightKg = null,
 }) => {
@@ -130,7 +133,8 @@ const UserProfileBodyMetrics = ({
     [displayMetrics],
   );
 
-  const hasAnyReference = FIELDS.some(({ key }) => references[key]);
+  const visibleFields = hideReadOnly ? FIELDS.filter((field) => !field.readOnly) : FIELDS;
+  const hasAnyReference = visibleFields.some(({ key }) => references[key]);
 
   return (
     <div className="space-y-4">
@@ -146,7 +150,7 @@ const UserProfileBodyMetrics = ({
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {FIELDS.map(({ key, label, inputMode, required, readOnly: fieldReadOnly }) => (
+        {visibleFields.map(({ key, label, inputMode, required, readOnly: fieldReadOnly }) => (
           <MetricField
             key={key}
             label={label}

@@ -3,11 +3,13 @@ import FoodBreakdownModal from './FoodBreakdownModal';
 import GlycemicIndexModal from './GlycemicIndexModal';
 import {
   extractFoodContributions,
+  getNutrientDecimals,
   getNutrientDisplayName,
   getNutrientUnit,
   getNutrientTotal,
   getNutrientTarget,
 } from '../domain/foodBreakdown';
+import { ALL_MICRONUTRIENTS } from '../domain/micronutrientRules';
 
 export function useNutrientBreakdownModal() {
   const [modalState, setModalState] = useState({ isOpen: false, nutrient: null });
@@ -41,6 +43,7 @@ export default function NutrientBreakdownModals({
   calorieTarget,
   heartCard,
   lowCarbCard,
+  periodContext = null,
 }) {
   if (!isOpen || !nutrient) return null;
 
@@ -69,6 +72,9 @@ export default function NutrientBreakdownModals({
       )}
       foodBreakdown={extractFoodContributions(analyses, nutrient).breakdown}
       foodsLoading={analysesLoading && analyses.length === 0}
+      decimals={getNutrientDecimals(nutrient)}
+      amountsOnly={ALL_MICRONUTRIENTS.some((spec) => spec.key === nutrient)}
+      periodContext={periodContext}
     />
   );
 }

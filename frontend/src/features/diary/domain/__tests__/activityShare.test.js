@@ -72,11 +72,32 @@ describe('diary activityType', () => {
     })).toBe(DIARY_FOOD_ACTIVITY.SHAKE);
   });
 
-  test('hides meal badge for water and afresh only', () => {
+  test('hides meal badge for water, afresh, and Target Nutrition', () => {
     expect(shouldShowMealBadge(DIARY_FOOD_ACTIVITY.WATER)).toBe(false);
     expect(shouldShowMealBadge(DIARY_FOOD_ACTIVITY.AFRESH)).toBe(false);
+    expect(shouldShowMealBadge(DIARY_FOOD_ACTIVITY.TARGET_NUTRITION)).toBe(false);
     expect(shouldShowMealBadge(DIARY_FOOD_ACTIVITY.FOOD)).toBe(true);
     expect(shouldShowMealBadge(DIARY_FOOD_ACTIVITY.SHAKE)).toBe(true);
+  });
+
+  test('detects Vritilife Triphala as Target Nutrition (no breakfast badge)', () => {
+    expect(resolveFoodActivityType({
+      analysisData: {
+        mealKind: 'dry-salad',
+        foods: [{ name: '*Vritilife Triphala* (Digestive Health)' }],
+      },
+      foodData: {
+        name: '*Vritilife Triphala* (Digestive Health)',
+        detailedItems: [{ name: '*Vritilife Triphala* (Digestive Health)' }],
+      },
+    })).toBe(DIARY_FOOD_ACTIVITY.TARGET_NUTRITION);
+
+    expect(resolveFoodActivityType({
+      foodData: {
+        name: '*Vritilife Triphala* (Digestive Health)',
+        detailedItems: [{ name: '*Vritilife Triphala* (Digestive Health)' }],
+      },
+    })).toBe(DIARY_FOOD_ACTIVITY.TARGET_NUTRITION);
   });
 
   test('extracts volume and scoops independently', () => {
@@ -325,33 +346,33 @@ describe('buildDiaryShareSuffix', () => {
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 0,
       currentWeight: 77,
-    })).toBe('Curr: 77 kg');
+    })).toBe('*Day progress*\nCurr: 77 kg');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: -5,
       currentWeight: 77,
-    })).toBe('Curr: 77 kg');
+    })).toBe('*Day progress*\nCurr: 77 kg');
   });
 
   test('weight suffix includes prev, curr, arrow, and delta amount', () => {
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 55.7,
       currentWeight: 55.6,
-    })).toBe('Prev: 55.7 kg\nCurr: 55.6 kg ⬇️ 100 g');
+    })).toBe('*Day progress*\nPrev: 55.7 kg\nCurr: 55.6 kg ⬇️ 100 g');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 70,
       currentWeight: 71,
-    })).toBe('Prev: 70 kg\nCurr: 71 kg ⬆️ 1 kg');
+    })).toBe('*Day progress*\nPrev: 70 kg\nCurr: 71 kg ⬆️ 1 kg');
 
     expect(buildDiaryShareSuffix('weight', {
       currentWeight: 55.6,
-    })).toBe('Curr: 55.6 kg');
+    })).toBe('*Day progress*\nCurr: 55.6 kg');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 74,
       currentWeight: 74,
-    })).toBe('Prev: 74 kg\nCurr: 74 kg');
+    })).toBe('*Day progress*\nPrev: 74 kg\nCurr: 74 kg');
   });
 
   test('weight suffix lists Ideal, Prev, Curr with arrow and amount on curr', () => {
@@ -359,30 +380,30 @@ describe('buildDiaryShareSuffix', () => {
       previousWeight: 73.65,
       currentWeight: 73.4,
       idealWeight: 73.6,
-    })).toBe('Ideal: 73.6 kg\nPrev: 73.65 kg\nCurr: 73.4 kg ⬇️ 250 g');
+    })).toBe('*Day progress*\nIdeal: 73.6 kg\nPrev: 73.65 kg\nCurr: 73.4 kg ⬇️ 250 g');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 73.4,
       currentWeight: 72.9,
       idealWeight: 73.7,
-    })).toBe('Ideal: 73.7 kg\nPrev: 73.4 kg\nCurr: 72.9 kg ⬇️ 500 g');
+    })).toBe('*Day progress*\nIdeal: 73.7 kg\nPrev: 73.4 kg\nCurr: 72.9 kg ⬇️ 500 g');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 72.9,
       currentWeight: 72.85,
       idealWeight: 73.7,
-    })).toBe('Ideal: 73.7 kg\nPrev: 72.9 kg\nCurr: 72.85 kg ⬇️ 50 g');
+    })).toBe('*Day progress*\nIdeal: 73.7 kg\nPrev: 72.9 kg\nCurr: 72.85 kg ⬇️ 50 g');
 
     expect(buildDiaryShareSuffix('weight', {
       previousWeight: 73.4,
       currentWeight: 74.1,
       idealWeight: 73.7,
-    })).toBe('Ideal: 73.7 kg\nPrev: 73.4 kg\nCurr: 74.1 kg ⬆️ 700 g');
+    })).toBe('*Day progress*\nIdeal: 73.7 kg\nPrev: 73.4 kg\nCurr: 74.1 kg ⬆️ 700 g');
 
     expect(buildDiaryShareSuffix('weight', {
       currentWeight: 55.6,
       idealWeight: 62.4,
-    })).toBe('Ideal: 62.4 kg\nCurr: 55.6 kg');
+    })).toBe('*Day progress*\nIdeal: 62.4 kg\nCurr: 55.6 kg');
   });
 
   test('workout suffix shows calories burnt so far today', () => {
@@ -396,12 +417,12 @@ describe('buildDiaryShareSuffix', () => {
     expect(buildDiaryShareSuffix('education', {
       platform: 'Zoom',
       session: 'Academy',
-    })).toBe('*Academy · Zoom,*');
+    })).toBe('*Academy · Zoom*');
 
     expect(buildDiaryShareSuffix('education', {
       session: 'Daily Education',
       platform: 'Zoom',
-    })).toBe('*Daily Education · Zoom,*');
+    })).toBe('*Daily Education · Zoom*');
 
     expect(buildDiaryShareSuffix('education', {
       session: 'Academy',
@@ -431,6 +452,11 @@ describe('buildDiaryShareSuffix', () => {
       shakeName: 'Herbalife Shake',
       shakeProducts: { formula1: 3, shakemate: 0, protein: 1 },
     })).toBe('*Herbalife Shake,*\n*Formula 1: 3 scoops,*\n*Personalized Protein: 1 scoop,*');
+
+    expect(buildDiaryShareSuffix('shake', {
+      shakeName: 'Herbalife Shake',
+      shakeProducts: { formula1: 3, shakemate: 2, protein: 1, activeFibre: 1 },
+    })).toBe('*Herbalife Shake,*\n*Formula 1: 3 scoops,*\n*Shakemate: 2 scoops,*\n*Personalized Protein: 1 scoop,*\n*Active Fibre Complex: 1 scoop,*');
 
     expect(buildDiaryShareSuffix('shake', {
       shakeName: 'Herbalife Shake',
@@ -473,7 +499,13 @@ describe('extractShakeProducts', () => {
         name: 'Herbalife Shake',
         shakeProducts: { formula1: 3, shakemate: 2, protein: 1 },
       }],
-    })).toEqual({ formula1: 3, shakemate: 2, protein: 1 });
+    })).toEqual({ formula1: 3, shakemate: 2, protein: 1, activeFibre: 0 });
+  });
+
+  test('reads Active Fibre Complex scoops when present', () => {
+    expect(extractShakeProducts({
+      shakeProducts: { formula1: 3, shakemate: 2, protein: 1, activeFibre: 2 },
+    })).toEqual({ formula1: 3, shakemate: 2, protein: 1, activeFibre: 2 });
   });
 });
 
@@ -541,6 +573,62 @@ describe('resolveFoodRowPresentation', () => {
       calories: 4,
     });
     expect(view.shareText).toBe('*Consumed: 1 scoop* Afresh,');
+  });
+
+  test('Target Nutrition Triphala hides Breakfast meal badge', () => {
+    const view = resolveFoodRowPresentation({
+      analysisData: {
+        mealKind: 'dry-salad',
+        foods: [{ name: '*Vritilife Triphala* (Digestive Health)' }],
+      },
+      foodData: {
+        name: '*Vritilife Triphala* (Digestive Health)',
+        detailedItems: [{ name: '*Vritilife Triphala* (Digestive Health)' }],
+        nutrition: { calories: 0 },
+      },
+      calories: 0,
+      mealLabel: 'Breakfast',
+    });
+    expect(view.activityType).toBe('target_nutrition');
+    expect(view.showMealBadge).toBe(false);
+  });
+
+  test('Weight Loss: dinner badge hidden for solid food, shown for shake', () => {
+    const foodView = resolveFoodRowPresentation({
+      foodData: {
+        name: 'Rice',
+        detailedItems: [{ name: 'Rice' }],
+        nutrition: { calories: 200 },
+      },
+      calories: 200,
+      mealLabel: 'Dinner',
+      mealCategory: 'dinner',
+      weightGoalMode: 'loss',
+    });
+    expect(foodView.activityType).toBe('food');
+    expect(foodView.showMealBadge).toBe(false);
+
+    const shakeView = resolveFoodRowPresentation({
+      processedBy: 'shake_calculator',
+      foodData: {
+        name: 'Herbalife Shake',
+        detailedItems: [{ name: 'Herbalife Shake' }],
+        nutrition: { calories: 220 },
+      },
+      calories: 220,
+      mealLabel: 'Dinner',
+      mealCategory: 'dinner',
+      weightGoalMode: 'loss',
+    });
+    expect(shakeView.activityType).toBe('shake');
+    expect(shakeView.showMealBadge).toBe(true);
+  });
+
+  test('Gain mode: dinner badge still shown for solid food', () => {
+    expect(shouldShowMealBadge('food', {
+      mealCategory: 'dinner',
+      weightGoalMode: 'gain',
+    })).toBe(true);
   });
 
   test('food row share caption lists every item and total kcal', () => {

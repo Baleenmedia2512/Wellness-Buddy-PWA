@@ -3,7 +3,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { hasRecognizedFood } from './unknown-promotion.helpers.js';
+import { hasRecognizedFood, buildAnalysisFromGeminiAnalysis } from './unknown-promotion.helpers.js';
 
 describe('hasRecognizedFood', () => {
   it('accepts foods with positive calories', () => {
@@ -43,5 +43,16 @@ describe('hasRecognizedFood', () => {
 
   it('rejects empty foods list', () => {
     assert.equal(hasRecognizedFood({ foods: [], total: { calories: 0 } }), false);
+  });
+});
+
+describe('buildAnalysisFromGeminiAnalysis', () => {
+  it('tags orchestrator food analysis as ai', () => {
+    const result = buildAnalysisFromGeminiAnalysis({
+      foods: [{ name: 'Idli', nutrition: { calories: 120 } }],
+      total: { calories: 120 },
+      confidence: 'high',
+    });
+    assert.equal(result.source, 'ai');
   });
 });

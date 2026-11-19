@@ -86,4 +86,20 @@ describe('transformToBackgroundServiceFormat', () => {
     expect(transformed.processedBy).toBe('water_preset');
     expect(transformed.total.calories).toBe(0);
   });
+
+  it('passes through nutrition source ai vs manual', () => {
+    const ai = transformToBackgroundServiceFormat({
+      foods: [{ name: 'Rice', nutrition: { calories: 200 } }],
+      total: { calories: 200 },
+      source: 'ai',
+    });
+    expect(ai.source).toBe('ai');
+
+    const manual = transformToBackgroundServiceFormat({
+      nutrition: { calories: 100, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+      detailedItems: [{ name: 'Idli', calories: 100, nutrition: { calories: 100 } }],
+      source: 'manual',
+    });
+    expect(manual.source).toBe('manual');
+  });
 });

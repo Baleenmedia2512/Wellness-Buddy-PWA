@@ -6,17 +6,17 @@
  * Preserves CoachId / CoachTeamId for established members (e.g. inactive reactivation).
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import { buildTeamTableClearOnCancelRequest } from '../../../utils/coachTeamSeats.js';
 
-async function findUserForCancel(supabase, { email, userId }) {
+async function findUserForCancel(db, { email, userId }) {
   const uid = userId != null && String(userId).trim() !== ''
     ? Number(userId)
     : null;
 
   if (uid && Number.isFinite(uid)) {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('team_table')
       .select('UserId, TeamId, CoachId, CoachTeamId')
       .eq('UserId', uid)
@@ -26,7 +26,7 @@ async function findUserForCancel(supabase, { email, userId }) {
   }
 
   if (email) {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('team_table')
       .select('UserId, TeamId, CoachId, CoachTeamId')
       .eq('Email', String(email).trim())
@@ -70,8 +70,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    const supabase = getSupabaseClient();
-    const user = await findUserForCancel(supabase, { email, userId: uid });
+    const db = getMysqlClient();
+    const user = await findUserForCancel(db, { email, userId: uid });
 
     if (!user?.UserId) {
       res.status(404).json({
@@ -82,14 +82,14 @@ export default async function handler(req, res) {
     }
 
     const processedAt = nowUtc();
-    await supabase
+    await db
       .from('approval_requests_table')
       .update({ Status: 'cancelled', ProcessedAt: processedAt })
       .eq('RequesterId', user.UserId)
       .eq('Status', 'pending');
 
     const clearPayload = buildTeamTableClearOnCancelRequest({ coachId: user.CoachId });
-    await supabase
+    await db
       .from('team_table')
       .update(clearPayload)
       .eq('UserId', user.UserId);

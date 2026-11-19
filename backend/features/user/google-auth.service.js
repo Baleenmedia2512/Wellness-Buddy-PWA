@@ -79,7 +79,7 @@ export async function saveGoogleUser({
 
   const { error: insertErr } = await repo.insertUser(insertPayload);
   if (insertErr) {
-    if (insertErr.code === '23505') {
+    if (insertErr.code === '1062') {
       const recheck = await repo.findByExactEmail(email, '"UserId", "UserName", "Email", "Status"');
       if (recheck) {
         await syncUserTimezoneIfChanged(recheck.UserId, timezoneIana);

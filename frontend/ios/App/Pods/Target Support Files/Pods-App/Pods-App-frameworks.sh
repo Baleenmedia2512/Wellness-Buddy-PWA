@@ -180,9 +180,11 @@ if [[ "$CONFIGURATION" == "Debug" ]]; then
   install_framework "${BUILT_PRODUCTS_DIR}/Capacitor/Capacitor.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/CapacitorApp/CapacitorApp.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/CapacitorCamera/CapacitorCamera.framework"
+  install_framework "${BUILT_PRODUCTS_DIR}/CapacitorCommunityContacts/CapacitorCommunityContacts.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/CapacitorCordova/Cordova.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/CapacitorFilesystem/CapacitorFilesystem.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/CapacitorGeolocation/CapacitorGeolocation.framework"
+  install_framework "${BUILT_PRODUCTS_DIR}/CapacitorKeyboard/CapacitorKeyboard.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/CapacitorPushNotifications/CapacitorPushNotifications.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/CapacitorShare/CapacitorShare.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/CapacitorSplashScreen/CapacitorSplashScreen.framework"
@@ -191,15 +193,20 @@ if [[ "$CONFIGURATION" == "Debug" ]]; then
   install_framework "${BUILT_PRODUCTS_DIR}/GTMAppAuth/GTMAppAuth.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/GTMSessionFetcher/GTMSessionFetcher.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/GoogleSignIn/GoogleSignIn.framework"
+  install_framework "${BUILT_PRODUCTS_DIR}/IONCameraLib/IONCameraLib.framework"
+  install_framework "${PODS_XCFRAMEWORKS_BUILD_DIR}/IONFilesystemLib/IONFilesystemLib.framework"
+  install_framework "${PODS_XCFRAMEWORKS_BUILD_DIR}/IONGeolocationLib/IONGeolocationLib.framework"
 fi
 if [[ "$CONFIGURATION" == "Release" ]]; then
   install_framework "${BUILT_PRODUCTS_DIR}/AppAuth/AppAuth.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/Capacitor/Capacitor.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/CapacitorApp/CapacitorApp.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/CapacitorCamera/CapacitorCamera.framework"
+  install_framework "${BUILT_PRODUCTS_DIR}/CapacitorCommunityContacts/CapacitorCommunityContacts.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/CapacitorCordova/Cordova.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/CapacitorFilesystem/CapacitorFilesystem.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/CapacitorGeolocation/CapacitorGeolocation.framework"
+  install_framework "${BUILT_PRODUCTS_DIR}/CapacitorKeyboard/CapacitorKeyboard.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/CapacitorPushNotifications/CapacitorPushNotifications.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/CapacitorShare/CapacitorShare.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/CapacitorSplashScreen/CapacitorSplashScreen.framework"
@@ -208,6 +215,9 @@ if [[ "$CONFIGURATION" == "Release" ]]; then
   install_framework "${BUILT_PRODUCTS_DIR}/GTMAppAuth/GTMAppAuth.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/GTMSessionFetcher/GTMSessionFetcher.framework"
   install_framework "${BUILT_PRODUCTS_DIR}/GoogleSignIn/GoogleSignIn.framework"
+  install_framework "${BUILT_PRODUCTS_DIR}/IONCameraLib/IONCameraLib.framework"
+  install_framework "${PODS_XCFRAMEWORKS_BUILD_DIR}/IONFilesystemLib/IONFilesystemLib.framework"
+  install_framework "${PODS_XCFRAMEWORKS_BUILD_DIR}/IONGeolocationLib/IONGeolocationLib.framework"
 fi
 if [ "${COCOAPODS_PARALLEL_CODE_SIGN}" == "true" ]; then
   wait

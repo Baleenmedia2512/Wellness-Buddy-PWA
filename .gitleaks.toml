@@ -5,10 +5,10 @@ title = "Wellness Valley PWA secret patterns"
 useDefault = true
 
 [[rules]]
-id = "supabase-service-role"
-description = "Supabase service-role key"
+id = "service-role-jwt"
+description = "Service-role JWT"
 regex = '''eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}'''
-keywords = ["supabase", "service_role", "SERVICE_ROLE"]
+keywords = ["service_role", "SERVICE_ROLE"]
 
 [[rules]]
 id = "vercel-token"

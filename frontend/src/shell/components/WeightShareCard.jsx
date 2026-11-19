@@ -21,6 +21,7 @@
  */
 import React, { forwardRef } from 'react';
 import { getVersionString } from '../../config/version';
+import { pickShareAvatarSrc } from '../../features/user/services/avatarDisplayVersion';
 
 export const WeightShareCard = forwardRef(function WeightShareCard(
   {
@@ -35,6 +36,11 @@ export const WeightShareCard = forwardRef(function WeightShareCard(
   },
   ref,
 ) {
+  const avatarSrc = pickShareAvatarSrc({
+    savedProfileImage,
+    sharePhotoBase64,
+    photoURL: user?.photoURL,
+  });
   return (
                 <div
                   ref={ref}
@@ -62,21 +68,15 @@ export const WeightShareCard = forwardRef(function WeightShareCard(
                         minHeight: 110,
                       }}
                     >
-                      {/* Profile photo ? div+backgroundImage for reliable html2canvas rendering */}
-                      {savedProfileImage ||
-                      sharePhotoBase64 ||
-                      user?.photoURL ? (
+                      {/* Profile photo — div+backgroundImage for reliable html2canvas rendering */}
+                      {avatarSrc ? (
                         <div
                           style={{
                             width: 64,
                             height: 64,
                             borderRadius: "50%",
                             border: "3px solid rgba(255,255,255,0.95)",
-                            backgroundImage: `url(${
-                              savedProfileImage ||
-                              sharePhotoBase64 ||
-                              user.photoURL
-                            })`,
+                            backgroundImage: `url(${avatarSrc})`,
                             backgroundSize: "cover",
                             backgroundPosition: "center",
                             flexShrink: 0,

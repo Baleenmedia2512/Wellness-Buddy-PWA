@@ -113,7 +113,12 @@ const ChangeProfilePhotoModal = ({
     setError('');
     setIsSaving(true);
     try {
-      const payload = { profileImage };
+      // Profile photo only — do not overwrite Centre (transformation front).
+      // New users get profile from Centre on first Centre upload; later profile
+      // changes must leave Centre unchanged.
+      const payload = {
+        profileImage,
+      };
       if (email) payload.email = email;
       if (user?.id != null) payload.userId = user.id;
       await saveProfile(payload);

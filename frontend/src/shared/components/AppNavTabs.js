@@ -10,8 +10,10 @@ import {
   Map,
   Trophy,
   FileBarChart,
+  Megaphone,
 } from 'lucide-react';
 import NavTabButton from './NavTabButton';
+import { isFlagEnabled } from '../../config/featureFlags';
 import { canAccessNavPage } from '../../features/nav-page-access/domain/navAccess.rules.js';
 
 export default function AppNavTabs({
@@ -23,12 +25,14 @@ export default function AppNavTabs({
   onShowWellnessCounselling,
   onShowNutritionCentersMap,
   onShowTestimonials,
+  onShowBroadcast,
   onShowReports,
   reportsEnabled = false,
   /** null = fail-open (all tabs); object = role page map from DB */
   allowedPages = null,
 }) {
   const allow = (pageKey) => canAccessNavPage(allowedPages, pageKey);
+  const broadcastEnabled = isFlagEnabled('ff.broadcast');
 
   return (
     <div
@@ -139,6 +143,21 @@ export default function AppNavTabs({
           labelClass="text-teal-700"
           label="Reports"
           ariaLabel="Reports Dashboard"
+        />
+      )}
+      {broadcastEnabled && allow('broadcast') && (
+        <NavTabButton
+          onClick={onShowBroadcast ?? (() => {})}
+          active={activePage === 'broadcast'}
+          activeBg="bg-emerald-100"
+          hoverBg="hover:bg-emerald-50"
+          icon={Megaphone}
+          iconActiveClass="text-emerald-800"
+          iconClass="text-emerald-700"
+          labelActiveClass="text-emerald-900"
+          labelClass="text-emerald-800"
+          label="BroadCast"
+          ariaLabel="BroadCast"
         />
       )}
     </div>

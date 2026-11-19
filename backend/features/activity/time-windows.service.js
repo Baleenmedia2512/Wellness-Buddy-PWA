@@ -2,7 +2,7 @@
  * Admin activity time-window configuration (platform-wide).
  * Used by Wellness Score Setup and Activity Time Report settings.
  */
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import {
@@ -78,8 +78,8 @@ function toAdminRow(activityType, start, end, meta = {}) {
 export async function listAdminTimeWindows({ requesterUserId, requesterEmail }) {
   await requireAdminRequester({ requesterUserId, requesterEmail });
 
-  const supabase = getSupabaseClient();
-  const { data: rows, error } = await supabase
+  const db = getMysqlClient();
+  const { data: rows, error } = await db
     .from('activity_time_windows_table')
     .select('ActivityType, WindowStartTime, WindowEndTime, EffectiveFromDate, EffectiveToDate, ChangedBy, ChangeReason, CreatedAt')
     .is('EffectiveToDate', null)
@@ -142,11 +142,11 @@ export async function updateAdminTimeWindow({
     throw new ValidationError(400, 'End time must be later than start time');
   }
 
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
 
   // Meal windows must not overlap each other.
   if (['breakfast', 'lunch', 'dinner'].includes(activityType)) {
-    const { data: existingWindows, error: existingError } = await supabase
+    const { data: existingWindows, error: existingError } = await db
       .from('activity_time_windows_table')
       .select('ActivityType, WindowStartTime, WindowEndTime')
       .is('EffectiveToDate', null)
@@ -173,7 +173,7 @@ export async function updateAdminTimeWindow({
     }
   }
 
-  const { error: updateError } = await supabase
+  const { error: updateError } = await db
     .from('activity_time_windows_table')
     .update({ EffectiveToDate: effectiveFromDate })
     .eq('ActivityType', activityType)
@@ -186,7 +186,7 @@ export async function updateAdminTimeWindow({
 
   const changedBy = requester.Email || String(requester.UserId);
   const currentTime = nowUtc();
-  const { data: insertResult, error: insertError } = await supabase
+  const { data: insertResult, error: insertError } = await db
     .from('activity_time_windows_table')
     .insert({
       ActivityType: activityType,

@@ -15,12 +15,15 @@ export function toSelectableItem(item) {
   const servings = Number.isFinite(raw) && raw > 0
     ? Math.max(0.5, Math.round(raw * 2) / 2)
     : 1;
+  const measureUnit = item?.measureUnit
+    || (qtyUnit.unit === 'pcs' ? 'pcs' : undefined);
   return {
     ...item,
     servings,
     refWeightG: referenceWeightG(item),
     quantityUnit: qtyUnit.unit,
     quantityLabel: qtyUnit.shortLabel,
+    ...(measureUnit ? { measureUnit } : {}),
   };
 }
 

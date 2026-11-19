@@ -11,6 +11,9 @@ const LIQUID_KEYWORDS = [
 
 const isLiquidByName = (name) => {
   const lower = (name || '').toLowerCase();
+  // "Shakemate" contains "shake" but the canister serving is powder grams.
+  if (lower.includes('shakemate') || lower.includes('shake mate')) return false;
+  if (lower.includes('formula 1') || lower.includes('formula1')) return false;
   return LIQUID_KEYWORDS.some((kw) => lower.includes(kw));
 };
 

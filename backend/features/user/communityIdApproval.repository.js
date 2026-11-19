@@ -1,7 +1,7 @@
 /**
  * Pending Community ID OTP requests.
  */
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
 import {
   REQUEST_KIND_CREATE,
@@ -41,8 +41,8 @@ const PUBLIC_COLS = [
 export async function findPendingByRequesterId(requesterId) {
   const uid = Number(requesterId);
   if (!Number.isFinite(uid)) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .select(PUBLIC_COLS)
     .eq('RequesterId', uid)
@@ -56,8 +56,8 @@ export async function findPendingByRequesterId(requesterId) {
 export async function findPendingCreateByCommunityId(communityId, excludeRequesterId = null) {
   const code = String(communityId || '').trim();
   if (!code) return null;
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from(TABLE)
     .select(PUBLIC_COLS)
     .eq('CommunityId', code)
@@ -77,8 +77,8 @@ export async function findPendingCreateByCommunityId(communityId, excludeRequest
 export async function cancelPendingByRequesterId(requesterId) {
   const uid = Number(requesterId);
   if (!Number.isFinite(uid)) return;
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from(TABLE)
     .update({
       Status: REQUEST_STATUS_CANCELLED,
@@ -90,8 +90,8 @@ export async function cancelPendingByRequesterId(requesterId) {
 }
 
 export async function insertRequest(row) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .insert([row])
     .select(PUBLIC_COLS);
@@ -100,8 +100,8 @@ export async function insertRequest(row) {
 }
 
 export async function incrementOtpAttempts(id, nextAttempts) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from(TABLE)
     .update({ OtpAttempts: nextAttempts })
     .eq('Id', id);
@@ -109,8 +109,8 @@ export async function incrementOtpAttempts(id, nextAttempts) {
 }
 
 export async function markExpired(id) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from(TABLE)
     .update({
       Status: REQUEST_STATUS_EXPIRED,
@@ -121,8 +121,8 @@ export async function markExpired(id) {
 }
 
 export async function markApproved(id) {
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from(TABLE)
     .update({
       Status: 'approved',
@@ -135,8 +135,8 @@ export async function markApproved(id) {
 export async function findTeamIdOwners(communityId, excludeUserId = null) {
   const code = String(communityId || '').trim();
   if (!code) return [];
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('team_table')
     .select('UserId')
     .eq('TeamId', code);
@@ -152,8 +152,8 @@ export async function findTeamIdOwners(communityId, excludeUserId = null) {
 export async function findActiveCoachTeam(communityId) {
   const code = String(communityId || '').trim();
   if (!code) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('coach_teams_table')
     .select('TeamId, CoachId, CoCoachId, Status')
     .eq('TeamId', code)
@@ -166,8 +166,8 @@ export async function findActiveCoachTeam(communityId) {
 export async function findUserIdentity(userId) {
   const uid = Number(userId);
   if (!Number.isFinite(uid)) return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('team_table')
     .select('UserId, UserName, Email, CoachId, TeamId, CoachTeamId, CommunityId, Role, Status')
     .eq('UserId', uid)

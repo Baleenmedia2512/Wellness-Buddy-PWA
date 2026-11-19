@@ -6,12 +6,17 @@
 import React from 'react';
 import EducationLogContent from './EducationLogContent';
 import { getVersionString } from '../../../config/version';
+import { pickShareAvatarSrc } from '../../user/services/avatarDisplayVersion';
 
 export default function EducationShareCard({
   shareRef, educationData, imagePreview, user,
   savedUserName, savedProfileImage, sharePhotoBase64,
 }) {
-  const avatarSrc = savedProfileImage || sharePhotoBase64 || user?.photoURL;
+  const avatarSrc = pickShareAvatarSrc({
+    savedProfileImage,
+    sharePhotoBase64,
+    photoURL: user?.photoURL,
+  });
   const displayName = savedUserName || user?.displayName || user?.name || 'Wellness User';
   const initial = (savedUserName || user?.displayName || user?.email || 'U').charAt(0).toUpperCase();
 

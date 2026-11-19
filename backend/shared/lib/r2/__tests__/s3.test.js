@@ -10,6 +10,7 @@ import {
   encodeObjectKey,
   buildSignedHeaders,
   signedGetObjectUrl,
+  avatarRedirectUrl,
 } from '../s3.js';
 
 const SAMPLE_ENV = {
@@ -84,5 +85,15 @@ describe('signedGetObjectUrl', () => {
     assert.ok(url.startsWith('https://acct123.r2.cloudflarestorage.com/wv-media/avatars/1/x.jpg?'));
     assert.ok(url.includes('X-Amz-Algorithm=AWS4-HMAC-SHA256'));
     assert.ok(url.includes('X-Amz-Signature='));
+  });
+});
+
+describe('avatarRedirectUrl', () => {
+  it('does not invent a host when R2 is unset', () => {
+    const config = readR2Config({});
+    assert.equal(
+      avatarRedirectUrl('transformation/339/front/fd312dfa7c5fd415.jpg', config),
+      null,
+    );
   });
 });

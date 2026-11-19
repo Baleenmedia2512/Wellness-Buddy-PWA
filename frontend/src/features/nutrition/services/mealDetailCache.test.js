@@ -57,4 +57,21 @@ describe('mergeMealRows', () => {
     assert.equal(merged.listSummary.name, 'Dosa');
     assert.ok(mealHasFullAnalysis(merged));
   });
+
+  it('keeps the diary clock when the detail row has a raw CreatedAt', () => {
+    const merged = mergeMealRows(
+      { ID: 1, AnalysisData: SAMPLE_ANALYSIS, CreatedAt: '2026-10-26T10:15:00.000Z' },
+      { ID: 1, CreatedAt: '2026-10-26T04:45:00.000Z', listSummary: { name: 'Shake' } },
+    );
+    assert.equal(merged.CreatedAt, '2026-10-26T04:45:00.000Z');
+    assert.ok(mealHasFullAnalysis(merged));
+  });
+
+  it('uses the detail CreatedAt when the diary stub has none', () => {
+    const merged = mergeMealRows(
+      { ID: 1, AnalysisData: SAMPLE_ANALYSIS, CreatedAt: '2026-10-26T04:45:00.000Z' },
+      { ID: 1, listSummary: { name: 'Shake' } },
+    );
+    assert.equal(merged.CreatedAt, '2026-10-26T04:45:00.000Z');
+  });
 });

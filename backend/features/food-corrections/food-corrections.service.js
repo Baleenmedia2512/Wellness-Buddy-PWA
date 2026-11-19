@@ -19,13 +19,12 @@ import {
 } from '../nutrition-knowledge/index.js';
 import logger from '../../shared/lib/logger.js';
 import { ValidationError } from '../../shared/lib/ValidationError.js';
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { assertViewerCanAccessMember } from '../../utils/reportingHierarchyService.js';
 import {
   injectGlycemicIndexIntoAnalysisData,
   resolveGlycemicIndexForUpdate,
 } from './glycemicIndex.helpers.js';
-import { r2FoodImagesEnabled, foodImageRedirectUrl } from './food-image-storage.service.js';
 import { waitUntil } from '@vercel/functions';
 import {
   emptyMealTotalsSeed,
@@ -143,11 +142,16 @@ function extractMatchingItems(row, lowerTerm) {
             ? Math.round(Number(nutrition[key]))
             : Number(nutrition[key]);
         }
+        const servingsRaw = Number(f.servings ?? f.servingCount);
+        const servings = Number.isFinite(servingsRaw) && servingsRaw > 0 ? servingsRaw : undefined;
+        const portion = f.portion || f.portion_label || undefined;
         return {
           name: (f.name || '').trim(),
           weight_g,
           source: 'history',
           ...flat,
+          ...(servings != null ? { servings } : {}),
+          ...(portion ? { portion } : {}),
           nutrition: Object.keys(nutrition).length ? nutrition : {
             calories: flat.calories ?? null,
             protein: flat.protein ?? null,
@@ -390,7 +394,7 @@ export async function getStats({
     return { httpStatus: 200, body: demoStatsResponse() };
   }
 
-  await assertViewerCanAccessMember(getSupabaseClient(), viewerUserId, userId);
+  await assertViewerCanAccessMember(getMysqlClient(), viewerUserId, userId);
 
   const timezoneIana = await getUserTimezoneIana(userId);
 
@@ -586,9 +590,15 @@ export async function getMealImage({ userId, id }) {
       imageKey = null;
     }
   }
-  const r2Url = (imageKey && r2FoodImagesEnabled())
-    ? foodImageRedirectUrl(imageKey)
-    : null;
+  let r2Url = null;
+  if (imageKey) {
+    try {
+      const { redirectUrlForImageKey } = await import('../../shared/lib/milesweb/storedImage.js');
+      r2Url = await redirectUrlForImageKey(imageKey, 'ff.r2-food-images');
+    } catch {
+      r2Url = null;
+    }
+  }
   return {
     httpStatus: 200,
     body: {

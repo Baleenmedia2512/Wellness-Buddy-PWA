@@ -37,7 +37,7 @@ const CompleteRequiredFields = ({
           autoComplete="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Enter your full name"
+          placeholder="Enter your Name"
           disabled={identityLocked}
           className={`${inputCls(name && !nameValid)} ${identityLocked ? 'bg-gray-50 text-gray-600' : ''}`}
           style={{ fontSize: '16px' }}

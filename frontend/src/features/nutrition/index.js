@@ -6,6 +6,7 @@ export { default as NutritionDashboard } from './components/NutritionDashboard';
 export { default as NutritionSectionStack } from './components/dashboard/NutritionSectionStack';
 export { default as SmartFoodSearchModal } from './components/SmartFoodSearchModal';
 export { default as ShakeCalculatorModal } from './components/ShakeCalculatorModal';
+export { allowHerbalifeShakePost } from './services/allowHerbalifeShakePost';
 export { default as ServingStepperModal, buildWaterAnalysisResult } from './components/ServingStepperModal';
 export { buildAfreshAnalysisResult, AFRESH_PRODUCT } from './domain/afreshProductProfiles';
 export {

@@ -83,13 +83,16 @@ export async function getHabitImage({ id, userId, slot = null }) {
   let beforeImageUrl = null;
   let afterImageUrl = null;
   try {
-    const { r2ActivityImagesEnabled } = await import('../../../shared/lib/r2/activity-image-storage.service.js');
-    const { avatarRedirectUrl } = await import('../../../shared/lib/r2/s3.js');
-    if (r2ActivityImagesEnabled()) {
-      imageUrl = data.ImageKey ? avatarRedirectUrl(data.ImageKey) : null;
-      beforeImageUrl = data.BeforeImageKey ? avatarRedirectUrl(data.BeforeImageKey) : null;
-      afterImageUrl = data.AfterImageKey ? avatarRedirectUrl(data.AfterImageKey) : null;
-    }
+    const { redirectUrlForImageKey } = await import('../../../shared/lib/milesweb/storedImage.js');
+    imageUrl = data.ImageKey
+      ? await redirectUrlForImageKey(data.ImageKey, 'ff.r2-activity-images')
+      : null;
+    beforeImageUrl = data.BeforeImageKey
+      ? await redirectUrlForImageKey(data.BeforeImageKey, 'ff.r2-activity-images')
+      : null;
+    afterImageUrl = data.AfterImageKey
+      ? await redirectUrlForImageKey(data.AfterImageKey, 'ff.r2-activity-images')
+      : null;
   } catch {
     imageUrl = null;
   }

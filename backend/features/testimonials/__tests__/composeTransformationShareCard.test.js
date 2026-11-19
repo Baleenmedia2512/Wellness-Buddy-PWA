@@ -1,0 +1,179 @@
+/**
+ * Server-composed Transformation share card for coach emails.
+ */
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import sharp from 'sharp';
+import {
+  composeTransformationShareCardJpeg,
+  layoutHealthIssueChips,
+  shareCardJpegHasReadableText,
+} from '../domain/composeTransformationShareCard.js';
+
+async function solidJpeg(width, height, color) {
+  return sharp({
+    create: {
+      width,
+      height,
+      channels: 3,
+      background: color,
+    },
+  })
+    .jpeg()
+    .toBuffer();
+}
+
+describe('layoutHealthIssueChips', () => {
+  const labels = [
+    'Pre-Diabetes',
+    'Diabetes Type 2',
+    'High Blood Pressure',
+    'High Cholesterol',
+    'Fatty Liver',
+    'PCOD / PCOS',
+    'Hypothyroidism',
+    'Hyperthyroidism',
+    'Knee Pain',
+    'Back Pain',
+  ];
+
+  it('keeps each label inside its own chip and wraps the row when the next chip does not fit', () => {
+    const { rows } = layoutHealthIssueChips(labels);
+    const chips = rows.flatMap((row) => row.chips);
+    assert.equal(chips.length, labels.length);
+    chips.forEach((chip) => {
+      assert.ok(chip.chipW >= chip.textW + 20, `${chip.label} chip is narrower than its text`);
+      assert.ok(chip.lines.join(' ') === chip.label);
+    });
+    rows.forEach((row) => {
+      assert.ok(row.width <= 540 - 24 - 20);
+    });
+    const pressure = chips.find((chip) => chip.label === 'High Blood Pressure');
+    assert.ok(pressure.chipW > 140);
+    assert.ok(rows.length >= 3);
+  });
+});
+
+describe('composeTransformationShareCardJpeg', () => {
+  it('builds a 540px wide JPEG with dynamic height and visible Before/After photos', async () => {
+    const beforeBuffer = await solidJpeg(200, 300, { r: 200, g: 80, b: 80 });
+    const afterBuffer = await solidJpeg(200, 300, { r: 80, g: 160, b: 80 });
+    const jpeg = await composeTransformationShareCardJpeg({
+      beforeBuffer,
+      afterBuffer,
+      memberName: 'Test Member',
+      beforeWeightKg: 90.9,
+      afterWeightKg: 60.8,
+      goalType: 'loss',
+      durationText: '6 months',
+    });
+    assert.ok(Buffer.isBuffer(jpeg));
+    assert.ok(jpeg.length > 2000);
+    const meta = await sharp(jpeg).metadata();
+    assert.equal(meta.format, 'jpeg');
+    assert.equal(meta.width, 540);
+    assert.equal(meta.height, 782);
+
+    // Sample centre of Before slot (must not be white — overlay used to hide photos).
+    const { data, info } = await sharp(jpeg)
+      .extract({ left: 80, top: 200, width: 40, height: 40 })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let redish = 0;
+    for (let i = 0; i < data.length; i += info.channels) {
+      if (data[i] > 150 && data[i + 1] < 120 && data[i + 2] < 120) redish += 1;
+    }
+    assert.ok(redish > 20, 'Before photo pixels should show through the overlay');
+
+    // Name text must paint (embedded Noto Sans) — not empty tofu boxes.
+    const nameBand = await sharp(jpeg)
+      .extract({ left: 120, top: 70, width: 300, height: 30 })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let darkText = 0;
+    for (let i = 0; i < nameBand.data.length; i += nameBand.info.channels) {
+      if (nameBand.data[i] < 40 && nameBand.data[i + 1] < 40 && nameBand.data[i + 2] < 40) {
+        darkText += 1;
+      }
+    }
+    assert.ok(darkText > 30, 'Member name text should render with embedded font');
+
+    // Red DISCLAIMER border must be fully inside the card (not clipped).
+    const discBand = await sharp(jpeg)
+      .extract({ left: 0, top: 684, width: 8, height: 8 })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let redBorder = 0;
+    for (let i = 0; i < discBand.data.length; i += discBand.info.channels) {
+      if (discBand.data[i] > 160 && discBand.data[i + 1] < 100 && discBand.data[i + 2] < 100) {
+        redBorder += 1;
+      }
+    }
+    assert.ok(redBorder > 10, 'Disclaimer red border should be visible near the card bottom');
+    assert.equal(await shareCardJpegHasReadableText(jpeg), true);
+  });
+
+  it('draws 14px health-issue chips when issues are provided', async () => {
+    const beforeBuffer = await solidJpeg(200, 300, { r: 200, g: 80, b: 80 });
+    const afterBuffer = await solidJpeg(200, 300, { r: 80, g: 160, b: 80 });
+    const jpeg = await composeTransformationShareCardJpeg({
+      beforeBuffer,
+      afterBuffer,
+      memberName: 'Test Member',
+      beforeWeightKg: 90.9,
+      afterWeightKg: 60.8,
+      durationText: '6 months',
+      recoveredHealthIssues: ['Knee Pain', 'Back Pain', 'Headache'],
+    });
+    const meta = await sharp(jpeg).metadata();
+    assert.equal(meta.width, 540);
+    assert.equal(meta.height, 896);
+    // Pink issues box sits above the disclaimer — sample a mid-card band for pink fill.
+    const issuesBand = await sharp(jpeg)
+      .extract({ left: 40, top: 700, width: 40, height: 40 })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let pinkish = 0;
+    for (let i = 0; i < issuesBand.data.length; i += issuesBand.info.channels) {
+      if (issuesBand.data[i] > 220 && issuesBand.data[i + 1] > 200 && issuesBand.data[i + 2] > 210) {
+        pinkish += 1;
+      }
+    }
+    assert.ok(pinkish > 10, 'Health issues pink box should paint above the disclaimer');
+    assert.equal(await shareCardJpegHasReadableText(jpeg), true);
+  });
+
+  it('keeps a duration pill when before and after weight are the same', async () => {
+    const beforeBuffer = await solidJpeg(200, 300, { r: 200, g: 80, b: 80 });
+    const afterBuffer = await solidJpeg(200, 300, { r: 80, g: 160, b: 80 });
+    const withDuration = await composeTransformationShareCardJpeg({
+      beforeBuffer,
+      afterBuffer,
+      memberName: 'Kabilan',
+      beforeWeightKg: 70,
+      afterWeightKg: 70,
+      durationText: '4 months',
+    });
+    const withoutDuration = await composeTransformationShareCardJpeg({
+      beforeBuffer,
+      afterBuffer,
+      memberName: 'Kabilan',
+      beforeWeightKg: 70,
+      afterWeightKg: 70,
+      durationText: '—',
+    });
+    const withMeta = await sharp(withDuration).metadata();
+    const withoutMeta = await sharp(withoutDuration).metadata();
+    assert.ok(withMeta.height > withoutMeta.height, 'duration pill should add height when weight is unchanged');
+  });
+
+  it('rejects missing photo buffers', async () => {
+    await assert.rejects(
+      () => composeTransformationShareCardJpeg({
+        beforeBuffer: Buffer.from('x'),
+        afterBuffer: null,
+      }),
+      /After photo required/,
+    );
+  });
+});

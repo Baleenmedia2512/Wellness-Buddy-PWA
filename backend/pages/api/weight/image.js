@@ -2,7 +2,7 @@ import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import { validateImageInput } from '../../../features/weight/weight.validators.js';
 import { getImage } from '../../../features/weight/weight.service.js';
-import { sendImageRedirect } from '../../../shared/lib/r2/sendImageRedirect.js';
+import { sendStoredImage } from '../../../shared/lib/r2/sendImageRedirect.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, max-age=3600');
@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     if (result.httpStatus !== 200) {
       return res.status(result.httpStatus).json(result.body);
     }
-    if (sendImageRedirect(res, result.body?.r2Url)) return;
+    if (sendStoredImage(res, { r2Url: result.body?.r2Url, image: result.body?.image })) return;
     return res.status(404).json({ success: false, message: 'No image' });
   } catch (err) {
     if (err instanceof ValidationError) {

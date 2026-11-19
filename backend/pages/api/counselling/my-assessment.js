@@ -15,7 +15,7 @@
  *   Lead downloads app → registers with same mobile
  *   Profile page calls this endpoint → pre-fills from counselling data
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import logger from '../../../shared/lib/logger.js';
 
 export default async function handler(req, res) {
@@ -39,9 +39,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('wellness_counselling_assessments')
       .select('id, health_problems, eating_habits, sleep_data, medication_details, submitted_at')
       .eq('user_id', userIdInt)

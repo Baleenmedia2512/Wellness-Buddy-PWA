@@ -7,6 +7,7 @@ import {
   getCoachMember,
   getFullTeamMembers,
   getLatestWeightsForUsers,
+  getIdealWeightReachedAtForUsers,
 } from './reports.repository.js';
 import { computeIdealWeightRange } from '../../utils/weightValidation.js';
 import { paginateDownlineWeightRecords } from './domain/downline-weight.pagination.js';
@@ -14,7 +15,7 @@ import { cache } from '../../utils/cache.js';
 
 /** Short TTL so page/filter changes reuse the expensive hierarchy+weight build. */
 const REPORT_BUILD_CACHE_TTL_MS = 20_000;
-const REPORT_BUILD_CACHE_PREFIX = 'reports:downline-weight:v2:';
+const REPORT_BUILD_CACHE_PREFIX = 'reports:downline-weight:v3:';
 
 /**
  * Classify a member's weight status relative to their ideal range.
@@ -165,10 +166,13 @@ function readWeightEntry(weightMap, userId) {
   return { currentWeight: entry, lastUpdated: null };
 }
 
-function buildWeightRow(member, weightMap) {
+function buildWeightRow(member, weightMap, reachedAtMap = new Map()) {
   const { currentWeight, lastUpdated } = readWeightEntry(weightMap, member.UserId);
   const idealRange = computeIdealWeightRange(member.Height);
   const status = classifyStatus(currentWeight, idealRange);
+  const firstReachedAt = reachedAtMap.get(Number(member.UserId))
+    ?? reachedAtMap.get(member.UserId)
+    ?? null;
 
   return {
     userId: member.UserId,
@@ -180,6 +184,7 @@ function buildWeightRow(member, weightMap) {
     idealMax: idealRange?.idealMax ?? null,
     status,
     lastUpdated,
+    firstReachedAt,
   };
 }
 
@@ -207,16 +212,17 @@ async function buildDownlineWeightSnapshot(coachId) {
     ...fullTeamMembers.map((m) => m.UserId),
   ];
   const weightMap = await getLatestWeightsForUsers(userIds);
+  const reachedAtMap = await getIdealWeightReachedAtForUsers(userIds);
 
   const selfMember = coachMember || {
     UserId: coachId,
     UserName: 'You',
     Height: null,
   };
-  const selfBase = buildWeightRow(selfMember, weightMap);
+  const selfBase = buildWeightRow(selfMember, weightMap, reachedAtMap);
 
   const members = fullTeamMembers.map((m) => ({
-    ...buildWeightRow(m, weightMap),
+    ...buildWeightRow(m, weightMap, reachedAtMap),
     isDirect: m.isDirectToRoot === true,
     coachId: m.HierarchyParent ?? m.CoachId,
     reportsToCoachId: m.CoachId,
@@ -295,6 +301,7 @@ export async function getDownlineWeightStatus(rawQuery) {
     status: snapshot.self.status,
     difference: null,
     lastUpdated: snapshot.self.lastUpdated ?? null,
+    firstReachedAt: snapshot.self.firstReachedAt ?? null,
     teamPerformance: snapshot.self.teamPerformance ?? null,
   };
   if (

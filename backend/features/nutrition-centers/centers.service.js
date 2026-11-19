@@ -26,12 +26,13 @@ export async function register(input) {
     centerName, latitude, longitude, educationHour, ownerUserId, ownerPhone,
   } = input;
 
-  const { data: user, error: userErr } = await repo.findUserById(ownerUserId);
+  const [{ data: user, error: userErr }, { data: existing, error: dupErr }] = await Promise.all([
+    repo.findUserById(ownerUserId),
+    repo.findByName(centerName.trim()),
+  ]);
   if (userErr || !user) {
     return { httpStatus: 500, body: { success: false, message: 'User not found' } };
   }
-
-  const { data: existing, error: dupErr } = await repo.findByName(centerName.trim());
   if (dupErr) {
     return { httpStatus: 500, body: { success: false, message: dupErr.message } };
   }
@@ -57,8 +58,7 @@ export async function register(input) {
     is_deleted: false,
   });
 
-  cache.delete(GEO_LIST_CACHE_KEY);
-  cache.deletePattern('nutrition-centers:list:');
+  invalidateNutritionCentersListCache();
 
   return {
     httpStatus: 201,
@@ -68,9 +68,11 @@ export async function register(input) {
 
 // ─── shared: ownership + role guard ─────────────────────────────────────────
 async function assertOwnerOrAdmin(centerId, userId) {
-  const { data: center, error: centerErr } = await repo.findCenterOwner(centerId);
+  const [{ data: center, error: centerErr }, { data: user }] = await Promise.all([
+    repo.findCenterOwner(centerId),
+    repo.findUserRole(userId),
+  ]);
   if (centerErr || !center) return { allowed: false, httpStatus: 404, message: 'Center not found' };
-  const { data: user } = await repo.findUserRole(userId);
   const isOwner = center.owner_user_id === parseInt(userId, 10);
   const isAdmin = user && (user.Role === 'admin' || user.Role === 'developer');
   if (!isOwner && !isAdmin) {
@@ -103,8 +105,7 @@ export async function unregister({ centerId, userId }) {
     return { httpStatus: guard.httpStatus, body: { success: false, message: guard.message } };
   }
   await repo.softDeleteCenter(centerId);
-  cache.delete(GEO_LIST_CACHE_KEY);
-  cache.deletePattern('nutrition-centers:list:');
+  invalidateNutritionCentersListCache();
   return {
     httpStatus: 200,
     body: { success: true, message: 'Nutrition center unregistered successfully' },
@@ -115,14 +116,19 @@ export async function unregister({ centerId, userId }) {
 export async function updateCenter(input) {
   const { centerId, userId, centerName, latitude, longitude, ownerPhone, educationHour } = input;
 
-  const guard = await assertOwnerOrAdmin(centerId, userId);
+  const nameLookup = centerName !== undefined
+    ? repo.findByName(centerName.trim())
+    : Promise.resolve({ data: null });
+  const [guard, { data: existing }] = await Promise.all([
+    assertOwnerOrAdmin(centerId, userId),
+    nameLookup,
+  ]);
   if (!guard.allowed) {
     return { httpStatus: guard.httpStatus, body: { success: false, message: guard.message } };
   }
 
   // Name uniqueness: only check if name is being changed; skip if it belongs to the same centre
   if (centerName !== undefined) {
-    const { data: existing } = await repo.findByName(centerName.trim());
     if (existing && existing.id !== parseInt(centerId, 10)) {
       return {
         httpStatus: 409,
@@ -143,8 +149,7 @@ export async function updateCenter(input) {
   if (educationHour !== undefined) payload.education_hour = educationHour || null;
 
   const updated = await repo.updateCenter(centerId, payload);
-  cache.delete(GEO_LIST_CACHE_KEY);
-  cache.deletePattern('nutrition-centers:list:');
+  invalidateNutritionCentersListCache();
   return {
     httpStatus: 200,
     body: { success: true, data: updated, message: 'Nutrition center updated successfully' },
@@ -187,8 +192,24 @@ async function resolveTeamUserIds({ userIdNum, teamFilter }) {
 
 /** In-flight dedup — concurrent Full Team clicks share one hierarchy+metrics build. */
 const inflightListCenters = new Map();
+/** Bumped on create/update/delete so an older list query cannot repopulate the cache. */
+let centersListEpoch = 0;
 
-export async function listCenters(input) {
+export function getNutritionCentersListEpoch() {
+  return centersListEpoch;
+}
+
+export function invalidateNutritionCentersListCache() {
+  centersListEpoch += 1;
+  cache.delete(GEO_LIST_CACHE_KEY);
+  cache.deletePattern('nutrition-centers:list:');
+}
+
+function listCacheIsCurrent(epochAtStart) {
+  return epochAtStart === centersListEpoch;
+}
+
+export async function listCenters(input, attempt = 0) {
   const {
     userId, teamFilter, scope, includeMetrics = true, startDate, endDate,
     page, limit, search, paginate = true,
@@ -198,17 +219,26 @@ export async function listCenters(input) {
   const cacheKey = [
     userIdNum, teamFilter, scope, startDate || '', endDate || '', includeMetrics ? 1 : 0,
   ].join(':');
+  const epochAtStart = centersListEpoch;
 
-  if (inflightListCenters.has(cacheKey)) {
-    const shared = await inflightListCenters.get(cacheKey);
+  const inflight = inflightListCenters.get(cacheKey);
+  if (inflight && inflight.epoch === epochAtStart) {
+    const shared = await inflight.promise;
+    if (!listCacheIsCurrent(epochAtStart) && attempt < 2) {
+      return listCenters(input, attempt + 1);
+    }
     return applyCentersPagination(shared, { page, limit, search, paginate, includeMetrics });
   }
 
-  const promise = listCentersImpl(input).finally(() => {
-    inflightListCenters.delete(cacheKey);
+  const promise = listCentersImpl(input, epochAtStart).finally(() => {
+    const current = inflightListCenters.get(cacheKey);
+    if (current?.promise === promise) inflightListCenters.delete(cacheKey);
   });
-  inflightListCenters.set(cacheKey, promise);
+  inflightListCenters.set(cacheKey, { epoch: epochAtStart, promise });
   const result = await promise;
+  if (!listCacheIsCurrent(epochAtStart) && attempt < 2) {
+    return listCenters(input, attempt + 1);
+  }
   return applyCentersPagination(result, { page, limit, search, paginate, includeMetrics });
 }
 
@@ -231,7 +261,7 @@ function applyCentersPagination(result, { page, limit, search, paginate, include
   };
 }
 
-async function listCentersImpl(input) {
+async function listCentersImpl(input, epochAtStart = centersListEpoch) {
   const { userId, teamFilter, scope, includeMetrics = true } = input;
   let { startDate, endDate } = input;
   const userIdNum = parseInt(userId, 10);
@@ -257,7 +287,9 @@ async function listCentersImpl(input) {
       owner_user_id: c.owner_user_id,
       status: c.status,
     }));
-    cache.set(GEO_LIST_CACHE_KEY, geo, GEO_LIST_CACHE_TTL_MS);
+    if (listCacheIsCurrent(epochAtStart)) {
+      cache.set(GEO_LIST_CACHE_KEY, geo, GEO_LIST_CACHE_TTL_MS);
+    }
     return { httpStatus: 200, body: { success: true, data: geo } };
   }
 
@@ -329,7 +361,9 @@ async function listCentersImpl(input) {
     };
   });
 
-  cache.set(metricsCacheKey, centersWithMetrics, LIST_METRICS_CACHE_TTL_MS);
+  if (listCacheIsCurrent(epochAtStart)) {
+    cache.set(metricsCacheKey, centersWithMetrics, LIST_METRICS_CACHE_TTL_MS);
+  }
   return { httpStatus: 200, body: { success: true, data: centersWithMetrics } };
 }
 

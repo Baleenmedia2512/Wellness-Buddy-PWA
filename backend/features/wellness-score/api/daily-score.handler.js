@@ -1,4 +1,4 @@
-import { getTimeWindows } from '../../../utils/disciplineCalculationsSupabase.js';
+import { getTimeWindows } from '../../../utils/disciplineCalculationsQuery.js';
 import { computeDailyIntake } from '../../water/domain/intake.rules.js';
 import * as waterRepo from '../../water/data/water.repo.js';
 import { fetchMealsForDate } from '../../food-corrections/food-corrections.repository.js';

@@ -8,6 +8,7 @@ import useWebOtp from '../features/user/hooks/useWebOtp';
 import storage from '../shared/lib/storage';
 import { debugLog } from '../shared/utils/logger';
 import OtpInputCells from '../shared/components/OtpInputCells.jsx';
+import { scheduleFocusInputForKeyboard } from '../shared/utils/focusInputForKeyboard.js';
 import { getStatus } from '../features/user/services/user.api.js';
 import { isAppUpdateRequiredResponse } from '../shared/services/appVersionEnforce.client.js';
 
@@ -54,10 +55,10 @@ const ValidateOTP = ({
   // Auto-focus first cell on mount so the keyboard appears immediately and iOS
   // QuickType can surface the OTP suggestion without an extra tap.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    const t = setTimeout(() => refs.current[0]?.focus(), 300);
-    return () => clearTimeout(t);
-  }, []);
+  useEffect(
+    () => scheduleFocusInputForKeyboard(() => refs.current[0]),
+    [],
+  );
 
   // Fetch request info on load
   useEffect(() => {

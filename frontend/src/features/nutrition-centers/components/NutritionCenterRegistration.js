@@ -7,7 +7,7 @@ import PhoneContactActions from '../../../shared/components/PhoneContactActions.
 import { Geolocation } from '@capacitor/geolocation';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { loadGoogleMaps } from '../services/googleMapsLoader';
-import { apiFetch } from '../../../shared/services/apiFetch.js';
+import { getUserId } from '../../../shared/services/userIdentity';
 import { splitOwnerPhone } from '../domain/ownerPhone.js';
 
 const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) => {
@@ -424,14 +424,13 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     setOwnerPhone(limitedValue);
   };
 
-  // Get user ID helper
-  const getUserId = async (email) => {
-    const response = await apiFetch(
-      `${apiBaseUrl}/api/user/lookup?email=${encodeURIComponent(email)}`
-    );
-    const data = await response.json();
-    if (!data.success) throw new Error('User not found');
-    return data.userId;
+  // Resolve DB UserId from session/user object (supports phone-login users without email)
+  const resolveOwnerUserId = async () => {
+    const userId = await getUserId(user);
+    if (!userId) {
+      throw new Error('Unable to verify your account. Please sign in again.');
+    }
+    return userId;
   };
 
   // Fetch user's centres
@@ -440,7 +439,7 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
 
     setLoadingCenters(true);
     try {
-      const userId = await getUserId(user.email);
+      const userId = await resolveOwnerUserId();
       const response = await fetch(
         `${apiBaseUrl}/api/nutrition-centers?userId=${userId}&teamFilter=self&paginate=0`,
         {
@@ -481,6 +480,10 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     setOwnerPhone(nextPhone);
     setNameAvailable(null);
     setNameChecking(false);
+    setSearchAddress('');
+    if (searchBoxRef.current) {
+      searchBoxRef.current.value = '';
+    }
     setError(null);
     setSuccess(null);
     if (googleMapRef.current && window.google) {
@@ -504,6 +507,10 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     setCountryCode('+91');
     setNameAvailable(null);
     setNameChecking(false);
+    setSearchAddress('');
+    if (searchBoxRef.current) {
+      searchBoxRef.current.value = '';
+    }
     setError(null);
     if (markerRef.current) {
       markerRef.current.setMap(null);
@@ -528,7 +535,7 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
       if (nameAvailable === false) {
         throw new Error('This centre name is already taken. Please choose a different name.');
       }
-      const userId = await getUserId(user.email);
+      const userId = await resolveOwnerUserId();
       const response = await fetch(`${apiBaseUrl}/api/nutrition-centers`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -545,26 +552,10 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
       if (!response.ok || !result.success) {
         throw new Error(result.message || 'Failed to update centre');
       }
-      setSuccess('Nutrition centre updated successfully!');
-      // Refresh club list so phone (and other fields) show the new value immediately.
+      // Leave as soon as the write succeeds. The club list paints this row
+      // immediately and refreshes attendance in the background.
       if (typeof onSaved === 'function') onSaved(result.data);
-      await fetchMyCenters();
-      setTimeout(() => {
-        setSuccess(null);
-        setEditingCenter(null);
-        setCenterName('');
-        setLatitude('');
-        setLongitude('');
-        setOwnerPhone('');
-        setCountryCode('+91');
-        setNameAvailable(null);
-        setNameChecking(false);
-        if (markerRef.current) {
-          markerRef.current.setMap(null);
-          markerRef.current = null;
-        }
-        if (onBack) onBack();
-      }, 800);
+      if (typeof onBack === 'function') onBack();
     } catch (err) {
       debugLog('Error updating centre:', err);
       setError(err.message);
@@ -598,7 +589,7 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
         throw new Error('This centre name is already taken. Please choose a different name.');
       }
 
-      const userId = await getUserId(user.email);
+      const userId = await resolveOwnerUserId();
 
       const response = await fetch(`${apiBaseUrl}/api/nutrition-centers`, {
         method: 'POST',
@@ -622,26 +613,10 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
       }
 
       setSuccess('Nutrition centre registered successfully!');
-      
-      // Reset form
-      setCenterName('');
-      setLatitude('');
-      setLongitude('');
-      setOwnerPhone('');
-      setCountryCode('+91');
-      setNameAvailable(null);
-      setNameChecking(false);
-      
-      if (markerRef.current) {
-        markerRef.current.setMap(null);
-        markerRef.current = null;
-      }
 
-      // Refresh centres list
-      fetchMyCenters();
-
-      // Clear success message after 3 seconds
-      setTimeout(() => setSuccess(null), 3000);
+      // Leave the form and show Mine, including the club just registered.
+      if (typeof onSaved === 'function') onSaved(result.data);
+      if (typeof onBack === 'function') onBack();
     } catch (err) {
       console.error('Error registering centre:', err);
       setError(err.message);
@@ -670,7 +645,7 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
   const confirmUnregister = async (centerId) => {
 
     try {
-      const userId = await getUserId(user.email);
+      const userId = await resolveOwnerUserId();
 
       const response = await fetch(`${apiBaseUrl}/api/nutrition-centers/unregister`, {
         method: 'POST',
@@ -690,7 +665,9 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
       }
 
       setSuccess('Centre unregistered successfully');
-      fetchMyCenters();
+      setAlertModal(prev => ({ ...prev, isOpen: false }));
+      if (typeof onSaved === 'function') onSaved();
+      else fetchMyCenters();
 
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
@@ -748,7 +725,7 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
                 <TouchFeedbackButton
                   type="button"
                   onClick={handleUpdate}
-                  disabled={loading || nameAvailable === false || nameChecking}
+                  disabled={loading || nameAvailable === false}
                   className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {loading ? (
@@ -916,7 +893,7 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
             {!editingCenter && (
               <TouchFeedbackButton
                 type="submit"
-                disabled={loading || nameAvailable === false || nameChecking}
+                disabled={loading || nameAvailable === false}
                 className="w-full py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {loading ? (

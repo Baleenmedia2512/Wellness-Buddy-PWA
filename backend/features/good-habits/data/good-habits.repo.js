@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import logger from '../../../shared/lib/logger.js';
 import { applyDayFilterWidened } from '../../../shared/lib/datetime/applyDayFilter.js';
 import {
@@ -14,8 +14,8 @@ function isMissingColumn(error, columnName) {
 }
 
 export async function insertHabit(payload) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('good_habits_table')
     .insert(payload)
     .select('"ID", "UserId", "HabitType", "Notes", "CaptureID", "CreatedAt"')
@@ -26,8 +26,8 @@ export async function insertHabit(payload) {
 
 export async function findGoodHabitImageKeyByCaptureId(captureId) {
   if (captureId == null || String(captureId).trim() === '') return null;
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('good_habits_table')
     .select('"ImageKey"')
     .eq('"CaptureID"', captureId)
@@ -43,8 +43,8 @@ export async function findGoodHabitImageKeyByCaptureId(captureId) {
 
 export async function attachGoodHabitImageKeyByCaptureId(captureId, userId, imageKey) {
   if (!captureId || !imageKey) return;
-  const supabase = getSupabaseClient();
-  const { error } = await supabase
+  const db = getMysqlClient();
+  const { error } = await db
     .from('good_habits_table')
     .update({ ImageKey: imageKey, ImageBase64: null })
     .eq('"CaptureID"', captureId)
@@ -57,7 +57,7 @@ export async function attachGoodHabitImageKeyByCaptureId(captureId, userId, imag
 }
 
 export async function updateGoodHabitImageKeys(habitId, userId, patch) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const safePatch = {};
   if (patch?.ImageKey) {
     safePatch.ImageKey = patch.ImageKey;
@@ -72,7 +72,7 @@ export async function updateGoodHabitImageKeys(habitId, userId, patch) {
     safePatch.AfterImageBase64 = null;
   }
   if (!Object.keys(safePatch).length) return;
-  const { error } = await supabase
+  const { error } = await db
     .from('good_habits_table')
     .update(safePatch)
     .eq('"ID"', habitId)
@@ -106,9 +106,9 @@ export async function listPendingGoodHabitImageBackfill({
   startYmd,
   endYmd,
 } = {}) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const endExclusiveYmd = shiftDateYmd(endYmd, 1, IANA_IST);
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('good_habits_table')
     .select('"ID", "UserId", "CaptureID", "ImageBase64", "BeforeImageBase64", "AfterImageBase64", "ImageKey", "BeforeImageKey", "AfterImageKey", "CreatedAt"')
     .eq('"IsDeleted"', 0)
@@ -133,8 +133,8 @@ export async function listPendingGoodHabitImageBackfill({
 }
 
 export async function getHabitImage(id, userId) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('good_habits_table')
     .select('"ImageKey", "AfterImageKey", "BeforeImageKey"')
     .eq('"ID"', id)
@@ -146,8 +146,8 @@ export async function getHabitImage(id, userId) {
 }
 
 export async function softDeleteHabit(id, userId, updatedAt) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('good_habits_table')
     .update({ IsDeleted: 1, UpdatedAt: updatedAt })
     .eq('"ID"', id)
@@ -161,8 +161,8 @@ export async function softDeleteHabit(id, userId, updatedAt) {
 
 export async function listHabitsForDate(userId, date, timezoneIana = IANA_IST) {
   if (userId == null || String(userId).trim() === '') return [];
-  const supabase = getSupabaseClient();
-  let query = supabase
+  const db = getMysqlClient();
+  let query = db
     .from('good_habits_table')
     .select('"CreatedAt", "HabitType"')
     .eq('"UserId"', String(userId))
@@ -181,8 +181,8 @@ export async function listHabitsForDate(userId, date, timezoneIana = IANA_IST) {
 }
 
 export async function restoreHabit(id, userId, updatedAt) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('good_habits_table')
     .update({ IsDeleted: 0, UpdatedAt: updatedAt })
     .eq('"ID"', id)

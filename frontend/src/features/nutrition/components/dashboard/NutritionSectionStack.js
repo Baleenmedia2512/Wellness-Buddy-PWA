@@ -28,6 +28,7 @@ export default function NutritionSectionStack({
   latestWeight,
   gender = null,
   analyses = [],
+  periodContext = null,
 }) {
   const { modalState, handleOpenModal, handleCloseModal } = useNutrientBreakdownModal();
 
@@ -111,6 +112,7 @@ export default function NutritionSectionStack({
         calorieTarget={calorieTarget}
         heartCard={heartCard}
         lowCarbCard={lowCarbCard}
+        periodContext={periodContext}
       />
     </div>
   );

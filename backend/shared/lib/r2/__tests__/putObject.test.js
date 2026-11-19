@@ -48,6 +48,39 @@ describe('putObject', () => {
       /not configured/,
     );
   });
+
+  it('stays on R2 when an explicit config is passed even if MilesWeb env is set', async () => {
+    const prevHost = process.env.MILESWEB_FTP_HOST;
+    const prevUser = process.env.MILESWEB_FTP_USER;
+    const prevPass = process.env.MILESWEB_FTP_PASSWORD;
+    process.env.MILESWEB_FTP_HOST = 'spectrum.herosite.pro';
+    process.env.MILESWEB_FTP_USER = 'ftp-user';
+    process.env.MILESWEB_FTP_PASSWORD = 'ftp-pass';
+    try {
+      const config = readR2Config(SAMPLE_ENV);
+      let captured;
+      const fetchImpl = async (url, init) => {
+        captured = { url, init };
+        return { ok: true, status: 200, headers: { get: () => '"etag"' }, text: async () => '' };
+      };
+      const result = await putObject({
+        key: 'food/7/99/ab.jpg',
+        body: Buffer.from('jpeg-bytes'),
+        contentType: 'image/jpeg',
+        fetchImpl,
+        config,
+      });
+      assert.equal(result.key, 'food/7/99/ab.jpg');
+      assert.match(captured.url, /r2\.cloudflarestorage\.com/);
+    } finally {
+      if (prevHost === undefined) delete process.env.MILESWEB_FTP_HOST;
+      else process.env.MILESWEB_FTP_HOST = prevHost;
+      if (prevUser === undefined) delete process.env.MILESWEB_FTP_USER;
+      else process.env.MILESWEB_FTP_USER = prevUser;
+      if (prevPass === undefined) delete process.env.MILESWEB_FTP_PASSWORD;
+      else process.env.MILESWEB_FTP_PASSWORD = prevPass;
+    }
+  });
 });
 
 describe('deleteObject', () => {

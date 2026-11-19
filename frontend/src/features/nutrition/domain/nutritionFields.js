@@ -79,6 +79,12 @@ export function sumNutrition(nutritions) {
  * @returns {{ unit: 'pcs'|'cups'|'servings', shortLabel: string }}
  */
 export function resolveQuantityUnit(item) {
+  // Explicit g/ml base servings (custom foods) use the meal stepper as "servings".
+  const explicitUnit = String(item?.unit || '').toLowerCase();
+  if (explicitUnit === 'g' || explicitUnit === 'ml' || item?.customFood) {
+    return { unit: 'servings', shortLabel: 'servings' };
+  }
+
   const blob = [
     item?.portion,
     item?.portion_label,
@@ -93,7 +99,7 @@ export function resolveQuantityUnit(item) {
     return { unit: 'cups', shortLabel: 'cups' };
   }
   if (
-    /\b(piece|pieces|pcs|idli|idly|dosa|roti|chapati|paratha|vada|egg|biscuit|cookie|medium)\b/.test(blob)
+    /\b(piece|pieces|pcs|idli|idly|idaly|dosa|roti|chapati|chapathi|chappathi|paratha|porata|parotta|porotta|idiyappam|idyapam|idiappam|vada|egg|biscuit|cookie|medium)\b/.test(blob)
     || /\b1\s+(piece|idli|dosa|roti|medium)\b/.test(blob)
   ) {
     return { unit: 'pcs', shortLabel: 'pcs' };
@@ -214,6 +220,8 @@ export function buildAnalysisFromManualFood(m) {
     if (Number.isFinite(servings) && servings > 0) item.servings = servings;
     if (f.isLiquid != null) item.isLiquid = f.isLiquid;
     if (f.volume_ml != null) item.volume_ml = f.volume_ml;
+    if (f.unit) item.unit = f.unit;
+    if (f.profileId != null) item.profileId = f.profileId;
     return item;
   };
 
@@ -225,7 +233,7 @@ export function buildAnalysisFromManualFood(m) {
     : undefined;
 
   const withMeta = (base) => {
-    const out = { ...base };
+    const out = { ...base, source: 'manual' };
     if (mealKind) out.mealKind = mealKind;
     if (intakeSlot) out.intakeSlot = intakeSlot;
     return out;

@@ -75,5 +75,6 @@ export function buildAfreshAnalysisResult(scoops = 1) {
     total: nutrition,
     confidence: 'high',
     processedBy: 'afresh_preset',
+    source: 'manual',
   };
 }

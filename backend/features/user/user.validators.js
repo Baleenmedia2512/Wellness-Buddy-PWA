@@ -11,6 +11,7 @@ import {
   hasTransformationPhotoUpdates,
   isStoredTransformationPhoto,
 } from './domain/transformationPhotos.rules.js';
+import { validateHeightCm as validateHeightCmInput } from './domain/heightChange.rules.js';
 
 const VALID_DIETS = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
 const VALID_GOAL_MODES = ['loss', 'gain', 'maintain'];
@@ -214,6 +215,15 @@ export function validateUpdateProfile(body) {
     }
   }
 
+  // Complete Profile (BCM/BPC review) — optional; old clients omit it.
+  let bcmProfileReviewed;
+  if ('bcmProfileReviewed' in body || 'bcm_profile_reviewed' in body) {
+    const raw = body.bcmProfileReviewed !== undefined
+      ? body.bcmProfileReviewed
+      : body.bcm_profile_reviewed;
+    bcmProfileReviewed = raw === true || raw === 'true' || raw === 1 || raw === '1';
+  }
+
   return {
     email,
     userId: resolvedUserId,
@@ -238,6 +248,7 @@ export function validateUpdateProfile(body) {
     hipCm,
     recoveredHealthIssues,
     transformationPhotos,
+    bcmProfileReviewed,
   };
 }
 
@@ -436,6 +447,26 @@ export function validateCommunityIdVerify(body) {
     throw new ValidationError(400, 'Enter the 4-digit approval code from your sponsor');
   }
   return { ...identity, otp };
+}
+
+export function validateHeightChangeRequest(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const check = validateHeightCmInput(body.height ?? body.Height);
+  if (!check.valid) throw new ValidationError(400, check.message);
+  return { ...identity, height: check.value };
+}
+
+export function validateHeightChangeVerify(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const check = validateHeightCmInput(body.height ?? body.Height);
+  if (!check.valid) throw new ValidationError(400, check.message);
+  const otp = body?.otp != null ? String(body.otp).trim() : '';
+  if (!otp || !/^\d{4}$/.test(otp)) {
+    throw new ValidationError(400, 'Enter the 4-digit code sent to your email or phone');
+  }
+  return { ...identity, height: check.value, otp };
 }
 
 export { VALID_DIETS, VALID_GENDERS };

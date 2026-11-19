@@ -126,6 +126,7 @@ export function useTeamSearch({
       coachEmail: user.email,
       coachRole: userRole,
       coachCommunityId: coachCommunityIdRef.current || coachCommunityId,
+      coachPhone: user?.phoneNumber || user?.PhoneNumber || user?.phone || null,
     })
       .then((members) => {
         if (cancelled) return;

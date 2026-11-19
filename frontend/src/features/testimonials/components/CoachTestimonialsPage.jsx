@@ -2,18 +2,18 @@
  * CoachTestimonialsPage.jsx
  * Unified testimonials card view for every user.
  *
- * Unified per-member card shows ALL 5 slots:
- *   • Before photo · After photo · Health video · Business video · Health issues
+ * Per-member card:
+ *   • Mine: edit slots + video upload → divider → branded card → Share Image → videos
+ *   • Direct/Full: header → divider → branded card → Share Image → videos → Share Video
+ *     (no duplicate video block above the branded card)
  *
  * With downline: Mine | Direct | Full + search + upload filters.
  * Without downline: own card only (no Direct/Full/search/filters).
- *
- * Video playback: Instagram-style tap-to-play inline modal.
  */
 import React, { useEffect, useCallback, useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AlertCircle, ArrowLeft, Camera, CheckCircle, CircleDot, Clock,
+  AlertCircle, ArrowLeft, Camera, CheckCircle, CircleDot, Clock, Crop,
   Images, Mail, Pencil, Plus, RefreshCw, Save, ShieldCheck, Upload, Users, Video,
   X, TrendingDown, TrendingUp,
 } from 'lucide-react';
@@ -23,7 +23,7 @@ import NativeInput from '../../../shared/components/NativeInput.jsx';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import {
   listForCoach, getMyTestimonial, getMyVideoTestimonial, getTeamTestimonialReport,
-  getTestimonialDetail, submitAllEdits, verifyUnifiedOtp, resendUnifiedOtp, prepareTestimonialVideoUpload,
+  getTestimonialDetail, submitAllEdits, verifyUnifiedOtp, resendUnifiedOtp, cancelUnifiedOtp, prepareTestimonialVideoUpload,
 } from '../services/testimonialApi.js';
 import { getProfile } from '../../user/services/user.api.js';
 import { uploadTestimonialVideoInChunks } from '../services/testimonialVideoUpload.js';
@@ -40,6 +40,7 @@ import {
   TransformationCardContent,
   TransformationShareActions,
 } from './TransformationShareCard.jsx';
+
 import { CARD_W, CARD_H } from '../utils/shareCardLayout.js';
 import { getCachedVideoThumbnail } from '../utils/videoThumbnailCache.js';
 import { jpegDataUrlToObjectUrl, revokeBlobUrl, withTestimonialMediaCacheBust } from '../utils/testimonialMediaUrl.js';
@@ -68,10 +69,19 @@ import {
   parseDurationText,
   formatDurationText,
   sanitizeDurationDigits,
+  sanitizeWeightTyping,
+  parseWeightKg,
   validateDurationFields,
   isUsableDurationText,
   liveWeightDiffKg,
+  isTransformationWeightLoss,
   canShareTransformationPhoto,
+  
+  
+  hasApprovalReadyBeforePhoto,
+  hasDistinctTransformationAfter,
+  hasStoredTransformationBefore,
+  hasStoredTransformationPhotoCard,
 } from '../services/testimonialFormUtils.js';
 import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
 import { uniqueConditions, isSameIssueList, withoutHealthIssue } from '../utils/uniqueConditions.js';
@@ -178,7 +188,54 @@ function VideoPlayerModal({ url, title, onClose }) {
   );
 }
 
-// â”€â”€ Video play button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/**
+ * On-screen branded Transformation Results card (scaled to card width).
+ * Share capture still uses a full-size hidden clone so html2canvas stays sharp.
+ */
+function VisibleTransformationCard({ testimonial, userName }) {
+  const wrapRef = useRef(null);
+  const [scale, setScale] = useState(0);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return undefined;
+    const update = () => {
+      const w = el.clientWidth;
+      if (w > 0) setScale(w / CARD_W);
+    };
+    update();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    ro?.observe(el);
+    window.addEventListener('resize', update);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={wrapRef}
+      className="w-full overflow-hidden rounded-2xl border border-emerald-100 shadow-sm bg-white"
+      style={{
+        height: scale > 0 ? Math.round(CARD_H * scale) : undefined,
+        aspectRatio: scale > 0 ? undefined : `${CARD_W} / ${CARD_H}`,
+      }}
+      aria-label="Transformation results card"
+    >
+      <div
+        style={{
+          width: CARD_W,
+          height: CARD_H,
+          transform: scale > 0 ? `scale(${scale})` : undefined,
+          transformOrigin: 'top left',
+        }}
+      >
+        <TransformationCardContent testimonial={testimonial} userName={userName} />
+      </div>
+    </div>
+  );
+}
 
 // VideoThumbnailBtn replaced by VideoThumbnailCard (imported above)
 // â”€â”€ Upload completeness badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -305,7 +362,7 @@ function MemberAvatar({ user }) {
   let remote = null;
   try {
     if (userId != null && !failed && !inline) {
-      remote = buildUserAvatarUrl(getApiBaseUrl(), userId, avatarVersion);
+      remote = buildUserAvatarUrl(getApiBaseUrl(), userId, avatarVersion, { profileOnly: true });
     }
   } catch {
     remote = null;
@@ -407,14 +464,21 @@ function UnifiedOtpInline({
   otpExpired: otpExpiredProp = null,
   onVerified,
   onOtpMetaUpdate,
+  onClose,
 }) {
   const [otp,     setOtp]     = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [resending, setResending] = React.useState(false);
+  const [closing, setClosing] = React.useState(false);
+  const [dismissed, setDismissed] = React.useState(false);
   const [err,     setErr]     = React.useState(null);
   const [info,    setInfo]    = React.useState(null);
   const [expiresAt, setExpiresAt] = React.useState(otpExpiresAt);
   const [tick, setTick] = React.useState(0);
+
+  React.useEffect(() => {
+    setDismissed(false);
+  }, [userId, otpExpiresAt]);
 
   React.useEffect(() => {
     setExpiresAt(otpExpiresAt);
@@ -438,6 +502,19 @@ function UnifiedOtpInline({
     setErr(null);
   };
 
+  const handleClose = () => {
+    if (dismissed || closing || loading || resending) return;
+    setDismissed(true);
+    setClosing(true);
+    try {
+      void Promise.resolve(onClose?.()).finally(() => {
+        setClosing(false);
+      });
+    } catch {
+      setClosing(false);
+    }
+  };
+
   const submit = async () => {
     setErr(null);
     setInfo(null);
@@ -451,8 +528,9 @@ function UnifiedOtpInline({
     }
     setLoading(true);
     try {
-      await verifyUnifiedOtp({ userId, otp: otp.trim() });
-      onVerified();
+      const result = await verifyUnifiedOtp({ userId, otp: otp.trim() });
+      setDismissed(true);
+      onVerified?.(result?.testimonial || result?.data);
     } catch (e) {
       const msg = e.message || `Invalid OTP. Please check with ${sponsorLabel}.`;
       setErr(msg);
@@ -486,8 +564,12 @@ function UnifiedOtpInline({
     }
   };
 
+  if (dismissed) {
+    return null;
+  }
+
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3 relative">
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
         <p className="text-sm font-semibold text-amber-800">
@@ -524,21 +606,49 @@ function UnifiedOtpInline({
       {err && <p className="text-xs text-red-600 text-center">{err}</p>}
       {info && <p className="text-xs text-emerald-700 text-center">{info}</p>}
       {!expired ? (
-        <TouchFeedbackButton
-          onClick={submit}
-          disabled={loading || otp.length !== EMAIL_OTP_LENGTH}
-          className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold disabled:opacity-60 transition-colors"
-        >
-          {loading ? 'Verifying\u2026' : 'Verify with OTP'}
-        </TouchFeedbackButton>
+        <div className="flex items-center gap-3 w-full">
+          {onClose && (
+            <TouchFeedbackButton
+              type="button"
+              onClick={handleClose}
+              disabled={closing || loading || resending}
+              className="flex-1 py-3 rounded-xl bg-red-500 hover:bg-red-600 active:bg-red-700 text-white text-sm font-bold disabled:opacity-60 transition-colors text-center"
+              aria-label="Close OTP verification and revert changes"
+            >
+              {closing ? 'Closing\u2026' : 'Close'}
+            </TouchFeedbackButton>
+          )}
+          <TouchFeedbackButton
+            type="button"
+            onClick={submit}
+            disabled={loading || otp.length !== EMAIL_OTP_LENGTH}
+            className={`${onClose ? 'flex-1' : 'w-full'} py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-bold disabled:opacity-60 transition-colors text-center`}
+          >
+            {loading ? 'Verifying\u2026' : 'Verify with OTP'}
+          </TouchFeedbackButton>
+        </div>
       ) : (
-        <TouchFeedbackButton
-          onClick={resend}
-          disabled={resending}
-          className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold disabled:opacity-60 transition-colors"
-        >
-          {resending ? 'Sending\u2026' : `Resend OTP to ${sponsorLabel}`}
-        </TouchFeedbackButton>
+        <div className="flex items-center gap-3 w-full">
+          {onClose && (
+            <TouchFeedbackButton
+              type="button"
+              onClick={handleClose}
+              disabled={closing || loading || resending}
+              className="flex-1 py-3 rounded-xl bg-red-500 hover:bg-red-600 active:bg-red-700 text-white text-sm font-bold disabled:opacity-60 transition-colors text-center"
+              aria-label="Close OTP verification and revert changes"
+            >
+              {closing ? 'Closing\u2026' : 'Close'}
+            </TouchFeedbackButton>
+          )}
+          <TouchFeedbackButton
+            type="button"
+            onClick={resend}
+            disabled={resending}
+            className={`${onClose ? 'flex-1' : 'w-full'} py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-bold disabled:opacity-60 transition-colors text-center`}
+          >
+            {resending ? 'Sending\u2026' : `Resend OTP to ${sponsorLabel}`}
+          </TouchFeedbackButton>
+        </div>
       )}
     </div>
   );
@@ -669,9 +779,8 @@ function MemberCard({
   }, [testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
   const [expandedPhoto, setExpandedPhoto] = useState(null);
-  // Seeded Left/Before clone still has afterImageUrl — show that image to coach/upline.
-  // hasAfter = "real" After (completeness / weight-diff / OTP), not merely a visible clone.
-  const hasAfterImage = Boolean(testimonial?.afterImageUrl);
+  // After is shown only when it is a different file from Before.
+  const hasAfterImage = hasDistinctTransformationAfter(testimonial);
   const hasAfter = hasAfterImage
     && (
       testimonial?.status !== 'incomplete'
@@ -692,6 +801,53 @@ function MemberCard({
   const [draftHealthPreview,   setDraftHealthPreview]   = useState(null);
   const [draftBusinessPreview, setDraftBusinessPreview] = useState(null);
   const [draftIssues,   setDraftIssues]   = useState(null);
+
+  // Baseline snapshot before unverified / pending edits were applied
+  const baselineKey = userId ? `transformation_baseline_${userId}` : null;
+  const baselineTestimonialRef = useRef(null);
+
+  useEffect(() => {
+    if (testimonial && testimonial.status !== 'pending' && !testimonial.hasPendingOtp && !testimonial.otpPending) {
+      const snap = {
+        status: testimonial.status,
+        beforeImagePath: testimonial.beforeImagePath,
+        afterImagePath: testimonial.afterImagePath,
+        beforeWeightKg: testimonial.beforeWeightKg,
+        afterWeightKg: testimonial.afterWeightKg,
+        goalType: testimonial.goalType,
+        durationText: testimonial.durationText,
+        recoveredHealthIssues: testimonial.recoveredHealthIssues,
+        videoStatus: testimonial.videoStatus,
+        healthVideoPath: testimonial.healthVideoPath,
+        businessVideoPath: testimonial.businessVideoPath,
+        beforeImageUrl: testimonial.beforeImageUrl,
+        afterImageUrl: testimonial.afterImageUrl,
+        healthVideoUrl: testimonial.healthVideoUrl,
+        businessVideoUrl: testimonial.businessVideoUrl,
+        verifiedAt: testimonial.verifiedAt,
+      };
+      baselineTestimonialRef.current = snap;
+      if (baselineKey) {
+        try {
+          localStorage.setItem(baselineKey, JSON.stringify(snap));
+        } catch {}
+      }
+    }
+  }, [testimonial, baselineKey]);
+
+  const clearDrafts = useCallback(() => {
+    setDraftBefore((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
+    setDraftAfter((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
+    setDraftHealthPath(null);
+    setDraftBusinessPath(null);
+    setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return null; });
+    setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return null; });
+    setDraftIssues(null);
+    setBeforeWeightText(null);
+    setAfterWeightText(null);
+    setDurationValueText(null);
+    setExpandedSlots(new Set());
+  }, []);
   // Freeze the last approved issue list while new tags are draft/pending OTP.
   useEffect(() => {
     if (draftIssues != null) return;
@@ -712,7 +868,12 @@ function MemberCard({
   const [videoSizeAlert,  setVideoSizeAlert]  = useState(null);
   const [submitDone,      setSubmitDone]      = useState(false);
   const [unifiedOtpVerified, setUnifiedOtpVerified] = useState(false);
+  const [unifiedOtpDismissed, setUnifiedOtpDismissed] = useState(false);
   const [mediaEpoch, setMediaEpoch] = useState(0);
+
+  useEffect(() => {
+    setUnifiedOtpDismissed(false);
+  }, [userId, testimonial?.id]);
   const shareCardRef = useRef(null);
   const compressBusyRef = useRef(false);
   const cropSlotRef = useRef('before');
@@ -766,11 +927,11 @@ function MemberCard({
     draftAfter?.imageBase64  && 'after',
     draftHealthPath          && 'health',
     draftBusinessPath        && 'business',
-    // Only mark issues dirty when the list actually has labels (empty [] caused 422 on complete photo submit).
-    Array.isArray(draftIssues) && draftIssues.filter(Boolean).length > 0 && 'issues',
+    // Mark issues dirty whenever draftIssues array exists
+    Array.isArray(draftIssues) && 'issues',
   ].filter(Boolean);
-  // hasDirtySlots: true for ANY pending change including weight-only edits
-  const hasDirtySlots = dirtySlots.length > 0 || !!draftBefore || !!draftAfter;
+  // hasDirtySlots: true for ANY pending change including weight-only edits or video drafts
+  const hasDirtySlots = dirtySlots.length > 0 || !!draftBefore || !!draftAfter || !!draftHealthPreview || !!draftBusinessPreview || !!draftHealthPath || !!draftBusinessPath || Array.isArray(draftIssues);
   const changedCount = Math.max(dirtySlots.length, hasDirtySlots ? 1 : 0);
   const anyVideoUploading = uploadingHealth || uploadingBusiness;
 
@@ -784,22 +945,22 @@ function MemberCard({
     ?? testimonial?.afterWeightKg
     ?? shownBeforeKg;
   const displayAfterKg  = Number(shownAfterKg ?? 0);
-  const displayGoalType = draftBefore?.goalType ?? testimonial?.goalType;
   const displayDuration = draftBefore?.durationText ?? testimonial?.durationText;
   const usableDuration = isUsableDurationText(displayDuration);
   const liveDiff = liveWeightDiffKg(displayBeforeKg, displayAfterKg);
   const diff = liveDiff;
+  const weightIsLoss = isTransformationWeightLoss(displayBeforeKg, displayAfterKg);
 
   const mediaVersion = `${testimonial?.updatedAt ?? testimonial?.id ?? ''}-${mediaEpoch}`;
   const beforeRaw = draftBefore?.previewUrl
     || withTestimonialMediaCacheBust(testimonial?.beforeImageUrl, mediaVersion);
+  // No separate After file yet: show the Before photo in that column.
+  // This is display only. It is not saved as After and does not start coach approval.
   const afterRaw = draftAfter?.previewUrl
-    || withTestimonialMediaCacheBust(
-      hasAfterImage || editable
-        ? (testimonial?.afterImageUrl || (editable ? testimonial?.beforeImageUrl : null))
-        : null,
-      mediaVersion,
-    );
+    || (hasAfterImage
+      ? withTestimonialMediaCacheBust(testimonial?.afterImageUrl, mediaVersion)
+      : null)
+    || beforeRaw;
   const beforeImageSrc = useRevocableImageSrc(beforeRaw);
   const afterImageSrc = useRevocableImageSrc(afterRaw);
 
@@ -809,10 +970,7 @@ function MemberCard({
     || draftAfter?.previewUrl || draftAfter?.imageBase64
   );
 
-  const parseWeightInput = useCallback((raw) => {
-    const v = parseFloat(String(raw ?? '').trim().replace(',', '.'));
-    return Number.isFinite(v) && v > 0 ? v : null;
-  }, []);
+  const parseWeightInput = useCallback((raw) => parseWeightKg(raw), []);
 
   const commitBeforeWeight = useCallback((raw) => {
     const v = parseWeightInput(raw);
@@ -934,6 +1092,17 @@ function MemberCard({
     void coverCrop.pickFile(file, slot);
   }, [coverCrop]);
 
+  const handleAdjustExisting = useCallback((slot) => {
+    const src = slot === 'after'
+      ? (draftAfter?.previewUrl || testimonial?.afterImageUrl)
+      : (draftBefore?.previewUrl || testimonial?.beforeImageUrl);
+    if (!src) return;
+    cropSlotRef.current = slot;
+    setPickerSlot(null);
+    setSubmitError(null);
+    void coverCrop.recrop(src, slot);
+  }, [coverCrop, draftAfter?.previewUrl, draftBefore?.previewUrl, testimonial?.afterImageUrl, testimonial?.beforeImageUrl]);
+
   const handleVideoFile = useCallback(async (slot, file) => {
     const numericUserId = Number(userId);
     if (!numericUserId) {
@@ -941,6 +1110,15 @@ function MemberCard({
       return;
     }
     setVideoUploadError(null);
+
+    // Restrict photos / non-video files: only video files are allowed
+    const isImage = file.type?.startsWith('image/') || /\.(jpe?g|png|gif|webp|bmp|heic|heif|svg)$/i.test(file.name || '');
+    const isVideo = file.type?.startsWith('video/') || /\.(mp4|mov|webm|3gp|mkv|avi|m4v)$/i.test(file.name || '');
+    if (isImage || !isVideo) {
+      setVideoUploadError('Only video files are allowed for results. Photos and images are not allowed.');
+      return;
+    }
+
     setCaptureFlowBusy(true);
     const localUrl = URL.createObjectURL(file);
     if (slot === 'health') {
@@ -1016,12 +1194,40 @@ function MemberCard({
   }, [userId]);
 
   const handleSubmitAll = useCallback(() => {
+    if (testimonial && (testimonial.status === 'verified' || testimonial.verifiedAt || hasAfter)) {
+      const snap = {
+        status: testimonial.status || 'verified',
+        verifiedAt: testimonial.verifiedAt || new Date().toISOString(),
+        beforeImagePath: testimonial.beforeImagePath,
+        afterImagePath: testimonial.afterImagePath,
+        beforeWeightKg: testimonial.beforeWeightKg,
+        afterWeightKg: testimonial.afterWeightKg,
+        goalType: testimonial.goalType,
+        durationText: testimonial.durationText,
+        recoveredHealthIssues: testimonial.recoveredHealthIssues,
+        videoStatus: testimonial.videoStatus,
+        healthVideoPath: testimonial.healthVideoPath,
+        businessVideoPath: testimonial.businessVideoPath,
+        beforeImageUrl: testimonial.beforeImageUrl,
+        afterImageUrl: testimonial.afterImageUrl,
+        healthVideoUrl: testimonial.healthVideoUrl,
+        businessVideoUrl: testimonial.businessVideoUrl,
+      };
+      baselineTestimonialRef.current = snap;
+      if (baselineKey) {
+        try {
+          localStorage.setItem(baselineKey, JSON.stringify(snap));
+        } catch {}
+      }
+    }
+
     const photoOrVideoChanged = dirtySlots.some((s) => ['before', 'after', 'health', 'business'].includes(s));
     const hasResultVideo = Boolean(
       testimonial?.healthVideoPath || testimonial?.businessVideoPath
       || testimonial?.healthVideoUrl || testimonial?.businessVideoUrl,
     );
-    const hasVisiblePhotoCard = Boolean(testimonial?.beforeImageUrl && testimonial?.afterImageUrl);
+    // Profile-seeded URLs look like Before/After but are not on the testimonial row.
+    const hasVisiblePhotoCard = hasStoredTransformationPhotoCard(testimonial);
     const issuesNeedOtp = dirtySlots.includes('issues') && (hasAfter || hasResultVideo || hasVisiblePhotoCard);
     const afterWeightDirty = draftAfter?.weightKg !== undefined
       && afterWeightDiffers(testimonial?.beforeWeightKg, draftAfter.weightKg);
@@ -1063,7 +1269,7 @@ function MemberCard({
       } : {}),
       ...(draftHealthPath ? { healthVideoPath: draftHealthPath } : {}),
       ...(draftBusinessPath ? { businessVideoPath: draftBusinessPath } : {}),
-      ...(Array.isArray(draftIssues) && draftIssues.filter(Boolean).length > 0
+      ...(Array.isArray(draftIssues)
         ? { recoveredHealthIssues: draftIssues.filter(Boolean) }
         : {}),
       ...(!draftBefore && usableDurationForSubmit ? { durationText: usableDurationForSubmit } : {}),
@@ -1078,26 +1284,28 @@ function MemberCard({
       }
     }
 
-    // Visible Before+After (including a Profile-seeded clone) needs issues + duration + OTP.
-    const willComplete =
-      Boolean(draftBefore?.imageBase64 || testimonial?.beforeImageUrl)
-      && Boolean(draftAfter?.imageBase64 || testimonial?.afterImageUrl || hasAfter);
-    const issuesForSubmit = Array.isArray(draftIssues) && draftIssues.filter(Boolean).length > 0
-      ? draftIssues.filter(Boolean)
-      : (testimonial?.recoveredHealthIssues || []);
-    const submittingPhotoCard = Boolean(hasVisiblePhotoCard || willComplete || afterWeightDirty);
-    if (
-      submittingPhotoCard
-      && (!Array.isArray(issuesForSubmit) || issuesForSubmit.filter(Boolean).length === 0)
-    ) {
-      setSubmitError('Add at least one Health Issue before submitting for coach approval.');
+    const approvalReadyBefore = hasApprovalReadyBeforePhoto({ testimonial, draftBefore });
+    // New users / profile-seeded cards must upload Transformation Before so OTP can start.
+    if (!isSilentSave && !approvalReadyBefore) {
+      setSubmitError('Add a Before photo on this Transformation card, then submit for approval.');
       return;
     }
+
+    // Visible Before+After (stored Transformation photos or drafts) needs duration + OTP.
+    // Health issues are optional.
+    const willComplete =
+      Boolean(draftBefore?.imageBase64 || (hasVisiblePhotoCard && testimonial?.beforeImageUrl))
+      && Boolean(draftAfter?.imageBase64 || (hasVisiblePhotoCard && testimonial?.afterImageUrl) || hasAfter);
+    const issuesForSubmit = Array.isArray(draftIssues)
+      ? draftIssues.filter(Boolean)
+      : (testimonial?.recoveredHealthIssues || []);
+    const submittingPhotoCard = Boolean(hasVisiblePhotoCard || willComplete || afterWeightDirty || approvalReadyBefore);
+    // Health issues are optional — user may submit without selecting any.
     if (submittingPhotoCard && !usableDurationForSubmit) {
       setSubmitError('Add a duration in days or months (e.g. 3 months) before submitting.');
       return;
     }
-    if (submittingPhotoCard && issuesForSubmit.length > 0 && payload.recoveredHealthIssues == null) {
+    if (submittingPhotoCard && payload.recoveredHealthIssues == null && Array.isArray(draftIssues)) {
       payload.recoveredHealthIssues = issuesForSubmit;
     }
 
@@ -1106,25 +1314,6 @@ function MemberCard({
       setSubmitError('Before photo failed to prepare. Please pick it again.');
       return;
     }
-    if (!testimonial?.id && dirtySlots.includes('after') && !dirtySlots.includes('before') && !testimonial?.beforeImageUrl) {
-      setSubmitError('Please add a before photo before submitting.');
-      return;
-    }
-    if (!testimonial?.id && !dirtySlots.includes('before') && !testimonial?.beforeImageUrl) {
-      setSubmitError('Please add a before photo before submitting.');
-      return;
-    }
-
-    const clearDrafts = () => {
-      setDraftBefore((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
-      setDraftAfter((prev) => { revokeBlobUrl(prev?.previewUrl); return null; });
-      setDraftHealthPath(null);
-      setDraftBusinessPath(null);
-      setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return null; });
-      setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return null; });
-      setDraftIssues(null);
-      setExpandedSlots(new Set());
-    };
 
     setSubmitError(null);
 
@@ -1155,28 +1344,37 @@ function MemberCard({
             ),
           }
         : null;
-      await reloadMine(patched);
-      if (userId) {
-        try {
-          await getProfile({ userId, cacheBust: true });
-        } catch {
-          // Non-fatal — Profile reloads on next open with cache bust.
-        }
-      }
       if (!isSilentSave && !otpSent) {
+        const saved = result?.testimonial;
+        const waitingForOtherPhoto = Boolean(saved) && !hasDistinctTransformationAfter(saved);
+        if (waitingForOtherPhoto && (hasStoredTransformationBefore(saved) || saved.beforeImageUrl || saved.afterImageUrl)) {
+          const cleared = hasStoredTransformationBefore(saved)
+            ? { ...patched, photosFromProfileSeed: false }
+            : patched;
+          clearDrafts();
+          void reloadMine(cleared);
+          return;
+        }
         const hasDuration = Boolean(usableDurationForSubmit);
-        const hasIssues = Array.isArray(issuesForSubmit) && issuesForSubmit.filter(Boolean).length > 0;
         setSubmitError(
-          hasDuration && hasIssues
+          hasDuration
             ? 'Coach approval did not start. Please tap Submit again — if it still fails, add the Before/After photos once more.'
-            : 'Coach approval did not start. Add a duration and at least one health issue, then submit again.',
+            : 'Coach approval did not start. Add a duration in days or months, then submit again.',
         );
         return;
       }
       clearDrafts();
+      // Show OTP immediately from submit response; refresh media/profile in background.
       if (otpSent || patched?.hasPendingOtp) {
+        setUnifiedOtpDismissed(false);
         setUnifiedOtpVerified(false);
         setSubmitDone(true);
+      }
+      void reloadMine(patched);
+      if (userId) {
+        void getProfile({ userId, cacheBust: true }).catch(() => {
+          // Non-fatal — Profile reloads on next open with cache bust.
+        });
       }
     };
 
@@ -1190,7 +1388,9 @@ function MemberCard({
       return;
     }
 
-    // Photo / video changes — apply fresh signed URLs from the submit response before clearing local previews.
+    // Photo / video changes — return OTP as soon as the API responds.
+    // Server composes the share card + emails the coach after the response (waitUntil).
+    // Skip client html2canvas here so Submit is not blocked on card capture.
     setIsSubmitting(true);
     setCaptureFlowBusy(true);
     void submitAllEdits(payload)
@@ -1209,16 +1409,88 @@ function MemberCard({
   );
 
   const showUnifiedOtp = editable
+    && !unifiedOtpDismissed
     && !unifiedOtpVerified
     && (submitDone
       || Boolean(testimonial?.hasPendingOtp)
       || Boolean(testimonial?.otpPending));
 
-  const handleUnifiedOtpVerified = useCallback(() => {
+  const handleUnifiedOtpVerified = useCallback((verifiedTestimonial = null) => {
+    setUnifiedOtpDismissed(true);
     setSubmitDone(false);
     setUnifiedOtpVerified(true);
+    if (typeof onMineRefresh === 'function') {
+      void onMineRefresh({
+        ...(testimonial || {}),
+        ...(verifiedTestimonial || {}),
+        status: 'verified',
+        hasPendingOtp: false,
+        otpPending: false,
+        otpExpired: false,
+        otpExpiresAt: null,
+      });
+    }
     onOtpVerified?.();
-  }, [onOtpVerified]);
+  }, [onOtpVerified, onMineRefresh, testimonial]);
+
+  const handleUnifiedOtpClose = useCallback(async () => {
+    setUnifiedOtpDismissed(true);
+    clearDrafts();
+    setSubmitDone(false);
+    setUnifiedOtpVerified(true);
+    setSubmitError(null);
+
+    let baseline = baselineTestimonialRef.current;
+    if (!baseline && baselineKey) {
+      try {
+        const stored = localStorage.getItem(baselineKey);
+        if (stored) baseline = JSON.parse(stored);
+      } catch {}
+    }
+
+    if (typeof onMineRefresh === 'function') {
+      void onMineRefresh({
+        ...(testimonial || {}),
+        ...(baseline || {}),
+        status: baseline?.status || 'verified',
+        hasPendingOtp: false,
+        otpPending: false,
+        otpExpired: false,
+        otpExpiresAt: null,
+      });
+    }
+
+    try {
+      const result = await cancelUnifiedOtp({
+        userId,
+        restoreData: baseline || undefined,
+      });
+      const reverted = result?.testimonial || baseline;
+      if (reverted && typeof onMineRefresh === 'function') {
+        await onMineRefresh({
+          ...(testimonial || {}),
+          ...reverted,
+          status: reverted.status || 'verified',
+          hasPendingOtp: false,
+          otpPending: false,
+          otpExpired: false,
+          otpExpiresAt: null,
+        });
+      }
+    } catch {
+      if (typeof onMineRefresh === 'function') {
+        await onMineRefresh({
+          ...(testimonial || {}),
+          ...(baseline || {}),
+          status: baseline?.status || 'verified',
+          hasPendingOtp: false,
+          otpPending: false,
+          otpExpired: false,
+          otpExpiresAt: null,
+        });
+      }
+    }
+  }, [userId, clearDrafts, onMineRefresh, testimonial, baselineKey]);
 
   const handleUnifiedOtpMetaUpdate = useCallback(async (meta) => {
     if (!meta) return;
@@ -1284,10 +1556,35 @@ function MemberCard({
     : level === UPLOAD_FILTERS.PARTIAL      ? 'bg-gradient-to-b from-amber-50/50 to-white'
     :                                          'bg-white';
 
+  const shareCardTestimonial = testimonial ? {
+    ...testimonial,
+    beforeImageUrl: beforeImageSrc,
+    afterImageUrl: afterImageSrc,
+    beforeWeightKg: displayBeforeKg || testimonial.beforeWeightKg,
+    afterWeightKg: displayAfterKg || testimonial.afterWeightKg,
+    goalType: draftBefore?.goalType || testimonial.goalType,
+    durationText: (
+      isUsableDurationText(draftBefore?.durationText)
+        ? draftBefore.durationText
+        : testimonial.durationText
+    ),
+    recoveredHealthIssues: draftIssues ?? testimonial.recoveredHealthIssues,
+  } : null;
+  const shareCardUserName = user?.userName || user?.displayName || user?.name || null;
+  const showBrandedCard = Boolean(shareCardTestimonial && (beforeImageSrc || afterImageSrc));
+  // Share only after coach approval. Hide while Mine has unsaved edits or OTP in flight.
+  const canSharePhoto =
+    canShareTransformationPhoto(testimonial)
+    && !(editable && (hasDirtySlots || showUnifiedOtp));
+  const canShareVideo = Boolean(
+    testimonial?.videoStatus === 'verified'
+    && Boolean(resultVideoUrl || testimonial?.healthVideoPath || testimonial?.businessVideoPath)
+  );
+
   return (
     <div className={`rounded-3xl border ${borderCls} ${bgCls} shadow-md overflow-visible`}>
       {coverCrop.overlay}
-      {/* Header strip */}
+      {/* Header strip — Direct/Full photo share top-right (Mine uses Transformation card row) */}
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
         <MemberAvatar user={user} />
         <div className="flex-1 min-w-0">
@@ -1296,11 +1593,21 @@ function MemberCard({
             <CompletenessBadge level={level} filledCount={filledCount} totalSlots={totalSlots} />
           </div>
         </div>
+        {!editable && canSharePhoto && (
+          <TransformationShareActions
+            variant="icon"
+            kind="photo"
+            cardRef={shareCardRef}
+            userName={user.userName}
+            testimonial={shareCardTestimonial}
+            onBeforeAction={prepareShareCard}
+          />
+        )}
       </div>
       <div className="px-4 pb-4 space-y-3">
 
-      {/* Photos — always show before/after slots when editable (Mine) */}
-      {(editable || (testimonial && (testimonial.beforeImageUrl || testimonial.afterImageUrl))) && (
+      {/* Photos — Mine always editable; team uses branded card when photos exist */}
+      {(editable || (!showBrandedCard && testimonial && (testimonial.beforeImageUrl || testimonial.afterImageUrl))) && (
         <div className="flex gap-2">
           <div className="flex-1 text-center">
             <div className="relative">
@@ -1356,7 +1663,12 @@ function MemberCard({
               )}
             </div>
             {editable && pickerSlot === 'before' && (
-              <div className="flex gap-1.5 mt-1.5 justify-center">
+              <div className="flex flex-wrap gap-1.5 mt-1.5 justify-center">
+                <button type="button" onClick={() => handleAdjustExisting('before')}
+                  disabled={coverCrop.isPreparing}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold disabled:opacity-50">
+                  <Crop className="h-3 w-3" /> Adjust
+                </button>
                 <button type="button" onClick={() => openPhotoPicker(beforeCamRef)}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-green-600 text-white text-[10px] font-bold">
                   <Camera className="h-3 w-3" /> Camera
@@ -1371,13 +1683,13 @@ function MemberCard({
                 </button>
               </div>
             )}
-            <input ref={beforeCamRef} type="file" accept="image/*" capture="environment" className="hidden"
+            <input ref={beforeCamRef} type="file" accept="image/*" capture="environment" className="hidden" aria-label="Before camera upload"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = '';
                 if (file) { handleImageFile('before', file); setPickerSlot(null); }
               }} />
-            <input ref={beforeGalRef} type="file" accept="image/*" className="hidden"
+            <input ref={beforeGalRef} type="file" accept="image/*" className="hidden" aria-label="Before gallery upload"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = '';
@@ -1395,7 +1707,7 @@ function MemberCard({
                     autoFocus
                     value={beforeWeightText ?? ''}
                     onChange={(e) => {
-                      const raw = e.target.value;
+                      const raw = sanitizeWeightTyping(e.target.value);
                       setBeforeWeightText(raw);
                       commitBeforeWeight(raw);
                     }}
@@ -1486,7 +1798,12 @@ function MemberCard({
               )}
             </div>
             {editable && pickerSlot === 'after' && (
-              <div className="flex gap-1.5 mt-1.5 justify-center">
+              <div className="flex flex-wrap gap-1.5 mt-1.5 justify-center">
+                <button type="button" onClick={() => handleAdjustExisting('after')}
+                  disabled={coverCrop.isPreparing || !(draftAfter?.previewUrl || testimonial?.afterImageUrl)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold disabled:opacity-50">
+                  <Crop className="h-3 w-3" /> Adjust
+                </button>
                 <button type="button" onClick={() => openPhotoPicker(afterCamRef)}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-purple-600 text-white text-[10px] font-bold">
                   <Camera className="h-3 w-3" /> Camera
@@ -1501,13 +1818,13 @@ function MemberCard({
                 </button>
               </div>
             )}
-            <input ref={afterCamRef} type="file" accept="image/*" capture="environment" className="hidden"
+            <input ref={afterCamRef} type="file" accept="image/*" capture="environment" className="hidden" aria-label="After camera upload"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = '';
                 if (file) { handleImageFile('after', file); setPickerSlot(null); }
               }} />
-            <input ref={afterGalRef} type="file" accept="image/*" className="hidden"
+            <input ref={afterGalRef} type="file" accept="image/*" className="hidden" aria-label="After gallery upload"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = '';
@@ -1525,7 +1842,7 @@ function MemberCard({
                     autoFocus
                     value={afterWeightText ?? ''}
                     onChange={(e) => {
-                      const raw = e.target.value;
+                      const raw = sanitizeWeightTyping(e.target.value);
                       setAfterWeightText(raw);
                       commitAfterWeight(raw);
                     }}
@@ -1572,10 +1889,18 @@ function MemberCard({
             <>
               <div>
                 <label className="block text-[10px] font-medium text-gray-400 mb-1">Before weight (kg)</label>
-                <input type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500"
+                <input type="text" inputMode="decimal" autoComplete="off" step="0.1" min="1" max="500"
                   placeholder={String(testimonial?.beforeWeightKg ?? '')}
-                  value={draftBefore?.weightKg ?? ''}
-                  onChange={(e) => setDraftBefore(prev => ({ ...prev, weightKg: parseFloat(e.target.value) || undefined }))}
+                  value={draftBefore?.weightText ?? (draftBefore?.weightKg != null ? String(draftBefore.weightKg) : '')}
+                  onChange={(e) => {
+                    const text = sanitizeWeightTyping(e.target.value);
+                    const v = parseWeightKg(text);
+                    setDraftBefore((prev) => ({
+                      ...prev,
+                      weightText: text,
+                      weightKg: v != null ? v : undefined,
+                    }));
+                  }}
                   className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
               </div>
               <div>
@@ -1592,10 +1917,18 @@ function MemberCard({
           {draftAfter && (
             <div className={draftBefore ? '' : 'col-span-2'}>
               <label className="block text-[10px] font-medium text-gray-400 mb-1">After weight (kg)</label>
-              <input type="text" inputMode="decimal" pattern="[0-9]*" step="0.1" min="1" max="500"
+              <input type="text" inputMode="decimal" autoComplete="off" step="0.1" min="1" max="500"
                 placeholder={String(hasAfter ? (testimonial?.afterWeightKg ?? '') : '')}
-                value={draftAfter?.weightKg ?? ''}
-                onChange={(e) => setDraftAfter(prev => ({ ...prev, weightKg: parseFloat(e.target.value) || undefined }))}
+                value={draftAfter?.weightText ?? (draftAfter?.weightKg != null ? String(draftAfter.weightKg) : '')}
+                onChange={(e) => {
+                  const text = sanitizeWeightTyping(e.target.value);
+                  const v = parseWeightKg(text);
+                  setDraftAfter((prev) => ({
+                    ...(prev || {}),
+                    weightText: text,
+                    weightKg: v != null ? v : undefined,
+                  }));
+                }}
                 className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
             </div>
           )}
@@ -1612,11 +1945,12 @@ function MemberCard({
           otpExpired={testimonial?.otpExpired}
           onVerified={handleUnifiedOtpVerified}
           onOtpMetaUpdate={handleUnifiedOtpMetaUpdate}
+          onClose={handleUnifiedOtpClose}
         />
       )}
 
       {/* Legacy per-slot OTP — only when no unified OTP is pending */}
-      {editable && !showUnifiedOtp && testimonial?.status === 'pending' && testimonial?.id && (
+      {editable && !showUnifiedOtp && !unifiedOtpDismissed && testimonial?.status === 'pending' && testimonial?.id && (
         <OtpInline
           testimonialId={testimonial.id}
           type="photo"
@@ -1624,18 +1958,18 @@ function MemberCard({
         />
       )}
 
-      {/* Stats — single summary line + status badge */}
-      {testimonial && (
+      {/* Stats — Mine always; team only when branded card is not shown (redundant with card) */}
+      {testimonial && (editable || !showBrandedCard) && (
         <div className="space-y-1.5">
           {/* "Lost X kgs in Y duration" — uses live draft weights, not persisted hasAfter */}
           {diff && (
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${displayGoalType === 'loss' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                {displayGoalType === 'loss'
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${weightIsLoss ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                {weightIsLoss
                   ? <TrendingDown className="h-3 w-3 shrink-0" />
                   : <TrendingUp   className="h-3 w-3 shrink-0" />
                 }
-                {displayGoalType === 'loss' ? 'Lost' : 'Gained'} {diff} kgs
+                {weightIsLoss ? 'Lost' : 'Gained'} {diff} kgs
                 {usableDuration ? ` in ${displayDuration}` : ''}
               </span>
               {editable && (
@@ -1691,61 +2025,72 @@ function MemberCard({
               )}
             </div>
           )}
-          {/* Status badge */}
-          <div className="flex gap-1.5 flex-wrap items-center">
-            {testimonial.status === 'pending' && (
-              <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold flex items-center gap-0.5 border ${
-                testimonial.otpExpired || isOtpExpiredClient(testimonial.otpExpiresAt)
-                  ? 'bg-red-100 border-red-200 text-red-800'
-                  : 'bg-amber-100 border-amber-200 text-amber-800'
-              }`}>
-                <Clock className="h-2.5 w-2.5" />
-                {testimonial.otpExpired || isOtpExpiredClient(testimonial.otpExpiresAt)
-                  ? 'OTP expired'
-                  : 'Awaiting OTP'}
-              </span>
-            )}
-          </div>
         </div>
       )}
 
-      {/* Health Issues — below photos, above result video */}
-      {(editable || testimonial) && (
+      {/* Health Issues — Mine editable. Team chips only when branded card is hidden. */}
+      {(editable || (testimonial && !showBrandedCard)) && (
         <div className="space-y-1.5 overflow-visible relative z-20">
           <p className="text-[10px] font-bold text-gray-400 tracking-normal whitespace-normal">
-            Health Issues while joining this community
+            Health Issues while joining this community{editable ? ' (optional · up to 10)' : ''}
           </p>
-          <HealthIssueCoachEditor
-            userId={userId || user?.userId}
-            coachId={coachId}
-            currentIssues={draftIssues ?? issues}
-            approvedIssues={approvedIssues}
-            knownHealthIssues={knownHealthIssues}
-            persist={editable ? false : Boolean(testimonial?.id)}
-            allowRemove={editable}
-            editable={editable}
-            onSaved={handleHealthIssuesSaved}
-            onRemove={handleHealthIssueRemoved}
-          />
-          {testimonial && canShareTransformationPhoto(testimonial) && (testimonial.beforeImageUrl || hasAfter) &&
-            (editable ? (!hasDirtySlots && !submitDone) : true) && (
-            <TransformationShareActions
-              kind="photo"
-              cardRef={shareCardRef}
-              userName={user.userName}
-              testimonial={testimonial}
+          {editable ? (
+            <HealthIssueCoachEditor
+              userId={userId || user?.userId}
+              coachId={coachId}
+              currentIssues={draftIssues ?? issues}
+              approvedIssues={approvedIssues}
+              knownHealthIssues={knownHealthIssues}
+              persist={false}
+              allowRemove
+              editable
+              disabled={false}
+              onSaved={handleHealthIssuesSaved}
+              onRemove={handleHealthIssueRemoved}
             />
+          ) : (
+            <div className="rounded-lg border border-indigo-100 bg-indigo-50/40 px-2.5 py-2">
+              {(issues || []).length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {issues.map((issue) => (
+                    <span
+                      key={issue}
+                      className="inline-flex max-w-[11rem] truncate rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-800"
+                    >
+                      {issue}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 italic">No health issues recorded.</p>
+              )}
+              <p className="mt-1.5 text-[10px] text-gray-400 italic">
+                View only — only the member can edit health issues.
+              </p>
+            </div>
           )}
         </div>
       )}
 
-      {/* Result Video — below recovery health issue */}
-      {(editable || testimonial) && (
+      {/* Result Video above divider — Mine upload only.
+          Direct/Full with branded card: videos live under the card (no duplicate). */}
+      {(editable || (testimonial && !showBrandedCard)) && (
         <div className="space-y-1.5">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1">
-            <Video className="h-3 w-3" /> Result Video
-            <span className="font-normal normal-case tracking-normal">· max {MAX_HEALTH_VIDEO_MB} MB each</span>
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1 flex-1 min-w-0">
+              <Video className="h-3 w-3 shrink-0" /> Result Video
+              <span className="font-normal normal-case tracking-normal">· max {MAX_HEALTH_VIDEO_MB} MB each</span>
+            </p>
+            {!showBrandedCard && canShareVideo && (
+              <TransformationShareActions
+                variant="icon"
+                kind="video"
+                userName={user.userName}
+                testimonial={testimonial}
+                onBeforeAction={prepareShareCard}
+              />
+            )}
+          </div>
           {editable && videoUploadError && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex items-start gap-2">
               <ShieldCheck className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
@@ -1789,7 +2134,7 @@ function MemberCard({
                       </div>
                     </div>
                   )}
-                  <input ref={healthVidRef} type="file" accept="video/*" className="hidden"
+                  <input ref={healthVidRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/3gpp,video/*" className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       e.target.value = '';
@@ -1841,7 +2186,7 @@ function MemberCard({
                       </div>
                     </div>
                   )}
-                  <input ref={businessVidRef} type="file" accept="video/*" className="hidden"
+                  <input ref={businessVidRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/3gpp,video/*" className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       e.target.value = '';
@@ -1864,7 +2209,7 @@ function MemberCard({
             </p>
           )}
 
-          {editable && !showUnifiedOtp && testimonial?.videoStatus === 'pending' && testimonial?.id && (
+          {editable && !showUnifiedOtp && !unifiedOtpDismissed && testimonial?.videoStatus === 'pending' && testimonial?.id && (
             <div className="bg-white rounded-2xl border border-amber-200 shadow-sm px-4 py-4 space-y-1 mt-1">
               <p className="text-xs font-bold text-amber-700 uppercase tracking-wide flex items-center gap-1.5">
                 <ShieldCheck className="h-3.5 w-3.5" /> Verify Your Videos
@@ -1884,20 +2229,10 @@ function MemberCard({
               <Clock className="h-3 w-3 shrink-0" /> Videos pending — share OTP with {user.userName}
             </p>
           )}
-          {testimonial?.videoStatus === 'verified' &&
-            (editable ? (!hasDirtySlots && !submitDone) : true) &&
-            Boolean(resultVideoUrl || testimonial?.healthVideoPath || testimonial?.businessVideoPath) && (
-            <TransformationShareActions
-              kind="video"
-              userName={user.userName}
-              testimonial={testimonial}
-              onBeforeAction={prepareShareCard}
-            />
-          )}
         </div>
       )}
 
-      {/* ── Submit for Approval button (Mine, when any slot has draft changes) ── */}
+      {/* ── Submit for Approval (Mine, dirty edits) — above Transformation card so it is not buried under the preview ── */}
       {editable && submitError && (
         <p className="text-xs text-red-600 text-center bg-red-50 rounded-xl px-3 py-2">{submitError}</p>
       )}
@@ -1921,6 +2256,87 @@ function MemberCard({
           <p className="text-[10px] text-gray-400 text-center">
             {changedCount} item{changedCount === 1 ? '' : 's'} changed — your sponsor will receive one verification email
           </p>
+        </div>
+      )}
+
+      {/* Branded Transformation Results card + videos.
+          Mine: divider + share next to TRANSFORMATION CARD.
+          Direct/Full: no divider; photo share stays in the member header. */}
+      {showBrandedCard && (
+        <div className="space-y-3 pt-1">
+          {editable && (
+            <div className="flex items-center gap-2" role="separator" aria-label="Transformation card">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="flex-1 border-t border-gray-200" />
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                  Transformation card
+                </p>
+                <div className="flex-1 border-t border-gray-200" />
+              </div>
+              {canSharePhoto && (
+                <TransformationShareActions
+                  variant="icon"
+                  kind="photo"
+                  cardRef={shareCardRef}
+                  userName={user.userName}
+                  testimonial={shareCardTestimonial}
+                />
+              )}
+            </div>
+          )}
+          <VisibleTransformationCard
+            testimonial={shareCardTestimonial}
+            userName={shareCardUserName}
+          />
+
+          {/* Health + Business videos under the branded card (tap → preview) */}
+          {(draftHealthPreview || draftBusinessPreview
+            || testimonial?.healthVideoUrl || testimonial?.businessVideoUrl
+            || testimonial?.healthVideoPath || testimonial?.businessVideoPath) && (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1 flex-1 min-w-0">
+                  <Video className="h-3 w-3 shrink-0" /> Result Video
+                </p>
+                {canShareVideo && (
+                  <TransformationShareActions
+                    variant="icon"
+                    kind="video"
+                    userName={user.userName}
+                    testimonial={testimonial}
+                    onBeforeAction={prepareShareCard}
+                  />
+                )}
+              </div>
+              <div className="flex gap-3">
+                <div className="flex-1 space-y-1">
+                  <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Health</p>
+                  <VideoThumbnailCard
+                    url={testimonial?.healthVideoUrl ?? null}
+                    localPreviewUrl={draftHealthPreview}
+                    label="Health Results"
+                    accentColor="bg-green-600"
+                    onNeedUrl={!testimonial?.healthVideoUrl && testimonial?.healthVideoPath ? loadHealthVideoUrl : undefined}
+                  />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Business</p>
+                  <VideoThumbnailCard
+                    url={testimonial?.businessVideoUrl ?? null}
+                    localPreviewUrl={draftBusinessPreview}
+                    label="Business Results"
+                    accentColor="bg-blue-600"
+                    onNeedUrl={!testimonial?.businessVideoUrl && testimonial?.businessVideoPath ? loadBusinessVideoUrl : undefined}
+                  />
+                </div>
+              </div>
+              {testimonial?.videoStatus === 'verified' && (
+                <p className="text-[11px] text-green-700 font-medium flex items-center gap-1">
+                  <CheckCircle className="h-3 w-3 shrink-0" /> Videos verified
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1952,9 +2368,8 @@ function MemberCard({
         confirmText="OK"
       />
 
-      {/* Hidden share card — kept in the viewport (opacity 0) so photos are
-          already decoded when Share is tapped. Off-screen -9999px made html2canvas slow. */}
-      {testimonial && (
+      {/* Hidden full-size share card for sharp html2canvas capture (preview above is scaled). */}
+      {shareCardTestimonial && (
         <div
           aria-hidden="true"
           style={{
@@ -1963,22 +2378,16 @@ function MemberCard({
             top: 0,
             width: CARD_W,
             height: CARD_H,
-            opacity: 0,
+            opacity: 0.02,
             pointerEvents: 'none',
             zIndex: -1,
+            overflow: 'hidden',
           }}
         >
           <TransformationCardContent
             ref={shareCardRef}
-            testimonial={{
-              ...testimonial,
-              beforeImageUrl: beforeImageSrc,
-              afterImageUrl: afterImageSrc,
-              beforeWeightKg: displayBeforeKg || testimonial.beforeWeightKg,
-              afterWeightKg: displayAfterKg || testimonial.afterWeightKg,
-              recoveredHealthIssues: draftIssues ?? testimonial.recoveredHealthIssues,
-            }}
-            userName={user?.userName || user?.displayName || user?.name || null}
+            testimonial={shareCardTestimonial}
+            userName={shareCardUserName}
           />
         </div>
       )}
@@ -2053,6 +2462,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       if (Number.isFinite(latestWeightKg) && latestWeightKg > 0) {
         userPayload.latestWeightKg = latestWeightKg;
       }
+      // New users with Left/Centre/Right: Left defaults into Transformation Before (After mirrors until real After).
       const leftUrl = profileResult?.success
         ? profileResult?.data?.transformationPhotos?.left
         : null;
@@ -2091,7 +2501,11 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
           profileImage,
           phoneNumber,
         },
-        testimonial: { ...(prev?.testimonial || {}), ...patchedTestimonial },
+        testimonial: (() => {
+          const merged = { ...(prev?.testimonial || {}), ...patchedTestimonial };
+          if (hasStoredTransformationBefore(merged)) merged.photosFromProfileSeed = false;
+          return merged;
+        })(),
       }));
       return;
     }
@@ -2252,7 +2666,8 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     const labels = [];
     const rows = [mineRow, ...directRows, ...fullRows].filter(Boolean);
     for (const row of rows) {
-      for (const issue of (row.testimonial?.recoveredHealthIssues ?? [])) {
+      const issueList = row.testimonial?.recoveredHealthIssues;
+      for (const issue of (Array.isArray(issueList) ? issueList : [])) {
         const label = String(issue || '').trim();
         if (!label) continue;
         const key = label.toLowerCase();

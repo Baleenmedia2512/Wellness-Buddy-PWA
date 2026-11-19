@@ -10,6 +10,33 @@ export const ACTIVITY_REPORT_EXPORT_MAX = 10_000;
 /** Query value for clubName filter when showing Remote (N/A) records only. */
 export const ACTIVITY_REPORT_CLUB_REMOTE = '__remote__';
 
+/** Sort columns whose displayed value comes from sponsor resolution. */
+export function activityReportSortUsesSponsor(sortColumn) {
+  return sortColumn === 'sponsorName'
+    || sortColumn === 'coachName'
+    || sortColumn === 'idealCoachName';
+}
+
+function activityReportBlankSortLabel(raw) {
+  const text = String(raw ?? '').trim();
+  if (!text || text === '—' || text === '-' || text.toLowerCase() === 'n/a') return '';
+  return text;
+}
+
+/** Value the table shows for a sortable column. Blank / N/A sorts last. */
+function activityReportSortValue(record, col) {
+  if (col === 'sponsorName' || col === 'coachName') {
+    return activityReportBlankSortLabel(record?.sponsorName || record?.coachName);
+  }
+  if (col === 'idealCoachName') {
+    return activityReportBlankSortLabel(record?.idealCoachName);
+  }
+  if (col === 'memberName' || col === 'clubName' || col === 'city' || col === 'village' || col === 'phone') {
+    return activityReportBlankSortLabel(record?.[col]);
+  }
+  return record?.[col];
+}
+
 export const ACTIVITY_REPORT_SORTABLE = new Set([
   'date',
   'time',
@@ -388,8 +415,8 @@ export function sortActivityReportRecords(records, sortColumn, sortDir) {
   const col = ACTIVITY_REPORT_SORTABLE.has(sortColumn) ? sortColumn : 'date';
 
   list.sort((a, b) => {
-    let aVal = a?.[col];
-    let bVal = b?.[col];
+    let aVal = activityReportSortValue(a, col);
+    let bVal = activityReportSortValue(b, col);
 
     if (col === 'date' || col === 'time') {
       aVal = aVal || '';
@@ -419,6 +446,12 @@ export function sortActivityReportRecords(records, sortColumn, sortDir) {
 
     aVal = String(aVal ?? '').toLowerCase();
     bVal = String(bVal ?? '').toLowerCase();
+    const aEmpty = aVal === '';
+    const bEmpty = bVal === '';
+    if (aEmpty || bEmpty) {
+      if (aEmpty && bEmpty) return 0;
+      return aEmpty ? 1 : -1;
+    }
     if (aVal < bVal) return -1 * dir;
     if (aVal > bVal) return 1 * dir;
     return 0;

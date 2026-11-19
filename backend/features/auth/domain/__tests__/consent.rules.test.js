@@ -9,6 +9,7 @@ import {
   hasValidConsentAcceptance,
   isConsentRecorded,
   consentInsertFields,
+  shouldStampSignupConsent,
 } from '../consent.rules.js';
 
 describe('consent.rules', () => {
@@ -32,6 +33,16 @@ describe('consent.rules', () => {
     assert.equal(isConsentRecorded({ ConsentAcceptedAt: '2026-07-31T10:00:00.000Z' }), true);
     assert.equal(isConsentRecorded({ ConsentAcceptedAt: null }), false);
     assert.equal(isConsentRecorded(null), false);
+  });
+
+  it('shouldStampSignupConsent only for an unrecorded user who accepted the current version', () => {
+    const pending = { ConsentAcceptedAt: null };
+    const accepted = { consentAccepted: true, consentVersion: CURRENT_CONSENT_VERSION };
+    assert.equal(shouldStampSignupConsent(pending, accepted, true), true);
+    assert.equal(shouldStampSignupConsent(pending, {}, true), false);
+    assert.equal(shouldStampSignupConsent(pending, { consentAccepted: true, consentVersion: 'old' }, true), false);
+    assert.equal(shouldStampSignupConsent({ ConsentAcceptedAt: '2026-07-31T10:00:00.000Z' }, accepted, true), false);
+    assert.equal(shouldStampSignupConsent(pending, accepted, false), false);
   });
 
   it('consentInsertFields sets version + audit columns', () => {

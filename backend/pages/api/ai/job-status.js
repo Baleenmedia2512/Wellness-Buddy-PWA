@@ -22,7 +22,7 @@
  *   }
  *
  * The client should poll every 3–5 seconds until status = "completed" | "failed".
- * For push-based notification, subscribe to the Supabase Realtime channel
+ * For push-based notification, subscribe to the MySQL Realtime channel
  * `ai_analysis_jobs_table` filtered by jobId instead of polling.
  * ---------------------------------------------------------------------------
  */

@@ -1,13 +1,13 @@
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import logger from '../../../shared/lib/logger.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
-import { DEFAULT_NAV_ACCESS_MATRIX, normalizeMatrix } from '../domain/navAccess.rules.js';
+import { DEFAULT_NAV_ACCESS_MATRIX, matrixWithDefaultsForNewPages } from '../domain/navAccess.rules.js';
 
 const TABLE = 'nav_page_access_config_table';
 
 export async function getLatestConfig() {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .select('id, matrix, updated_at, updated_by_user_id')
     .order('id', { ascending: false })
@@ -21,9 +21,9 @@ export async function getLatestConfig() {
 }
 
 export async function insertConfig({ matrix, updatedByUserId }) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const now = nowUtc();
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .insert({
       matrix,
@@ -38,7 +38,7 @@ export async function insertConfig({ matrix, updatedByUserId }) {
 
 export function configOrDefault(row) {
   return {
-    matrix: normalizeMatrix(row?.matrix ?? DEFAULT_NAV_ACCESS_MATRIX),
+    matrix: matrixWithDefaultsForNewPages(row?.matrix ?? DEFAULT_NAV_ACCESS_MATRIX),
     updatedAt: row?.updated_at ?? null,
     updatedByUserId: row?.updated_by_user_id ?? null,
   };

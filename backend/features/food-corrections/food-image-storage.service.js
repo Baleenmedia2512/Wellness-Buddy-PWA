@@ -13,6 +13,7 @@ import {
 } from '../../shared/lib/r2/s3.js';
 import { buildFoodObjectKey, isKeyInFolder, R2_FOLDERS } from '../../shared/lib/r2/objectKeys.js';
 import logger from '../../shared/lib/logger.js';
+import { isMileswebStorageEnabled } from '../../shared/lib/milesweb/config.js';
 import * as repo from './food-corrections.repository.js';
 
 export function r2FoodImagesEnabled() {
@@ -35,7 +36,8 @@ export function foodImageRedirectUrl(key) {
  * @returns {Promise<string|null>}
  */
 export async function uploadFoodImage(userId, mealId, imageBase64) {
-  if (!r2FoodImagesEnabled()) return null;
+  if (!isEnabled('ff.r2-food-images')) return null;
+  if (!isR2Configured() && !isMileswebStorageEnabled()) return null;
   if (!shouldStoreFoodImageInR2(imageBase64)) return null;
   const parsed = parseStoredImage(imageBase64);
   if (!parsed) return null;

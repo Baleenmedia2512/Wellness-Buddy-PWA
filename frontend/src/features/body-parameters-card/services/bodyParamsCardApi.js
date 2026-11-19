@@ -97,7 +97,7 @@ export async function searchPhonesByPrefix({ prefix, coachId }) {
  * Called as soon as a complete phone is typed (does not wait for Save).
  *
  * @param {{ phoneNumber: string, coachId: number|string }} opts
- * @returns {Promise<{ activated: boolean, message: string|null, userId: number|null, existingCard: object|null }>}
+ * @returns {Promise<{ activated: boolean, message: string|null, userId: number|null, exists: boolean, canOverride: boolean, counselledByOther: boolean, existingCard: object|null }>}
  */
 export async function fetchPhoneBcmStatus({ phoneNumber, coachId }) {
   const response = await CapacitorHttp.get({
@@ -121,6 +121,12 @@ export async function fetchPhoneBcmStatus({ phoneNumber, coachId }) {
     activated: Boolean(result.data?.activated),
     message: result.data?.message || null,
     userId: Number.isFinite(userIdN) && userIdN > 0 ? userIdN : null,
+    exists: Boolean(
+      result.data?.exists
+      ?? (Number.isFinite(userIdN) && userIdN > 0),
+    ),
+    canOverride: result.data?.canOverride === true,
+    counselledByOther: result.data?.counselledByOther === true,
     existingCard: result.data?.existingCard || null,
   };
 }
@@ -140,7 +146,21 @@ export async function fetchMemberPrefill({ userId, coachId }) {
     throw new Error(result?.error?.message || result?.message || `Member prefill failed (${response.status})`);
   }
   if (!result?.ok) throw new Error(result?.error?.message || 'Member prefill failed');
-  return result.data || {};
+  return absolutizePrefillPhotos(result.data || {});
+}
+
+function absolutizePrefillPhotos(data) {
+  const photos = data?.transformationPhotos;
+  if (!photos || typeof photos !== 'object') return data;
+  const apiBase = getApiBaseUrl();
+  const next = { ...photos };
+  for (const slot of ['front', 'left', 'right']) {
+    const url = next[slot];
+    if (typeof url === 'string' && url.startsWith('/api/')) {
+      next[slot] = `${apiBase}${url}`;
+    }
+  }
+  return { ...data, transformationPhotos: next };
 }
 
 /**

@@ -48,3 +48,27 @@ export async function resolveNutritionProfile({
   }
   return data.data;
 }
+
+/**
+ * Create (or return existing) a custom master food — name + g|ml + serving.
+ * No calories/macros required.
+ */
+export async function createCustomFood({
+  name,
+  unit,
+  servingSize,
+  userId = null,
+  apiBaseUrl = API_BASE_URL,
+} = {}) {
+  const res = await fetch(`${apiBaseUrl}/api/nutrition-knowledge/custom-food`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, unit, servingSize, userId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) {
+    const msg = data?.error?.message || data?.message || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return data.data;
+}

@@ -97,7 +97,7 @@ export default function EmailGateModal({ user, apiBaseUrl, onComplete }) {
                 autoComplete="name"
                 value={name}
                 onChange={(e) => { setName(e.target.value); setError(''); }}
-                placeholder="Enter your full name"
+                placeholder="Enter your Name"
                 style={{ fontSize: '16px' }}
                 className={`w-full pl-10 pr-4 py-3 border-2 rounded-xl focus:outline-none text-base bg-white ${
                   name && !nameValid

@@ -82,24 +82,38 @@ function ServingStepper({ id, profile, count, onIncrement, onDecrement, disabled
  *   isOpen: boolean,
  *   onClose: () => void,
  *   onLog: (payload: Object) => Promise<void>,
+ *   onBeforeLog?: (payload: Object) => Promise<boolean>,
  * }} props
  */
-const ShakeCalculatorModal = ({ isOpen, onClose, onLog }) => {
+const ShakeCalculatorModal = ({ isOpen, onClose, onLog, onBeforeLog }) => {
   const {
     servings, totals, hasServings,
     increment, decrement, reset, buildFoodPayload,
   } = useShakeCalculator();
 
   const [error, setError] = React.useState('');
+  const [checking, setChecking] = React.useState(false);
   const saveStartedRef = React.useRef(false);
 
   if (!isOpen) return null;
 
-  const handleLog = () => {
-    if (!hasServings || saveStartedRef.current) return;
+  const handleLog = async () => {
+    if (!hasServings || saveStartedRef.current || checking) return;
+    const payload = buildFoodPayload();
+    if (typeof onBeforeLog === 'function') {
+      setChecking(true);
+      try {
+        const allowed = await onBeforeLog(payload);
+        if (allowed === false) return;
+      } catch (err) {
+        setError(err?.message || 'Could not check your recent shake. Please try again.');
+        return;
+      } finally {
+        setChecking(false);
+      }
+    }
     saveStartedRef.current = true;
     // Hand off without awaiting network — parent closes classify and saves in background.
-    const payload = buildFoodPayload();
     reset();
     onClose();
     void Promise.resolve(onLog(payload)).catch((err) => {
@@ -224,15 +238,15 @@ const ShakeCalculatorModal = ({ isOpen, onClose, onLog }) => {
           <div>
             <TouchFeedbackButton
               onClick={handleLog}
-              disabled={!hasServings}
+              disabled={!hasServings || checking}
               className={`w-full px-4 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${
-                !hasServings
+                !hasServings || checking
                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                   : 'bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800'
               }`}
               aria-label="Save shake"
             >
-              <span>Save</span>
+              <span>{checking ? 'Checking...' : 'Save'}</span>
             </TouchFeedbackButton>
           </div>
         </div>

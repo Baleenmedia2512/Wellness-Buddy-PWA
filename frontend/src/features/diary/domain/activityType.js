@@ -11,12 +11,35 @@ export const DIARY_FOOD_ACTIVITY = Object.freeze({
   WATER: 'water',
   AFRESH: 'afresh',
   SHAKE: 'shake',
+  /** Target Nutrition catalog / supplements — not breakfast/lunch/dinner. */
+  TARGET_NUTRITION: 'target_nutrition',
 });
 
-/** Meal badges apply only to real food (not water / afresh). */
-export function shouldShowMealBadge(activityType) {
-  return activityType === DIARY_FOOD_ACTIVITY.FOOD
+/**
+ * Meal badges apply only to real food + meal shakes (not water / afresh / Target Nutrition).
+ * Weight Loss mode: Dinner badge only for shakes (regular food does not earn dinner credit).
+ *
+ * @param {string} activityType
+ * @param {{ mealLabel?: string|null, mealCategory?: string|null, weightGoalMode?: string|null }} [opts]
+ */
+export function shouldShowMealBadge(activityType, {
+  mealLabel = null,
+  mealCategory = null,
+  weightGoalMode = null,
+} = {}) {
+  const isMealActivity = activityType === DIARY_FOOD_ACTIVITY.FOOD
     || activityType === DIARY_FOOD_ACTIVITY.SHAKE;
+  if (!isMealActivity) return false;
+
+  // Default matches wellness-score dinner_post (missing → loss).
+  const mode = String(weightGoalMode || 'loss').toLowerCase().trim();
+  const category = String(mealCategory || '').toLowerCase().trim();
+  const label = String(mealLabel || '').toLowerCase().trim();
+  const isDinner = category === 'dinner' || label === 'dinner';
+  if (isDinner && mode === 'loss' && activityType !== DIARY_FOOD_ACTIVITY.SHAKE) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -37,7 +60,7 @@ export function parseRawAnalysis(analysisData) {
 
 /**
  * @param {{ processedBy?: string|null, analysisData?: unknown, foodData?: { name?: string, detailedItems?: object[] } }} input
- * @returns {'food'|'water'|'afresh'|'shake'}
+ * @returns {'food'|'water'|'afresh'|'shake'|'target_nutrition'}
  */
 export function resolveFoodActivityType({
   processedBy = null,
@@ -55,10 +78,11 @@ export function resolveFoodActivityType({
     ? foodData.detailedItems
     : (Array.isArray(raw?.foods) ? raw.foods : []);
   const names = items
-    .map((item) => String(item?.name || '').toLowerCase().trim())
+    .map((item) => String(item?.name || item?.foodName || '').toLowerCase().trim())
     .filter(Boolean);
   const title = String(foodData?.name || raw?.category?.name || '').toLowerCase().trim();
   const primary = names[0] || title;
+  const allLabels = names.length > 0 ? names : (title ? [title] : []);
 
   // Water tracker path often omits processedBy — detect by name + zero kcal liquid.
   if (isWaterName(primary) || (names.length === 1 && isWaterName(names[0]))) {
@@ -70,8 +94,21 @@ export function resolveFoodActivityType({
   if (names.some(isAfreshName) || isAfreshName(primary) || isAfreshName(title)) {
     return DIARY_FOOD_ACTIVITY.AFRESH;
   }
-  if (names.some(isShakeName) || isShakeName(primary) || isShakeName(title)) {
+  if (
+    names.some(isShakeName)
+    || isShakeName(primary)
+    || isShakeName(title)
+    || allLabels.some(isMealShakeName)
+  ) {
     return DIARY_FOOD_ACTIVITY.SHAKE;
+  }
+
+  // Target Nutrition catalog (dry-salad) or supplement-only logs — no meal badge
+  if (raw?.mealKind === 'dry-salad') {
+    return DIARY_FOOD_ACTIVITY.TARGET_NUTRITION;
+  }
+  if (allLabels.length > 0 && allLabels.every(isNonMealSupplementName)) {
+    return DIARY_FOOD_ACTIVITY.TARGET_NUTRITION;
   }
 
   return DIARY_FOOD_ACTIVITY.FOOD;
@@ -105,7 +142,55 @@ function isShakeName(name) {
   if (!name) return false;
   return name.includes('herbalife shake')
     || name.includes('protein shake')
-    || name === 'shake';
+    || name === 'shake'
+    || isMealShakeName(name);
+}
+
+/** Formula 1 / meal-replacement shakes still count as meals. */
+function isMealShakeName(name) {
+  if (!name) return false;
+  const n = String(name).toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  return n.includes('formula 1')
+    || n.includes('formula1')
+    || n.includes('f1 shake')
+    || n.includes('meal replacement')
+    || n.includes('protein shake');
+}
+
+const NON_MEAL_SUPPLEMENT_PATTERNS = [
+  /\bvriti\s*life\b/,
+  /\bvritilife\b/,
+  /\btriphala\b/,
+  /digestive\s*health/,
+  /multivitamin/,
+  /fish\s*oil/,
+  /\bsupplement\b/,
+  /cell\s*activator/,
+  /nightworks/,
+  /niteworks/,
+  /xtra[- ]?cal/,
+  /shakemate/,
+  /personalized\s*protein/,
+  /\bdino\s*shake\b/,
+  /\bdinoshake\b/,
+  /\bhn\s*-/,
+  /skin\s*booster/,
+  /\bjoint\s*support\b/,
+  /\blift\s*off\b/,
+  /\bh\s*24\b/,
+  /formula\s*2\b/,
+  /formula2\b/,
+  /\btablet\b/,
+  /\bcapsule\b/,
+];
+
+/** Target Nutrition / supplements that must not show Breakfast/Lunch/Dinner. */
+function isNonMealSupplementName(name) {
+  if (!name) return false;
+  if (isMealShakeName(name)) return false;
+  if (isAfreshName(name)) return true;
+  const n = String(name).toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  return NON_MEAL_SUPPLEMENT_PATTERNS.some((re) => re.test(n));
 }
 
 /**
@@ -236,10 +321,10 @@ export function extractShakeServings(foodData, analysisData = null) {
 
 /**
  * Per-product scoop counts from a shake calculator save
- * ({ formula1, shakemate, protein }), or null when missing.
+ * ({ formula1, shakemate, protein, activeFibre }), or null when missing.
  * @param {{ detailedItems?: object[], shakeProducts?: object }|null} foodData
  * @param {unknown} [analysisData]
- * @returns {{ formula1: number, shakemate: number, protein: number }|null}
+ * @returns {{ formula1: number, shakemate: number, protein: number, activeFibre: number }|null}
  */
 export function extractShakeProducts(foodData, analysisData = null) {
   const candidates = [
@@ -264,11 +349,13 @@ function normalizeShakeProducts(products) {
   const formula1 = Number(products.formula1);
   const shakemate = Number(products.shakemate);
   const protein = Number(products.protein);
-  if (![formula1, shakemate, protein].some((n) => Number.isFinite(n))) return null;
+  const activeFibre = Number(products.activeFibre);
+  if (![formula1, shakemate, protein, activeFibre].some((n) => Number.isFinite(n))) return null;
   return {
     formula1: Math.max(0, Math.round(formula1) || 0),
     shakemate: Math.max(0, Math.round(shakemate) || 0),
     protein: Math.max(0, Math.round(protein) || 0),
+    activeFibre: Math.max(0, Math.round(activeFibre) || 0),
   };
 }
 

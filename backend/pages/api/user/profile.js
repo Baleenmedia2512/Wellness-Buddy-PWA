@@ -46,7 +46,10 @@ export default async function handler(req, res) {
   if (applyCors(req, res, 'GET, POST, PUT, OPTIONS')) return;
   if (rejectIfAppVersionTooOld(req, res)) return;
   if (req.method === 'GET') {
-    return runService(res, () => getProfile(validateGetProfile(req.query)));
+    return runService(res, () => getProfile({
+      ...validateGetProfile(req.query),
+      appVersion: getClientAppVersion(req),
+    }));
   }
   if (req.method === 'POST' || req.method === 'PUT') {
     return handleUpdateProfile(req, res);

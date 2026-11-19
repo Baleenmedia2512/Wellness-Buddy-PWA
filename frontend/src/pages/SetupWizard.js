@@ -83,15 +83,6 @@ const SetupWizard = ({
     return { email, userId };
   };
 
-  const maskEmail = (email) => {
-    if (!email) return "";
-    const [username, domain] = email.split("@");
-    if (!domain) return email;
-    const visibleChars = Math.min(3, Math.floor(username.length / 2));
-    const masked = username.substring(0, visibleChars) + "***";
-    return `${masked}@${domain}`;
-  };
-
   useEffect(() => {
     let cancelled = false;
     const hydrateEmail = async () => {
@@ -292,9 +283,11 @@ const SetupWizard = ({
             >
               <div className="mb-6">
                 <h3 className="text-base font-semibold text-gray-900 mb-3 leading-snug">
-                  Search and select the person name (sponsor) who invited you to this program
+                  Search and select the sponsor who invited you to this program
                 </h3>
-                
+                <p className="text-sm text-gray-500 mb-3">
+                  Search by name, email, phone number, or Herbalife ID
+                </p>
 
                 <div className="relative group">
                   <input
@@ -302,7 +295,7 @@ const SetupWizard = ({
                     className="w-full pl-11 pr-4 py-3.5 bg-white border-2 border-green-500 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-green-500/10 transition-all shadow-sm"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Type your sponsor name or email..."
+                    placeholder="Name, email, phone, or Herbalife ID..."
                     autoFocus
                   />
                   <svg
@@ -353,7 +346,7 @@ const SetupWizard = ({
                             {coach.userName}
                           </div>
                           <div className="text-xs text-gray-500 truncate">
-                            {maskEmail(coach.email)}
+                            {coach.email}
                           </div>
                         </div>
                         {selectedCoach?.userId === coach.userId && (

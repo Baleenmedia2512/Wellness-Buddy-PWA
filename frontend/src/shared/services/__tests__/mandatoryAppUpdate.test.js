@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   shouldRunMandatoryUpdate,
+  shouldAutoStartPlayOnForeground,
   nextPhaseFromNativeEvent,
   startMandatoryUpdateFlow,
 } from '../mandatoryAppUpdate.js';
@@ -24,6 +25,47 @@ describe('shouldRunMandatoryUpdate', () => {
   });
 });
 
+describe('shouldAutoStartPlayOnForeground', () => {
+  it('returns true only when still required and idle-like', () => {
+    assert.equal(
+      shouldAutoStartPlayOnForeground({ status: 'update_required', phase: 'idle' }),
+      true,
+    );
+  });
+
+  it('returns false after cancel so Play does not loop', () => {
+    assert.equal(
+      shouldAutoStartPlayOnForeground({ status: 'update_required', phase: 'awaiting_retry' }),
+      false,
+    );
+  });
+
+  it('returns false while Play flow is already open', () => {
+    assert.equal(
+      shouldAutoStartPlayOnForeground({ status: 'update_required', phase: 'play_flow' }),
+      false,
+    );
+    assert.equal(
+      shouldAutoStartPlayOnForeground({ status: 'update_required', phase: 'starting' }),
+      false,
+    );
+  });
+
+  it('returns false when Play fallback is shown', () => {
+    assert.equal(
+      shouldAutoStartPlayOnForeground({ status: 'update_required', phase: 'play_unavailable' }),
+      false,
+    );
+  });
+
+  it('returns false when policy is ok', () => {
+    assert.equal(
+      shouldAutoStartPlayOnForeground({ status: 'ok', phase: 'idle' }),
+      false,
+    );
+  });
+});
+
 describe('nextPhaseFromNativeEvent', () => {
   it('moves to play_flow when update is available', () => {
     assert.equal(nextPhaseFromNativeEvent('updateAvailable', 'idle'), 'play_flow');
@@ -37,8 +79,12 @@ describe('nextPhaseFromNativeEvent', () => {
     assert.equal(nextPhaseFromNativeEvent('updateInstalled', 'play_flow'), 'installed');
   });
 
-  it('keeps play_flow on user cancel so native layer can retry', () => {
-    assert.equal(nextPhaseFromNativeEvent('updateCanceled', 'play_flow'), 'play_flow');
+  it('waits for explicit retry after user cancel', () => {
+    assert.equal(nextPhaseFromNativeEvent('updateCanceled', 'play_flow'), 'awaiting_retry');
+  });
+
+  it('marks play unavailable after update failure', () => {
+    assert.equal(nextPhaseFromNativeEvent('updateFailed', 'play_flow'), 'play_unavailable');
   });
 });
 

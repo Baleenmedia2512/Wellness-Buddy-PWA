@@ -17,14 +17,14 @@ export const MANUAL_LOG_CATEGORY = Object.freeze({
 
 /**
  * Dry Salad category metadata — opens the food search flow directly.
- * Usual combo for the current time slot is pre-selected; user can add/remove.
+ * Usual combo for the current time slot is listed; the user taps what they want.
  */
 export const DRY_SALAD_META = Object.freeze({
   id: MANUAL_LOG_CATEGORY.DRY_SALAD,
   label: 'Target Nutrition',
   emoji: '🥗',
   headerTitle: 'Target Nutrition',
-  headerSubtitle: 'Your usual combo is ready — add or remove',
+  headerSubtitle: 'Search or tap items to build your meal',
 });
 
 export const GOOD_HABIT_SUBTYPE = Object.freeze({

@@ -1,7 +1,7 @@
 /**
  * WhatsApp caption extras for the marathon / Detox day sequence.
  *
- * Ordinary in-marathon days append "Day N" (Day 1, Day 2, …).
+ * Ordinary in-marathon days append "Marathon Day N" (Marathon Day 1, …).
  * Only Marathon start and Detox Days get a 1-day-early "Tomorrow…" line.
  *
  * Add future special labels to MARATHON_WHATSAPP_ADVANCE_SPECIALS
@@ -12,8 +12,10 @@ import {
   getMarathonCalendarState,
 } from './marathonCalendar.js';
 import { formatMarathonWeightWhatsAppNoticeLines } from './marathonWeightComparison.js';
+import { formatTransformationCaption } from '../../../shared/utils/shareCaption.js';
 
 export const MARATHON_START_WHATSAPP_LABEL = 'Marathon Starts';
+export const MARATHON_DAY_0_WHATSAPP_LABEL = 'Today Marathon';
 export const DETOX_DAY_WHATSAPP_LABEL = 'Detox Day';
 
 /**
@@ -30,6 +32,13 @@ export const MARATHON_WHATSAPP_ADVANCE_SPECIALS = Object.freeze([
   })),
 ]);
 
+function waItalic(text) {
+  const clean = String(text || '').trim();
+  if (!clean) return '';
+  if (clean.startsWith('_') && clean.endsWith('_')) return clean;
+  return `_${clean}_`;
+}
+
 /**
  * @param {number} day
  * @param {string} [label]
@@ -37,9 +46,10 @@ export const MARATHON_WHATSAPP_ADVANCE_SPECIALS = Object.freeze([
  */
 export function formatMarathonWhatsAppAdvanceNotice(day, label) {
   const cleanLabel = typeof label === 'string' ? label.trim() : '';
-  return cleanLabel
-    ? `Tomorrow is Day ${day} - ${cleanLabel}`
-    : `Tomorrow is Day ${day}`;
+  const text = cleanLabel
+    ? `Tomorrow is Marathon Day ${day} - ${cleanLabel}`
+    : `Tomorrow is Marathon Day ${day}`;
+  return waItalic(text);
 }
 
 /**
@@ -49,7 +59,8 @@ export function formatMarathonWhatsAppAdvanceNotice(day, label) {
  */
 export function formatMarathonWhatsAppCurrentDayNotice(day, label = null) {
   const cleanLabel = typeof label === 'string' ? label.trim() : '';
-  return cleanLabel ? `Day ${day} - ${cleanLabel}` : `Day ${day}`;
+  const text = cleanLabel ? `Marathon Day ${day} - ${cleanLabel}` : `Marathon Day ${day}`;
+  return waItalic(text);
 }
 
 /**
@@ -62,6 +73,13 @@ export function formatMarathonWhatsAppCurrentDayNotice(day, label = null) {
 export function getMarathonWhatsAppCurrentDayNotice(ymd) {
   const state = getMarathonCalendarState(ymd);
   if (!state.inMarathon || !Number.isInteger(state.marathonDay)) return null;
+
+  if (state.marathonDay === 0) {
+    return formatMarathonWhatsAppCurrentDayNotice(
+      0,
+      MARATHON_DAY_0_WHATSAPP_LABEL,
+    );
+  }
 
   const special = MARATHON_WHATSAPP_ADVANCE_SPECIALS.find(
     (item) => item.day === state.marathonDay,
@@ -100,13 +118,13 @@ export function getMarathonWhatsAppAdvanceNotice(ymd) {
 }
 
 /**
- * Marathon/Detox eve: tomorrow line only. Other in-marathon days: Day N.
+ * Marathon/Detox eve: tomorrow line only. Other in-marathon days: Marathon Day N.
  * Will not duplicate an existing notice.
  *
  * Weight comparison lines (Previous Marathon End / Current Weight) are only
  * appended when `includeWeightComparison` is true. Callers must pass that for
  * weight shares only — food, water, education, and other captions stay on the
- * Day N / Tomorrow sequence.
+ * Marathon Day N / Tomorrow sequence.
  *
  * @param {unknown} caption
  * @param {unknown} ymd YYYY-MM-DD
@@ -141,5 +159,6 @@ export function appendMarathonWhatsAppNotice(
   if (!base) return additions.join('\n');
 
   const separator = base.includes('\n') ? '\n' : ', ';
-  return `${base}${separator}${additions.join(separator)}`;
+  const blockSeparator = base.includes('\n\n') ? '\n\n' : separator;
+  return `${base}${blockSeparator}${additions.join(separator)}`;
 }

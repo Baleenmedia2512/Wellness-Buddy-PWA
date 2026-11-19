@@ -1,20 +1,21 @@
-﻿/**
+/**
  * Search Coaches
  * GET /api/users/search?q={query}
  *
- * Search for sponsors by name, email, or phone.
- * Only users with a verified account email are returned (email ownership
- * is proven via OTP / Google; unverified phone-only users stay hidden).
+ * Search for sponsors by name, email, phone, or Community ID (Herbalife ID).
+ * Only users with both a verified account email and a Community ID are
+ * returned. Email alone is not enough to appear as a sponsor.
  * Used in upline / sponsor selection during onboarding.
+ * Returns the full email so the member can confirm they picked the right coach.
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { filterPublicAggregateUsers } from '../../../features/user/domain/aggregate-eligibility.rules.js';
 import {
   rankSponsorSearchUsers,
   restoreDeveloperBotInSponsorSearch,
 } from '../../../features/user/domain/developerBot.rules.js';
-import { hasVerifiedSponsorEmail } from '../../../features/user/domain/sponsorVisibility.rules.js';
+import { isEligibleSponsor } from '../../../features/user/domain/sponsorVisibility.rules.js';
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -57,9 +58,11 @@ export default async function handler(req, res) {
       return;
     }
 
+    // Keep `.` and `@` so email / Community ID queries still match.
+    // Strip chars that break PostgREST `.or()` filters or act as LIKE wildcards.
     const searchQuery = String(q || '')
       .trim()
-      .replace(/[,.%()]/g, ' ')
+      .replace(/[,%()]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
     const searchDigits = searchQuery.replace(/\D/g, '');
@@ -71,41 +74,28 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Helper function to mask email like nam*****xyz@gmail.com
-    const maskEmail = (email) => {
-      if (!email) return '';
-      const [localPart, domain] = email.split('@');
-      if (localPart.length <= 6) {
-        // Short email: show first 2 and last 1
-        const visible = localPart.substring(0, 2);
-        const last = localPart.substring(localPart.length - 1);
-        return `${visible}***${last}@${domain}`;
-      }
-      // Longer email: show first 3 and last 3
-      const start = localPart.substring(0, 3);
-      const end = localPart.substring(localPart.length - 3);
-      return `${start}*****${end}@${domain}`;
-    };
+    // Connect to MySQL
+    const db = getMysqlClient();
 
-    // Connect to Supabase
-    const supabase = getSupabaseClient();
-
-    // Search for sponsors by name, email, or phone, excluding current user.
-    // Require a non-empty Email — phone-only / unverified users are not sponsors.
+    // Search by name, email, phone, or Community ID (Herbalife ID), excluding current user.
+    // Email and Community ID are both required on the sponsor row.
     const orParts = [
       `UserName.ilike.%${searchQuery}%`,
       `Email.ilike.%${searchQuery}%`,
+      `CommunityId.ilike.%${searchQuery}%`,
     ];
     if (searchDigits.length >= 2) {
       orParts.push(`PhoneNumber.ilike.%${searchDigits}%`);
     }
 
-    const { data: coaches, error } = await supabase
+    const { data: coaches, error } = await db
       .from('team_table')
-      .select('UserId, UserName, Email, TeamId, Role, PhoneNumber')
+      .select('UserId, UserName, Email, TeamId, Role, PhoneNumber, CommunityId')
       .eq('Status', 'Active')
       .not('Email', 'is', null)
       .neq('Email', '')
+      .not('CommunityId', 'is', null)
+      .neq('CommunityId', '')
       .neq('Email', currentUserEmail || '')
       .or(orParts.join(','))
       .order('UserName', { ascending: true })
@@ -113,16 +103,16 @@ export default async function handler(req, res) {
 
     if (error) throw error;
 
-    const withVerifiedEmail = (coaches || []).filter(hasVerifiedSponsorEmail);
+    const eligibleSponsors = (coaches || []).filter(isEligibleSponsor);
 
     const eligibleCoaches = rankSponsorSearchUsers(
       restoreDeveloperBotInSponsorSearch(
-        withVerifiedEmail,
-        filterPublicAggregateUsers(withVerifiedEmail),
+        eligibleSponsors,
+        filterPublicAggregateUsers(eligibleSponsors),
       ),
     );
 
-    // Format results with masked email, deduplicating by email (case-insensitive)
+    // Full email for confirmation; dedupe by email (case-insensitive)
     const seenEmails = new Set();
     const results = (eligibleCoaches || []).reduce((acc, coach) => {
       const emailKey = (coach.Email || '').toLowerCase();
@@ -131,7 +121,7 @@ export default async function handler(req, res) {
       acc.push({
         userId: coach.UserId,
         userName: coach.UserName,
-        email: maskEmail(coach.Email),
+        email: coach.Email,
         displayName: coach.UserName,
         teamId: coach.TeamId,
         hasTeamId: !!coach.TeamId

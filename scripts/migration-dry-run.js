@@ -1,31 +1,56 @@
 #!/usr/bin/env node
 /**
- * migration-dry-run.js — claude.md §10.1
- * Applies migrations inside a transaction and rolls back.
+ * Confirms the MySQL Prisma connection (MYSQL_DATABASE_URL) and rolls nothing forward.
+ * backend/migrations/*.sql is PostgreSQL and is not executed.
+ * Schema changes belong in backend/prisma/schema.prisma.
  */
 const fs = require('fs');
 const path = require('path');
-const { Client } = require('pg');
+const { createRequire } = require('module');
 
-(async () => {
-  const dir = path.resolve('backend/migrations');
-  const files = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).sort();
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
-  await client.connect();
-  await client.query('BEGIN');
-  try {
-    for (const f of files) {
-      const sql = fs.readFileSync(path.join(dir, f), 'utf8');
-      console.log('→ dry-apply', f);
-      await client.query(sql);
+const backendRoot = path.resolve(__dirname, '../backend');
+
+function loadEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  const text = fs.readFileSync(filePath, 'utf8');
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq < 1) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"'))
+      || (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
     }
-    await client.query('ROLLBACK');
-    console.log('Dry-run OK (rolled back).');
-  } catch (e) {
-    await client.query('ROLLBACK');
-    console.error('Dry-run FAILED:', e.message);
-    process.exit(1);
-  } finally {
-    await client.end();
+    if (!(key in process.env)) process.env[key] = value;
   }
-})().catch(e => { console.error(e); process.exit(1); });
+}
+
+loadEnvFile(path.join(backendRoot, '.env.local'));
+loadEnvFile(path.join(backendRoot, '.env'));
+
+async function main() {
+  const url = process.env.MYSQL_DATABASE_URL;
+  if (!url) throw new Error('MYSQL_DATABASE_URL is required');
+
+  const requireBackend = createRequire(path.join(backendRoot, 'package.json'));
+  const { PrismaClient } = requireBackend('@prisma/client');
+  const prisma = new PrismaClient({ datasources: { db: { url } } });
+  try {
+    await prisma.$queryRawUnsafe('SELECT 1 AS ok');
+    const dir = path.join(backendRoot, 'migrations');
+    const files = fs.readdirSync(dir).filter((name) => name.endsWith('.sql')).sort();
+    console.log(`MySQL Prisma dry-run ok. Skipped ${files.length} PostgreSQL files in backend/migrations/.`);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+main().catch((err) => {
+  console.error(err.message || err);
+  process.exit(1);
+});

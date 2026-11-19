@@ -1,9 +1,14 @@
 /**
  * Shared Team Hierarchy Builder
  * ─────────────────────────────────────────────────────────────────────────────
- * Builds the coach → co-coach → team-members tree for Reports and Results
- * (testimonials). Inactive users are hidden by default; their active descendants
- * are promoted to the nearest active ancestor (same rules as team-hierarchy.js).
+ * Builds the CoachId primary tree for Reports / Results / Leadership Dashboard.
+ * Co-coach partners are metadata + optional root-level shared merge of the
+ * partner's CoachId tree — never recursive CoCoachId parent edges.
+ * allMembers also lists each visible coach's co-coach and that co-coach's
+ * CoachId teammates for Diary / team search.
+ *
+ * Inactive users are hidden by default; their active descendants are promoted
+ * to the nearest active ancestor (same rules as team-hierarchy.js).
  *
  * Includes the pre-existing cycle guards (`visited` Set in `buildHierarchy`) so
  * it cannot stack-overflow.
@@ -13,30 +18,260 @@ import {
   filterPublicAggregateUsers,
   shouldExcludeDeveloperFromAggregates,
 } from '../features/user/domain/aggregate-eligibility.rules.js';
+import {
+  buildLeadPartnerByUserId,
+  collectDownlinePartnerSearchIds,
+  listPrimaryDirectReports,
+} from './teamHierarchyTree.js';
+import {
+  getUserCommunityTeamCode,
+  resolveCommunityPeerCoachIds,
+} from './communityTeamVisibility.js';
+import { fetchAllMysqlRows } from './mysqlPaginate.js';
 
 /** Case-insensitive active check for team_table.Status. */
 export function isActiveTeamStatus(status) {
   return String(status || '').toLowerCase() === 'active';
 }
 
+const DEFAULT_SUBTREE_SELECT =
+  'UserId, UserName, Email, Role, CoachId, CoachTeamId, TeamId, Status, ProfileImage, CommunityId';
+const MAX_SUBTREE_DEPTH = 12;
+const COACH_ID_IN_CHUNK = 100;
+
 /**
- * @param {object} supabase  Supabase client
+ * @param {object} db
+ * @param {number} userId
+ * @param {string} select
+ * @returns {Promise<object|null>}
+ */
+async function fetchSubtreeUserById(db, userId, select) {
+  const { data, error } = await db
+    .from('team_table')
+    .select(select)
+    .eq('UserId', userId)
+    .maybeSingle();
+  if (error) throw new Error('Failed to fetch team user: ' + error.message);
+  return data || null;
+}
+
+/**
+ * Paginated CoachId children (Active + Inactive) for subtree walks.
+ * @param {object} db
+ * @param {number[]} coachIds
+ * @param {string} select
+ * @returns {Promise<object[]>}
+ */
+async function fetchSubtreeChildrenByCoachIds(db, coachIds, select) {
+  const ids = [...new Set(
+    (coachIds || [])
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id)),
+  )];
+  if (ids.length === 0) return [];
+
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += COACH_ID_IN_CHUNK) {
+    chunks.push(ids.slice(i, i + COACH_ID_IN_CHUNK));
+  }
+
+  const pages = await Promise.all(
+    chunks.map((chunk) =>
+      fetchAllMysqlRows(() =>
+        db
+          .from('team_table')
+          .select(select)
+          .in('CoachId', chunk)
+          .order('UserId', { ascending: true }),
+      ),
+    ),
+  );
+  return pages.flat();
+}
+
+/**
+ * @param {object} db
+ * @param {string} communityCode
+ * @param {string} select
+ * @returns {Promise<object[]>}
+ */
+async function fetchSubtreeUsersByCommunityCode(db, communityCode, select) {
+  const code = String(communityCode || '').trim();
+  if (!code) return [];
+  return fetchAllMysqlRows(() =>
+    db
+      .from('team_table')
+      .select(select)
+      .or(`CommunityId.eq.${code},CoachTeamId.eq.${code},TeamId.eq.${code}`)
+      .order('UserId', { ascending: true }),
+  );
+}
+
+/**
+ * Resolve Sponsor/Co-Sponsor partner ids when the viewer is a lead.
+ * @param {object} db
+ * @param {object} rootUser
+ * @returns {Promise<number[]>}
+ */
+async function resolveSubtreeCoCoachRootIds(db, rootUser) {
+  const rootId = Number(rootUser?.UserId);
+  if (!Number.isFinite(rootId)) return [];
+
+  const { data: byRole, error: byRoleError } = await db
+    .from('coach_teams_table')
+    .select('CoachId, CoCoachId')
+    .or(`CoachId.eq.${rootId},CoCoachId.eq.${rootId}`)
+    .eq('Status', 'active')
+    .maybeSingle();
+
+  if (!byRoleError && byRole?.CoachId && byRole?.CoCoachId) {
+    return [...new Set([byRole.CoachId, byRole.CoCoachId].filter(Boolean))];
+  }
+
+  const teamCode = rootUser.TeamId || rootUser.CoachTeamId;
+  if (!teamCode) return [rootId];
+
+  const { data: coachTeam, error } = await db
+    .from('coach_teams_table')
+    .select('CoachId, CoCoachId')
+    .eq('TeamId', teamCode)
+    .eq('Status', 'active')
+    .maybeSingle();
+
+  if (error || !coachTeam?.CoachId || !coachTeam?.CoCoachId) {
+    return [rootId];
+  }
+
+  if (rootId !== Number(coachTeam.CoachId) && rootId !== Number(coachTeam.CoCoachId)) {
+    return [rootId];
+  }
+
+  return [...new Set([coachTeam.CoachId, coachTeam.CoCoachId].filter(Boolean))];
+}
+
+/**
+ * Load only the coach-visible team_table rows via indexed CoachId / community walks
+ * (no full team_table scan). Includes inactive intermediate coaches so promotion
+ * rules still work. Same Community ID peer coaches + their downlines are included
+ * for Team visibility parity with the previous full-scan builder.
+ *
+ * @param {object} db
+ * @param {number} rootCoachId
+ * @param {{ select?: string }} [options]
+ * @returns {Promise<object[]>}
+ */
+export async function loadCoachSubtreeTeamUsers(db, rootCoachId, options = {}) {
+  const select = options.select || DEFAULT_SUBTREE_SELECT;
+  const rootId = Number(rootCoachId);
+  if (!Number.isFinite(rootId)) return [];
+
+  const usersById = new Map();
+  const rootUser = await fetchSubtreeUserById(db, rootId, select);
+  if (!rootUser) return [];
+  usersById.set(rootUser.UserId, rootUser);
+
+  // Ancestor chain (club enrichment / upline resolution — not expanded sideways).
+  let walkId = Number(rootUser.CoachId);
+  const visitedUp = new Set([rootId]);
+  while (Number.isFinite(walkId) && !visitedUp.has(walkId)) {
+    visitedUp.add(walkId);
+    const ancestor = await fetchSubtreeUserById(db, walkId, select);
+    if (!ancestor) break;
+    usersById.set(ancestor.UserId, ancestor);
+    walkId = Number(ancestor.CoachId);
+  }
+
+  const rootCoachIds = await resolveSubtreeCoCoachRootIds(db, rootUser);
+  for (const partnerId of rootCoachIds) {
+    if (partnerId === rootId || usersById.has(partnerId)) continue;
+    const partner = await fetchSubtreeUserById(db, partnerId, select);
+    if (partner) usersById.set(partner.UserId, partner);
+  }
+
+  let currentCoachIds = rootCoachIds;
+  let depth = 0;
+  while (currentCoachIds.length > 0 && depth < MAX_SUBTREE_DEPTH) {
+    const children = await fetchSubtreeChildrenByCoachIds(db, currentCoachIds, select);
+    const nextCoachIds = [];
+    for (const child of children) {
+      if (!usersById.has(child.UserId)) {
+        usersById.set(child.UserId, child);
+      }
+      nextCoachIds.push(child.UserId);
+    }
+    currentCoachIds = [...new Set(nextCoachIds)];
+    depth += 1;
+  }
+
+  const partnerRootIds = rootCoachIds
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id !== rootId);
+  const communityCode = getUserCommunityTeamCode(rootUser);
+  if (communityCode) {
+    const communityRows = await fetchSubtreeUsersByCommunityCode(db, communityCode, select);
+    const communityUserIds = [];
+    for (const row of communityRows) {
+      const id = Number(row?.UserId);
+      if (!Number.isFinite(id)) continue;
+      if (!usersById.has(id)) usersById.set(id, row);
+      communityUserIds.push(id);
+    }
+    if (communityUserIds.length > 0) {
+      const communityChildren = await fetchSubtreeChildrenByCoachIds(
+        db,
+        communityUserIds,
+        select,
+      );
+      for (const child of communityChildren) {
+        if (!usersById.has(child.UserId)) usersById.set(child.UserId, child);
+      }
+    }
+  }
+
+  const communityPeerRootIds = resolveCommunityPeerCoachIds(
+    rootId,
+    [...usersById.values()],
+    { partnerIds: partnerRootIds },
+  );
+
+  let peerFrontier = communityPeerRootIds.filter((id) => Number.isFinite(id) && id !== rootId);
+  let peerDepth = 0;
+  while (peerFrontier.length > 0 && peerDepth < MAX_SUBTREE_DEPTH) {
+    const children = await fetchSubtreeChildrenByCoachIds(db, peerFrontier, select);
+    const nextIds = [];
+    for (const child of children) {
+      if (!usersById.has(child.UserId)) {
+        usersById.set(child.UserId, child);
+      }
+      nextIds.push(child.UserId);
+    }
+    peerFrontier = [...new Set(nextIds)];
+    peerDepth += 1;
+  }
+
+  return [...usersById.values()];
+}
+
+/**
+ * @param {object} db  MySQL client
  * @param {number} coachIdInt  Logged-in user id (already parsed to int)
  * @param {object} [opts]
  * @param {boolean} [opts.includeInactive=false] — include inactive users in allMembers
  * @returns {Promise<{ hierarchy: object|null, allMembers: object[], loggedInCoach: object|null, stats: object }>}
  */
-export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
+export async function buildTeamHierarchy(db, coachIdInt, opts = {}) {
   const { includeInactive = false } = opts;
 
-  // 1. Fetch all users (Active + Inactive) so inactive intermediate coaches
-  // can be detected and their active members promoted upward.
-  const { data: allUsers, error: usersError } = await supabase
-    .from('team_table')
-    .select('UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage')
-    .order('UserName');
-
-  if (usersError) throw new Error('Failed to fetch team data: ' + usersError.message);
+  // 1. Subtree-only load (Active + Inactive) so inactive intermediate coaches
+  // can be detected and their active members promoted upward — no full table scan.
+  let allUsers;
+  try {
+    allUsers = await loadCoachSubtreeTeamUsers(db, coachIdInt, {
+      select: DEFAULT_SUBTREE_SELECT,
+    });
+  } catch (usersError) {
+    throw new Error('Failed to fetch team data: ' + (usersError?.message || usersError));
+  }
   if (!allUsers || allUsers.length === 0) {
     return {
       hierarchy: null,
@@ -46,21 +281,26 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
     };
   }
 
-  // 2. Derive CoCoachId from coach_teams_table
+  // 2. Load coach_teams for display CoCoachId + lead-partner exclusion map.
+  // Tree edges use CoachId only (see teamHierarchyTree.js).
   const coachTeamIds = [...new Set(allUsers.map(u => u.CoachTeamId).filter(Boolean))];
   const coachTeamsMap = {};
+  const coachTeamRows = [];
   if (coachTeamIds.length > 0) {
-    const { data: coachTeams } = await supabase
+    const { data: coachTeams } = await db
       .from('coach_teams_table')
       .select('Id, TeamId, CoachId, CoCoachId')
       .in('TeamId', coachTeamIds)
       .eq('Status', 'active');
     if (coachTeams) {
       coachTeams.forEach(team => {
+        coachTeamRows.push(team);
         coachTeamsMap[team.TeamId] = { coachId: team.CoachId, coCoachId: team.CoCoachId };
       });
     }
   }
+
+  const leadPartnerByUserId = buildLeadPartnerByUserId(coachTeamRows);
 
   const deriveCoCoachId = (user) => {
     if (!user.CoachTeamId) return null;
@@ -90,28 +330,26 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
   });
 
   // Collect active descendants of an inactive node (promote up to active ancestor).
-  const collectPromotedChildren = (inactiveUserId, promotedParentId, visited, coachPartnerIds) => {
+  // Walk CoachId only — never derived CoCoachId.
+  const collectPromotedChildren = (inactiveUserId, promotedParentId, visited) => {
     const result = [];
     const newVisited = new Set(visited);
     newVisited.add(inactiveUserId);
 
-    const directReports = allUsers.filter((u) => {
-      const derivedCoCoachId = userMap.get(u.UserId)?.coCoachId;
-      return (
-        (u.CoachId === inactiveUserId || derivedCoCoachId === inactiveUserId) &&
-        u.UserId !== inactiveUserId &&
-        !coachPartnerIds.includes(u.UserId) &&
-        !newVisited.has(u.UserId)
-      );
-    });
+    const directReports = listPrimaryDirectReports(
+      allUsers,
+      inactiveUserId,
+      leadPartnerByUserId,
+      newVisited,
+    );
 
     directReports.forEach((report) => {
       if (!isActiveTeamStatus(report.Status)) {
-        const deeper = collectPromotedChildren(report.UserId, promotedParentId, newVisited, coachPartnerIds);
+        const deeper = collectPromotedChildren(report.UserId, promotedParentId, newVisited);
         result.push(...deeper);
         return;
       }
-      const childNode = buildHierarchy(report.UserId, promotedParentId, newVisited, coachPartnerIds);
+      const childNode = buildHierarchy(report.UserId, promotedParentId, newVisited);
       if (childNode) {
         childNode.isCoachRelationship = true;
         result.push(childNode);
@@ -121,12 +359,11 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
     return result;
   };
 
-  // 4. Recursive tree builder (with the existing visited-Set cycle guard).
+  // 4. Recursive tree builder — primary CoachId edges only.
   const buildHierarchy = (
     userId,
     parentCoachId = null,
     visited = new Set(),
-    coachPartnerIds = [userId],
   ) => {
     const user = userMap.get(userId);
     if (!user) return null;
@@ -137,43 +374,27 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
 
     const userNode = { ...user, parentCoachId, teamMembers: [] };
 
-    const directReports = allUsers.filter(u => {
-      const derivedCoCoachId = userMap.get(u.UserId)?.coCoachId;
-      return (
-        (u.CoachId === userId || derivedCoCoachId === userId) &&
-        u.UserId !== userId &&
-        !coachPartnerIds.includes(u.UserId)
-      );
-    });
+    const directReports = listPrimaryDirectReports(
+      allUsers,
+      userId,
+      leadPartnerByUserId,
+      newVisited,
+    );
 
     directReports.forEach(report => {
       if (report.UserId === userId) return;
 
       // Hide inactive nodes; bubble their active descendants up to this ancestor.
       if (!isActiveTeamStatus(report.Status)) {
-        const promoted = collectPromotedChildren(report.UserId, userId, newVisited, coachPartnerIds);
+        const promoted = collectPromotedChildren(report.UserId, userId, newVisited);
         promoted.forEach((child) => userNode.teamMembers.push(child));
         return;
       }
 
-      if (report.CoachId === userId) {
-        const childNode = buildHierarchy(report.UserId, userId, newVisited, coachPartnerIds);
-        if (childNode) {
-          childNode.isCoachRelationship = true;
-          userNode.teamMembers.push(childNode);
-        }
-      }
-
-      const reportCoCoachId = userMap.get(report.UserId)?.coCoachId;
-      if (
-        reportCoCoachId === userId &&
-        reportCoCoachId !== report.CoachId
-      ) {
-        const childNode = buildHierarchy(report.UserId, userId, newVisited, coachPartnerIds);
-        if (childNode) {
-          childNode.isCoachRelationship = false;
-          userNode.teamMembers.push(childNode);
-        }
+      const childNode = buildHierarchy(report.UserId, userId, newVisited);
+      if (childNode) {
+        childNode.isCoachRelationship = true;
+        userNode.teamMembers.push(childNode);
       }
     });
 
@@ -197,10 +418,9 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
   }
 
   // 6. Look up partnership (covers both "by role" and "by team id" paths)
-  let coachPartnerIds = [coachIdInt];
   let managedTeam = null;
 
-  const { data: teamByRole } = await supabase
+  const { data: teamByRole } = await db
     .from('coach_teams_table')
     .select('TeamId, CoachId, CoCoachId')
     .or(`CoachId.eq.${coachIdInt},CoCoachId.eq.${coachIdInt}`)
@@ -208,7 +428,7 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
     .maybeSingle();
 
   if (!teamByRole && loggedInCoach.CoachTeamId) {
-    const { data: teamByTeamId } = await supabase
+    const { data: teamByTeamId } = await db
       .from('coach_teams_table')
       .select('TeamId, CoachId, CoCoachId')
       .eq('TeamId', loggedInCoach.CoachTeamId)
@@ -224,14 +444,21 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
     managedTeam = teamByRole;
   }
 
-  if (managedTeam && managedTeam.CoachId && managedTeam.CoCoachId) {
-    coachPartnerIds = [managedTeam.CoachId, managedTeam.CoCoachId];
+  if (managedTeam?.CoachId && managedTeam?.CoCoachId) {
+    // Ensure viewer's partnership is on the exclusion map even if TeamId
+    // was missing from the bulk CoachTeamId fetch.
+    const a = Number(managedTeam.CoachId);
+    const b = Number(managedTeam.CoCoachId);
+    if (Number.isFinite(a) && Number.isFinite(b) && a !== b) {
+      leadPartnerByUserId.set(a, b);
+      leadPartnerByUserId.set(b, a);
+    }
   }
 
-  // 7. Build hierarchy
-  const hierarchy = buildHierarchy(coachIdInt, null, new Set(), coachPartnerIds);
+  // 7. Build primary CoachId hierarchy
+  const hierarchy = buildHierarchy(coachIdInt, null, new Set());
 
-  // 8. Attach co-coach partnership info + merge partner's downline at root
+  // 8. Attach co-coach partnership info + merge partner's CoachId downline at root
   if (managedTeam && managedTeam.CoachId && managedTeam.CoCoachId && hierarchy) {
     const partnerId = managedTeam.CoachId === coachIdInt
       ? managedTeam.CoCoachId
@@ -247,47 +474,108 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
         ...partnerData,
         isCoach: !loggedInIsCoach,
         isCoCoach: loggedInIsCoach,
-        parentCoachId: coachIdInt,
+        parentCoachId: null,
         teamMembers: [],
         directMemberCount: 0,
         totalMemberCount: 0,
       };
 
-      // Merge ALL members who report to EITHER partner
+      // Shared visibility: own CoachId tree already built; append partner's
+      // primary directs (and their CoachId subtrees). Never via CoCoachId.
       const existingIds = new Set(hierarchy.teamMembers.map(m => m.userId));
       existingIds.add(coachIdInt);
       existingIds.add(partnerId);
 
-      const partnerMembers = allUsers.filter(u => {
-        const derivedCoCoachId = userMap.get(u.UserId)?.coCoachId;
-        const reportsToEitherPartner = (
-          u.CoachId === coachIdInt ||
-          u.CoachId === partnerId ||
-          derivedCoCoachId === coachIdInt ||
-          derivedCoCoachId === partnerId
-        );
-        return reportsToEitherPartner && !existingIds.has(u.UserId);
-      });
+      const partnerMembers = listPrimaryDirectReports(
+        allUsers,
+        partnerId,
+        leadPartnerByUserId,
+        existingIds,
+      );
 
       partnerMembers.forEach(member => {
         if (!isActiveTeamStatus(member.Status)) {
           const promoted = collectPromotedChildren(
             member.UserId,
-            coachIdInt,
+            partnerId,
             new Set([coachIdInt, partnerId]),
-            coachPartnerIds,
           );
-          promoted.forEach((child) => hierarchy.teamMembers.push(child));
+          promoted.forEach((child) => {
+            if (!existingIds.has(child.userId)) {
+              existingIds.add(child.userId);
+              hierarchy.teamMembers.push(child);
+            }
+          });
           return;
         }
         const memberNode = buildHierarchy(
           member.UserId,
-          coachIdInt,
+          partnerId,
           new Set([coachIdInt, partnerId]),
-          coachPartnerIds,
         );
-        if (memberNode) hierarchy.teamMembers.push(memberNode);
+        if (memberNode && !existingIds.has(memberNode.userId)) {
+          existingIds.add(memberNode.userId);
+          hierarchy.teamMembers.push(memberNode);
+        }
       });
+
+      hierarchy.directMemberCount = hierarchy.teamMembers.length;
+      hierarchy.totalMemberCount =
+        hierarchy.directMemberCount +
+        hierarchy.teamMembers.reduce((sum, m) => sum + (m.totalMemberCount || 0), 0);
+    }
+  }
+
+  // Same Community ID: merge independent peer coaches' Direct/Full downlines.
+  // Visibility only — never coCoachInfo / CoachId / CoCoachId edges.
+  if (hierarchy) {
+    const partnerIdsForCommunity = managedTeam?.CoachId && managedTeam?.CoCoachId
+      ? [managedTeam.CoachId, managedTeam.CoCoachId].filter((id) => Number(id) !== coachIdInt)
+      : [];
+    const communityPeerIds = resolveCommunityPeerCoachIds(coachIdInt, allUsers, {
+      partnerIds: partnerIdsForCommunity,
+    });
+
+    if (communityPeerIds.length > 0) {
+      const existingIds = new Set(hierarchy.teamMembers.map((m) => m.userId));
+      existingIds.add(coachIdInt);
+      for (const pid of partnerIdsForCommunity) existingIds.add(Number(pid));
+      for (const peerId of communityPeerIds) existingIds.add(Number(peerId));
+
+      for (const peerId of communityPeerIds) {
+        const peerMembers = listPrimaryDirectReports(
+          allUsers,
+          peerId,
+          leadPartnerByUserId,
+          existingIds,
+        );
+
+        peerMembers.forEach((member) => {
+          if (!isActiveTeamStatus(member.Status)) {
+            const promoted = collectPromotedChildren(
+              member.UserId,
+              peerId,
+              new Set([coachIdInt, peerId]),
+            );
+            promoted.forEach((child) => {
+              if (!existingIds.has(child.userId)) {
+                existingIds.add(child.userId);
+                hierarchy.teamMembers.push(child);
+              }
+            });
+            return;
+          }
+          const memberNode = buildHierarchy(
+            member.UserId,
+            peerId,
+            new Set([coachIdInt, peerId]),
+          );
+          if (memberNode && !existingIds.has(memberNode.userId)) {
+            existingIds.add(memberNode.userId);
+            hierarchy.teamMembers.push(memberNode);
+          }
+        });
+      }
 
       hierarchy.directMemberCount = hierarchy.teamMembers.length;
       hierarchy.totalMemberCount =
@@ -311,7 +599,10 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
         Status: node.status,
       };
       if (node.isCoCoach) entry.isCoCoach = true;
-      if (!shouldExcludeDeveloperFromAggregates(entry, { viewerUserId: coachIdInt })) {
+      if (!shouldExcludeDeveloperFromAggregates(entry, {
+        viewerUserId: coachIdInt,
+        viewerRole: loggedInCoach.Role,
+      })) {
         result.set(node.userId, entry);
       }
     }
@@ -338,9 +629,42 @@ export async function buildTeamHierarchy(supabase, coachIdInt, opts = {}) {
       isCoCoach: true,
     });
   }
+
+  // Diary / team search: co-coach + teammates of every coach already visible.
+  // Flat list only — nested tree edges stay CoachId-only.
+  const searchVisibleIds = new Set(memberMap.keys());
+  searchVisibleIds.add(coachIdInt);
+  const downlinePartners = collectDownlinePartnerSearchIds(
+    allUsers,
+    searchVisibleIds,
+    leadPartnerByUserId,
+  );
+  const downlinePartnerIds = new Set(downlinePartners.partnerIds.map((id) => Number(id)));
+  for (const extraId of downlinePartners.ids) {
+    const extraUser = userMap.get(extraId) || userMap.get(String(extraId));
+    if (!extraUser || memberMap.has(extraUser.userId)) continue;
+    if (!includeInactive && !isActiveTeamStatus(extraUser.status)) continue;
+    const entry = {
+      UserId: extraUser.userId,
+      UserName: extraUser.userName,
+      Email: extraUser.email,
+      Role: extraUser.role,
+      CoachId: extraUser.coachId,
+      CoCoachId: extraUser.coCoachId,
+      Status: extraUser.status,
+    };
+    if (downlinePartnerIds.has(Number(extraUser.userId))) entry.isCoCoach = true;
+    if (!shouldExcludeDeveloperFromAggregates(entry, {
+      viewerUserId: coachIdInt,
+      viewerRole: loggedInCoach.Role,
+    })) {
+      memberMap.set(extraUser.userId, entry);
+    }
+  }
+
   const allMembers = filterPublicAggregateUsers(
     Array.from(memberMap.values()),
-    { viewerUserId: coachIdInt },
+    { viewerUserId: coachIdInt, viewerRole: loggedInCoach.Role },
   );
 
   const uniqueUserIds = new Set(allUsers.map(u => u.UserId));

@@ -5,7 +5,7 @@
  * @module backend/pages/api/user/get-active-coach
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { resolveActiveCoach } from '../../../utils/hierarchyHelpers.js';
 import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
 
@@ -29,12 +29,12 @@ export default async function handler(req, res) {
       });
     }
 
-    const supabase = getSupabaseClient();
+    const db = getMysqlClient();
 
     let user = null;
 
     if (userIdQuery) {
-      const { data, error: userError } = await supabase
+      const { data, error: userError } = await db
         .from('team_table')
         .select('UserId, UserName, CoachId, Status')
         .eq('UserId', userIdQuery)
@@ -43,7 +43,7 @@ export default async function handler(req, res) {
     }
 
     if (!user && emailQuery) {
-      const { data, error: userError } = await supabase
+      const { data, error: userError } = await db
         .from('team_table')
         .select('UserId, UserName, CoachId, Status')
         .ilike('Email', String(emailQuery).trim())
@@ -53,7 +53,7 @@ export default async function handler(req, res) {
 
     if (!user && phoneQuery) {
       const normalized = String(phoneQuery).trim();
-      const { data, error: userError } = await supabase
+      const { data, error: userError } = await db
         .from('team_table')
         .select('UserId, UserName, CoachId, Status')
         .eq('PhoneNumber', normalized)
@@ -62,7 +62,7 @@ export default async function handler(req, res) {
       if (!user) {
         const digits = normalized.replace(/\D/g, '');
         if (digits.length >= 10) {
-          const { data: bySuffix, error: suffixErr } = await supabase
+          const { data: bySuffix, error: suffixErr } = await db
             .from('team_table')
             .select('UserId, UserName, CoachId, Status')
             .ilike('PhoneNumber', `%${digits.slice(-10)}`)
@@ -100,7 +100,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const { data: originalCoachRow } = await supabase
+    const { data: originalCoachRow } = await db
       .from('team_table')
       .select('UserId, UserName, Status')
       .eq('UserId', user.CoachId)
@@ -115,7 +115,7 @@ export default async function handler(req, res) {
       coachId: resolvedCoachId,
       coachName: resolvedCoachName,
       isOriginalCoach,
-    } = await resolveActiveCoach(user.UserId, supabase);
+    } = await resolveActiveCoach(user.UserId, db);
 
     // Inactive-account contact rule: show/contact direct coach unless they are
     // inactive — then fall back to the nearest active upline coach.

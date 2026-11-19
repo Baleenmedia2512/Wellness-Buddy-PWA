@@ -56,8 +56,31 @@ describe('shareCardPhotoHeight', () => {
 
   it('always leaves room for the rest of the 9:16 card', () => {
     const h = shareCardPhotoHeight({ issueCount: 10, hasResultPill: true });
-    assert.ok(h >= 340);
+    assert.ok(h >= 320);
     assert.ok(h <= 690);
+    // Compact health-issues + disclaimer still leave photos dominant on the 9:16 card
     assert.ok(h + 300 < CARD_H);
+  });
+
+  it('keeps photos large when health issues are present (no heavy shrink)', () => {
+    const noIssues = shareCardPhotoHeight({ issueCount: 0, hasResultPill: true });
+    const withIssues = shareCardPhotoHeight({ issueCount: 6, hasResultPill: true });
+    // With 6 issues, photos stay usable; disclaimer budget may shrink them a little
+    assert.ok(withIssues >= 440);
+    assert.ok(noIssues - withIssues < 240);
+  });
+
+  it('reserves space for the two-line disclaimer footer', () => {
+    const withIssues = shareCardPhotoHeight({ issueCount: 2, hasResultPill: true });
+    const noIssues = shareCardPhotoHeight({ issueCount: 0, hasResultPill: true });
+    // Disclaimer is always reserved — no-issues card still has room below the pill
+    assert.ok(noIssues > withIssues);
+    assert.ok(noIssues <= 690);
+  });
+
+  it('never budgets more photo height than fits above the disclaimer', () => {
+    const h = shareCardPhotoHeight({ issueCount: 10, hasResultPill: true });
+    // HEADER + NAME + photo + META + PILL + 3 issue rows + DISCLAIMER_H ≤ CARD_H
+    assert.ok(h + 540 <= CARD_H);
   });
 });

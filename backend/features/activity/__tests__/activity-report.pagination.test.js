@@ -277,6 +277,33 @@ describe('filter / sort / paginate', () => {
     assert.deepEqual(sorted.map((r) => r.memberName), ['Alice', 'Ana', 'Bob', 'Carol']);
   });
 
+  it('sorts whole rows by the sponsor shown in the table, both directions', () => {
+    const sponsors = [
+      { memberName: 'Ana', sponsorName: 'Zara', coachName: 'Zara', date: '2026-08-01', weight: 70 },
+      { memberName: 'Bob', sponsorName: 'Mia', coachName: 'Mia', date: '2026-08-02', weight: 80 },
+      { memberName: 'Cara', sponsorName: 'Amy', coachName: 'Amy', date: '2026-08-03', weight: 60 },
+      { memberName: 'Dan', sponsorName: 'N/A', coachName: 'N/A', date: '2026-08-04', weight: 90 },
+    ];
+    assert.deepEqual(
+      sortActivityReportRecords(sponsors, 'sponsorName', 'asc').map((r) => r.memberName),
+      ['Cara', 'Bob', 'Ana', 'Dan'],
+    );
+    assert.deepEqual(
+      sortActivityReportRecords(sponsors, 'sponsorName', 'desc').map((r) => r.memberName),
+      ['Ana', 'Bob', 'Cara', 'Dan'],
+    );
+    const { records } = paginateActivityReportRecords(sponsors, {
+      page: 1,
+      limit: 1,
+      search: '',
+      sort: 'sponsorName',
+      sortDir: 'asc',
+    });
+    assert.equal(records[0].memberName, 'Cara');
+    assert.equal(records[0].weight, 60);
+    assert.equal(records[0].date, '2026-08-03');
+  });
+
   it('paginates with metadata (LIMIT/OFFSET semantics)', () => {
     const { records, pagination } = paginateActivityReportRecords(rows, {
       page: 2,

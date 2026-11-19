@@ -33,10 +33,11 @@ describe('meal selection helpers', () => {
     quantity_g: 50,
   };
 
-  test('normalizeServings falls back to 1', () => {
-    expect(normalizeServings(2)).toBe(2);
-    expect(normalizeServings(0)).toBe(1);
-    expect(normalizeServings('x')).toBe(1);
+  test('normalizeServings supports decimal quantities like 0.5 and 1.5 and falls back to 0.5', () => {
+    expect(normalizeServings(0.5)).toBe(0.5);
+    expect(normalizeServings(1.5)).toBe(1.5);
+    expect(normalizeServings(0)).toBe(0.5);
+    expect(normalizeServings('x')).toBe(0.5);
   });
 
   test('computeSelectedKcal scales by servings', () => {
@@ -61,6 +62,27 @@ describe('meal selection helpers', () => {
     expect(scaled.name).toBe('Rice');
     expect(scaled.calories).toBe(260);
     expect(scaled.servings).toBe(2);
+  });
+
+  test('scaleSelectedItem keeps ml volume and profile for custom foods', () => {
+    const custom = {
+      name: 'subja',
+      calories: 0,
+      servings: 2,
+      weight_g: 100,
+      refWeightG: 100,
+      unit: 'ml',
+      isLiquid: true,
+      customFood: true,
+      profileId: 42,
+      portion: '100 ml',
+    };
+    const scaled = scaleSelectedItem(custom);
+    expect(scaled.volume_ml).toBe(200);
+    expect(scaled.weight_g).toBe(200);
+    expect(scaled.unit).toBe('ml');
+    expect(scaled.profileId).toBe(42);
+    expect(scaled.customFood).toBe(true);
   });
 
   test('buildPlateSavePayload keeps isPlate contract', () => {

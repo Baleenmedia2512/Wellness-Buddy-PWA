@@ -12,7 +12,7 @@
 import { Capacitor } from '@capacitor/core';
 import { getClientPlatform } from './appVersionPolicy.api.js';
 
-/** @typedef {'idle'|'starting'|'play_flow'|'play_unavailable'|'installed'} MandatoryUpdatePhase */
+/** @typedef {'idle'|'starting'|'play_flow'|'play_unavailable'|'awaiting_retry'|'installed'|'ios_store_only'} MandatoryUpdatePhase */
 
 /**
  * Whether the native mandatory-update flow should run for this policy state.
@@ -27,6 +27,30 @@ export function shouldRunMandatoryUpdate(versionPolicy) {
   } catch {
     return false;
   }
+}
+
+/**
+ * Whether returning to foreground should auto-start Play IMMEDIATE again.
+ * After cancel/fail we wait for an explicit "Update Now" tap to avoid loops.
+ *
+ * @param {{
+ *   status?: string,
+ *   phase?: MandatoryUpdatePhase,
+ * }} input
+ * @returns {boolean}
+ */
+export function shouldAutoStartPlayOnForeground({ status, phase } = {}) {
+  if (status !== 'update_required') return false;
+  if (
+    phase === 'awaiting_retry'
+    || phase === 'play_unavailable'
+    || phase === 'play_flow'
+    || phase === 'starting'
+    || phase === 'installed'
+  ) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -76,9 +100,10 @@ export function nextPhaseFromNativeEvent(eventName, currentPhase) {
     case 'updateInstalled':
       return 'installed';
     case 'updateFailed':
-      return currentPhase === 'play_flow' ? 'play_unavailable' : currentPhase;
+      return 'play_unavailable';
     case 'updateCanceled':
-      return 'play_flow';
+      // Stay hard-blocked in UI; do not keep Play open in a loop.
+      return 'awaiting_retry';
     default:
       return currentPhase;
   }

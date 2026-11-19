@@ -7,6 +7,7 @@ import {
   ACTIVITY_REPORT_ATTENDANCE,
   missingActivityUserIds,
   normalizeActivityReportAttendance,
+  buildNotPostedSummaryCounts,
   resolveActivityReportTableUserIds,
 } from '../domain/activity-report.attendance.js';
 
@@ -88,6 +89,48 @@ describe('resolveActivityReportTableUserIds', () => {
     assert.deepEqual(
       resolveActivityReportTableUserIds('not_attended', [1, 2, 3], [2]),
       [1, 3],
+    );
+  });
+});
+
+describe('buildNotPostedSummaryCounts', () => {
+  it('counts scope members who did not post each category', () => {
+    assert.deepEqual(
+      buildNotPostedSummaryCounts(
+        { weight: 1, education: 1, breakfast: 3, lunch: 0, dinner: 2, water: 3, calories: 0 },
+        [10, 20, 30],
+      ),
+      {
+        weight: 2,
+        education: 2,
+        breakfast: 0,
+        lunch: 3,
+        dinner: 1,
+        water: 0,
+        calories: 3,
+      },
+    );
+  });
+
+  it('treats an empty scope as zero not-posted', () => {
+    assert.deepEqual(
+      buildNotPostedSummaryCounts({ education: 1 }, []),
+      {
+        weight: 0,
+        education: 0,
+        breakfast: 0,
+        lunch: 0,
+        dinner: 0,
+        water: 0,
+        calories: 0,
+      },
+    );
+  });
+
+  it('dedupes scope ids and never goes below zero', () => {
+    assert.equal(
+      buildNotPostedSummaryCounts({ education: 5 }, ['1', 1, 2]).education,
+      0,
     );
   });
 });

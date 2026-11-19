@@ -3,23 +3,21 @@
  * Returns team_table + latest weight fields for BCM form prefill.
  */
 import { handleMemberPrefill } from '../../../features/body-parameters-card/api/member-prefill.handler.js';
+import { applyCors, methodNotAllowed } from '../../../shared/lib/handler.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
+import { getClientAppVersion } from '../../../shared/lib/client-app-version.js';
 import logger from '../../../shared/lib/logger.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization');
-
-  if (req.method === 'OPTIONS') { res.status(200).end(); return; }
-  if (req.method !== 'GET') {
-    res.status(405).json({ ok: false, error: { code: 'METHOD_NOT_ALLOWED', message: 'GET only' } });
-    return;
-  }
+  // Must allow X-App-Version* + Cache-Control — otherwise browser blocks preflight (CORS).
+  if (applyCors(req, res, 'GET, OPTIONS')) return;
+  if (req.method !== 'GET') return methodNotAllowed(res);
 
   try {
-    const { httpStatus, body } = await handleMemberPrefill(req.query);
+    const { httpStatus, body } = await handleMemberPrefill(req.query, {
+      appVersion: getClientAppVersion(req),
+    });
     res.status(httpStatus).json(body);
   } catch (err) {
     if (err instanceof ValidationError) {

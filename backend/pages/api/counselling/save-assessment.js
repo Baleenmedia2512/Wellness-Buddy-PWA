@@ -8,7 +8,7 @@
  * Migration: backend/migrations/wellness_counselling_assessments.sql
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import { nowUtc } from '../../../shared/lib/datetime/index.js';
 import logger from '../../../shared/lib/logger.js';
 
@@ -93,12 +93,12 @@ export default async function handler(req, res) {
       isLead: !userIdInt,
     });
 
-    // Get Supabase client
-    const supabase = getSupabaseClient();
+    // Get MySQL client
+    const db = getMysqlClient();
     const timestamp = nowUtc();
 
     // Insert assessment into database (SERIAL auto-generates ID)
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('wellness_counselling_assessments')
       .insert({
         user_id: userIdInt,

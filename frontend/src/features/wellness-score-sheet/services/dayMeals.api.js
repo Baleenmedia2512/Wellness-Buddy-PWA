@@ -27,3 +27,38 @@ export async function fetchDayMealsForScore({ userId, date, apiBaseUrl, viewerUs
   }
   return Array.isArray(payload.data) ? payload.data : [];
 }
+
+/**
+ * Meal rows across calendar days for Last N Days / Custom contribution sheets.
+ * Fetches days in parallel (same pattern as home carousel `fetchRangeDayAnalyses`).
+ * @returns {Promise<object[]>}
+ */
+export async function fetchRangeMealsForScore({
+  userId,
+  dates = [],
+  apiBaseUrl,
+  viewerUserId = null,
+}) {
+  if (!userId || !Array.isArray(dates) || dates.length === 0) return [];
+
+  const uniqueDates = [...new Set(dates.map((d) => String(d || '').trim()).filter(Boolean))];
+  if (uniqueDates.length === 0) return [];
+  if (uniqueDates.length === 1) {
+    return fetchDayMealsForScore({
+      userId,
+      date: uniqueDates[0],
+      apiBaseUrl,
+      viewerUserId,
+    });
+  }
+
+  const results = await Promise.all(
+    uniqueDates.map((date) => fetchDayMealsForScore({
+      userId,
+      date,
+      apiBaseUrl,
+      viewerUserId,
+    })),
+  );
+  return results.flat();
+}

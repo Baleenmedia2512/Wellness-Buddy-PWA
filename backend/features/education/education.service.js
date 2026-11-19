@@ -1,6 +1,6 @@
 import * as repo from './education.repository.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
-import { getTimeWindows } from '../../utils/disciplineCalculationsSupabase.js';
+import { getTimeWindows } from '../../utils/disciplineCalculationsQuery.js';
 // PR 6 — captures_table is canonical for the at-capture-time write. The
 // education save endpoint promotes the linked capture pending → education
 // when `captureId` is supplied. Best-effort: a captures-side failure is
@@ -172,19 +172,19 @@ export async function getLogImage({ logId, userId }) {
   let r2Url = null;
   if (data.ImageKey) {
     try {
-      const { r2ActivityImagesEnabled } = await import('../../shared/lib/r2/activity-image-storage.service.js');
-      const { avatarRedirectUrl } = await import('../../shared/lib/r2/s3.js');
-      if (r2ActivityImagesEnabled()) r2Url = avatarRedirectUrl(data.ImageKey);
+      const { redirectUrlForImageKey } = await import('../../shared/lib/milesweb/storedImage.js');
+      r2Url = await redirectUrlForImageKey(data.ImageKey, 'ff.r2-activity-images');
     } catch {
       r2Url = null;
     }
   }
-  if (!r2Url) {
-    return { httpStatus: 404, body: { success: false, message: 'No image' } };
-  }
   return {
     httpStatus: 200,
-    body: { success: true, r2Url },
+    body: {
+      success: true,
+      r2Url,
+      image: data.ImageBase64 || null,
+    },
   };
 }
 

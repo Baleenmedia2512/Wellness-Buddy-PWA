@@ -12,15 +12,25 @@ import { resolveSponsorCoachNames } from '../../../shared/utils/sponsorCoachLabe
 import { setVisibilityAwareInterval } from '../../../shared/utils/visibilityAwareInterval.js';
 import { useAutoScrollStrip } from '../../../shared/hooks/useAutoScrollStrip.js';
 import LeaderboardAvatar from './LeaderboardAvatar.js';
+import LeaderboardAvatarViewer from './LeaderboardAvatarViewer.js';
 import LeaderboardRankBadge from './LeaderboardRankBadge.js';
+import {
+  buildUserAvatarUrl,
+  getAvatarDisplayVersion,
+} from '../../user/services/avatarDisplayVersion';
 import { sortLeaderboardByRankAsc } from '../utils/leaderboardOrder.js';
 import {
   hasValidProfileName,
   isPlaceholderUserName,
 } from '../../user/domain/profileCompleteness';
 import { subscribeDailyWellnessScoreSeed } from '../../wellness-score-sheet/services/dailyWellnessScoreCache';
+import { LEADERBOARD_CONFIG } from '../../../config/leaderboardConfig.js';
+import { useRaceLeaderboardRealtime } from '../hooks/useRaceLeaderboardRealtime.js';
 
-const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_TTL = 15 * 1000;
+// Keep a short poll even when Realtime is configured — subscribe can fail
+// silently (missing env / blocked WS), and a 60s backup felt "not live".
+const POLL_MS = LEADERBOARD_CONFIG.REFRESH_INTERVAL;
 // v6: overlay chosen display name when DB still has user_<phone>
 const CACHE_KEY_PREFIX = 'wv.lb.wellness.v7.';
 const LEGACY_CACHE_KEYS = [
@@ -82,6 +92,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
   const [leaderboardData, setLeaderboardData] = useState(() => readCache(userId) ?? []);
   const [isVisible, setIsVisible] = useState(() => (readCache(userId)?.length ?? 0) > 0);
   const [hasEntered, setHasEntered] = useState(() => (readCache(userId)?.length ?? 0) > 0);
+  const [expandedAvatar, setExpandedAvatar] = useState(null);
   const isTile = variant === 'tile';
   const { viewportRef, trackRef, interactionHandlers } = useAutoScrollStrip({
     enabled: !isTile && isVisible && leaderboardData.length > 0,
@@ -139,19 +150,20 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
     refresh: fetchLeaderboard,
   }));
 
+  useRaceLeaderboardRealtime(fetchLeaderboard);
+
   useEffect(() => {
     const cached = readCache(userId);
     if (cached?.length) {
       setLeaderboardData(cached);
       setIsVisible(true);
-    } else {
-      fetchLeaderboard();
     }
+    fetchLeaderboard();
     const retryEmpty = setTimeout(() => {
       if (userId == null || userId === '') return;
       if (!readCache(userId)?.length) fetchLeaderboard();
     }, 1600);
-    const stopInterval = setVisibilityAwareInterval(fetchLeaderboard, CACHE_TTL);
+    const stopInterval = setVisibilityAwareInterval(fetchLeaderboard, POLL_MS);
     return () => {
       clearTimeout(retryEmpty);
       stopInterval();
@@ -159,11 +171,11 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
   }, [fetchLeaderboard, userId]);
 
   useEffect(() => {
-    return subscribeDailyWellnessScoreSeed(({ userId: seedUserId }) => {
-      if (userId == null || String(seedUserId) !== String(userId)) return;
+    return subscribeDailyWellnessScoreSeed(() => {
+      // Any local score seed — refresh Top 10 immediately (race scoreboard).
       fetchLeaderboard();
     });
-  }, [fetchLeaderboard, userId]);
+  }, [fetchLeaderboard]);
 
   // Smooth enter once data is ready
   useEffect(() => {
@@ -187,6 +199,42 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
     return null;
   }
 
+  const openExpandedAvatar = (user, shownName) => {
+    setExpandedAvatar({
+      src: buildUserAvatarUrl(apiBaseUrl, user.userId, getAvatarDisplayVersion()),
+      name: shownName,
+    });
+  };
+
+  const renderTappableAvatar = (user, shownName) => (
+    <button
+      type="button"
+      className="flex-shrink-0 rounded-full p-0 m-0 border-0 bg-transparent cursor-pointer appearance-none leading-none"
+      onClick={(e) => {
+        e.stopPropagation();
+        openExpandedAvatar(user, shownName);
+      }}
+      aria-label={`View ${shownName}'s photo`}
+    >
+      <LeaderboardAvatar
+        apiBaseUrl={apiBaseUrl}
+        userId={user.userId}
+        email={user.email}
+        userName={shownName}
+        profileImage={user.profileImage}
+      />
+    </button>
+  );
+
+  const avatarViewer = (
+    <LeaderboardAvatarViewer
+      isOpen={Boolean(expandedAvatar)}
+      src={expandedAvatar?.src}
+      name={expandedAvatar?.name}
+      onClose={() => setExpandedAvatar(null)}
+    />
+  );
+
   const renderLeaderboardCard = (user, key) => {
     const shownName = displayLeaderboardName(user, userId, viewerName);
     return (
@@ -200,13 +248,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
       />
 
       <div className="flex-shrink-0">
-        <LeaderboardAvatar
-          apiBaseUrl={apiBaseUrl}
-          userId={user.userId}
-          email={user.email}
-          userName={shownName}
-          profileImage={user.profileImage}
-        />
+        {renderTappableAvatar(user, shownName)}
       </div>
 
       <div className="flex flex-col justify-center flex-shrink-0 min-w-0 max-w-[120px] sm:max-w-[150px] md:max-w-[180px]">
@@ -246,13 +288,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
           rank={user.rank}
           colorClass={getRankColor(user.rank)}
         />
-        <LeaderboardAvatar
-          apiBaseUrl={apiBaseUrl}
-          userId={user.userId}
-          email={user.email}
-          userName={shownName}
-          profileImage={user.profileImage}
-        />
+        {renderTappableAvatar(user, shownName)}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-gray-800">{shownName}</p>
           {(() => {
@@ -294,6 +330,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
         <ul className="divide-y divide-violet-50">
           {leaderboardData.map(renderTileRow)}
         </ul>
+        {avatarViewer}
       </section>
     );
   }
@@ -336,6 +373,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
           </div>
         </div>
       </div>
+      {avatarViewer}
     </div>
   );
 });

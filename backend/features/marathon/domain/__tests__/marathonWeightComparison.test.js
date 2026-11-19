@@ -16,10 +16,10 @@ import {
 } from '../marathonWeightComparison.js';
 
 describe('backend marathon weight comparison dates', () => {
-  it('resolves Sep 1 from Aug 11 previous marathon end', () => {
+  it('resolves Sep 1 from Aug 25 previous marathon end (last M2 Day 10)', () => {
     assert.deepEqual(getMarathonWeightComparisonDates('2026-09-01'), {
       currentDay0Ymd: '2026-09-01',
-      previousDay10Ymd: '2026-08-11',
+      previousDay10Ymd: '2026-08-25',
       marathonNumber: 1,
     });
   });
@@ -27,29 +27,29 @@ describe('backend marathon weight comparison dates', () => {
   it('handles leap-year February boundaries', () => {
     assert.deepEqual(getMarathonWeightComparisonDates('2028-03-01'), {
       currentDay0Ymd: '2028-03-01',
-      previousDay10Ymd: '2028-02-11',
+      previousDay10Ymd: '2028-02-25',
       marathonNumber: 1,
     });
     assert.deepEqual(getMarathonWeightComparisonDates('2028-02-15'), {
       currentDay0Ymd: '2028-02-15',
-      previousDay10Ymd: '2028-02-25',
+      previousDay10Ymd: '2028-02-11',
       marathonNumber: 2,
     });
   });
 });
 
 describe('backend marathon gap comparison dates', () => {
-  it('resolves Sep 12 gap before Marathon 2', () => {
+  it('resolves Sep 12 gap before Marathon 2 from this month 11th', () => {
     assert.deepEqual(getMarathonGapComparisonDates('2026-09-12'), {
-      previousDay10Ymd: '2026-09-25',
+      previousDay10Ymd: '2026-09-11',
       upcomingDay0Ymd: '2026-09-15',
       upcomingMarathonNumber: 2,
     });
   });
 
-  it('resolves Sep 26 gap before next Marathon 1', () => {
+  it('resolves Sep 26 gap from this month 25th (last M2 Day 10)', () => {
     assert.deepEqual(getMarathonGapComparisonDates('2026-09-26'), {
-      previousDay10Ymd: '2026-09-11',
+      previousDay10Ymd: '2026-09-25',
       upcomingDay0Ymd: '2026-10-01',
       upcomingMarathonNumber: 1,
     });
@@ -62,10 +62,10 @@ describe('backend marathon gap comparison dates', () => {
 
 describe('backend marathon day formatting', () => {
   it('formats Day 0 vs Day N against Day 0 baseline', () => {
-    assert.equal(formatMarathonDayComparisonLine(75, 74.5), '75.00 kg → 74.50 kg ⬇️ 0.50 kg');
-    assert.equal(formatMarathonDayComparisonLine(75, 76), '75.00 kg → 76.00 kg ⬆️ 1.00 kg');
-    assert.equal(formatMarathonDayComparisonLine(75, 75), '75.00 kg → 75.00 kg');
-    assert.equal(formatMarathonDayComparisonLine(75, null), '75.00 kg → —');
+    assert.equal(formatMarathonDayComparisonLine(75, 74.5), 'Day 0 : 75.00 kg → Curr: 74.50 kg ⬇️ 500 g');
+    assert.equal(formatMarathonDayComparisonLine(75, 76), 'Day 0 : 75.00 kg → Curr: 76.00 kg ⬆️ 1.00 kg');
+    assert.equal(formatMarathonDayComparisonLine(75, 75), 'Day 0 : 75.00 kg → Curr: 75.00 kg');
+    assert.equal(formatMarathonDayComparisonLine(75, null), 'Day 0 : 75.00 kg → Curr: —');
   });
 
   it('builds running marathon day entries', () => {
@@ -83,7 +83,7 @@ describe('backend marathon day formatting', () => {
       day0Weight: 75,
       dayWeight: 74,
     });
-    assert.equal(day2.displayLine, '75.00 kg → 74.00 kg ⬇️ 1.00 kg');
+    assert.equal(day2.displayLine, 'Day 0 : 75.00 kg → Curr: 74.00 kg ⬇️ 1.00 kg');
   });
 
   it('builds running progress for Day 0 with previous marathon end comparison', () => {
@@ -114,7 +114,7 @@ describe('backend marathon day formatting', () => {
     });
     assert.equal(result.mode, 'running');
     assert.equal(result.days.length, 11);
-    assert.equal(result.days[2].displayLine, '75.00 kg → 74.00 kg ⬇️ 1.00 kg');
+    assert.equal(result.days[2].displayLine, 'Day 0 : 75.00 kg → Curr: 74.00 kg ⬇️ 1.00 kg');
   });
 });
 

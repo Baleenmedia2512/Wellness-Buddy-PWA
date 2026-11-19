@@ -7,9 +7,10 @@ import { compressAvatarJpeg } from '../images/avatarJpeg.js';
 import { isR2Configured } from './config.js';
 import { putObject } from './s3.js';
 import { isKeyInFolder } from './objectKeys.js';
+import { isMileswebStorageEnabled } from '../milesweb/config.js';
 
 export async function uploadStoredImageToR2({ imageBase64, folder, buildKey }) {
-  if (!isR2Configured()) return null;
+  if (!isR2Configured() && !isMileswebStorageEnabled()) return null;
   if (!shouldStoreFoodImageInR2(imageBase64)) return null;
   const parsed = parseStoredImage(imageBase64);
   if (!parsed) return null;

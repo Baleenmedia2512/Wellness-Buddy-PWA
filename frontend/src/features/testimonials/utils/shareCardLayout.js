@@ -8,15 +8,28 @@ export const CARD_H = 960;
 export const MAX_VISIBLE_ISSUES = 10;
 
 const HEADER_H = 62;
+/** Name block: pad 13+11 + 28px line — must not under-budget or disclaimer clips. */
 const NAME_H = 52;
-const PHOTO_META_H = 44;
-const RESULT_PILL_H = 48;
-const ISSUES_OUTER_PAD = 26;
-const ISSUES_BOX_PAD = 22;
-const ISSUES_TITLE_H = 52;
-const CHIP_ROW_H = 81;
-const EMPTY_BOTTOM = 16;
-const PHOTO_MIN = 340;
+/** BEFORE/AFTER label + weight kg line under each photo (must not clip). */
+const PHOTO_META_H = 56;
+const RESULT_PILL_H = 44;
+/** Keep health-issues compact so photos stay close to the no-issues card size. */
+const ISSUES_OUTER_PAD = 8;
+const ISSUES_BOX_PAD = 10;
+/** Title + “while joining the community” + gap before chips. */
+const ISSUES_TITLE_H = 42;
+/** Chip row height for 14px issue labels (may wrap once on long names). */
+const CHIP_ROW_H = 64;
+const EMPTY_BOTTOM = 4;
+/**
+ * Red DISCLAIMER SVG footer under the result pill / health issues.
+ * Must match TransformationShareCard: marginTop + pad + SVG (420×88) + padBottom.
+ */
+export const DISCLAIMER_H = 110;
+/** Soft floor — photos may shrink below this when issues + disclaimer need the space. */
+const PHOTO_MIN = 400;
+/** Never crush photos below this; prefer clipping issues over a tiny photo strip. */
+const PHOTO_HARD_MIN = 320;
 const PHOTO_MAX = 690;
 
 /**
@@ -60,7 +73,12 @@ export function shareCardPhotoHeight({ issueCount = 0, hasResultPill = false } =
     + NAME_H
     + PHOTO_META_H
     + (hasResultPill ? RESULT_PILL_H : 0)
-    + issuesH;
+    + issuesH
+    + DISCLAIMER_H;
   const raw = CARD_H - used;
-  return Math.max(PHOTO_MIN, Math.min(PHOTO_MAX, raw));
+  // Prefer PHOTO_MIN when there is room; never grow past raw or the disclaimer clips.
+  if (raw < PHOTO_MIN) {
+    return Math.min(PHOTO_MAX, Math.max(PHOTO_HARD_MIN, raw));
+  }
+  return Math.min(PHOTO_MAX, raw);
 }

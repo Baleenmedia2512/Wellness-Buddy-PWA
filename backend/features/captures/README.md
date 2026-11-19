@@ -57,7 +57,7 @@ prevents *new* orphans from being created.
 
 ## Dependencies
 
-- `backend/utils/supabaseClient.js` (DB)
+- `backend/utils/mysqlClient.js` (DB)
 - `backend/shared/lib/logger.js` (structured logs)
 
 ## Test matrix

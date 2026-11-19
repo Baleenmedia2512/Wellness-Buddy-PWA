@@ -30,6 +30,9 @@ export const MEETING_SESSIONS = [
   'Daily Education',
   'Wellness Seminar',
   'Academy',
+  'Focus Training',
+  'Coaches Training',
+  'Special Training',
 ];
 
 export const DEFAULT_MEETING_SESSION = 'Daily Education';

@@ -1,13 +1,13 @@
 /**
  * HealthIssueCoachEditor.jsx
- * Transformation Health Issues editor — uses the same filter-style search as BCM
- * (chips inside the search field via DiseaseMultiSelect).
+ * Transformation Health Issues editor — Mine (own) card only.
+ * Coaches viewing downline use a read-only chip list in CoachTestimonialsPage.
  *
- * - persist=false (member draft / edit mode): every change calls onSaved immediately
- * - persist=true  (coach live update): changes are local until Save
+ * - persist=false (member draft): every change calls onSaved immediately
+ * - persist=true is legacy; coach live-save API always rejects with 403
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { Save } from 'lucide-react';
+import { Save, HeartPulse } from 'lucide-react';
 import DiseaseMultiSelect from './DiseaseMultiSelect.jsx';
 import { updateMemberHealthIssues } from '../services/testimonialApi.js';
 import { uniqueConditions, issueKey } from '../utils/uniqueConditions.js';
@@ -23,6 +23,7 @@ import { recordRecentMedicalCondition } from '../domain/medicalConditionSearch.j
  *   persist?: boolean,
  *   allowRemove?: boolean,
  *   editable?: boolean,
+ *   disabled?: boolean,
  *   onSaved?: (issues: string[]) => void,
  *   onRemove?: (issue: string) => void,
  * }} props
@@ -33,9 +34,10 @@ export default function HealthIssueCoachEditor({
   currentIssues = [],
   approvedIssues,
   knownHealthIssues = [],
-  persist = true,
+  persist = false,
   allowRemove = false,
   editable = false,
+  disabled = false,
   onSaved,
   onRemove,
 }) {
@@ -74,6 +76,7 @@ export default function HealthIssueCoachEditor({
   }
 
   function handleChange(nextRaw) {
+    if (disabled) return;
     const next = uniqueConditions(Array.isArray(nextRaw) ? nextRaw : []);
     setError(null);
     rememberNew(next);
@@ -87,7 +90,7 @@ export default function HealthIssueCoachEditor({
   }
 
   async function handleSave() {
-    if (!persist || !dirty || saving) return;
+    if (disabled || !persist || !dirty || saving) return;
     setSaving(true);
     setError(null);
     try {
@@ -109,20 +112,21 @@ export default function HealthIssueCoachEditor({
   void knownHealthIssues;
   void allowRemove;
   void onRemove;
+  void editable;
 
   return (
     <div className="space-y-2 relative z-20">
       <DiseaseMultiSelect
         value={displayValue}
         onChange={handleChange}
-        disabled={saving}
+        disabled={disabled || saving}
       />
 
       {error && (
         <p className="text-xs text-red-600 bg-red-50 rounded-xl px-3 py-2">{error}</p>
       )}
 
-      {persist && dirty && (
+      {persist && !disabled && dirty && (
         <button
           type="button"
           onClick={handleSave}

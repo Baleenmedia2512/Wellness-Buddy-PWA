@@ -31,6 +31,20 @@ export function isConsentRecorded(row) {
 }
 
 /**
+ * Signup checkbox acceptance is stored when the account is identified.
+ * Missing acceptance (older apps that still show the post-login form) is not stamped.
+ * @param {object|null|undefined} row
+ * @param {{ consentAccepted?: boolean, consentVersion?: string }} input
+ * @param {boolean} [gateOn]
+ * @returns {boolean}
+ */
+export function shouldStampSignupConsent(row, input, gateOn = true) {
+  if (gateOn !== true) return false;
+  if (isConsentRecorded(row)) return false;
+  return hasValidConsentAcceptance(input || {});
+}
+
+/**
  * Fields to set on team_table when creating a user who has just consented.
  * @param {string} acceptedAtUtc — ISO / DB timestamp from nowUtc()
  * @param {{ version?: string, ipAddress?: string|null, deviceInfo?: string|null }} [meta]

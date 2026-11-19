@@ -1,11 +1,11 @@
 /**
  * food-suggestions.repository.js — pair stats + recent meals for suggestions.
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 
 export async function incrementGlobalPair(keyA, keyB) {
-  const supabase = getSupabaseClient();
-  const { data: existing, error: findErr } = await supabase
+  const db = getMysqlClient();
+  const { data: existing, error: findErr } = await db
     .from('food_pair_stats_table')
     .select('id, pair_count')
     .eq('food_a', keyA)
@@ -15,7 +15,7 @@ export async function incrementGlobalPair(keyA, keyB) {
 
   const now = new Date().toISOString();
   if (existing?.id) {
-    const { error } = await supabase
+    const { error } = await db
       .from('food_pair_stats_table')
       .update({
         pair_count: Number(existing.pair_count || 0) + 1,
@@ -26,7 +26,7 @@ export async function incrementGlobalPair(keyA, keyB) {
     return;
   }
 
-  const { error } = await supabase.from('food_pair_stats_table').insert({
+  const { error } = await db.from('food_pair_stats_table').insert({
     food_a: keyA,
     food_b: keyB,
     pair_count: 1,
@@ -36,9 +36,9 @@ export async function incrementGlobalPair(keyA, keyB) {
 }
 
 export async function incrementUserPair(userId, keyA, keyB) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const uid = String(userId);
-  const { data: existing, error: findErr } = await supabase
+  const { data: existing, error: findErr } = await db
     .from('food_pair_stats_user_table')
     .select('id, pair_count')
     .eq('user_id', uid)
@@ -49,7 +49,7 @@ export async function incrementUserPair(userId, keyA, keyB) {
 
   const now = new Date().toISOString();
   if (existing?.id) {
-    const { error } = await supabase
+    const { error } = await db
       .from('food_pair_stats_user_table')
       .update({
         pair_count: Number(existing.pair_count || 0) + 1,
@@ -60,7 +60,7 @@ export async function incrementUserPair(userId, keyA, keyB) {
     return;
   }
 
-  const { error } = await supabase.from('food_pair_stats_user_table').insert({
+  const { error } = await db.from('food_pair_stats_user_table').insert({
     user_id: uid,
     food_a: keyA,
     food_b: keyB,
@@ -71,10 +71,10 @@ export async function incrementUserPair(userId, keyA, keyB) {
 }
 
 export async function listUserPairsForAnchor(userId, anchorKey) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const uid = String(userId);
   const safe = String(anchorKey).replace(/"/g, '');
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('food_pair_stats_user_table')
     .select('food_a, food_b, pair_count')
     .eq('user_id', uid)
@@ -86,9 +86,9 @@ export async function listUserPairsForAnchor(userId, anchorKey) {
 }
 
 export async function listGlobalPairsForAnchor(anchorKey, minCount) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const safe = String(anchorKey).replace(/"/g, '');
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('food_pair_stats_table')
     .select('food_a, food_b, pair_count')
     .or(`food_a.eq."${safe}",food_b.eq."${safe}"`)
@@ -103,8 +103,8 @@ export async function listGlobalPairsForAnchor(anchorKey, minCount) {
  * Recent meal AnalysisData rows for a user (newest first).
  */
 export async function listRecentUserMeals(userId, limit = 40) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from('food_nutrition_data_table')
     .select('"ID","AnalysisData","CreatedAt"')
     .eq('"UserID"', String(userId))

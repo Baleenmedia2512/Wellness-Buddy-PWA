@@ -1,13 +1,14 @@
 /**
  * Transformation photos — Left / Centre / Right tabs.
  * Portrait (9:16) frames match testimonial before/after upload UX.
- * Picked photos cover the frame; the user pans/zooms to choose the visible area.
+ * Camera / Gallery use icon buttons → system picker (no in-frame live camera).
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { Camera, CheckCircle2, Images } from 'lucide-react';
 import TransformationPoseGuideCard from './TransformationPoseGuideCard';
 import { PORTRAIT_IMAGE_CLASS } from '../../../testimonials/services/testimonialFormUtils.js';
 import usePortraitCoverCrop from '../../hooks/usePortraitCoverCrop';
+import { portraitCropWindowStyle } from '../../domain/transformationCropPreview';
 import {
   DEFAULT_POSE_SLOT,
   POSE_SLOT_KEYS,
@@ -19,6 +20,26 @@ const PORTRAIT_FRAME_MAX = 'max-w-[200px]';
 const PORTRAIT_PLACEHOLDER_CLASS =
   `w-full ${PORTRAIT_FRAME_MAX} mx-auto aspect-[9/16] rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50 overflow-hidden relative`;
 
+function CropWindowPreview({ src, area, alt, onError }) {
+  const [size, setSize] = useState(null);
+  const style = portraitCropWindowStyle(area, size?.w, size?.h);
+  return (
+    <span className="relative block w-full aspect-[9/16] overflow-hidden rounded-2xl border-2 border-emerald-400 bg-gray-100">
+      <img
+        src={src}
+        alt={alt}
+        onLoad={(e) => {
+          const img = e.currentTarget;
+          setSize({ w: img.naturalWidth, h: img.naturalHeight });
+        }}
+        onError={onError}
+        className={`absolute block max-w-none ${style ? '' : 'h-full w-full opacity-0'}`}
+        style={style || undefined}
+      />
+    </span>
+  );
+}
+
 const TransformationPhotosSection = ({
   onSelectFile,
   selectedType = DEFAULT_POSE_SLOT,
@@ -29,24 +50,52 @@ const TransformationPhotosSection = ({
   const [busy, setBusy] = useState(false);
   const [brokenSlots, setBrokenSlots] = useState({});
   const [cropError, setCropError] = useState('');
+  const [cropPreviews, setCropPreviews] = useState({});
+  const [cropFrames, setCropFrames] = useState({});
+  const originalsRef = useRef({});
   const cameraRef = React.useRef(null);
   const galleryRef = React.useRef(null);
   const poseTypeRef = useRef(selectedType);
 
   const poseType = POSE_SLOT_KEYS.includes(selectedType) ? selectedType : DEFAULT_POSE_SLOT;
   poseTypeRef.current = poseType;
-  const preview = previews?.[poseType] || null;
+  const storedPreview = previews?.[poseType] || null;
+  const frame = cropFrames[poseType];
+  const showFramedOriginal = Boolean(frame?.src)
+    && !frame.rotation
+    && Number(frame.area?.width) > 0
+    && Number(frame.area?.height) > 0;
+  const preview = showFramedOriginal
+    ? frame.src
+    : (cropPreviews[poseType] || storedPreview);
   const guide = POSE_TAB_GUIDE[poseType] || POSE_TAB_GUIDE.front;
   const captureFacing = poseType === 'front' ? 'user' : 'environment';
   const showPreview = Boolean(preview) && !brokenSlots[poseType];
 
   const coverCrop = usePortraitCoverCrop({
-    onApply: async (dataUrl, key) => {
+    onApply: async (croppedUrl, key, originalUrl, croppedAreaPixels, rotation = 0) => {
       const slot = POSE_SLOT_KEYS.includes(key) ? key : poseTypeRef.current;
+      const original = originalUrl || originalsRef.current[slot] || null;
+      if (original) originalsRef.current[slot] = original;
+      const turned = Number(rotation) || 0;
+      const canFrame = Boolean(original)
+        && !turned
+        && Number(croppedAreaPixels?.width) > 0
+        && Number(croppedAreaPixels?.height) > 0;
       setBusy(true);
       setCropError('');
       try {
-        await onSelectFile?.(slot, dataUrl);
+        if (canFrame) {
+          setCropFrames((prev) => ({
+            ...prev,
+            [slot]: { src: original, area: croppedAreaPixels, rotation: 0 },
+          }));
+          setCropPreviews((prev) => ({ ...prev, [slot]: null }));
+        } else if (croppedUrl) {
+          setCropFrames((prev) => ({ ...prev, [slot]: null }));
+          setCropPreviews((prev) => ({ ...prev, [slot]: croppedUrl }));
+        }
+        await onSelectFile?.(slot, original || croppedUrl);
         setBrokenSlots((prev) => ({ ...prev, [slot]: false }));
         const next = nextEmptyTransformationSlot(
           { ...previews, [slot]: 'filled' },
@@ -73,9 +122,9 @@ const TransformationPhotosSection = ({
   };
 
   return (
-    <div className="flex flex-col gap-3 h-full min-h-0">
+    <div className="flex flex-col gap-3">
       {coverCrop.overlay}
-      <div className="grid grid-cols-3 gap-1 rounded-xl bg-gray-100 p-1 shrink-0">
+      <div className="grid grid-cols-3 gap-1 rounded-xl bg-gray-100 p-1">
         {POSE_SLOT_KEYS.map((type) => {
           const hasPhoto = Boolean(previews?.[type]) && !brokenSlots[type];
           const active = type === poseType;
@@ -97,23 +146,37 @@ const TransformationPhotosSection = ({
         })}
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-2 overflow-y-auto py-1">
+      <div className="flex flex-col items-center justify-center gap-2 py-1">
         {showPreview ? (
           <button
             type="button"
-            onClick={() => { setCropError(''); void coverCrop.recrop(preview, poseType); }}
+            onClick={() => {
+              setCropError('');
+              void coverCrop.recrop(originalsRef.current[poseType] || storedPreview, poseType);
+            }}
             disabled={disabled || busy || coverCrop.isPreparing}
             aria-label={`Adjust ${guide.label} photo`}
             className={`relative block w-full ${PORTRAIT_FRAME_MAX} mx-auto overflow-hidden rounded-2xl disabled:opacity-60`}
           >
-            <img
-              src={preview}
-              alt={guide.label}
-              className={`${PORTRAIT_IMAGE_CLASS} border-emerald-400`}
-              onError={() => {
-                setBrokenSlots((prev) => ({ ...prev, [poseType]: true }));
-              }}
-            />
+            {showFramedOriginal ? (
+              <CropWindowPreview
+                src={frame.src}
+                area={frame.area}
+                alt={guide.label}
+                onError={() => {
+                  setBrokenSlots((prev) => ({ ...prev, [poseType]: true }));
+                }}
+              />
+            ) : (
+              <img
+                src={preview}
+                alt={guide.label}
+                className={`${PORTRAIT_IMAGE_CLASS} border-emerald-400`}
+                onError={() => {
+                  setBrokenSlots((prev) => ({ ...prev, [poseType]: true }));
+                }}
+              />
+            )}
             {(busy || coverCrop.isPreparing) ? (
               <span className="absolute inset-0 bg-black/40 flex items-center justify-center">
                 <span className="text-white text-[11px] font-semibold">Preparing…</span>
@@ -138,7 +201,7 @@ const TransformationPhotosSection = ({
           <p className="text-[11px] text-red-600 text-center px-2">{cropError}</p>
         ) : null}
 
-        <div className={`grid grid-cols-2 gap-2 w-full ${PORTRAIT_FRAME_MAX} mx-auto shrink-0`}>
+        <div className={`grid grid-cols-2 gap-2 w-full ${PORTRAIT_FRAME_MAX} mx-auto`}>
           <input
             ref={cameraRef}
             type="file"

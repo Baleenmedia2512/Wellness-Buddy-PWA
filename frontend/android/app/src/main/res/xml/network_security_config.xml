@@ -9,10 +9,11 @@
         <!-- Add your development server if different -->
         <domain includeSubdomains="false">192.168.1.100</domain>
         <domain includeSubdomains="false">192.168.1.5</domain>
+        <domain includeSubdomains="true">wellnessvalley.in</domain>
     </domain-config>
     
     <!-- For production, you should use HTTPS -->
-    <base-config cleartextTrafficPermitted="false">
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system"/>
         </trust-anchors>

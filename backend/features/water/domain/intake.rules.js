@@ -4,7 +4,7 @@
  * PURE business rules for daily water intake.
  *
  * Per claude.md §2.2 / §3.1, this module must not import axios, fetch, pg,
- * supabase, react, next/*, or read process.env. Inputs come from the data
+ * db, react, next/*, or read process.env. Inputs come from the data
  * layer; outputs are returned as plain objects.
  *
  * Reference implementation for Vertical Slice Architecture. Copy this shape

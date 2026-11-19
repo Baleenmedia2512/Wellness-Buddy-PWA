@@ -37,23 +37,41 @@ function marathonEndCalendarDay(marathonNumber) {
 }
 
 /**
+ * Marathon 1 Day 10 (11th) for the given calendar month.
  * @param {{ year: number, month: number }} parts
  * @returns {string}
  */
-function previousMarathon1EndYmd(parts) {
-  const endDay = marathonEndCalendarDay(1);
-  const { year, month } = parts;
-  if (month === 1) return formatYmdParts(year - 1, 12, endDay);
-  return formatYmdParts(year, month - 1, endDay);
+function marathon1EndYmd(parts) {
+  return formatYmdParts(parts.year, parts.month, marathonEndCalendarDay(1));
 }
 
 /**
+ * Marathon 2 Day 10 (25th) for the given calendar month.
  * @param {{ year: number, month: number }} parts
  * @returns {string}
  */
-function previousMarathon2EndYmd(parts) {
-  const endDay = marathonEndCalendarDay(2);
-  return formatYmdParts(parts.year, parts.month, endDay);
+function marathon2EndYmd(parts) {
+  return formatYmdParts(parts.year, parts.month, marathonEndCalendarDay(2));
+}
+
+/**
+ * Last completed Day 10 before Marathon 1 in `parts` month = prior month's 25th.
+ * @param {{ year: number, month: number }} parts
+ * @returns {string}
+ */
+function lastCompletedEndBeforeMarathon1(parts) {
+  const { year, month } = parts;
+  if (month === 1) return marathon2EndYmd({ year: year - 1, month: 12 });
+  return marathon2EndYmd({ year, month: month - 1 });
+}
+
+/**
+ * Last completed Day 10 before/during Marathon 2 in `parts` month = this month's 11th.
+ * @param {{ year: number, month: number }} parts
+ * @returns {string}
+ */
+function lastCompletedEndBeforeMarathon2(parts) {
+  return marathon1EndYmd(parts);
 }
 
 /**
@@ -119,9 +137,10 @@ export function getMarathonWeightComparisonDates(ymd) {
 
   const startDay = MARATHON_START_DAYS_OF_MONTH[state.marathonNumber - 1];
   const currentDay0Ymd = formatYmdParts(parts.year, parts.month, startDay);
+  // Last completed Day 10 — not same-number pairing (M1↔M1 / M2↔M2).
   const previousDay10Ymd = state.marathonNumber === 1
-    ? previousMarathon1EndYmd(parts)
-    : previousMarathon2EndYmd(parts);
+    ? lastCompletedEndBeforeMarathon1(parts)
+    : lastCompletedEndBeforeMarathon2(parts);
 
   return {
     currentDay0Ymd,
@@ -183,8 +202,8 @@ export function getMarathonGapComparisonDates(ymd) {
       && tomorrowState.marathonNumber != null
     ) {
       const previousDay10Ymd = tomorrowState.marathonNumber === 1
-        ? previousMarathon1EndYmd(tomorrowParts)
-        : previousMarathon2EndYmd(tomorrowParts);
+        ? lastCompletedEndBeforeMarathon1(tomorrowParts)
+        : lastCompletedEndBeforeMarathon2(tomorrowParts);
       return {
         previousDay10Ymd,
         upcomingDay0Ymd: tomorrowYmd,
@@ -194,14 +213,17 @@ export function getMarathonGapComparisonDates(ymd) {
     return null;
   }
 
+  // Gap after Marathon 1 Day 10 (11th): last completed end is this month's 11th.
   if (dayOfMonth >= 12 && dayOfMonth <= 14) {
     return {
-      previousDay10Ymd: previousMarathon2EndYmd(parts),
+      previousDay10Ymd: lastCompletedEndBeforeMarathon2(parts),
       upcomingDay0Ymd: formatYmdParts(year, month, MARATHON_START_DAYS_OF_MONTH[1]),
       upcomingMarathonNumber: 2,
     };
   }
 
+  // Gap after Marathon 2 Day 10 (25th): last completed end is this month's 25th.
+  // Example: on 26 Sep, Previous Marathon End = 25 Sep (not this month's 11th).
   if (dayOfMonth >= 26) {
     let nextMonth = month + 1;
     let nextYear = year;
@@ -209,9 +231,8 @@ export function getMarathonGapComparisonDates(ymd) {
       nextMonth = 1;
       nextYear += 1;
     }
-    const upcomingParts = { year: nextYear, month: nextMonth };
     return {
-      previousDay10Ymd: previousMarathon1EndYmd(upcomingParts),
+      previousDay10Ymd: marathon2EndYmd(parts),
       upcomingDay0Ymd: formatYmdParts(nextYear, nextMonth, MARATHON_START_DAYS_OF_MONTH[0]),
       upcomingMarathonNumber: 1,
     };

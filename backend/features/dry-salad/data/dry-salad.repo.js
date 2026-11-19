@@ -1,12 +1,17 @@
 /**
  * backend/features/dry-salad/data/dry-salad.repo.js
  */
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../../utils/mysqlClient.js';
 import logger from '../../../shared/lib/logger.js';
 import {
   foodNameMatchesQuery,
   sortByFoodNameMatch,
 } from '../../nutrition-knowledge/domain/nutrition.rules.js';
+import {
+  listBrandCatalogSeeds,
+  searchBrandCatalogSeeds,
+} from '../domain/brandCatalog.seeds.js';
+import { mergeCatalogRows, takeCatalogPage } from '../domain/mergeCatalog.rules.js';
 
 const TABLE = 'dry_salad_items_table';
 
@@ -36,19 +41,20 @@ function mapRow(row) {
  * @returns {Promise<object[]|null>}
  */
 export async function listApproved({ status = 'approved', limit = 50 } = {}) {
-  const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const seeds = status === 'approved' ? listBrandCatalogSeeds() : [];
+  const db = getMysqlClient();
+  const { data, error } = await db
     .from(TABLE)
     .select('*')
     .eq('status', status)
     .order('canonical_name', { ascending: true })
-    .limit(limit);
+    .limit(Math.max(limit, 200));
 
   if (error) {
     logger.warn('[dry-salad.repo] listApproved failed', { err: error.message });
-    return null;
+    return takeCatalogPage(mergeCatalogRows([], seeds), seeds, limit);
   }
-  return (data || []).map(mapRow);
+  return takeCatalogPage(mergeCatalogRows((data || []).map(mapRow), seeds), seeds, limit);
 }
 
 /**
@@ -57,15 +63,16 @@ export async function listApproved({ status = 'approved', limit = 50 } = {}) {
  * @returns {Promise<object[]|null>}
  */
 export async function searchItems(term, { status = 'approved', limit = 20 } = {}) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const q = String(term || '').trim();
   if (q.length < 1) return listApproved({ status, limit });
 
   const safe = q.replace(/[%_,]/g, ' ').trim();
   if (safe.length < 1) return [];
 
+  const seeds = status === 'approved' ? searchBrandCatalogSeeds(safe) : [];
   const fetchLimit = Math.max(limit * 4, 80);
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from(TABLE)
     .select('*')
     .eq('status', status)
@@ -75,7 +82,7 @@ export async function searchItems(term, { status = 'approved', limit = 20 } = {}
 
   if (error) {
     logger.warn('[dry-salad.repo] searchItems failed', { err: error.message });
-    return null;
+    return sortByFoodNameMatch(seeds, safe).slice(0, limit);
   }
 
   let rows = (data || []).map(mapRow);
@@ -83,7 +90,7 @@ export async function searchItems(term, { status = 'approved', limit = 20 } = {}
   if (rows.length === 0 && safe.length >= 3) {
     const prefix = safe.slice(0, 2).replace(/[%_,]/g, ' ').trim();
     if (prefix.length >= 1) {
-      const broad = await supabase
+      const broad = await db
         .from(TABLE)
         .select('*')
         .eq('status', status)
@@ -102,7 +109,7 @@ export async function searchItems(term, { status = 'approved', limit = 20 } = {}
     }
   }
 
-  return sortByFoodNameMatch(rows, safe).slice(0, limit);
+  return sortByFoodNameMatch(mergeCatalogRows(rows, seeds), safe).slice(0, limit);
 }
 
 /**
@@ -112,9 +119,9 @@ export async function searchItems(term, { status = 'approved', limit = 20 } = {}
  * @returns {Promise<object[]>}
  */
 export async function listRecentUserMeals(userId, limit = 150) {
-  const supabase = getSupabaseClient();
+  const db = getMysqlClient();
   const cap = Number.isFinite(limit) ? Math.min(300, Math.max(1, Math.floor(limit))) : 150;
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('food_nutrition_data_table')
     .select('"ID","AnalysisData","CreatedAt"')
     .eq('"UserID"', String(userId))

@@ -3,7 +3,7 @@
  */
 import { ValidationError } from '../../shared/lib/ValidationError.js';
 import logger from '../../shared/lib/logger.js';
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getMysqlClient } from '../../utils/mysqlClient.js';
 import { userHasSponsorTeam } from '../../utils/coachTeamSeats.js';
 import * as userRepo from '../user/user.repository.js';
 import * as repo from './data/navAccess.repo.js';
@@ -50,7 +50,7 @@ export async function getForMe({ requesterUserId, requesterEmail }) {
   let hasSponsorTeam = false;
   if (accountKey === 'user') {
     try {
-      hasSponsorTeam = await userHasSponsorTeam(getSupabaseClient(), requester.UserId);
+      hasSponsorTeam = await userHasSponsorTeam(getMysqlClient(), requester.UserId);
     } catch (err) {
       logger.warn('[nav-page-access] sponsor-team check failed; using account role', {
         err: err?.message || String(err),

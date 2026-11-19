@@ -74,33 +74,48 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.5.0',
+  VERSION: '3.5.5',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
   // NOTE: versionCode must never decrease for Play Store compatibility.
-  VERSION_CODE: 71,
+  VERSION_CODE: 84,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
-  IOS_BUILD_NUMBER: 71,
+  IOS_BUILD_NUMBER: 79,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version  3.5.0',
+  RELEASE_NAME: 'Version  3.5.5',
   
   // Build date
-  BUILD_DATE: '2026-09-10',
+  BUILD_DATE: '2026-10-31',
   
   // Platform release notes..
   PLATFORMS: {
-    ANDROID: { versionCode: 71, versionName: '3.5.0' },
-    IOS: { buildNumber: 71, versionName: '3.5.0' },
+    ANDROID: { versionCode: 84, versionName: '3.5.5' },
+    IOS: { buildNumber: 79, versionName: '3.5.5' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
  * 
- * Version 3.5.0 (Code 71 / iOS build 71) - 2026-09-10 [ANDROID + iOS — not yet released]
+ * Version 3.5.5 (Code 84 / iOS build 79) - 2026-10-31 [ANDROID + iOS — not yet released]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.5.4 (Code 83 / iOS build 78) - 2026-10-29 [ANDROID + iOS — not yet released]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.5.3 (Code 74 / iOS build 76) - 2026-10-21 [ANDROID + iOS — not yet released]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.5.2 (Code 73 / iOS build 75) - 2026-10-04 [ANDROID + iOS — not yet released]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.5.1 (Code 72 / iOS build 74) - 2026-09-26 [ANDROID + iOS — not yet released]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.5.0 (Code 71 / iOS build 73) - 2026-09-10 [ANDROID + iOS RELEASE]
  *   🚀 Minor version bump — version sync across all platforms
  *   ✨ Community ID create / co-sponsor via 24h sponsor OTP (ADR-0013)
  *
@@ -225,7 +240,7 @@ export const APP_VERSION = {
  *   🎓 Wellness University - Per-program enrollment date/time stored and displayed in IST
  *   🗺️ Enrollment Map Format - EnrolledPrograms now stored as { programName: isoDate } map for individual timestamps
  *   🔒 Date Preservation - Re-saving enrollments preserves original enrollment dates per program
- *   🔧 JSONB Fix - Fixed Supabase JSONB auto-parse causing enrollment dates to reset on update
+ *   🔧 JSONB Fix - Fixed MySQL JSONB auto-parse causing enrollment dates to reset on update
  *   🚫 AI Unavailable Modal - Removed "LOG SOMETHING ELSE" alt buttons (Food/Education) from all modals
  *   🚫 Manual Weight Modal - Disabled ManualWeightEntryModal to prevent unwanted popups
  *   🧹 Code Cleanup - Removed unused altButtons logic from AI Unavailable handler

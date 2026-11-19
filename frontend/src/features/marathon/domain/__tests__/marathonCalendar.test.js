@@ -98,6 +98,7 @@ describe('getDetoxReminder', () => {
     const day3 = getDetoxReminder('2026-08-04');
     assert.equal(day3.title, DETOX_REMINDER_TITLE);
     assert.equal(day3.subtitle, DETOX_REMINDER_SUBTITLE);
+    assert.equal(DETOX_REMINDER_SUBTITLE, 'Detox Day Drink Recipe');
     assert.equal(day3.marathonDay, 3);
     assert.equal(day3.marathonNumber, 1);
     assert.equal(day3.kind, 'detox');

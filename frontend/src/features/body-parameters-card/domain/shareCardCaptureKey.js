@@ -7,7 +7,10 @@ import {
   parseUtcTimestamp,
   resolveBusinessTimezone,
 } from '../../../shared/utils/datetimeUtils.js';
-import { resolveBcmCardDisplayTimestamp } from './bcmCardDateTime.rules.js';
+import {
+  resolveBcmCardDisplayTimestamp,
+  resolveBcmCardAppointmentDate,
+} from './bcmCardDateTime.rules.js';
 
 function normScalar(value) {
   if (value == null || value === '') return '';
@@ -52,7 +55,6 @@ function previousKey(previousCard) {
     normScalar(previousCard.weightKg),
     normScalar(previousCard.bmi),
     normScalar(previousCard.fatPercent),
-    normScalar(previousCard.visceralFat),
     normScalar(previousCard.bodyAge),
     normScalar(previousCard.chestCm),
     normScalar(previousCard.waistCm),
@@ -78,6 +80,7 @@ export function getShareCardCaptureKey(
     normCreatedAtMinute(resolveBcmCardDisplayTimestamp(card), tz),
     normScalar(tz),
     normScalar(card.locationName),
+    normScalar(resolveBcmCardAppointmentDate(card)),
     normScalar(card.name),
     normScalar(card.age),
     normScalar(card.heightCm),
@@ -87,7 +90,6 @@ export function getShareCardCaptureKey(
     normScalar(card.weightKg),
     normScalar(card.bmi),
     normScalar(card.fatPercent),
-    normScalar(card.visceralFat),
     normScalar(card.bodyAge),
     normScalar(card.chestCm),
     normScalar(card.waistCm),

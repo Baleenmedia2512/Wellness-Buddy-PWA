@@ -34,6 +34,7 @@ import { useNutritionRefresh } from "../../../shared/context/NutritionRefreshCon
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { saveNutritionAnalysis } from '../../../shared/services/nutritionPersistence';
 import ShakeCalculatorModal from './ShakeCalculatorModal';
+import { allowHerbalifeShakePost } from '../services/allowHerbalifeShakePost';
 import { mealFromDiaryRow } from '../services/nutritionDashboard/diaryRowMapper';
 import {
   fetchMealDetailCached,
@@ -64,7 +65,7 @@ const UNDO_SECONDS = 5; // cooldown duration
  *      them everything they need via explicit props.
  *
  * WHY HOOKS OWN ASYNC ORCHESTRATION:
- *   All async / side-effectful work (Supabase fetches, retry/refresh, infinite
+ *   All async / side-effectful work (MySQL fetches, retry/refresh, infinite
  *   scroll, meal mutations, swipe panel height measurement, calorie chart
  *   transforms) is encapsulated in `../hooks/`. Hooks own:
  *     - data shape and loading/error state for that concern,
@@ -1023,6 +1024,11 @@ const NutritionDashboard = ({
         <ShakeCalculatorModal
           isOpen={shakeOpen}
           onClose={() => setShakeOpen(false)}
+          onBeforeLog={async (payload) => {
+            const userId = await resolveUserId();
+            if (!userId) return true;
+            return allowHerbalifeShakePost({ userId, analysisResult: payload });
+          }}
           onLog={async (payload) => {
             const userId = await resolveUserId();
             if (!userId) throw new Error('User not authenticated');

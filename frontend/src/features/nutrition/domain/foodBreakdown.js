@@ -14,6 +14,73 @@ function parseAnalysisData(raw) {
   }
 }
 
+function nutrientKeyWithoutTotal(nutrient) {
+  if (!nutrient) return '';
+  return nutrient.startsWith('total')
+    ? nutrient.charAt(5).toLowerCase() + nutrient.slice(6)
+    : nutrient;
+}
+
+/**
+ * Decimal places for modal display. Sub-mg vitamins (B1 ~0.4mg) must keep
+ * fractions — whole-number rounding made them look like "0mg / No foods".
+ * Mirrors wellness-score NUTRIENT_CONTRIBUTION_MAP decimals.
+ */
+export function getNutrientDecimals(nutrient) {
+  const key = nutrientKeyWithoutTotal(nutrient).toLowerCase();
+  const decimalsByKey = {
+    vitaminb1: 2, vitaminb2: 2, vitaminb6: 2, vitaminb12: 2,
+    vitaminb3: 1, vitamind: 1, vitamine: 1, iron: 1, zinc: 1,
+  };
+  return decimalsByKey[key] ?? 0;
+}
+
+/** True when the amount would display as 0 with the nutrient's decimal places. */
+export function roundsToZeroDisplay(amount, decimals = 0) {
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n <= 0) return true;
+  if (decimals > 0) return Number(n.toFixed(decimals)) === 0;
+  return Math.round(n) === 0;
+}
+
+/** Collapse case, wrapping stars, and punctuation so the same food groups together. */
+function normalizeFoodIdentityName(name) {
+  return String(name || '')
+    .toLowerCase()
+    .replace(/^\*+|\*+$/g, '')
+    .replace(/[-–—_()[\]{}*]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function foodIdentityKey(food, foodName) {
+  const id = food?.profileId ?? food?.foodId ?? food?.id ?? food?.food_id;
+  if (id != null && String(id).trim() !== '') return `id:${String(id).trim()}`;
+  return `name:${normalizeFoodIdentityName(foodName || food?.name || food?.foodName || '')}`;
+}
+
+function groupedMealName(foods, fallbackCategory) {
+  const fl = foods || [];
+  if (fl.length === 1) return fl[0].name || fl[0].foodName || 'Meal';
+  if (fl.length > 1) return `${fl[0].name || fl[0].foodName || 'Meal'} (+${fl.length - 1} more)`;
+  return fallbackCategory || 'Meal';
+}
+
+/** One row per food. Repeated logs in the range are summed at full precision. */
+function groupContributionRows(rows) {
+  const groups = new Map();
+  rows.forEach((row) => {
+    const key = row.identityKey || `name:${normalizeFoodIdentityName(row.foodName)}`;
+    const existing = groups.get(key);
+    if (!existing) {
+      groups.set(key, { foodName: row.foodName, amount: row.amount });
+      return;
+    }
+    existing.amount += row.amount;
+  });
+  return Array.from(groups.values());
+}
+
 /**
  * Extract foods and their nutrient contributions from analyses.
  * Supports: macros, micros, calories, sodium, cholesterol, sugar, fiber, vitamins, minerals.
@@ -23,14 +90,14 @@ export function extractFoodContributions(analyses, nutrientKey) {
   let total = 0;
 
   // Strip "total" prefix if present (e.g., totalVitaminA -> vitaminA)
-  const normalizedKey = nutrientKey.startsWith('total')
-    ? nutrientKey.charAt(5).toLowerCase() + nutrientKey.slice(6)
-    : nutrientKey;
+  const normalizedKey = nutrientKeyWithoutTotal(nutrientKey);
 
   // DB column name for meal-level fallback (e.g., totalVitaminA -> TotalVitaminA)
   const dbColKey = nutrientKey.startsWith('total')
     ? nutrientKey.charAt(0).toUpperCase() + nutrientKey.slice(1)
     : null;
+
+  const decimals = getNutrientDecimals(nutrientKey);
 
   (analyses || []).forEach((analysis) => {
     if (analysis.isUndoPlaceholder) return;
@@ -70,34 +137,43 @@ export function extractFoodContributions(analyses, nutrientKey) {
       else if (normalizedKey === 'zinc') amount = nutrition.zinc || 0;
       else if (normalizedKey === 'phosphorus') amount = nutrition.phosphorus || 0;
 
-      // Carousel modal shows amount.toFixed(0) — hide rows that would display as 0.
-      if (amount > 0 && Math.round(amount) !== 0) {
-        mealFoods.push({ foodName: food.name || 'Unknown food', amount });
+      // Hide rows that would display as 0 at this nutrient's precision (not whole mg).
+      if (!roundsToZeroDisplay(amount, decimals)) {
+        const foodName = food.name || food.foodName || 'Unknown food';
+        mealFoods.push({
+          foodName,
+          amount,
+          identityKey: foodIdentityKey(food, foodName),
+        });
         mealFoodTotal += amount;
       }
     });
 
     if (mealFoods.length > 0) {
+      // Per-food amounts only. The meal column is the same nutrient, not an extra share.
       mealFoods.forEach((f) => foods.push(f));
       total += mealFoodTotal;
     } else if (dbColKey) {
       const mealTotal = Number(analysis[dbColKey]) || 0;
-      if (mealTotal > 0 && Math.round(mealTotal) !== 0) {
-        const mealName = (() => {
-          const fl = data.foods || [];
-          if (fl.length === 1) return fl[0].name || 'Meal';
-          if (fl.length > 1) return `${fl[0].name || 'Meal'} (+${fl.length - 1} more)`;
-          return data.total?.category || 'Meal';
-        })();
-        foods.push({ foodName: mealName, amount: mealTotal });
+      if (!roundsToZeroDisplay(mealTotal, decimals)) {
+        const fl = data.foods || [];
+        const mealName = groupedMealName(fl, data.total?.category);
+        const identityKey = fl.length === 1
+          ? foodIdentityKey(fl[0], mealName)
+          : `meal:${normalizeFoodIdentityName(mealName)}`;
+        foods.push({ foodName: mealName, amount: mealTotal, identityKey });
         total += mealTotal;
       }
     }
   });
 
-  const breakdown = foods
+  const grouped = groupContributionRows(foods);
+  total = grouped.reduce((sum, food) => sum + food.amount, 0);
+
+  const breakdown = grouped
     .map((f) => ({
-      ...f,
+      foodName: f.foodName,
+      amount: f.amount,
       percentage: total > 0 ? (f.amount / total) * 100 : 0,
     }))
     .sort((a, b) => b.amount - a.amount);

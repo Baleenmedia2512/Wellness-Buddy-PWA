@@ -45,6 +45,7 @@ import { withTestimonialMediaCacheBust } from '../utils/testimonialMediaUrl.js';
 import {
   PORTRAIT_IMAGE_CLASS_SM,
   sanitizeDurationDigits,
+  sanitizeWeightTyping,
 } from '../services/testimonialFormUtils.js';
 import DiseaseMultiSelect from './DiseaseMultiSelect.jsx';
 import OtpInline from './OtpInline.jsx';
@@ -212,6 +213,7 @@ function InlineImagePicker({
     || withTestimonialMediaCacheBust(existingPreviewUrl, mediaVersion)
     || null;
   const isExistingOnly = !image && !!existingPreviewUrl;
+  const canRecrop = Boolean(onRecrop) && Boolean(image?.preview || existingPreviewUrl);
 
   return (
     <div className="space-y-2">
@@ -219,10 +221,10 @@ function InlineImagePicker({
         <div className="space-y-2">
           <button
             type="button"
-            onClick={image && onRecrop ? onRecrop : undefined}
-            disabled={!image || !onRecrop}
+            onClick={canRecrop ? () => onRecrop(existingPreviewUrl) : undefined}
+            disabled={!canRecrop}
             className="block w-full max-w-[160px] mx-auto overflow-hidden rounded-xl disabled:cursor-default"
-            aria-label={image && onRecrop ? 'Adjust photo' : undefined}
+            aria-label={canRecrop ? 'Adjust photo' : undefined}
           >
             <img
               src={previewSrc}
@@ -230,7 +232,7 @@ function InlineImagePicker({
               className={`${PORTRAIT_IMAGE_CLASS_SM} max-w-[160px] mx-auto`}
             />
           </button>
-          {image && onRecrop ? (
+          {canRecrop ? (
             <p className="text-[11px] text-gray-400 text-center">Tap photo to drag or pinch the visible area</p>
           ) : null}
           <div className="flex gap-2 max-w-[160px] mx-auto">
@@ -249,7 +251,7 @@ function InlineImagePicker({
           </div>
           <p className="text-xs text-green-600 font-medium text-center flex items-center justify-center gap-1">
             <CheckCircle className="h-3.5 w-3.5" />
-            {isExistingOnly ? 'Current photo — replace to change' : 'Photo selected'}
+            {isExistingOnly ? 'Current photo — tap it to adjust the crop' : 'Photo selected'}
           </p>
         </div>
       ) : (
@@ -361,9 +363,9 @@ function BeforePhotoSlotContent({
             Before Weight (kg) <span className="text-red-500">*</span>
           </label>
           <input
-            type="text" inputMode="decimal" pattern="[0-9]*" min="1" max="500" step="0.1" placeholder="e.g. 85.0"
+            type="text" inputMode="decimal" autoComplete="off" min="1" max="500" step="0.1" placeholder="e.g. 85.0"
             value={form.beforeWeightKg}
-            onChange={(e) => setField('beforeWeightKg', e.target.value)}
+            onChange={(e) => setField('beforeWeightKg', sanitizeWeightTyping(e.target.value))}
             className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
           />
         </div>
@@ -475,9 +477,9 @@ function AfterPhotoSlotContent({
             After Weight (kg) <span className="text-red-500">*</span>
           </label>
           <input
-            type="text" inputMode="decimal" pattern="[0-9]*" min="1" max="500" step="0.1" placeholder="e.g. 72.5"
+            type="text" inputMode="decimal" autoComplete="off" min="1" max="500" step="0.1" placeholder="e.g. 72.5"
             value={form.afterWeightKg}
-            onChange={(e) => setField('afterWeightKg', e.target.value)}
+            onChange={(e) => setField('afterWeightKg', sanitizeWeightTyping(e.target.value))}
             className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
           />
         </div>
@@ -795,16 +797,13 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
 
   const handleHealthIssuesSave = useCallback(async () => {
     if (!userId || (!existing && !existingVideo)) return;
-    if (!Array.isArray(healthIssues) || healthIssues.length === 0) {
-      setHealthIssuesError('Please add at least one recovered health issue.');
-      setHealthIssuesSuccess(null);
-      return;
-    }
+    // Health issues are optional — empty list clears / saves with none selected.
+    const issuesToSave = Array.isArray(healthIssues) ? healthIssues : [];
     setHealthIssuesError(null);
     setHealthIssuesSuccess(null);
     setHealthIssuesSaving(true);
     try {
-      const result = await editTestimonial({ userId, recoveredHealthIssues: healthIssues });
+      const result = await editTestimonial({ userId, recoveredHealthIssues: issuesToSave });
       setHealthIssuesSuccess(result?.message || 'Health issues saved successfully.');
       setHealthIssuesExpanded(false);
       reload();
@@ -996,7 +995,6 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
                     value={healthIssues}
                     onChange={setHealthIssues}
                     disabled={healthIssuesSaving}
-                    required
                   />
                   {healthIssuesError && (
                     <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-xs text-red-700">
@@ -1110,9 +1108,11 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
             />
             <div className="flex-1 min-w-0 space-y-0.5">
               <p className="text-xs font-semibold text-gray-700">After: {existing?.afterWeightKg} kg</p>
-              {existing?.beforeWeightKg && existing?.afterWeightKg && (
+              {existing?.beforeWeightKg && existing?.afterWeightKg
+                && Number(existing.afterWeightKg) !== Number(existing.beforeWeightKg) && (
                 <p className="text-xs text-gray-500">
-                  Δ {Math.abs(existing.afterWeightKg - existing.beforeWeightKg).toFixed(1)} kg {existing.goalType === 'loss' ? '⬇️' : '⬆️'}
+                  Δ {Math.abs(existing.afterWeightKg - existing.beforeWeightKg).toFixed(1)} kg{' '}
+                  {Number(existing.afterWeightKg) < Number(existing.beforeWeightKg) ? '⬇️' : '⬆️'}
                 </p>
               )}
             </div>

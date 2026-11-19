@@ -33,34 +33,41 @@ describe('Wellness Score food timestamp — dinner leak regression', () => {
       foodRecords: jul24,
       window: DINNER_WIN,
       timezoneIana: IANA_IST,
+      goalMode: 'gain',
     });
     const score25 = calculateDinnerPost({
       maxPoints: 100,
       foodRecords: jul25,
       window: DINNER_WIN,
       timezoneIana: IANA_IST,
+      goalMode: 'gain',
     });
     assert.equal(score24.earnedPoints, 100);
     assert.equal(score25.earnedPoints, 0);
   });
 
-  it('B: true UTC dinner (14:15Z) is on-time dinner on 2026-07-24', () => {
+  it('B: driver Z on 14:49 wall is lunch, not dinner', () => {
     const row = {
-      CreatedAt: '2026-07-24T14:15:00.000Z',
-      AnalysisData: { foods: [{ name: 'Dinner' }] },
+      CreatedAt: '2026-10-25T14:49:56.453Z',
+      AnalysisData: { foods: [{ name: 'Mutton Biryani' }] },
     };
+    const LUNCH_WIN = { start: '12:00:00', end: '16:00:00' };
     assert.equal(
-      filterFoodRowsByCalendarDay([row], '2026-07-24', IANA_IST).length,
+      filterFoodRowsByCalendarDay([row], '2026-10-25', IANA_IST).length,
       1,
     );
-    assert.ok(isOnTime(row.CreatedAt, DINNER_WIN, IANA_IST, 'food'));
-    const score = calculateDinnerPost({
-      maxPoints: 100,
-      foodRecords: [row],
-      window: DINNER_WIN,
-      timezoneIana: IANA_IST,
-    });
-    assert.equal(score.earnedPoints, 100);
+    assert.equal(isOnTime(row.CreatedAt, DINNER_WIN, IANA_IST, 'food'), false);
+    assert.ok(isOnTime(row.CreatedAt, LUNCH_WIN, IANA_IST, 'food'));
+    assert.equal(
+      calculateDinnerPost({
+        maxPoints: 40,
+        foodRecords: [row],
+        window: DINNER_WIN,
+        timezoneIana: IANA_IST,
+        goalMode: 'gain',
+      }).earnedPoints,
+      0,
+    );
   });
 
   it('C: spurious Z dinner must NOT appear on 2026-07-25 or earn dinner_post', () => {
@@ -79,6 +86,7 @@ describe('Wellness Score food timestamp — dinner leak regression', () => {
       foodRecords: todayMeals,
       window: DINNER_WIN,
       timezoneIana: IANA_IST,
+      goalMode: 'gain',
     });
     assert.equal(scoreToday.earnedPoints, 0, 'must not earn dinner points on 2026-07-25');
 
@@ -90,12 +98,47 @@ describe('Wellness Score food timestamp — dinner leak regression', () => {
       foodRecords: yesterday,
       window: DINNER_WIN,
       timezoneIana: IANA_IST,
+      goalMode: 'gain',
     });
     assert.equal(scoreYesterday.earnedPoints, 100);
 
     // Nutrition aggregates for "today" stay empty
     const statsToday = aggregateDailyFoodStats(todayMeals);
     assert.equal(statsToday.totalCalories, 0);
+  });
+
+  it('Weight Loss: solid dinner food earns 0; shake dinner earns dinner_post', () => {
+    const foodRow = {
+      CreatedAt: '2026-07-24 19:45:00',
+      AnalysisData: { foods: [{ name: 'Chicken Curry' }] },
+    };
+    const shakeRow = {
+      CreatedAt: '2026-07-24 19:45:00',
+      AnalysisData: {
+        processedBy: 'shake_calculator',
+        foods: [{ name: 'Herbalife Shake' }],
+      },
+    };
+    assert.equal(
+      calculateDinnerPost({
+        maxPoints: 100,
+        foodRecords: [foodRow],
+        window: DINNER_WIN,
+        timezoneIana: IANA_IST,
+        goalMode: 'loss',
+      }).earnedPoints,
+      0,
+    );
+    assert.equal(
+      calculateDinnerPost({
+        maxPoints: 100,
+        foodRecords: [shakeRow],
+        window: DINNER_WIN,
+        timezoneIana: IANA_IST,
+        goalMode: 'loss',
+      }).earnedPoints,
+      100,
+    );
   });
 
   it('never awards meal windows from raw string digits when TZ-aware time differs', () => {
