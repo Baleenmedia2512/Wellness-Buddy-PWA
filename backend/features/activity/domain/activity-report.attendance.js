@@ -4,6 +4,8 @@
  * Legacy aliases: `attended` / `not_attended` still normalize correctly.
  */
 
+import { excludeHiddenActivityReportUserIds } from './activity-report.hidden-users.js';
+
 export const ACTIVITY_REPORT_ATTENDANCE = Object.freeze({
   POSTED: 'posted',
   NOT_POSTED: 'not_posted',
@@ -97,15 +99,21 @@ export function missingActivityUserIds(scopeUserIds, attendedUserIds) {
  * @param {unknown} attendanceStatus
  * @param {Array<number|string>} scopeUserIds
  * @param {Array<number|string>} attendedUserIds
+ * @param {Array<number|string>} [hiddenUserIds]
  * @returns {number[]}
  */
 export function resolveActivityReportTableUserIds(
   attendanceStatus,
   scopeUserIds,
   attendedUserIds,
+  hiddenUserIds = [],
 ) {
   if (isNotAttendedActivityReport(attendanceStatus)) {
-    return missingActivityUserIds(scopeUserIds, attendedUserIds);
+    const missing = missingActivityUserIds(scopeUserIds, attendedUserIds);
+    if (Array.isArray(hiddenUserIds) && hiddenUserIds.length > 0) {
+      return excludeHiddenActivityReportUserIds(missing, hiddenUserIds);
+    }
+    return missing;
   }
   const seen = new Set();
   const ids = [];
