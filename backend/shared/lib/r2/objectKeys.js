@@ -13,6 +13,7 @@ export const R2_FOLDERS = Object.freeze({
   weight: 'weight',
   education: 'education',
   goodHabit: 'good-habits',
+  nutritionCentre: 'nutrition-centres',
 });
 
 function safeSegment(value) {
@@ -78,6 +79,16 @@ export function buildEducationObjectKey(userId, logId, contentHash, ext = 'jpg')
     R2_FOLDERS.education,
     userId,
     logId,
+    `${safeSegment(contentHash)}.${safeSegment(ext)}`,
+  );
+}
+
+/** Centre photo slot: entrance | interior | name_board | wellness_activity. */
+export function buildNutritionCentreObjectKey(centerId, slot, contentHash, ext = 'jpg') {
+  return joinKey(
+    R2_FOLDERS.nutritionCentre,
+    centerId,
+    safeSegment(slot),
     `${safeSegment(contentHash)}.${safeSegment(ext)}`,
   );
 }

@@ -45,6 +45,8 @@ describe('toClubListRow', () => {
         owner_user_id: 4,
         owner_phone: '+919999999999',
         ownerName: 'Coach A',
+        area: null,
+        city: null,
       },
     );
   });

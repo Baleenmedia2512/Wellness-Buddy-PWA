@@ -15,3 +15,21 @@ export function splitOwnerPhone(storedPhone) {
   }
   return { countryCode: '+91', phone: raw.replace(/\D/g, '') };
 }
+
+export function accountPhoneFromUser(user) {
+  return user?.phoneNumber || user?.PhoneNumber || user?.phone || '';
+}
+
+/** Same handset, whether stored as 10 digits or +91. */
+export function phonesMatch(a, b) {
+  const da = String(a || '').replace(/\D/g, '');
+  const db = String(b || '').replace(/\D/g, '');
+  if (!da || !db) return false;
+  if (da === db) return true;
+  const national = (digits) => {
+    if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2);
+    if (digits.length === 11 && digits.startsWith('0')) return digits.slice(1);
+    return digits;
+  };
+  return national(da) === national(db);
+}
