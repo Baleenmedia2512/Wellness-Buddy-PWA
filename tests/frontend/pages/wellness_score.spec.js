@@ -1,4 +1,4 @@
-﻿/**
+/**
  * tests/frontend/pages/wellness_score.spec.js
  * E2E test suite for Wellness Score Module.
  * 
