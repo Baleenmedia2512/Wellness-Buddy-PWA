@@ -23,7 +23,7 @@ test.describe('Wellness Score - Time-Based Parameters (SCORE_01)', () => {
     { key: 'breakfast_post', label: 'Breakfast Post', section: 'logging', scoringMode: 'binary', maxPoints: 100 },
     { key: 'lunch_post', label: 'Lunch Post', section: 'logging', scoringMode: 'binary', maxPoints: 100 },
     { key: 'dinner_post', label: 'Dinner Post', section: 'logging', scoringMode: 'binary', maxPoints: 100 },
-    { key: 'good_habit_post', label: 'Today Task Given by Coach', section: 'logging', scoringMode: 'binary', maxPoints: 100 },
+    { key: 'good_habit_post', label: 'Task by Coach', section: 'logging', scoringMode: 'binary', maxPoints: 100 },
     // Nutrition Section (26)
     { key: 'calories', label: 'Calories', section: 'nutrition', scoringMode: 'limit', maxPoints: 100 },
     { key: 'carbohydrates', label: 'Carbohydrates', section: 'nutrition', scoringMode: 'limit', maxPoints: 100 },
