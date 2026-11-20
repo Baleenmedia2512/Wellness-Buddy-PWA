@@ -357,7 +357,14 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
     if (!isTile || !target || !hasEntered) return undefined;
     let cancelled = false;
     const timer = setTimeout(() => {
-      precaptureShareImage(target, { scale: 1.5, quality: 0.85 }).then((dataUrl) => {
+      precaptureShareImage(target, {
+        scale: 2,
+        quality: 0.95,
+        targetWidth: 768,
+        targetHeight: 1024,
+        width: 768,
+        height: 1024,
+      }).then((dataUrl) => {
         if (!cancelled && dataUrl) {
           cachedDataUrlRef.current = dataUrl;
         }
@@ -394,6 +401,12 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
         title: `Top ${topN} Wellness Score`,
         text: `Top ${topN} Wellness Score - Wellness Valley`,
         fileName,
+        scale: 2,
+        quality: 0.95,
+        targetWidth: 768,
+        targetHeight: 1024,
+        width: 768,
+        height: 1024,
       };
 
       const cached = cachedDataUrlRef.current;
@@ -569,6 +582,118 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
     );
   };
 
+  const renderShareTileRow = (user) => {
+    const shownName = displayLeaderboardName(user, userId, viewerName);
+    const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
+    const sponsorCoachText = [
+      sponsorName && `Sponsor: ${sponsorName}`,
+      idealCoachName && `Coach: ${idealCoachName}`,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+    return (
+      <li
+        key={`share-${user.userId}`}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px',
+          padding: '8px 12px',
+          borderBottom: '1px solid #f5f3ff',
+          boxSizing: 'border-box',
+          overflow: 'visible',
+        }}
+      >
+        <LeaderboardRankBadge
+          rank={user.rank}
+          colorClass={getRankColor(user.rank)}
+          className="w-11 h-11 shrink-0 select-none drop-shadow-sm pointer-events-none"
+        />
+        <div className="shrink-0" style={{ overflow: 'visible' }}>
+          <LeaderboardAvatar
+            apiBaseUrl={apiBaseUrl}
+            userId={user.userId}
+            email={user.email}
+            userName={shownName}
+            profileImage={user.profileImage}
+            interactive={false}
+            sizeClass="w-12 h-12"
+          />
+        </div>
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: 'visible',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              overflow: 'visible',
+            }}
+          >
+            <div
+              style={{
+                fontSize: '18px',
+                fontWeight: 700,
+                color: '#111827',
+                lineHeight: 1.35,
+                margin: 0,
+                padding: '2px 0',
+                overflow: 'visible',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {shownName}
+            </div>
+            <div
+              style={{
+                flexShrink: 0,
+                backgroundColor: '#f5f3ff',
+                color: '#6d28d9',
+                fontWeight: 700,
+                fontSize: '15px',
+                lineHeight: 1.2,
+                padding: '5px 12px',
+                borderRadius: '8px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {Math.round(user.totalEarned ?? 0)}/{Math.round(user.totalPossible ?? 0)}
+            </div>
+          </div>
+          {sponsorCoachText ? (
+            <div
+              style={{
+                fontSize: '13px',
+                color: '#6b7280',
+                lineHeight: 1.35,
+                marginTop: '3px',
+                margin: 0,
+                padding: '2px 0 0 0',
+                overflow: 'visible',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {sponsorCoachText}
+            </div>
+          ) : null}
+        </div>
+      </li>
+    );
+  };
+
   if (isTile) {
     const tileRows = isTodayFilter ? leaderboardData : rangeData;
     const tileSubtitle = filterMeta?.subtitle || "Today's ranking";
@@ -685,31 +810,114 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
           {profileViewer}
         </section>
 
-        {/* Off-screen card used exclusively for sharing with Wellness Valley logo */}
+        {/* Off-screen card used exclusively for sharing with exact 768x1024 poster resolution */}
         <div
           ref={shareCardRef}
           aria-hidden="true"
-          className="fixed -left-[9999px] top-0 pointer-events-none"
-          style={{ position: 'fixed', left: '-9999px', top: 0, width: 380 }}
+          style={{
+            position: 'fixed',
+            left: '-9999px',
+            top: 0,
+            width: 768,
+            height: 1024,
+            boxSizing: 'border-box',
+            overflow: 'hidden',
+            backgroundColor: '#ffffff',
+            pointerEvents: 'none',
+          }}
         >
-          <div className="rounded-2xl border border-violet-100 bg-white p-3 shadow-sm">
-            <header className="mb-1 flex items-center gap-2 border-b border-violet-50 pb-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-100" aria-hidden>
-                <Trophy className="h-4 w-4 text-violet-700" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-bold text-violet-900">Top {topN} Wellness Score</h3>
-                <p className="text-[11px] text-violet-700/80">{tileSubtitle}</p>
+          <div
+            style={{
+              width: 768,
+              height: 1024,
+              padding: '32px 36px 28px 36px',
+              boxSizing: 'border-box',
+              display: 'flex',
+              flexDirection: 'column',
+              backgroundColor: '#ffffff',
+              fontFamily:
+                "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+            }}
+          >
+            <header
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '16px',
+                paddingBottom: '16px',
+                borderBottom: '2px solid #ede9fe',
+                flexShrink: 0,
+                boxSizing: 'border-box',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <span
+                  style={{
+                    display: 'flex',
+                    width: '56px',
+                    height: '56px',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '16px',
+                    backgroundColor: '#ede9fe',
+                    flexShrink: 0,
+                  }}
+                  aria-hidden
+                >
+                  <Trophy style={{ width: '32px', height: '32px', color: '#6d28d9' }} />
+                </span>
+                <div>
+                  <h3
+                    style={{
+                      fontSize: '24px',
+                      fontWeight: 800,
+                      color: '#4c1d95',
+                      letterSpacing: '-0.02em',
+                      margin: 0,
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    Top {topN} Wellness Score
+                  </h3>
+                  <p
+                    style={{
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      color: '#6d28d9',
+                      opacity: 0.85,
+                      margin: '4px 0 0 0',
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    {tileSubtitle}
+                  </p>
+                </div>
               </div>
               <img
                 src={getLogoSrc()}
                 alt="Wellness Valley"
-                className="h-12 w-12 object-contain shrink-0 ml-auto"
+                style={{
+                  width: '96px',
+                  height: '96px',
+                  objectFit: 'contain',
+                  flexShrink: 0,
+                }}
                 crossOrigin="anonymous"
               />
             </header>
-            <ul className="divide-y divide-violet-50">
-              {tileRows.map(renderTileRow)}
+            <ul
+              style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                padding: '12px 0 0 0',
+                margin: 0,
+                listStyle: 'none',
+              }}
+            >
+              {tileRows.map((user) => renderShareTileRow(user))}
             </ul>
           </div>
         </div>
