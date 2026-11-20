@@ -160,7 +160,8 @@ All work-in-progress is gated behind a feature flag. No exception.
 | `ff.report-trial` | ON | @principal-eng | 2027-05-05 | Reports stay open. Unpaid detail hides until a 14-day trial or Premium. Apps below 3.5.5, and requests with no version, keep the full report. |
 | `ff.gbp-listing` | OFF | @principal-eng | 2027-05-12 | Google Maps Listing request: coach form + FTP media kit + ops email/admin queue. Kill switch hides nav, Profile queue, and GBP APIs. Default OFF for Digital Portfolio APK review. |
 | `ff.field-collection` | ON | @principal-eng | 2027-05-12 | Admin field rules: Community Position first, then entry or later fields by member/coach and community position. Kill switch. Released app bundles keep the previous onboarding screens. |
-| `ff.events-trial` | ON | @principal-eng | 2027-05-12 | Digital Portfolio gated with the same 14-day trial as Reports (`report_trials_table`). Remaining days continue. Create Event and Check-in stay open. Apps below 3.5.7 keep Digital Portfolio open. |
+| `ff.events-trial` | ON | @principal-eng | 2027-05-12 | Legacy Digital Portfolio gate (shared Reports trial) for apps below `PORTFOLIO_SITE_SLOTS_MIN` (3.5.7). Next-release uses per-site ₹399/yr credits. Create Event and Check-in stay open. |
+| `ff.portfolio-site-checkout` | ON | @principal-eng | 2027-05-20 | Emergency kill for Digital Portfolio Cashfree website slots (₹399/yr). Not the Play activation path. |
 
 **Frontend-only UI flags (`frontend/src/config/featureFlags.js`, no backend mirror):** `ff.shake-calculator` (OFF), `ff.contact-picker` (OFF).
 

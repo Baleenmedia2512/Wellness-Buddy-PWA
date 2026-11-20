@@ -1,6 +1,6 @@
 /**
  * Overlay live club fields onto the public portfolio view-model.
- * Club-linked pages: name/photos/hours/phone come from the centre, not FormJson.
+ * Club-linked pages: name/photos/hours/phone/maps come from the centre, not FormJson.
  */
 import { formatClockTimeLabel } from './submission.rules.js';
 import { clubHoursToPublicTimings } from './clubHoursToPublicTimings.js';
@@ -25,6 +25,12 @@ function whatsappDigits(phone) {
  * @param {{
  *   hasClub?: boolean,
  *   centerName?: string|null,
+ *   mapsLink?: string|null,
+ *   latitude?: number|null,
+ *   longitude?: number|null,
+ *   locality?: string|null,
+ *   city?: string|null,
+ *   address?: string|null,
  *   openingHours?: object|null,
  *   photos?: Record<string, string[]>|null,
  *   ownerPhone?: string|null,
@@ -33,6 +39,27 @@ function whatsappDigits(phone) {
  */
 export function applyLiveClubToPublicPage(page, club) {
   if (!page || !club?.hasClub) return page;
+
+  const centerName = String(club.centerName || '').trim();
+  if (centerName) page.centerName = centerName;
+
+  const mapsLink = String(club.mapsLink || '').trim();
+  if (mapsLink) page.mapsLink = mapsLink;
+
+  if (club.locality != null) page.locality = String(club.locality || '').trim();
+  if (club.city != null) page.city = String(club.city || '').trim();
+  if (club.address != null) {
+    page.address = String(club.address || '').trim();
+  } else if (centerName && !page.address) {
+    page.address = centerName;
+  }
+
+  const lat = Number(club.latitude);
+  const lng = Number(club.longitude);
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    page.geoLatitude = lat;
+    page.geoLongitude = lng;
+  }
 
   const photos = club.photos && typeof club.photos === 'object' ? club.photos : {};
   const entrance = allUrls(photos.entrance);

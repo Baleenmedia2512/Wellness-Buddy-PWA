@@ -2,7 +2,7 @@ import formidable from 'formidable';
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import { uploadIntroVideo } from '../../../features/coach-portfolio/api/intro-video.handler.js';
-import { assertEventsHostToolsAllowed } from '../../../features/payments/api/events-access.handler.js';
+import { assertDigitalPortfolioAllowed } from '../../../features/coach-portfolio/api/portfolio-access.guard.js';
 
 export const config = {
   api: {
@@ -45,7 +45,7 @@ export default async function handler(req, res) {
   return runService(res, async () => {
     const { fields, files } = await parseMultipart(req);
     const userId = firstField(fields.userId);
-    await assertEventsHostToolsAllowed(req, userId);
+    await assertDigitalPortfolioAllowed(req, userId);
     return uploadIntroVideo({
       userId,
       file: firstFile(files.video) || firstFile(files.file),

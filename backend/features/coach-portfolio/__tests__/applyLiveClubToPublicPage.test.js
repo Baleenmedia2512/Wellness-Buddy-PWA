@@ -30,11 +30,17 @@ describe('applyLiveClubToPublicPage', () => {
     assert.deepEqual(page, before);
   });
 
-  it('overlays live club photos, hours, and phone', () => {
+  it('overlays live club name, maps, photos, hours, and phone', () => {
     const page = basePage();
     applyLiveClubToPublicPage(page, {
       hasClub: true,
       centerName: 'Live Club',
+      mapsLink: 'https://maps.google.com/?q=13,80',
+      latitude: 13.1,
+      longitude: 80.2,
+      locality: 'Adyar',
+      city: 'Chennai',
+      address: 'Adyar, Chennai',
       ownerPhone: '+919876543210',
       openingHours: {
         monday: { closed: false, slots: [{ open: '05:30', close: '21:30' }] },
@@ -49,6 +55,13 @@ describe('applyLiveClubToPublicPage', () => {
       },
     });
 
+    assert.equal(page.centerName, 'Live Club');
+    assert.equal(page.mapsLink, 'https://maps.google.com/?q=13,80');
+    assert.equal(page.geoLatitude, 13.1);
+    assert.equal(page.geoLongitude, 80.2);
+    assert.equal(page.locality, 'Adyar');
+    assert.equal(page.city, 'Chennai');
+    assert.equal(page.address, 'Adyar, Chennai');
     assert.equal(page.entrancePhoto, 'https://cdn.example/e1.jpg');
     assert.deepEqual(page.interiorPhotos, [
       'https://cdn.example/i1.jpg',

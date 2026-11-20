@@ -169,22 +169,15 @@ export function buildCoachPlaceLabel(page = {}) {
 }
 
 /**
- * Visible hero lined label: "Coach {FirstName}" (no city/area; role title lives in About kicker).
+ * Visible hero lined label: profile name only (no "Coach" prefix; role lives in About kicker).
  * SEO title/description still carry name + place via buildCoachPageSeo.
  * @param {{ displayName?: string, fullName?: string }} page
  */
 export function buildCoachVisibleHeading(page = {}) {
   const raw = String(page?.displayName || page?.fullName || '').trim();
-  const first = raw.split(/\s+/).filter(Boolean)[0] || '';
-  if (first) {
-    const alreadyPrefixed = /^coach$/i.test(first);
-    if (alreadyPrefixed) {
-      const rest = raw.split(/\s+/).slice(1).join(' ').trim();
-      return rest ? `Coach ${rest.split(/\s+/)[0]}` : 'Coach';
-    }
-    return `Coach ${first}`;
-  }
-  return 'Coach';
+  if (!raw) return 'Coach';
+  // Drop a leading "Coach " if stored that way — hero shows the profile name as-is.
+  return raw.replace(/^coach\s+/i, '').trim() || raw;
 }
 
 /**
@@ -194,33 +187,27 @@ export function buildCoachVisibleHeading(page = {}) {
  * @returns {{ q: string, a: string }[]}
  */
 export function buildCoachPageFaqs(page = {}, { heroName = '', basedIn = null } = {}) {
-  const name = String(heroName || page?.displayName || page?.fullName || 'your coach').trim()
-    || 'your coach';
   const placeBit = basedIn || buildCoachPlaceLabel(page) || null;
   return [
     {
       q: 'How do I get started?',
-      a: `Message ${name} on WhatsApp for a short intro chat. You will get clear next steps for your goals.`,
+      a: 'Click here to say hi. You will get clear next steps for your goals.',
+      // Public page renders WhatsApp logo + linked "Click here to say hi".
+      waCta: true,
     },
     {
       q: 'Is coaching only in person?',
-      a: page?.onlineConsultation
-        ? 'Both in-person and online sessions are available — choose what fits your routine.'
-        : 'Coaching is available at the wellness center. Ask on WhatsApp for timing and visit options.',
+      a: 'Coaching is both in person and remote.',
     },
     {
       q: 'Do I need a special diet plan on day one?',
-      a: 'No crash plans. Guidance starts with simple daily habits you can keep.',
-    },
-    {
-      q: 'How often will we check in?',
-      a: 'Check-ins are regular and kind — enough to stay accountable without pressure.',
+      a: 'No.',
     },
     {
       q: 'Where is the center?',
       a: placeBit
-        ? `Based in ${placeBit}${page?.centerName ? ` · ${page.centerName}` : ''}. Use Map or Get Directions for the exact location.`
-        : 'Ask on WhatsApp for the center location and visit hours.',
+        ? `Our centre is at ${placeBit}. Use Map for Exact Location.`
+        : 'Use Map for Exact Location.',
     },
   ];
 }

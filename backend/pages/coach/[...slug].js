@@ -41,7 +41,10 @@ import {
   getAppWorkingClubForPortfolio,
 } from '../../features/coach-portfolio/api/hydrate-from-app.service.js';
 import { applyLiveClubToPublicPage } from '../../features/coach-portfolio/domain/applyLiveClubToPublicPage.js';
+import { applyLiveProfileToPublicPage } from '../../features/coach-portfolio/domain/applyLiveProfileToPublicPage.js';
 import * as publicRatingRepo from '../../features/coach-portfolio/data/public-rating.repo.js';
+import * as entitlementsRepo from '../../features/coach-portfolio/data/site-entitlements.repo.js';
+import { getProfileIntro } from '../../features/user/user.repository.js';
 import { fetchCityVillage } from '../../shared/lib/reverseGeocode.js';
 
 function absoluteUrl(baseUrl, maybeUrl) {
@@ -57,6 +60,19 @@ function whatsappHref(digits) {
   // India 10-digit mobile → add country code for wa.me
   const intl = raw.length === 10 ? `91${raw}` : raw;
   return `https://wa.me/${intl}`;
+}
+
+const DEFAULT_BOOK_NOTE = 'I would like to consult for my weight loss programme';
+const BOOK_NOTE_PLACEHOLDER = `e.g. ${DEFAULT_BOOK_NOTE}`;
+
+function mailtoEnquiryHref(email, { subject, body }) {
+  const to = String(email || '').trim();
+  if (!to || !to.includes('@')) return null;
+  const q = [
+    subject ? `subject=${encodeURIComponent(subject)}` : null,
+    body ? `body=${encodeURIComponent(body)}` : null,
+  ].filter(Boolean).join('&');
+  return q ? `mailto:${to}?${q}` : `mailto:${to}`;
 }
 
 function telHref(phone) {
@@ -212,6 +228,20 @@ export async function getServerSideProps({ params, req }) {
     return { notFound: true };
   }
 
+  // Site-slot entitlements: if this submission has any paid rows, require an active year.
+  // Legacy published sites with zero entitlement rows stay visible (§5.1).
+  try {
+    if (row.id != null) {
+      const entRows = await entitlementsRepo.listEntitlementsBySubmissionId(row.id);
+      if (entRows.length > 0) {
+        const active = await entitlementsRepo.isSubmissionActive(row.id);
+        if (!active) return { notFound: true };
+      }
+    }
+  } catch {
+    /* entitlement lookup best-effort — do not hide legacy sites on infra blip */
+  }
+
   const page = toPublicPortfolioPage(row);
   const pathSlug = page.slug || parts.join('/');
   let teamMedia = emptyPublicTeamMedia();
@@ -234,6 +264,14 @@ export async function getServerSideProps({ params, req }) {
     /* keep FormJson photo if profile lookup fails */
   }
 
+  // Live app intro: title + about (name already wins in toPublicPortfolioPage).
+  try {
+    const intro = await getProfileIntro(row.userId);
+    applyLiveProfileToPublicPage(page, intro);
+  } catch {
+    /* keep FormJson title/about */
+  }
+
   // Map: only the submission's linked club — never the owner's primary club fallback.
   // Freestyle (CenterId NULL) keeps FormJson City/Area and must not show Demo center 1.
   let hasClub = false;
@@ -246,30 +284,39 @@ export async function getServerSideProps({ params, req }) {
       hasClub = Boolean(club?.hasClub)
         && Number(club.centerId) === linkedCenterId;
       if (hasClub) {
-        page.centerName = club.centerName || '';
-        page.mapsLink = club.mapsLink || '';
         page.locality = '';
         page.city = '';
         page.address = club.centerName || '';
         const lat = Number(club.latitude);
         const lng = Number(club.longitude);
         if (Number.isFinite(lat) && Number.isFinite(lng)) {
-          page.geoLatitude = lat;
-          page.geoLongitude = lng;
           try {
             const place = await fetchCityVillage(lat, lng);
             const locality = String(place?.village || '').trim();
             const city = String(place?.city || '').trim();
-            page.locality = locality;
-            page.city = city;
             const label = [locality, city].filter(Boolean).join(', ');
-            if (label) page.address = label;
+            applyLiveClubToPublicPage(page, {
+              ...club,
+              locality,
+              city,
+              address: label || club.centerName || '',
+            });
           } catch {
-            /* keep empty locality/city — map still works via GPS */
+            applyLiveClubToPublicPage(page, {
+              ...club,
+              locality: '',
+              city: '',
+              address: club.centerName || '',
+            });
           }
+        } else {
+          applyLiveClubToPublicPage(page, {
+            ...club,
+            locality: '',
+            city: '',
+            address: club.centerName || '',
+          });
         }
-        // Live club wins for photos / hours / phone (not FormJson).
-        applyLiveClubToPublicPage(page, club);
       }
     }
     if (!hasClub) {
@@ -497,7 +544,6 @@ export default function CoachPortfolioPage({
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [activeAlbumId, setActiveAlbumId] = useState('all');
   const [faqOpen, setFaqOpen] = useState(0);
-  const [servicesExpanded, setServicesExpanded] = useState(false);
   const [bookOpen, setBookOpen] = useState(false);
   const [bookName, setBookName] = useState('');
   const [bookPhone, setBookPhone] = useState('');
@@ -509,8 +555,13 @@ export default function CoachPortfolioPage({
     || absoluteUrl(baseUrl, (page.activityPhotos || [])[0])
     || absoluteUrl(baseUrl, (page.interiorPhotos || [])[0]);
   const logo = absoluteUrl(baseUrl, page.logo);
-  const ogImage = photo || logo || (baseUrl ? `${baseUrl}/wellness-valley-icon.png` : null);
+  // Prefer icon: prod currently serves HTML for /wellness-valley-logo.png (broken img).
+  const brandLogoUrl = baseUrl
+    ? `${baseUrl}/wellness-valley-icon.png`
+    : '/wellness-valley-icon.png';
+  const ogImage = photo || logo || brandLogoUrl;
   const wa = whatsappHref(page.whatsapp);
+  const bookEmail = String(page.email || '').trim();
   const call = telHref(page.phone);
   const heroName = firstName(page.displayName);
   const placeShort = [page.locality, page.city].filter(Boolean).join(', ');
@@ -562,7 +613,7 @@ export default function CoachPortfolioPage({
   const whatWeDo = Array.isArray(teamMedia?.whatWeDo) ? teamMedia.whatWeDo : [];
   const hasWhatWeSay = whatWeSay.length > 0;
   const hasWhatWeDo = whatWeDo.length > 0;
-  // Club site → centre name. Freestyle (no centre) → "Coach {Name}".
+  // Club site → centre name. Freestyle (no centre) → profile name (no "Coach" prefix).
   const bizTitle = hasClubProp && String(page.centerName || '').trim()
     ? String(page.centerName).trim()
     : buildCoachVisibleHeading(page);
@@ -647,12 +698,13 @@ export default function CoachPortfolioPage({
   const mapsLink = String(page.mapsLink || '').trim();
   const mapsEmbedSrc = mapsEmbedSrcFromLink(mapsLink);
   const showMap = Boolean(mapsEmbedSrc);
+  // Club-linked: mention centre name. Freestyle / no centre: coach name only (never stale centre).
   const heroSupport = page.highlight
     || [
       'Get personalized wellness guidance from',
-      centerLabel || coachDisplayName,
-      basedIn ? `in ${basedIn}` : null,
-      '— simple habits, clear support, lasting results.',
+      (hasClub && centerLabel) ? centerLabel : coachDisplayName,
+      basedIn ? `at ${basedIn}` : null,
+      '— Simple Habits, Clear Support, Lasting Results.',
     ].filter(Boolean).join(' ');
   const closeMenu = () => setMenuOpen(false);
 
@@ -964,7 +1016,8 @@ export default function CoachPortfolioPage({
           <div className="shell header-row">
             <a className="brand" href="#top" aria-label="Wellness Valley home" onClick={closeMenu}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/wellness-valley-logo.png" alt="Wellness Valley" className="brand-logo" width={72} height={72} />
+              <img src={brandLogoUrl} alt="" className="brand-logo" width={40} height={40} />
+              <span className="brand-name">Wellness Valley</span>
             </a>
             <nav className="desk-nav" aria-label="Primary">
               {navItems.map((item) => (
@@ -993,7 +1046,7 @@ export default function CoachPortfolioPage({
           <div className="side-menu-top">
             <div className="side-menu-brand">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/wellness-valley-logo.png" alt="" width={36} height={36} />
+              <img src={brandLogoUrl} alt="" width={36} height={36} />
               <p className="side-menu-title">Wellness Valley</p>
             </div>
             <button type="button" className="side-menu-close" onClick={closeMenu} aria-label="Close">✕</button>
@@ -1186,9 +1239,7 @@ export default function CoachPortfolioPage({
                         <h2>Our Services</h2>
                         <p className="panel-sub">Comprehensive guidance for a healthier you</p>
                         <div className="services-grid">
-                          {(page.offeringCards || [])
-                            .slice(0, servicesExpanded ? undefined : 3)
-                            .map((item) => (
+                          {(page.offeringCards || []).map((item) => (
                             <article key={item.label} className="service-card">
                               <span className="service-icon-wrap" aria-hidden="true">
                                 <span className="service-emoji">{item.emoji}</span>
@@ -1197,19 +1248,6 @@ export default function CoachPortfolioPage({
                             </article>
                           ))}
                         </div>
-                        {(page.offeringCards || []).length > 3 ? (
-                          <div className="panel-cta">
-                            <button
-                              type="button"
-                              className="btn btn-primary"
-                              onClick={() => setServicesExpanded((v) => !v)}
-                            >
-                              {servicesExpanded ? 'Show less' : 'Show more'}
-                              {' '}
-                              <span aria-hidden="true">{servicesExpanded ? '↑' : '→'}</span>
-                            </button>
-                          </div>
-                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -1365,7 +1403,26 @@ export default function CoachPortfolioPage({
                         <span>{item.q}</span>
                         <span className="faq-plus" aria-hidden="true">{faqOpen === idx ? '−' : '+'}</span>
                       </button>
-                      {faqOpen === idx ? <p className="faq-a">{item.a}</p> : null}
+                      {faqOpen === idx ? (
+                        item.waCta && wa ? (
+                          <p className="faq-a">
+                            <a
+                              className="faq-wa-cta"
+                              href={`${wa}?text=${encodeURIComponent('Hi')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                                <path fill="currentColor" d="M20.5 3.5A11 11 0 0 0 3.2 17.7L2 22l4.4-1.2A11 11 0 1 0 20.5 3.5zm-8.6 17a9.1 9.1 0 0 1-4.6-1.3l-.3-.2-2.7.7.7-2.6-.2-.3a9.1 9.1 0 1 1 7.1 3.7zm5-6.8c-.3-.1-1.6-.8-1.8-.9s-.4-.1-.6.1-.7.9-.8 1-.3.2-.6.1a7.4 7.4 0 0 1-2.2-1.4 8.2 8.2 0 0 1-1.5-1.9c-.2-.3 0-.4.1-.6l.4-.5.1-.3a.5.5 0 0 0 0-.5l-.6-1.5c-.2-.4-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 2.9 2.9 0 0 0-.9 2.2 5 5 0 0 0 1.1 2.7 11.5 11.5 0 0 0 4.4 3.9 15 15 0 0 0 1.5.5 3.6 3.6 0 0 0 1.6.1 2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .2-1.2c-.1-.1-.3-.2-.6-.3z" />
+                              </svg>
+                              Click here to say hi
+                            </a>
+                            . You will get clear next steps for your goals.
+                          </p>
+                        ) : (
+                          <p className="faq-a">{item.a}</p>
+                        )
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -1451,7 +1508,7 @@ export default function CoachPortfolioPage({
           <div className="shell footer-grid">
             <div className="footer-brand-block">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/wellness-valley-logo.png" alt="" width={44} height={44} />
+              <img src={brandLogoUrl} alt="" width={44} height={44} />
               <p className="footer-brand">Wellness Valley</p>
               <p className="footer-copy">© {new Date().getFullYear()} Wellness Valley. All rights reserved.</p>
             </div>
@@ -1500,21 +1557,31 @@ export default function CoachPortfolioPage({
                 <h3>Book a Consultation</h3>
                 <button type="button" className="book-close" onClick={() => setBookOpen(false)} aria-label="Close">✕</button>
               </div>
-              <p className="book-lead">Share a few details and we will reach out on WhatsApp.</p>
+              <p className="book-lead">
+                {bookEmail
+                  ? 'Share a few details and we will reach out by email.'
+                  : 'Coach email is not set yet — add Business email on the website form to enable booking.'}
+              </p>
               <form
                 className="book-form"
                 onSubmit={(e) => {
                   e.preventDefault();
                   const name = bookName.trim();
                   const phone = bookPhone.trim();
-                  const note = bookNote.trim();
-                  if (!name || !phone) return;
-                  if (wa) {
-                    const msg = encodeURIComponent(
-                      `Hi ${page.displayName || 'Coach'},\n\nI would like to book a consultation.\nName: ${name}\nPhone: ${phone}${note ? `\nNote: ${note}` : ''}`,
-                    );
-                    window.open(`${wa}?text=${msg}`, '_blank', 'noopener,noreferrer');
-                  }
+                  const note = bookNote.trim() || DEFAULT_BOOK_NOTE;
+                  if (!name || !phone || !bookEmail) return;
+                  const href = mailtoEnquiryHref(bookEmail, {
+                    subject: `Consultation request — ${name}`,
+                    body: [
+                      `Hi ${page.displayName || page.fullName || 'Coach'},`,
+                      '',
+                      note,
+                      '',
+                      `Name: ${name}`,
+                      `Phone: ${phone}`,
+                    ].join('\n'),
+                  });
+                  if (href) window.location.href = href;
                   setBookOpen(false);
                   setBookName('');
                   setBookPhone('');
@@ -1526,7 +1593,7 @@ export default function CoachPortfolioPage({
                   <input type="text" required maxLength={60} value={bookName} onChange={(e) => setBookName(e.target.value)} placeholder="Full name" />
                 </label>
                 <label className="book-field">
-                  <span>Phone / WhatsApp</span>
+                  <span>Phone</span>
                   <input
                     type="tel"
                     inputMode="numeric"
@@ -1540,11 +1607,17 @@ export default function CoachPortfolioPage({
                   />
                 </label>
                 <label className="book-field">
-                  <span>Message (optional)</span>
-                  <textarea rows={3} maxLength={240} value={bookNote} onChange={(e) => setBookNote(e.target.value)} placeholder="Your goal or preferred time" />
+                  <span>Message</span>
+                  <textarea
+                    rows={3}
+                    maxLength={240}
+                    value={bookNote}
+                    onChange={(e) => setBookNote(e.target.value)}
+                    placeholder={BOOK_NOTE_PLACEHOLDER}
+                  />
                 </label>
-                <button type="submit" className="btn btn-primary book-submit">
-                  {wa ? 'Send on WhatsApp' : 'Submit enquiry'}
+                <button type="submit" className="btn btn-primary book-submit" disabled={!bookEmail}>
+                  Book a Consultation
                 </button>
               </form>
             </div>
@@ -1555,7 +1628,7 @@ export default function CoachPortfolioPage({
           <div className="gallery-shell" role="dialog" aria-modal="true" aria-label="Photo gallery">
             <div className="gallery-brand">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/wellness-valley-logo.png" alt="" className="gallery-brand-logo" width={36} height={36} />
+              <img src={brandLogoUrl} alt="" className="gallery-brand-logo" width={36} height={36} />
               <p className="gallery-brand-name">Wellness Valley</p>
               <button type="button" className="gallery-close" aria-label="Close gallery" onClick={closeGallery}>
                 ✕
@@ -1875,18 +1948,37 @@ img { max-width: 100%; }
   align-items: center;
   gap: 18px;
   min-height: var(--header-h);
+  overflow: visible;
 }
 .brand {
   display: inline-flex;
   align-items: center;
+  gap: 8px;
   text-decoration: none;
+  /* Never shrink — old bug was alt text clipped inside a tiny img box. */
   flex: 0 0 auto;
+  min-width: max-content;
+  max-width: none;
+  overflow: visible;
 }
 .brand-logo {
-  width: 72px;
-  height: 72px;
+  width: 40px;
+  height: 40px;
+  max-width: none;
   object-fit: contain;
   display: block;
+  flex: 0 0 auto;
+}
+.brand-name {
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--botanical);
+  white-space: nowrap;
+  line-height: 1.2;
+  flex: 0 0 auto;
+  overflow: visible;
 }
 .desk-nav {
   display: none;
@@ -3143,6 +3235,16 @@ img { max-width: 100%; }
   font-size: 14px;
   line-height: 1.55;
 }
+.faq-wa-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #128C7E;
+  font-weight: 700;
+  text-decoration: none;
+}
+.faq-wa-cta:hover { text-decoration: underline; }
+.faq-wa-cta svg { flex: 0 0 auto; }
 .contact-list {
   list-style: none;
   margin: 18px 0 20px;
@@ -3638,9 +3740,10 @@ img { max-width: 100%; }
 
 @media (max-width: 719px) {
   .shell { width: min(1140px, calc(100% - 28px)); }
-  :root { --header-h: 76px; }
-  .header-row { gap: 12px; }
-  .brand-logo { width: 60px; height: 60px; }
+  :root { --header-h: 64px; }
+  .header-row { gap: 10px; }
+  .brand-logo { width: 36px; height: 36px; }
+  .brand-name { font-size: 14px; }
   .section { padding: 36px 0; }
   .section-head.center { margin-bottom: 20px; }
   .section-head h2,

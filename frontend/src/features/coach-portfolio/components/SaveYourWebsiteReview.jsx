@@ -104,6 +104,7 @@ function MiniLeaves({ className = '' }) {
  * @param {{
  *   form: object,
  *   centerDisplayName?: string,
+ *   hasClub?: boolean,
  *   profilePhotoUrl?: string | null,
  *   canEdit?: boolean,
  *   isPublished?: boolean,
@@ -117,6 +118,7 @@ function MiniLeaves({ className = '' }) {
 export default function SaveYourWebsiteReview({
   form,
   centerDisplayName = '',
+  hasClub = false,
   profilePhotoUrl = null,
   canEdit = true,
   isPublished = false,
@@ -137,8 +139,12 @@ export default function SaveYourWebsiteReview({
 
   const coachName = String(personal.fullName || '').trim() || '—';
   const phone = String(center.businessPhone || center.whatsapp || '').trim() || '—';
-  const clubName = String(center.centerName || centerDisplayName || '').trim() || '—';
-  const centreName = String(centerDisplayName || center.centerName || '').trim() || '—';
+  // Freestyle / no linked club — never show a stale centre name on Club or Location.
+  const linkedClub = hasClub === true;
+  const clubName = linkedClub
+    ? (String(centerDisplayName || center.centerName || '').trim() || '')
+    : '';
+  const centreName = clubName;
   const city = String(center.city || '').trim() || '—';
   const area = String(center.locality || '').trim() || '—';
 
@@ -154,7 +160,7 @@ export default function SaveYourWebsiteReview({
   const maps = resolveMapsUrls({
     mapsLink: center.mapsLink,
     googleBusinessLink: center.googleBusinessLink,
-    centerName: centreName !== '—' ? centreName : '',
+    centerName: centreName || '',
     locality: area !== '—' ? area : '',
     city: city !== '—' ? city : '',
     address: center.address,
@@ -233,10 +239,12 @@ export default function SaveYourWebsiteReview({
                   <Phone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#2f6b4f]" />
                   <span><span className="font-semibold">Phone / WhatsApp</span> {phone}</span>
                 </li>
-                <li className="flex items-start gap-2">
-                  <Users className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#2f6b4f]" />
-                  <span><span className="font-semibold">Club</span> {clubName}</span>
-                </li>
+                {clubName ? (
+                  <li className="flex items-start gap-2">
+                    <Users className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#2f6b4f]" />
+                    <span><span className="font-semibold">Club</span> {clubName}</span>
+                  </li>
+                ) : null}
               </ul>
             </div>
           </div>
@@ -286,10 +294,12 @@ export default function SaveYourWebsiteReview({
 
           <div className="relative z-[1] space-y-2.5">
             <div className="space-y-2 rounded-xl border border-[#d7e5dc]/80 bg-white/80 px-3 py-2.5">
-              <p className="flex items-start gap-2 text-[14px] text-[#31453c]">
-                <Building2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#2f6b4f]" />
-                <span><span className="font-semibold">Centre :</span> {centreName}</span>
-              </p>
+              {centreName ? (
+                <p className="flex items-start gap-2 text-[14px] text-[#31453c]">
+                  <Building2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#2f6b4f]" />
+                  <span><span className="font-semibold">Centre :</span> {centreName}</span>
+                </p>
+              ) : null}
               <p className="flex items-start gap-2 text-[14px] text-[#31453c]">
                 <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#2f6b4f]" />
                 <span><span className="font-semibold">City :</span> {city}</span>

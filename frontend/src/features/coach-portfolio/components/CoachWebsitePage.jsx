@@ -1,20 +1,65 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Globe2, ExternalLink, MapPin, Plus } from 'lucide-react';
+import { isFlagEnabled } from '../../../config/featureFlags';
+import { APP_VERSION } from '../../../config/version';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import { dismissNetworkFailure } from '../../../shared/services/networkNotice.js';
 import { fetchMyWebsites } from '../services/portfolioApi';
-import { openPublicCoachUrl, resolvePublicCoachUrl } from '../utils/publicCoachUrl';
+import {
+  confirmPendingPortfolioSiteOrder,
+  fetchPortfolioSiteCredits,
+} from '../services/portfolioSiteApi';
+import { openPortfolioSiteCheckout } from '../openPortfolioSiteCheckout';
 import { publicWebsiteUrl } from '../domain/publicWebsiteUrl';
+import { usesPortfolioSiteSlots } from '../domain/portfolio.rules';
 import CoachPortfolioForm from './CoachPortfolioForm';
+
+function formatExpiry(iso) {
+  if (!iso) return null;
+  const ms = Date.parse(String(iso));
+  if (!Number.isFinite(ms)) return null;
+  try {
+    return new Date(ms).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch {
+    return null;
+  }
+}
+
+function friendlyLoadError(err) {
+  const raw = String(err?.message || '');
+  if (/Failed to fetch|NetworkError|Load failed|network/i.test(raw)) {
+    return 'Could not load websites. Check your connection and try again.';
+  }
+  return raw || 'Could not load websites';
+}
+
+function friendlyPayError(err) {
+  const raw = String(err?.message || '');
+  if (/Failed to fetch|NetworkError|Load failed|network/i.test(raw)) {
+    return 'Payment could not start. Check your connection and try again.';
+  }
+  return raw || 'Payment could not start';
+}
 
 /**
  * My Websites hub — Create New opens a fresh form; existing rows open edit.
+ * Next-release: create/renew requires ₹399/yr site credit (center optional).
  */
 export default function CoachWebsitePage({
   userId,
   onClose,
 }) {
+  const siteSlots = usesPortfolioSiteSlots(APP_VERSION.VERSION);
+  const checkoutOn = isFlagEnabled('ff.portfolio-site-checkout');
   const [loading, setLoading] = useState(true);
+  const [paying, setPaying] = useState(false);
   const [websites, setWebsites] = useState([]);
+  const [unusedCredits, setUnusedCredits] = useState(0);
+  const [priceLabel, setPriceLabel] = useState('₹399');
   const [message, setMessage] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [createMode, setCreateMode] = useState(false);
@@ -27,15 +72,36 @@ export default function CoachWebsitePage({
     setLoading(true);
     setMessage('');
     try {
-      const data = await fetchMyWebsites(userId);
-      setWebsites(Array.isArray(data?.websites) ? data.websites : []);
-    } catch (err) {
-      setWebsites([]);
-      setMessage(err?.message || 'Could not load websites');
+      if (siteSlots) {
+        await confirmPendingPortfolioSiteOrder(userId).catch(() => null);
+      }
+      let data = { websites: [], unusedCredits: undefined };
+      try {
+        data = await fetchMyWebsites(userId);
+        setWebsites(Array.isArray(data?.websites) ? data.websites : []);
+      } catch (listErr) {
+        setWebsites([]);
+        setMessage(friendlyLoadError(listErr));
+      }
+      if (siteSlots) {
+        try {
+          const credits = data?.unusedCredits != null
+            ? data
+            : await fetchPortfolioSiteCredits(userId);
+          setUnusedCredits(Number(credits?.unusedCredits) || 0);
+          const base = Number(credits?.priceBaseInr);
+          if (Number.isFinite(base) && base > 0) {
+            setPriceLabel(`₹${base}`);
+          }
+        } catch {
+          // Credits are internal — never block the hub or surface raw fetch errors.
+          setUnusedCredits(0);
+        }
+      }
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, [userId, siteSlots]);
 
   useEffect(() => {
     load();
@@ -50,6 +116,60 @@ export default function CoachWebsitePage({
     setMessage(typeof opts?.message === 'string' ? opts.message : '');
     load();
   };
+
+  const startCheckout = async ({ kind = 'credit', submissionId = null, centerId = null } = {}) => {
+    if (!checkoutOn) {
+      setMessage('Website checkout is not available right now.');
+      return false;
+    }
+    setPaying(true);
+    setMessage('');
+    try {
+      await openPortfolioSiteCheckout({
+        userId,
+        kind,
+        submissionId,
+        centerId,
+      });
+      const confirmed = await confirmPendingPortfolioSiteOrder(userId);
+      if (confirmed?.paid === true) {
+        setMessage(kind === 'renew'
+          ? 'Renewed for one year.'
+          : 'Payment successful. You can create a website now.');
+        await load();
+        return true;
+      }
+      setMessage('Payment started. If you already paid, pull to refresh in a moment.');
+      await load();
+      return false;
+    } catch (err) {
+      try {
+        dismissNetworkFailure();
+      } catch {
+        // ignore
+      }
+      setMessage(friendlyPayError(err));
+      return false;
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const onCreateNew = async () => {
+    setMessage('');
+    if (siteSlots && unusedCredits < 1) {
+      const paid = await startCheckout({ kind: 'credit' });
+      if (!paid) return;
+    }
+    // Center optional — freestyle form works with typed City/Area.
+    setCreateMode(true);
+    setActiveCenterId(null);
+    setActiveCenterName('');
+    setActiveSubmissionId(null);
+    setFormOpen(true);
+  };
+
+  const savedSites = websites.filter((row) => row.hasWebsite);
 
   if (formOpen && userId != null) {
     return (
@@ -90,23 +210,23 @@ export default function CoachWebsitePage({
           </div>
           <h2 className="text-lg font-semibold text-gray-900">Create &amp; publish</h2>
           <p className="mt-1.5 text-sm leading-relaxed text-gray-600">
-            Create New opens a blank form. Pick City and Center from the dropdowns, then publish with coach OTP.
+            {siteSlots
+              ? `Each website is ${priceLabel} for one year. Center is optional — you can buy and publish without one.`
+              : 'Create New opens a blank form. Pick a center if you have one, or enter City and Area, then publish with coach OTP.'}
           </p>
           <TouchFeedbackButton
             type="button"
-            onClick={() => {
-              setMessage('');
-              setCreateMode(true);
-              setActiveCenterId(null);
-              setActiveCenterName('');
-              setActiveSubmissionId(null);
-              setFormOpen(true);
-            }}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white"
+            onClick={onCreateNew}
+            disabled={paying || loading}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
             ariaLabel="Create new website"
           >
             <Plus className="h-4 w-4" aria-hidden />
-            Create new
+            {paying
+              ? 'Opening payment…'
+              : (siteSlots && unusedCredits < 1
+                ? `Buy website · ${priceLabel}/yr`
+                : 'Create new')}
           </TouchFeedbackButton>
         </div>
 
@@ -114,71 +234,91 @@ export default function CoachWebsitePage({
           <p className="text-sm text-gray-500">Loading…</p>
         ) : null}
 
-        {!loading && websites.length === 0 ? (
+        {!loading && savedSites.length === 0 ? (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-            Register a nutrition center first. Then tap Create new.
+            No websites yet. Tap Buy website to get started — a nutrition center is not required.
           </div>
         ) : null}
 
         {!loading
-          ? websites.filter((row) => row.hasWebsite).map((row) => (
-            <div
-              key={row.centerId != null ? `c-${row.centerId}` : `s-${row.submissionId || row.publicPath}`}
-              className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm"
-            >
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-50">
-                  <MapPin className="h-5 w-5 text-emerald-700" aria-hidden />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-gray-900">
-                    {row.centerName || 'Saved website'}
-                  </p>
-                  <p className="mt-0.5 text-xs text-gray-500">
-                    {[row.city, row.locality].filter(Boolean).join(' · ')
-                      || (row.freestyle || row.legacy
-                        ? 'No center — place from map'
-                        : 'Place from center GPS')}
-                  </p>
-                  <p className="mt-0.5 text-xs text-gray-500">
-                    {row.isPublished
-                      ? `Live · ${row.publicPath}`
-                      : 'Draft saved — publish when ready'}
-                  </p>
-                  {row.isPublished && row.publicPath ? (
-                    <a
-                      href={publicWebsiteUrl(row.publicPath)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"
+          ? savedSites.map((row) => {
+            const submissionId = row.submissionId ?? row.submission?.id ?? null;
+            const expiryLabel = formatExpiry(row.expiresAt);
+            const needsRenew = siteSlots && row.entitlementActive === false;
+            return (
+              <div
+                key={row.centerId != null ? `c-${row.centerId}` : `s-${submissionId || row.publicPath}`}
+                className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-50">
+                    <MapPin className="h-5 w-5 text-emerald-700" aria-hidden />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-gray-900">
+                      {row.centerName || 'Saved website'}
+                    </p>
+                    <p className="mt-0.5 text-xs text-gray-500">
+                      {[row.city, row.locality].filter(Boolean).join(' · ')
+                        || (row.freestyle || row.legacy
+                          ? 'No center — place from map'
+                          : 'Place from center GPS')}
+                    </p>
+                    <p className="mt-0.5 text-xs text-gray-500">
+                      {row.isPublished
+                        ? `Live · ${row.publicPath}`
+                        : 'Draft saved — publish when ready'}
+                    </p>
+                    {siteSlots && expiryLabel ? (
+                      <p className={`mt-0.5 text-xs ${needsRenew ? 'font-semibold text-amber-700' : 'text-gray-500'}`}>
+                        {needsRenew ? `Ended ${expiryLabel}` : `Valid until ${expiryLabel}`}
+                      </p>
+                    ) : null}
+                    {row.isPublished && row.publicPath && !needsRenew ? (
+                      <a
+                        href={publicWebsiteUrl(row.publicPath)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                        Open live page
+                      </a>
+                    ) : null}
+                    {needsRenew && submissionId != null ? (
+                      <TouchFeedbackButton
+                        onClick={() => startCheckout({
+                          kind: 'renew',
+                          submissionId,
+                          centerId: row.centerId,
+                        })}
+                        disabled={paying}
+                        className="mt-3 w-full rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                        ariaLabel={`Renew website for ${row.centerName || 'saved form'}`}
+                      >
+                        {paying ? 'Opening payment…' : `Renew · ${priceLabel}/yr`}
+                      </TouchFeedbackButton>
+                    ) : null}
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        setCreateMode(false);
+                        setActiveCenterId(row.centerId);
+                        setActiveCenterName(row.centerName || '');
+                        // Always pass Id so City/Area uniqueness excludes this row (not self-"taken").
+                        setActiveSubmissionId(submissionId);
+                        setFormOpen(true);
+                      }}
+                      className="mt-3 w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white"
+                      ariaLabel={`Edit website for ${row.centerName || 'saved form'}`}
                     >
-                      <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                      Open live page
-                    </a>
-                  ) : null}
-                  <TouchFeedbackButton
-                    onClick={() => {
-                      setCreateMode(false);
-                      setActiveCenterId(row.centerId);
-                      setActiveCenterName(row.centerName || '');
-                      setActiveSubmissionId(
-                        row.centerId == null
-                          ? (row.submissionId ?? row.submission?.id ?? null)
-                          : null,
-                      );
-                      setFormOpen(true);
-                    }}
-                    className="mt-3 w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white"
-                    ariaLabel={`Edit website for ${row.centerName || 'saved form'}`}
-                  >
-                    Edit website
-                  </TouchFeedbackButton>
+                      Edit website
+                    </TouchFeedbackButton>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            );
+          })
           : null}
-
 
         {message ? (
           <p className="rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700" role="status">

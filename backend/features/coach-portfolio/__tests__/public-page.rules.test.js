@@ -59,11 +59,15 @@ describe('coach-portfolio public-page.rules', () => {
         city: 'Madurai',
         locality: 'Avaniyapuram',
       }),
-      'Coach Avinash',
+      'Avinash Kumar',
     );
     assert.equal(
       buildCoachVisibleHeading({ displayName: 'Coach Priya', city: 'Madurai' }),
-      'Coach Priya',
+      'Priya',
+    );
+    assert.equal(
+      buildCoachVisibleHeading({ displayName: 'System' }),
+      'System',
     );
     assert.equal(buildCoachVisibleHeading({}), 'Coach');
     const faqs = buildCoachPageFaqs({
@@ -72,8 +76,14 @@ describe('coach-portfolio public-page.rules', () => {
       locality: 'Avaniyapuram',
       onlineConsultation: true,
     }, { heroName: 'Avinash', basedIn: 'Avaniyapuram, Madurai' });
-    assert.ok(faqs.length >= 4);
-    assert.match(faqs[0].a, /Avinash/);
+    assert.equal(faqs.length, 4);
+    assert.equal(faqs[0].waCta, true);
+    assert.match(faqs[0].a, /Click here to say hi/i);
+    assert.equal(faqs[1].a, 'Coaching is both in person and remote.');
+    assert.equal(faqs[2].a, 'No.');
+    assert.match(faqs[3].a, /Our centre is at Avaniyapuram, Madurai/i);
+    assert.match(faqs[3].a, /Use Map for Exact Location/i);
+    assert.ok(!faqs.some((f) => /check in/i.test(f.q)));
     const ld = buildCoachPageJsonLd({
       fullName: 'Avinash',
       title: 'Wellness Coach',

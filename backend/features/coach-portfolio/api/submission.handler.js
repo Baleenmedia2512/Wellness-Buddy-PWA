@@ -31,9 +31,51 @@ import {
   hydrateFormWithAppData,
   listOwnedCentersForPortfolio,
 } from './hydrate-from-app.service.js';
+import * as entitlementsRepo from '../data/site-entitlements.repo.js';
 
 function featureDisabled() {
   throw new ValidationError(404, 'Coach Website is not available');
+}
+
+const NEED_SITE_CREDIT = 'Pay ₹399 for one year to create this website.';
+const NEED_SITE_RENEW = 'This website year ended. Renew ₹399 to publish again.';
+
+/**
+ * New clients need an unused credit before creating a brand-new submission row.
+ * @param {number} userId
+ */
+async function assertUnusedSiteCredit(userId) {
+  const unused = await entitlementsRepo.getUnusedCreditCount(userId);
+  if (unused < 1) {
+    throw new ValidationError(402, NEED_SITE_CREDIT);
+  }
+}
+
+/**
+ * Ensure submission has an active yearly entitlement (bind unused credit if needed).
+ * @param {{ userId: number, submissionId: number, centerId?: number|null, requireActive?: boolean }} input
+ */
+async function ensureSubmissionSiteEntitlement({
+  userId,
+  submissionId,
+  centerId = null,
+  requireActive = true,
+}) {
+  const active = await entitlementsRepo.isSubmissionActive(submissionId);
+  if (active) return;
+  const bound = await entitlementsRepo.bindUnusedCreditToSubmission({
+    userId,
+    submissionId,
+    centerId,
+  });
+  if (bound) return;
+  if (requireActive) {
+    const rows = await entitlementsRepo.listEntitlementsBySubmissionId(submissionId);
+    if (rows.length > 0) {
+      throw new ValidationError(402, NEED_SITE_RENEW);
+    }
+    throw new ValidationError(402, NEED_SITE_CREDIT);
+  }
 }
 
 /** Any logged-in owner of a center may manage their own website rows. */
@@ -118,7 +160,7 @@ async function verifyPublishOtpCode(userId, centerId, otp) {
 /**
  * List owned centers + existing website rows for My Websites hub.
  */
-export async function listMyWebsites({ userId: rawUserId }) {
+export async function listMyWebsites({ userId: rawUserId, useSiteSlots = false }) {
   if (!isEnabled(PORTFOLIO_FLAG)) featureDisabled();
   const userId = validateUserId(rawUserId);
   await assertPortfolioOwner(userId);
@@ -126,6 +168,19 @@ export async function listMyWebsites({ userId: rawUserId }) {
   // Freestyle sites intentionally keep CenterId NULL — never auto-attach them to
   // an owned club (that made "No center" websites show as Demo center 1).
   const rows = await submissionRepo.listSubmissionsByUserId(userId);
+  let creditSummary = { unusedCredits: 0, sites: [] };
+  if (useSiteSlots) {
+    try {
+      creditSummary = await entitlementsRepo.getSiteCreditsSummary(userId);
+    } catch (error) {
+      logger.warn('[coach-portfolio] site credits summary failed', {
+        message: error?.message || String(error),
+      });
+    }
+  }
+  const expiryBySubmission = new Map(
+    (creditSummary.sites || []).map((s) => [Number(s.submissionId), s]),
+  );
 
   const byCenter = new Map(
     rows
@@ -134,6 +189,7 @@ export async function listMyWebsites({ userId: rawUserId }) {
   );
   const websites = centers.map((c) => {
     const existing = byCenter.get(Number(c.centerId)) || null;
+    const ent = existing?.id != null ? expiryBySubmission.get(Number(existing.id)) : null;
     return {
       centerId: c.centerId,
       centerName: c.centerName,
@@ -144,6 +200,9 @@ export async function listMyWebsites({ userId: rawUserId }) {
       publicPath: existing?.publicPath || null,
       status: existing?.status || null,
       hasWebsite: Boolean(existing),
+      submissionId: existing?.id ?? null,
+      expiresAt: ent?.expiresAt || null,
+      entitlementActive: ent ? ent.active === true : null,
     };
   });
 
@@ -157,6 +216,7 @@ export async function listMyWebsites({ userId: rawUserId }) {
       const coachName = String(
         r.formJson?.personal?.fullName || r.userName || '',
       ).trim();
+      const ent = pub?.id != null ? expiryBySubmission.get(Number(pub.id)) : null;
       return {
         centerId: null,
         centerName: coachName || 'No center',
@@ -170,6 +230,8 @@ export async function listMyWebsites({ userId: rawUserId }) {
         legacy: true,
         freestyle: true,
         submissionId: pub?.id ?? r.id,
+        expiresAt: ent?.expiresAt || null,
+        entitlementActive: ent ? ent.active === true : null,
       };
     });
 
@@ -188,6 +250,8 @@ export async function listMyWebsites({ userId: rawUserId }) {
           hasWebsite: w.hasWebsite,
         })),
         centerCount: centers.length,
+        unusedCredits: creditSummary.unusedCredits,
+        useSiteSlots: useSiteSlots === true,
       },
     },
   };
@@ -201,12 +265,16 @@ export async function getMySubmission({
   centerId: rawCenterId,
   submissionId: rawSubmissionId = null,
   createNew = false,
+  useSiteSlots = false,
 }) {
   if (!isEnabled(PORTFOLIO_FLAG)) featureDisabled();
   const userId = validateUserId(rawUserId);
   await assertPortfolioOwner(userId);
 
   const wantFresh = createNew === true || createNew === 'true' || createNew === '1';
+  if (useSiteSlots && wantFresh) {
+    await assertUnusedSiteCredit(userId);
+  }
   // Freestyle edit by Id — do not fall through to newest row (often Demo center 1).
   const wantedSubmissionId = rawSubmissionId != null && String(rawSubmissionId).trim() !== ''
     ? Number(rawSubmissionId)
@@ -492,6 +560,7 @@ export async function saveMySubmissionDraft({
   form: rawForm,
   createNew = false,
   submissionId: rawSubmissionId = null,
+  useSiteSlots = false,
 }) {
   if (!isEnabled(PORTFOLIO_FLAG)) featureDisabled();
   const userId = validateUserId(rawUserId);
@@ -513,6 +582,10 @@ export async function saveMySubmissionDraft({
   }
   if (existing && !coachCanEditSubmission(existing.status)) {
     throw new ValidationError(409, 'This submission cannot be edited');
+  }
+  const creatingNew = !existing;
+  if (useSiteSlots && creatingNew) {
+    await assertUnusedSiteCredit(userId);
   }
   const form = await hydrateFormWithAppData(
     userId,
@@ -552,6 +625,14 @@ export async function saveMySubmissionDraft({
       markPublished: false,
     }) || row;
   }
+  if (useSiteSlots && creatingNew && row?.id) {
+    await ensureSubmissionSiteEntitlement({
+      userId,
+      submissionId: row.id,
+      centerId: row.centerId ?? centerId,
+      requireActive: true,
+    });
+  }
   return {
     httpStatus: 200,
     body: { ok: true, data: toPublicSubmission(row) },
@@ -568,6 +649,7 @@ export async function requestPublishOtp({
   form: rawForm,
   createNew = false,
   submissionId: rawSubmissionId = null,
+  useSiteSlots = false,
 }) {
   if (!isEnabled(PORTFOLIO_FLAG)) featureDisabled();
   const userId = validateUserId(rawUserId);
@@ -594,6 +676,18 @@ export async function requestPublishOtp({
   }
   if (existing && !coachCanEditSubmission(existing.status)) {
     throw new ValidationError(409, 'This submission cannot be edited');
+  }
+  const creatingNew = !existing;
+  if (useSiteSlots && creatingNew) {
+    await assertUnusedSiteCredit(userId);
+  }
+  if (useSiteSlots && existing?.id) {
+    await ensureSubmissionSiteEntitlement({
+      userId,
+      submissionId: existing.id,
+      centerId: existing.centerId ?? centerId,
+      requireActive: true,
+    });
   }
   const form = await hydrateFormWithAppData(
     userId,
@@ -642,6 +736,14 @@ export async function requestPublishOtp({
       submissionId: row?.id,
       markPublished: false,
     }) || row;
+  }
+  if (useSiteSlots && creatingNew && row?.id) {
+    await ensureSubmissionSiteEntitlement({
+      userId,
+      submissionId: row.id,
+      centerId: row.centerId ?? centerId,
+      requireActive: true,
+    });
   }
 
   const pathPreview = buildCoachPortfolioPath({
@@ -725,6 +827,7 @@ export async function verifyPublishOtp({
   centerId: rawCenterId,
   otp,
   otpKey = null,
+  useSiteSlots = false,
 }) {
   if (!isEnabled(PORTFOLIO_FLAG)) featureDisabled();
   const userId = validateUserId(rawUserId);
@@ -745,6 +848,15 @@ export async function verifyPublishOtp({
   }
   if (!existing) {
     throw new ValidationError(400, 'Save your website form first, then request a publish OTP.');
+  }
+
+  if (useSiteSlots) {
+    await ensureSubmissionSiteEntitlement({
+      userId,
+      submissionId: existing.id,
+      centerId: existing.centerId ?? centerId,
+      requireActive: true,
+    });
   }
 
   const key = otpKey != null ? otpKey : (existing.centerId ?? existing.id);

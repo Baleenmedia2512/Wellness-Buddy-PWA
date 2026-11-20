@@ -29,6 +29,10 @@ import { openPublicCoachUrl, resolvePublicCoachUrl } from '../utils/publicCoachU
 import { publicWebsiteUrl } from '../domain/publicWebsiteUrl';
 import PublishOtpModal from './PublishOtpModal';
 import RequiredProfileFieldsModal from './RequiredProfileFieldsModal';
+import {
+  profileIntroKeysFromLabels,
+  requestProfileIntroFill,
+} from '../../user/domain/profileIntroFocus';
 import SaveYourWebsiteReview from './SaveYourWebsiteReview';
 import { buildPublicPathPreview } from '../domain/publicPathPreview';
 
@@ -82,22 +86,6 @@ function Progress({ stepIndex, steps }) {
           className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 transition-all duration-300"
           style={{ width: `${pct}%` }}
         />
-      </div>
-      <div className="flex gap-1 overflow-x-auto pb-0.5">
-        {steps.map((s, i) => (
-          <span
-            key={s.id}
-            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-              i === stepIndex
-                ? 'bg-emerald-600 text-white'
-                : i < stepIndex
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : 'bg-slate-100 text-slate-500'
-            }`}
-          >
-            {s.title}
-          </span>
-        ))}
       </div>
     </div>
   );
@@ -240,6 +228,7 @@ export default function CoachPortfolioForm({
       setHasClub(false);
       setResolvedCenterId(null);
       setResolvedCenterName('');
+      setResolvedSubmissionId(null);
       return;
     }
     const data = await fetchMyPortfolioSubmission(userId, nextCenterId);
@@ -277,6 +266,7 @@ export default function CoachPortfolioForm({
       setPublicPath(null);
       setIsPublished(false);
       setHasUnpublishedChanges(false);
+      setResolvedSubmissionId(null);
     } else {
       const merged = mergePortfolioForm(data?.form);
       // Keep saved City/Area (map pick). Only fill blanks from the centre list.
@@ -295,6 +285,7 @@ export default function CoachPortfolioForm({
       setPublicPath(data?.publicPath || null);
       setIsPublished(data?.isPublished === true);
       setHasUnpublishedChanges(data?.hasUnpublishedChanges === true);
+      if (data?.id != null) setResolvedSubmissionId(data.id);
     }
     setHasClub(data?.hasClub === true);
     setResolvedCenterId(data?.centerId != null ? data.centerId : nextCenterId);
@@ -602,6 +593,11 @@ export default function CoachPortfolioForm({
       setDisplayNameStatus('');
       return undefined;
     }
+    // Edit: wait until we can exclude this row — otherwise the same City/Area looks "taken".
+    if (!createMode && resolvedSubmissionId == null && resolvedCenterId == null) {
+      setDisplayNameStatus('');
+      return undefined;
+    }
     let cancelled = false;
     setDisplayNameStatus('checking');
     const timer = setTimeout(async () => {
@@ -632,6 +628,7 @@ export default function CoachPortfolioForm({
     userId,
     resolvedCenterId,
     resolvedSubmissionId,
+    createMode,
     loading,
   ]);
 
@@ -863,7 +860,7 @@ export default function CoachPortfolioForm({
         ) : null}
 
         {!loading && step.id === 'hero' ? (
-          <FormCard title="Hero">
+          <FormCard>
             {renderPlaceFields('City & area')}
             {displayNameStatus === 'taken' ? (
               <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-medium text-rose-700">
@@ -876,7 +873,12 @@ export default function CoachPortfolioForm({
         {!loading && step.id === 'review' ? (
           <SaveYourWebsiteReview
             form={form}
-            centerDisplayName={resolvedCenterName || form.center.centerName || ''}
+            hasClub={hasClub || Boolean(resolvedCenterId)}
+            centerDisplayName={
+              (hasClub || Boolean(resolvedCenterId))
+                ? (resolvedCenterName || form.center.centerName || '')
+                : ''
+            }
             profilePhotoUrl={displayMediaUrl(form.personal.profilePhoto)}
             canEdit={canEdit}
             isPublished={isPublished}
@@ -951,6 +953,13 @@ export default function CoachPortfolioForm({
         <RequiredProfileFieldsModal
           items={requiredProfileItems}
           onClose={() => setRequiredProfileItems([])}
+          onGoToProfile={(labels) => {
+            const keys = profileIntroKeysFromLabels(labels);
+            setRequiredProfileItems([]);
+            // Opens Profile via App listener and scrolls to the marked fields.
+            // Do not call onClose first — that raced and left the user at Profile top.
+            requestProfileIntroFill(keys);
+          }}
         />
       ) : null}
 

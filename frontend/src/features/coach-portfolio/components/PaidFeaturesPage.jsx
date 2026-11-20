@@ -1,19 +1,22 @@
 import React, { useState } from 'react';
 import { ArrowLeft, ChevronRight, Globe2, Sparkles } from 'lucide-react';
 import { isFlagEnabled } from '../../../config/featureFlags';
+import { APP_VERSION } from '../../../config/version';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import ReportAccessBanner from '../../reports/components/ReportAccessBanner';
 import useEventsAccess from '../../events/hooks/useEventsAccess';
-import { PORTFOLIO_FLAG } from '../domain/portfolio.rules';
+import { PORTFOLIO_FLAG, usesPortfolioSiteSlots } from '../domain/portfolio.rules';
 import CoachWebsitePage from './CoachWebsitePage';
 
 /**
  * Paid Feature hub. Digital Portfolio is one module inside.
+ * Next-release builds: hub always open (pay per website). Older: trial/Premium gate.
  */
 export default function PaidFeaturesPage({ userId, onClose, allowedPages = null }) {
   const [activeModule, setActiveModule] = useState(null); // null | 'digital-portfolio'
   const websiteOn = isFlagEnabled(PORTFOLIO_FLAG);
-  const trialEnabled = isFlagEnabled('ff.events-trial');
+  const siteSlots = usesPortfolioSiteSlots(APP_VERSION.VERSION);
+  const trialEnabled = !siteSlots && isFlagEnabled('ff.events-trial');
   const eventsAccess = useEventsAccess(
     trialEnabled && userId != null && activeModule === 'digital-portfolio' ? userId : null,
   );
