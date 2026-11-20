@@ -8842,9 +8842,10 @@ function WellnessValleyApp() {
           profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
-          <Suspense fallback={<LoadingSpinner message="Loading Digital Portfolio..." />}>
+          <Suspense fallback={<LoadingSpinner message="Loading Paid Feature..." />}>
             <PaidFeaturesPage
               userId={user?.id || user?.UserId || user?.userId || null}
+              allowedPages={navAccessPages}
               onClose={() => navigateTo('home')}
             />
           </Suspense>

@@ -40,6 +40,7 @@ import {
   getAppPortfolioHeroPhotoUrl,
   getAppWorkingClubForPortfolio,
 } from '../../features/coach-portfolio/api/hydrate-from-app.service.js';
+import { applyLiveClubToPublicPage } from '../../features/coach-portfolio/domain/applyLiveClubToPublicPage.js';
 import * as publicRatingRepo from '../../features/coach-portfolio/data/public-rating.repo.js';
 import { fetchCityVillage } from '../../shared/lib/reverseGeocode.js';
 
@@ -267,6 +268,8 @@ export async function getServerSideProps({ params, req }) {
             /* keep empty locality/city — map still works via GPS */
           }
         }
+        // Live club wins for photos / hours / phone (not FormJson).
+        applyLiveClubToPublicPage(page, club);
       }
     }
     if (!hasClub) {
@@ -1408,12 +1411,17 @@ export default function CoachPortfolioPage({
                       </div>
                     </li>
                   ) : null}
-                  {hasClub && (page.openingTime || page.closingTime) ? (
+                  {hasClub && (page.openingTime || page.closingTime || (page.workingDays || []).length) ? (
                     <li>
                       <span className="contact-ico" aria-hidden="true">🕒</span>
                       <div>
                         <span className="contact-label">Hours</span>
-                        <p>{page.openingTime || '—'} – {page.closingTime || '—'}</p>
+                        {(page.openingTime || page.closingTime) ? (
+                          <p>{page.openingTime || '—'} – {page.closingTime || '—'}</p>
+                        ) : null}
+                        {(page.workingDays || []).length ? (
+                          <p className="contact-sub">{(page.workingDays || []).join(', ')}</p>
+                        ) : null}
                       </div>
                     </li>
                   ) : null}
@@ -3168,6 +3176,12 @@ img { max-width: 100%; }
   color: var(--ink);
   line-height: 1.4;
   font-size: 14px;
+}
+.contact-sub {
+  margin-top: 4px !important;
+  font-weight: 500 !important;
+  color: var(--muted) !important;
+  font-size: 12px !important;
 }
 .faq-panel,
 .contact-panel {

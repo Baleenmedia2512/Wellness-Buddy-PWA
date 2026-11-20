@@ -66,9 +66,9 @@ export default function CoachWebsitePage({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#f4f7f5]">
-      <header className="sticky top-0 z-10 border-b border-gray-200/80 bg-white/95 backdrop-blur safe-top">
-        <div className="mx-auto flex max-w-lg items-center gap-3 px-4 py-3">
+    <div className="flex min-h-full flex-col bg-[#f4f7f5]">
+      <div className="border-b border-gray-200/80 bg-white px-4 py-3">
+        <div className="mx-auto flex max-w-lg items-center gap-3">
           <TouchFeedbackButton
             onClick={onClose}
             ariaLabel="Go back"
@@ -78,12 +78,12 @@ export default function CoachWebsitePage({
           </TouchFeedbackButton>
           <div className="min-w-0 flex-1">
             <h1 className="text-base font-bold text-gray-900">Digital Portfolio</h1>
-            <p className="text-xs text-gray-500">One page per center you own</p>
+            <p className="text-xs text-gray-500">Paid module · one page per center you own</p>
           </div>
         </div>
-      </header>
+      </div>
 
-      <div className="mx-auto w-full max-w-lg flex-1 space-y-3 overflow-y-auto px-4 py-6">
+      <div className="mx-auto w-full max-w-lg flex-1 space-y-3 px-4 py-6">
         <div className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm">
           <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-emerald-50">
             <Globe2 className="h-5 w-5 text-emerald-700" aria-hidden />
