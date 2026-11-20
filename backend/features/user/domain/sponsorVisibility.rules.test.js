@@ -29,7 +29,7 @@ describe('hasVerifiedSponsorEmail', () => {
 });
 
 describe('isEligibleSponsor', () => {
-  it('requires both email and Community ID', () => {
+  it('accepts user with verified email (with or without Community ID)', () => {
     assert.equal(isEligibleSponsor({
       Email: 'a@b.com',
       CommunityId: 'W112072XXX',
@@ -38,15 +38,15 @@ describe('isEligibleSponsor', () => {
       email: 'a@b.com',
       communityId: ' W112 ',
     }), true);
+    assert.equal(isEligibleSponsor({ Email: 'a@b.com' }), true);
+    assert.equal(isEligibleSponsor({ Email: 'a@b.com', CommunityId: null }), true);
+    assert.equal(isEligibleSponsor({ Email: 'a@b.com', CommunityId: '   ' }), true);
   });
 
-  it('rejects email without a Community ID', () => {
-    assert.equal(isEligibleSponsor({ Email: 'a@b.com' }), false);
-    assert.equal(isEligibleSponsor({ Email: 'a@b.com', CommunityId: null }), false);
-    assert.equal(isEligibleSponsor({ Email: 'a@b.com', CommunityId: '   ' }), false);
-  });
-
-  it('rejects a Community ID without a verified email', () => {
+  it('rejects user without a verified email', () => {
+    assert.equal(isEligibleSponsor({}), false);
+    assert.equal(isEligibleSponsor({ Email: null }), false);
+    assert.equal(isEligibleSponsor({ Email: '' }), false);
     assert.equal(isEligibleSponsor({ CommunityId: 'W112072XXX' }), false);
     assert.equal(isEligibleSponsor({ Email: 'not-an-email', CommunityId: 'W112072XXX' }), false);
   });
