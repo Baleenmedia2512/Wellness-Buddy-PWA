@@ -257,12 +257,12 @@ const REGISTRY = Object.freeze({
     description:    'Coach Website portfolio form and public pages.',
   },
 
-  // Emergency kill for Digital Portfolio ₹399/yr Cashfree checkout only.
+  // Digital Portfolio ₹399/yr Cashfree checkout only. Default OFF until go-live.
   'ff.portfolio-site-checkout': {
     envKey:         'REACT_APP_FF_PORTFOLIO_SITE_CHECKOUT',
     storageKey:     'ff.portfolio-site-checkout',
-    defaultEnabled: true,
-    description:    'Cashfree create/confirm for Digital Portfolio website slots (₹399/yr).',
+    defaultEnabled: false,
+    description:    'Cashfree create/confirm for Digital Portfolio website slots (₹399/yr). Default OFF.',
   },
 
   'ff.gbp-listing': {

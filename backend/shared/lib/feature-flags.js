@@ -430,8 +430,8 @@ registerFlag({
   owner:          '@principal-eng',
   createdAt:      '2026-11-20',
   removeBy:       '2027-05-20',
-  description:    'Emergency kill switch for Digital Portfolio Cashfree website slots (₹399/yr). OFF hides create/confirm site-order APIs only. Not the Play activation path — version routing uses PORTFOLIO_SITE_SLOTS_MIN.',
-  defaultEnabled: true,
+  description:    'Emergency kill switch for Digital Portfolio Cashfree website slots (₹399/yr). OFF hides create/confirm site-order APIs only. Default OFF until Cashfree go-live. Not the Play activation path — version routing uses PORTFOLIO_SITE_SLOTS_MIN.',
+  defaultEnabled: false,
 });
 
 registerFlag({

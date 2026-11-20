@@ -55,6 +55,8 @@ export default function CoachWebsitePage({
 }) {
   const siteSlots = usesPortfolioSiteSlots(APP_VERSION.VERSION);
   const checkoutOn = isFlagEnabled('ff.portfolio-site-checkout');
+  /** Paywall only when 3.5.7+ slots AND Cashfree checkout flag is on. */
+  const paywallOn = siteSlots && checkoutOn;
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
   const [websites, setWebsites] = useState([]);
@@ -157,7 +159,7 @@ export default function CoachWebsitePage({
 
   const onCreateNew = async () => {
     setMessage('');
-    if (siteSlots && unusedCredits < 1) {
+    if (paywallOn && unusedCredits < 1) {
       const paid = await startCheckout({ kind: 'credit' });
       if (!paid) return;
     }
@@ -210,7 +212,7 @@ export default function CoachWebsitePage({
           </div>
           <h2 className="text-lg font-semibold text-gray-900">Create &amp; publish</h2>
           <p className="mt-1.5 text-sm leading-relaxed text-gray-600">
-            {siteSlots
+            {paywallOn
               ? `Each website is ${priceLabel} for one year. Center is optional — you can buy and publish without one.`
               : 'Create New opens a blank form. Pick a center if you have one, or enter City and Area, then publish with coach OTP.'}
           </p>
@@ -224,7 +226,7 @@ export default function CoachWebsitePage({
             <Plus className="h-4 w-4" aria-hidden />
             {paying
               ? 'Opening payment…'
-              : (siteSlots && unusedCredits < 1
+              : (paywallOn && unusedCredits < 1
                 ? `Buy website · ${priceLabel}/yr`
                 : 'Create new')}
           </TouchFeedbackButton>
@@ -236,7 +238,9 @@ export default function CoachWebsitePage({
 
         {!loading && savedSites.length === 0 ? (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-            No websites yet. Tap Buy website to get started — a nutrition center is not required.
+            {paywallOn
+              ? 'No websites yet. Tap Buy website to get started — a nutrition center is not required.'
+              : 'No websites yet. Tap Create new to get started — a nutrition center is not required.'}
           </div>
         ) : null}
 
@@ -244,7 +248,7 @@ export default function CoachWebsitePage({
           ? savedSites.map((row) => {
             const submissionId = row.submissionId ?? row.submission?.id ?? null;
             const expiryLabel = formatExpiry(row.expiresAt);
-            const needsRenew = siteSlots && row.entitlementActive === false;
+            const needsRenew = paywallOn && row.entitlementActive === false;
             return (
               <div
                 key={row.centerId != null ? `c-${row.centerId}` : `s-${submissionId || row.publicPath}`}

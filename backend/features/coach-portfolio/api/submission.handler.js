@@ -41,6 +41,15 @@ const NEED_SITE_CREDIT = 'Pay ₹399 for one year to create this website.';
 const NEED_SITE_RENEW = 'This website year ended. Renew ₹399 to publish again.';
 
 /**
+ * Site credits only when checkout kill switch is ON.
+ * ff.portfolio-site-checkout OFF → free create/publish (Cashfree deferred).
+ * @param {boolean} useSiteSlots
+ */
+function siteCreditsEnforced(useSiteSlots) {
+  return useSiteSlots === true && isEnabled('ff.portfolio-site-checkout') === true;
+}
+
+/**
  * New clients need an unused credit before creating a brand-new submission row.
  * @param {number} userId
  */
@@ -272,7 +281,7 @@ export async function getMySubmission({
   await assertPortfolioOwner(userId);
 
   const wantFresh = createNew === true || createNew === 'true' || createNew === '1';
-  if (useSiteSlots && wantFresh) {
+  if (siteCreditsEnforced(useSiteSlots) && wantFresh) {
     await assertUnusedSiteCredit(userId);
   }
   // Freestyle edit by Id — do not fall through to newest row (often Demo center 1).
@@ -584,7 +593,7 @@ export async function saveMySubmissionDraft({
     throw new ValidationError(409, 'This submission cannot be edited');
   }
   const creatingNew = !existing;
-  if (useSiteSlots && creatingNew) {
+  if (siteCreditsEnforced(useSiteSlots) && creatingNew) {
     await assertUnusedSiteCredit(userId);
   }
   const form = await hydrateFormWithAppData(
@@ -625,7 +634,7 @@ export async function saveMySubmissionDraft({
       markPublished: false,
     }) || row;
   }
-  if (useSiteSlots && creatingNew && row?.id) {
+  if (siteCreditsEnforced(useSiteSlots) && creatingNew && row?.id) {
     await ensureSubmissionSiteEntitlement({
       userId,
       submissionId: row.id,
@@ -678,10 +687,10 @@ export async function requestPublishOtp({
     throw new ValidationError(409, 'This submission cannot be edited');
   }
   const creatingNew = !existing;
-  if (useSiteSlots && creatingNew) {
+  if (siteCreditsEnforced(useSiteSlots) && creatingNew) {
     await assertUnusedSiteCredit(userId);
   }
-  if (useSiteSlots && existing?.id) {
+  if (siteCreditsEnforced(useSiteSlots) && existing?.id) {
     await ensureSubmissionSiteEntitlement({
       userId,
       submissionId: existing.id,
@@ -737,7 +746,7 @@ export async function requestPublishOtp({
       markPublished: false,
     }) || row;
   }
-  if (useSiteSlots && creatingNew && row?.id) {
+  if (siteCreditsEnforced(useSiteSlots) && creatingNew && row?.id) {
     await ensureSubmissionSiteEntitlement({
       userId,
       submissionId: row.id,
@@ -850,7 +859,7 @@ export async function verifyPublishOtp({
     throw new ValidationError(400, 'Save your website form first, then request a publish OTP.');
   }
 
-  if (useSiteSlots) {
+  if (siteCreditsEnforced(useSiteSlots)) {
     await ensureSubmissionSiteEntitlement({
       userId,
       submissionId: existing.id,
