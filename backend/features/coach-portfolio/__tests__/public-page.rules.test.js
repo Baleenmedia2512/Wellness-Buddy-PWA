@@ -81,6 +81,7 @@ describe('coach-portfolio public-page.rules', () => {
     assert.match(faqs[0].a, /Click here to say hi/i);
     assert.equal(faqs[1].a, 'Coaching is both in person and remote.');
     assert.equal(faqs[2].a, 'No.');
+    assert.equal(faqs[3].q, 'Where is my centre?');
     assert.match(faqs[3].a, /Our centre is at Avaniyapuram, Madurai/i);
     assert.match(faqs[3].a, /Use Map for Exact Location/i);
     assert.ok(!faqs.some((f) => /check in/i.test(f.q)));

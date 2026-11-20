@@ -613,10 +613,8 @@ export default function CoachPortfolioPage({
   const whatWeDo = Array.isArray(teamMedia?.whatWeDo) ? teamMedia.whatWeDo : [];
   const hasWhatWeSay = whatWeSay.length > 0;
   const hasWhatWeDo = whatWeDo.length > 0;
-  // Club site → centre name. Freestyle (no centre) → profile name (no "Coach" prefix).
-  const bizTitle = hasClubProp && String(page.centerName || '').trim()
-    ? String(page.centerName).trim()
-    : buildCoachVisibleHeading(page);
+  // Always coach profile name in hero (even when a centre is linked).
+  const bizTitle = buildCoachVisibleHeading(page);
   const introVideoSrcs = uniqueMediaUrls(
     (Array.isArray(page.introVideos) && page.introVideos.length
       ? page.introVideos
@@ -2350,10 +2348,11 @@ img { max-width: 100%; }
   color: var(--forest-deep);
 }
 .hero-h1-script {
-  font-family: var(--script);
-  font-size: clamp(34px, 6vw, 52px);
-  font-weight: 400;
-  line-height: 1.05;
+  font-family: var(--serif);
+  font-size: clamp(28px, 5.2vw, 44px);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.015em;
   color: var(--botanical);
 }
 .hero-lead {
@@ -3778,7 +3777,7 @@ img { max-width: 100%; }
   .hero-rate-wrap {
     align-items: center;
   }
-  /* One accent script only ("Starts Here"); center name stays solid serif. */
+  /* Coach name stays solid serif (same family as desktop). */
   .biz-listing {
     gap: 8px;
     margin: 0 auto 18px;
@@ -3787,12 +3786,13 @@ img { max-width: 100%; }
     max-width: 100%;
   }
   .biz-listing-name {
-    font-family: var(--script);
-    font-size: clamp(42px, 12vw, 52px);
-    font-weight: 400;
-    letter-spacing: 0.02em;
-    color: var(--botanical);
-    line-height: 1.02;
+    font-family: var(--serif);
+    font-size: clamp(28px, 8vw, 36px);
+    font-weight: 600;
+    font-style: italic;
+    letter-spacing: -0.01em;
+    color: var(--forest-deep);
+    line-height: 1.08;
   }
   .biz-listing-name::after {
     width: min(68%, 8rem);
@@ -3817,8 +3817,8 @@ img { max-width: 100%; }
     line-height: 1.14;
   }
   .hero-h1-script {
-    font-size: clamp(38px, 11vw, 48px);
-    line-height: 1;
+    font-size: clamp(26px, 7.4vw, 34px);
+    line-height: 1.14;
   }
   .trust-row { display: none; }
   .hero-lead {

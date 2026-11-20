@@ -204,7 +204,7 @@ export function buildCoachPageFaqs(page = {}, { heroName = '', basedIn = null } 
       a: 'No.',
     },
     {
-      q: 'Where is the center?',
+      q: 'Where is my centre?',
       a: placeBit
         ? `Our centre is at ${placeBit}. Use Map for Exact Location.`
         : 'Use Map for Exact Location.',
