@@ -263,7 +263,13 @@ const isNativePlatform = () => {
  * with user interaction.
  */
 export const precaptureShareImage = (element, options = {}) => {
-  const { scale = 1.5, quality = 0.85, immediate = false } = options;
+  const {
+    scale = 2,
+    quality = 0.95,
+    immediate = false,
+    targetWidth,
+    targetHeight,
+  } = options;
 
   return new Promise((resolve) => {
     if (!element) {
@@ -274,21 +280,55 @@ export const precaptureShareImage = (element, options = {}) => {
     const run = async () => {
       try {
         const start = performance.now();
-        const canvas = await html2canvas(element, {
+        const canvasWidth = options.width || targetWidth;
+        const canvasHeight = options.height || targetHeight;
+        const winW = typeof window !== 'undefined'
+          ? Math.max(window.innerWidth || document.documentElement?.clientWidth || 0, canvasWidth || 0)
+          : canvasWidth;
+        const winH = typeof window !== 'undefined'
+          ? Math.max(window.innerHeight || document.documentElement?.clientHeight || 0, canvasHeight || 0)
+          : canvasHeight;
+
+        const html2canvasOpts = {
           backgroundColor: "#ffffff",
-          scale,
+          scale: typeof options.scale === "number" ? options.scale : (targetWidth ? 2 : scale),
           useCORS: true,
           allowTaint: false,
           logging: false,
           imageTimeout: immediate ? 1500 : 5000,
           removeContainer: true,
-          scrollY: -window.scrollY,
-          scrollX: -window.scrollX,
+          windowWidth: winW || undefined,
+          windowHeight: winH || undefined,
+          scrollY: 0,
+          scrollX: 0,
           foreignObjectRendering: false,
-        });
-        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        };
+        if (options.width) html2canvasOpts.width = options.width;
+        if (options.height) html2canvasOpts.height = options.height;
+
+        const canvas = await html2canvas(element, html2canvasOpts);
+
+        let finalCanvas = canvas;
+        if (
+          targetWidth &&
+          targetHeight &&
+          (canvas.width !== targetWidth || canvas.height !== targetHeight)
+        ) {
+          const resized = document.createElement("canvas");
+          resized.width = targetWidth;
+          resized.height = targetHeight;
+          const ctx = resized.getContext("2d");
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, targetWidth, targetHeight);
+          ctx.drawImage(canvas, 0, 0, targetWidth, targetHeight);
+          finalCanvas = resized;
+        }
+
+        const dataUrl = finalCanvas.toDataURL("image/jpeg", quality);
         debugLog(
-          `🟢 Pre-captured share image in ${Math.round(performance.now() - start)} ms (${Math.round(dataUrl.length / 1024)} KB string)`,
+          `🟢 Pre-captured share image in ${Math.round(performance.now() - start)} ms (${Math.round(dataUrl.length / 1024)} KB string, ${finalCanvas.width}x${finalCanvas.height})`,
         );
         resolve(dataUrl);
       } catch (err) {
@@ -787,11 +827,21 @@ export const captureAndShare = async (element, options = {}) => {
     //   but on web there's no Capacitor bridge cost so 2× is fine.
     const webScale = 2;
     const nativeScale = 1.5;
-    const captureScale = isNative ? nativeScale : webScale;
+    const canvasWidth = options.width || options.targetWidth;
+    const canvasHeight = options.height || options.targetHeight;
+    const winW = typeof window !== 'undefined'
+      ? Math.max(window.innerWidth || document.documentElement?.clientWidth || 0, canvasWidth || 0)
+      : canvasWidth;
+    const winH = typeof window !== 'undefined'
+      ? Math.max(window.innerHeight || document.documentElement?.clientHeight || 0, canvasHeight || 0)
+      : canvasHeight;
+
+    const captureScale = typeof options.scale === "number"
+      ? options.scale
+      : (options.targetWidth ? 2 : (isNative ? nativeScale : webScale));
     debugLog(`📐 Capture scale: ${captureScale}x`);
 
-    const captureStart = performance.now();
-    const canvas = await html2canvas(element, {
+    const html2canvasOpts = {
       backgroundColor: "#ffffff",
       scale: captureScale,
       useCORS: true,
@@ -799,20 +849,42 @@ export const captureAndShare = async (element, options = {}) => {
       logging: false,
       imageTimeout: 5000,
       removeContainer: true,
-      scrollY: -window.scrollY,
-      scrollX: -window.scrollX,
+      windowWidth: winW || undefined,
+      windowHeight: winH || undefined,
+      scrollY: options.targetWidth ? 0 : -window.scrollY,
+      scrollX: options.targetWidth ? 0 : -window.scrollX,
       foreignObjectRendering: false,
-      // No onclone hook: forcing maxWidth/naturalWidth on every image was both slow
-      // and risky (could balloon the captured canvas to many MB and cause layout
-      // shifts). Images already render at their on-screen size, which is what we want.
-    });
+    };
+    if (options.width) html2canvasOpts.width = options.width;
+    if (options.height) html2canvasOpts.height = options.height;
+
+    const captureStart = performance.now();
+    const canvas = await html2canvas(element, html2canvasOpts);
     debugLog(`⏱️ html2canvas took ${Math.round(performance.now() - captureStart)} ms`);
+
+    let finalCanvas = canvas;
+    if (
+      options.targetWidth &&
+      options.targetHeight &&
+      (canvas.width !== options.targetWidth || canvas.height !== options.targetHeight)
+    ) {
+      const resized = document.createElement("canvas");
+      resized.width = options.targetWidth;
+      resized.height = options.targetHeight;
+      const ctx = resized.getContext("2d");
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, options.targetWidth, options.targetHeight);
+      ctx.drawImage(canvas, 0, 0, options.targetWidth, options.targetHeight);
+      finalCanvas = resized;
+    }
 
     debugLog(
       "✅ Canvas created successfully with dimensions:",
-      canvas.width,
+      finalCanvas.width,
       "x",
-      canvas.height,
+      finalCanvas.height,
     );
 
     // FAST PATH (Android native): skip toBlob + FileReader round-trip.
@@ -823,11 +895,13 @@ export const captureAndShare = async (element, options = {}) => {
     //   to "share sheet takes too long to open".
     if (isNative && Capacitor.getPlatform() === "android") {
       const dataUrlMime = "image/jpeg";
-      const dataUrlQuality = 0.85;
+      const dataUrlQuality = typeof options.quality === "number"
+        ? options.quality
+        : (options.targetWidth ? 0.95 : 0.85);
       const fastFileName = fileName.replace(/\.png$/i, ".jpg");
 
       const dataUrlStart = performance.now();
-      const dataUrl = canvas.toDataURL(dataUrlMime, dataUrlQuality);
+      const dataUrl = finalCanvas.toDataURL(dataUrlMime, dataUrlQuality);
       debugLog(
         `⏱️ canvas.toDataURL took ${Math.round(performance.now() - dataUrlStart)} ms (${Math.round(dataUrl.length / 1024)} KB string, ~${Math.round((dataUrl.length * 0.75) / 1024)} KB binary)`,
       );
@@ -897,9 +971,13 @@ export const captureAndShare = async (element, options = {}) => {
     // screenshots but roughly half the file size, which directly cuts base64 encoding,
     // Capacitor bridge transfer time, disk write time, and the receiving app's read time.
     const webMimeType = "image/jpeg";
-    const webQuality = 0.85;
+    const webQuality = typeof options.quality === "number"
+      ? options.quality
+      : (options.targetWidth ? 0.95 : 0.85);
     const nativeMimeType = "image/jpeg";
-    const nativeQuality = 0.85;
+    const nativeQuality = typeof options.quality === "number"
+      ? options.quality
+      : (options.targetWidth ? 0.95 : 0.85);
     const mimeType = isNative ? nativeMimeType : webMimeType;
     const quality = isNative ? nativeQuality : webQuality;
     const nativeFileName = fileName.replace(/\.png$/i, ".jpg");
@@ -907,7 +985,7 @@ export const captureAndShare = async (element, options = {}) => {
     const finalFileName = isNative ? nativeFileName : webFileName;
 
     const blob = await new Promise((resolve, reject) => {
-      canvas.toBlob(
+      finalCanvas.toBlob(
         (b) => {
           if (b) resolve(b);
           else reject(new Error("Failed to create blob from canvas"));
