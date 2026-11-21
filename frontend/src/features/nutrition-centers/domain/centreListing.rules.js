@@ -65,10 +65,15 @@ export function openingHoursToSimpleForm(hours) {
     if (!entry || entry.closed) continue;
     workingDays.push(day);
     const slot = Array.isArray(entry.slots) ? entry.slots[0] : null;
-    if (!tookSlot && slot?.open && slot?.close) {
-      openingTime = String(slot.open);
-      closingTime = String(slot.close);
-      tookSlot = true;
+    // Keep partial picks (open-only / close-only) so the alarm picker does not wipe.
+    if (!tookSlot && slot) {
+      const open = String(slot.open || '').trim();
+      const close = String(slot.close || '').trim();
+      if (open || close) {
+        openingTime = open;
+        closingTime = close;
+        tookSlot = true;
+      }
     }
   }
   return { workingDays, openingTime, closingTime };

@@ -259,6 +259,8 @@ export default function CoachPortfolioForm({
           websiteDisplayName: data?.form?.personal?.fullName || '',
         },
         services: data?.form?.services || undefined,
+        // Working days / hours from the linked centre (hydrate-from-app).
+        timings: data?.form?.timings || undefined,
       });
       setForm(await withProfileIntro(hydrated));
       setSubmissionStatus('draft');
@@ -320,28 +322,60 @@ export default function CoachPortfolioForm({
       setMessage('');
       try {
         if (createMode && (centerId == null || String(centerId).trim() === '')) {
-          // Hydrate name / phone / photo from app; City & Area stay blank for freestyle.
-          const data = await fetchMyPortfolioSubmission(userId, null, { createNew: true });
-          if (cancelled) return;
-          const merged = mergePortfolioForm(data?.form || emptyPortfolioForm());
-          // Freestyle create: no linked centre — clear club place/name from any API hydrate.
-          merged.center.city = '';
-          merged.center.locality = '';
-          merged.center.centerName = '';
-          merged.center.address = '';
-          merged.center.mapsLink = '';
-          setForm(await withProfileIntro(merged));
-          setSubmissionStatus('draft');
-          setAdminNote(null);
-          setPublicPath(null);
-          setIsPublished(false);
-          setHasUnpublishedChanges(false);
-          setHasClub(false);
-          setResolvedCenterId(null);
-          setResolvedCenterName('');
-          setResolvedSubmissionId(null);
-          setStepIndex(0);
-          setDisplayNameStatus('');
+          // Prefer first centre without a website — skip City & Area when one exists.
+          const firstCentre = (Array.isArray(availableCenters) ? availableCenters : [])
+            .find((c) => c.centerId != null && !c.hasWebsite);
+          if (firstCentre?.centerId != null) {
+            const place = placeFromCenterOption(
+              firstCentre,
+              [firstCentre.centerName, firstCentre.city, firstCentre.locality]
+                .filter(Boolean)
+                .join(' · '),
+            );
+            defaultCenterAppliedRef.current = true;
+            await loadCenterForm(firstCentre.centerId, {
+              fresh: true,
+              placeFallback: {
+                ...place,
+                centerName: place.centerName
+                  || String(firstCentre.centerName || '').trim(),
+              },
+            });
+            if (cancelled) return;
+            setForm((prev) => setSection(prev, 'center', {
+              city: place.city || '',
+              locality: place.locality || '',
+              centerName: place.centerName
+                || String(firstCentre.centerName || '').trim(),
+            }));
+            setPlaceMapOpen(false);
+            setStepIndex(0);
+            setDisplayNameStatus('');
+          } else {
+            // No centre left — freestyle City & Area map.
+            const data = await fetchMyPortfolioSubmission(userId, null, { createNew: true });
+            if (cancelled) return;
+            const merged = mergePortfolioForm(data?.form || emptyPortfolioForm());
+            merged.center.city = '';
+            merged.center.locality = '';
+            merged.center.centerName = '';
+            merged.center.address = '';
+            merged.center.mapsLink = '';
+            setForm(await withProfileIntro(merged));
+            setSubmissionStatus('draft');
+            setAdminNote(null);
+            setPublicPath(null);
+            setIsPublished(false);
+            setHasUnpublishedChanges(false);
+            setHasClub(false);
+            setResolvedCenterId(null);
+            setResolvedCenterName('');
+            setResolvedSubmissionId(null);
+            defaultCenterAppliedRef.current = true;
+            setPlaceMapOpen(true);
+            setStepIndex(0);
+            setDisplayNameStatus('');
+          }
         } else if (!createMode && (centerId == null || String(centerId).trim() === '')) {
           // Freestyle / legacy null-CenterId — load by submissionId when known.
           const data = await fetchMyPortfolioSubmission(userId, null, {
@@ -464,6 +498,9 @@ export default function CoachPortfolioForm({
     }));
     setPlaceMapOpen(false);
     if (city || locality) clearFieldError('place');
+    // Confirm → go to publish overview (no City & Area labels on that page).
+    const reviewIdx = steps.findIndex((s) => s.id === 'review');
+    if (reviewIdx >= 0) setStepIndex(reviewIdx);
   };
 
   const placeSummary = [form.center.locality, form.center.city].filter(Boolean).join(', ');
@@ -556,7 +593,17 @@ export default function CoachPortfolioForm({
     setStepIndex((i) => Math.min(i, Math.max(0, steps.length - 1)));
   }, [steps.length]);
 
-  // Create website: stay freestyle (No center) until the coach picks a centre; open map for GPS.
+  // Linked centre → land on publish overview (no City & Area step).
+  useEffect(() => {
+    if (loading) return;
+    const linked = hasClub || Boolean(resolvedCenterId);
+    if (!linked) return;
+    const reviewIdx = steps.findIndex((s) => s.id === 'review');
+    if (reviewIdx >= 0) setStepIndex(reviewIdx);
+  }, [loading, hasClub, resolvedCenterId, steps]);
+
+  // Create: if a centre exists, auto-link the first one → publish overview.
+  // City & Area / map only when there is no centre left to link.
   useEffect(() => {
     if (loading || !createMode || defaultCenterAppliedRef.current) return;
     if (centerId != null && String(centerId).trim() !== '') {
@@ -568,12 +615,17 @@ export default function CoachPortfolioForm({
       return;
     }
     defaultCenterAppliedRef.current = true;
+    const first = selectableCenters[0];
+    if (first?.centerId != null) {
+      void onCenterChange(String(first.centerId));
+      return;
+    }
     setResolvedCenterId(null);
     setResolvedCenterName('');
     setHasClub(false);
     setPlaceMapOpen(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot default after load
-  }, [loading, createMode, centerId, resolvedCenterId]);
+  }, [loading, createMode, centerId, resolvedCenterId, selectableCenters]);
 
   // Keep websiteDisplayName locked to Coach profile name for slug / uniqueness (not shown in UI).
   useEffect(() => {
@@ -809,10 +861,11 @@ export default function CoachPortfolioForm({
     }
   };
 
+  // Sit in ios-scroll-body under the app Header / tab nav — not full-viewport fixed.
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#f4efe6]">
-      <header className="relative z-30 shrink-0 border-b border-slate-200/70 bg-white/95 backdrop-blur-md safe-top">
-        <div className="mx-auto max-w-lg px-4 py-3">
+    <div className="flex h-full min-h-0 flex-1 flex-col bg-[#f4efe6]">
+      <header className="relative z-30 shrink-0 border-b border-slate-200/70 bg-white/95 backdrop-blur-md">
+        <div className="px-4 py-3">
           <div className="flex items-center gap-3">
             <TouchFeedbackButton
               onClick={onClose}
@@ -823,9 +876,11 @@ export default function CoachPortfolioForm({
             </TouchFeedbackButton>
             <div className="min-w-0 flex-1">
               <h1 className="text-[15px] font-bold tracking-tight text-slate-900">
-                {resolvedCenterName ? `Website · ${resolvedCenterName}` : 'My website'}
+                {resolvedCenterName ? `Digital Portfolio · ${resolvedCenterName}` : 'Digital Portfolio'}
               </h1>
-              <p className="text-xs text-slate-500">{step.description}</p>
+              {step.description ? (
+                <p className="text-xs text-slate-500">{step.description}</p>
+              ) : null}
             </div>
           </div>
           <Progress stepIndex={stepIndex} steps={steps} />
@@ -834,9 +889,7 @@ export default function CoachPortfolioForm({
 
       <div
         ref={scrollRootRef}
-        className={`relative z-0 mx-auto w-full max-w-lg flex-1 overflow-y-auto px-4 py-4 space-y-4 ${
-          step.id === 'review' ? 'pb-40' : 'pb-32'
-        }`}
+        className="relative z-0 min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4"
       >
         {message && messageIsError ? (
           <p
@@ -913,8 +966,8 @@ export default function CoachPortfolioForm({
         ) : null}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/80 bg-white safe-bottom shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
-        <div className="mx-auto flex max-w-lg gap-2 px-4 py-3">
+      <div className="z-40 shrink-0 border-t border-slate-200/80 bg-white safe-bottom shadow-[0_-8px_24px_rgba(15,23,42,0.08)]">
+        <div className="flex gap-2 px-4 py-3">
           <TouchFeedbackButton
             onClick={() => setStepIndex((i) => Math.max(0, i - 1))}
             disabled={stepIndex === 0 || busy}

@@ -154,7 +154,6 @@ export default function SaveYourWebsiteReview({
     : (isLegacyDefaultProfessionalTitle(titleRaw) ? '' : titleRaw);
   const years = String(personal.yearsExperience || '').trim();
   const about = String(personal.background || '').trim();
-  const placeLine = [area !== '—' ? area : '', city !== '—' ? city : ''].filter(Boolean).join(', ');
   const hoursLabel = formatOpeningHoursSummary(timings);
 
   const maps = resolveMapsUrls({
@@ -258,12 +257,6 @@ export default function SaveYourWebsiteReview({
               {designation ? (
                 <p className="text-[14px] font-semibold text-[#2f6b4f]">{designation}</p>
               ) : null}
-              {placeLine ? (
-                <p className="flex items-center gap-1.5 text-[13px] font-medium text-[#3d5c4d]">
-                  <MapPin className="h-3.5 w-3.5 shrink-0 text-[#2f6b4f]" />
-                  {placeLine}
-                </p>
-              ) : null}
               {years ? (
                 <p className="flex items-center gap-1.5 text-[13px] font-medium text-[#3d5c4d]">
                   <Star className="h-3.5 w-3.5 fill-[#2f6b4f] text-[#2f6b4f]" />
@@ -300,14 +293,7 @@ export default function SaveYourWebsiteReview({
                   <span><span className="font-semibold">Centre :</span> {centreName}</span>
                 </p>
               ) : null}
-              <p className="flex items-start gap-2 text-[14px] text-[#31453c]">
-                <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#2f6b4f]" />
-                <span><span className="font-semibold">City :</span> {city}</span>
-              </p>
-              <p className="flex items-start gap-2 text-[14px] text-[#31453c]">
-                <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#2f6b4f]" />
-                <span><span className="font-semibold">Area :</span> {area}</span>
-              </p>
+              {/* Place is shown on the map below — do not repeat City / Area labels. */}
 
               {hoursLabel ? (
                 <div className="flex items-center gap-2 rounded-xl bg-[#eef5f0] px-3 py-2.5 text-[13px] font-medium text-[#31453c]">

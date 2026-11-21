@@ -95,12 +95,16 @@ export default function PaidFeaturesPage({ userId, onClose, allowedPages = null 
       );
     }
 
+    // Fill only ios-scroll-body (below app Header / tab nav) — not the full viewport.
     return (
-      <div className="mx-auto max-w-lg">
-        <CoachWebsitePage
-          userId={userId}
-          onClose={() => setActiveModule(null)}
-        />
+      <div className="absolute inset-0 z-10 flex flex-col overflow-hidden bg-[#f4f7f5]">
+        <div className="mx-auto flex h-full min-h-0 w-full max-w-lg flex-col">
+          <CoachWebsitePage
+            userId={userId}
+            onClose={() => setActiveModule(null)}
+            startInCreateMode
+          />
+        </div>
       </div>
     );
   }
@@ -126,9 +130,6 @@ export default function PaidFeaturesPage({ userId, onClose, allowedPages = null 
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-gray-900">Digital Portfolio</p>
-            <p className="mt-0.5 text-xs text-gray-500">
-              Paid module · one page per center you own
-            </p>
           </div>
           <ChevronRight className="h-5 w-5 shrink-0 text-emerald-700" aria-hidden />
         </TouchFeedbackButton>

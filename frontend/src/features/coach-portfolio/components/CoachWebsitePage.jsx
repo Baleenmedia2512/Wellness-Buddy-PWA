@@ -48,10 +48,13 @@ function friendlyPayError(err) {
 /**
  * My Websites hub — Create New opens a fresh form; existing rows open edit.
  * Next-release: create/renew requires ₹399/yr site credit (center optional).
+ * @param {boolean} [startInCreateMode] — open the create form as soon as the hub loads
+ *   (Paid Feature → Digital Portfolio one-tap).
  */
 export default function CoachWebsitePage({
   userId,
   onClose,
+  startInCreateMode = false,
 }) {
   const siteSlots = usesPortfolioSiteSlots(APP_VERSION.VERSION);
   const checkoutOn = isFlagEnabled('ff.portfolio-site-checkout');
@@ -68,6 +71,7 @@ export default function CoachWebsitePage({
   const [activeCenterId, setActiveCenterId] = useState(null);
   const [activeCenterName, setActiveCenterName] = useState('');
   const [activeSubmissionId, setActiveSubmissionId] = useState(null);
+  const [autoCreateStarted, setAutoCreateStarted] = useState(false);
 
   const load = useCallback(async () => {
     if (userId == null) return;
@@ -171,26 +175,37 @@ export default function CoachWebsitePage({
     setFormOpen(true);
   };
 
+  // Paid Feature row → open create form in one tap (after hub load / credit check).
+  useEffect(() => {
+    if (!startInCreateMode || autoCreateStarted || loading || paying || userId == null) return;
+    setAutoCreateStarted(true);
+    void onCreateNew();
+    // intentionally once after first successful load
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot entry
+  }, [startInCreateMode, autoCreateStarted, loading, paying, userId, unusedCredits, paywallOn]);
+
   const savedSites = websites.filter((row) => row.hasWebsite);
 
   if (formOpen && userId != null) {
     return (
-      <CoachPortfolioForm
-        userId={userId}
-        centerId={createMode ? null : activeCenterId}
-        centerName={createMode ? '' : activeCenterName}
-        submissionId={createMode ? null : activeSubmissionId}
-        createMode={createMode}
-        availableCenters={websites}
-        onClose={closeForm}
-      />
+      <div className="flex h-full min-h-0 flex-1 flex-col">
+        <CoachPortfolioForm
+          userId={userId}
+          centerId={createMode ? null : activeCenterId}
+          centerName={createMode ? '' : activeCenterName}
+          submissionId={createMode ? null : activeSubmissionId}
+          createMode={createMode}
+          availableCenters={websites}
+          onClose={closeForm}
+        />
+      </div>
     );
   }
 
   return (
-    <div className="flex min-h-full flex-col bg-[#f4f7f5]">
-      <div className="border-b border-gray-200/80 bg-white px-4 py-3">
-        <div className="mx-auto flex max-w-lg items-center gap-3">
+    <div className="flex h-full min-h-0 flex-col bg-[#f4f7f5]">
+      <div className="shrink-0 border-b border-gray-200/80 bg-white px-4 py-3">
+        <div className="flex items-center gap-3">
           <TouchFeedbackButton
             onClick={onClose}
             ariaLabel="Go back"
@@ -200,12 +215,11 @@ export default function CoachWebsitePage({
           </TouchFeedbackButton>
           <div className="min-w-0 flex-1">
             <h1 className="text-base font-bold text-gray-900">Digital Portfolio</h1>
-            <p className="text-xs text-gray-500">Paid module · one page per center you own</p>
           </div>
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-lg flex-1 space-y-3 px-4 py-6">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-6">
         <div className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-sm">
           <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-emerald-50">
             <Globe2 className="h-5 w-5 text-emerald-700" aria-hidden />

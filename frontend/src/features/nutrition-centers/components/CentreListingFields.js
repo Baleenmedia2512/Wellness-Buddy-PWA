@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import AlarmTimePicker from '../../../shared/components/AlarmTimePicker';
 import {
   CENTRE_FACILITIES,
@@ -40,6 +40,9 @@ function toggleId(list, id, onChange) {
 /**
  * Working days chips + one open/close (alarm wheels).
  * Persists the existing per-day openingHours JSON shape for the API.
+ *
+ * Times are kept in local draft so picking Opens/Closes before days
+ * (or one time before the other) does not wipe back to "Select".
  */
 export default function CentreListingFields({
   hours,
@@ -47,18 +50,37 @@ export default function CentreListingFields({
   facilities,
   onFacilitiesChange,
 }) {
-  const form = useMemo(() => openingHoursToSimpleForm(hours), [hours]);
+  const derived = useMemo(() => openingHoursToSimpleForm(hours), [hours]);
+  const [draftOpen, setDraftOpen] = useState(derived.openingTime || '');
+  const [draftClose, setDraftClose] = useState(derived.closingTime || '');
 
-  const patchForm = (patch) => {
-    onHoursChange(simpleFormToOpeningHours({ ...form, ...patch }));
+  useEffect(() => {
+    if (derived.openingTime) setDraftOpen(derived.openingTime);
+    if (derived.closingTime) setDraftClose(derived.closingTime);
+  }, [derived.openingTime, derived.closingTime]);
+
+  const openingTime = derived.openingTime || draftOpen;
+  const closingTime = derived.closingTime || draftClose;
+
+  const commit = (patch) => {
+    const nextOpen = patch.openingTime !== undefined ? patch.openingTime : openingTime;
+    const nextClose = patch.closingTime !== undefined ? patch.closingTime : closingTime;
+    const nextDays = patch.workingDays !== undefined ? patch.workingDays : derived.workingDays;
+    if (patch.openingTime !== undefined) setDraftOpen(patch.openingTime);
+    if (patch.closingTime !== undefined) setDraftClose(patch.closingTime);
+    onHoursChange(simpleFormToOpeningHours({
+      workingDays: nextDays,
+      openingTime: nextOpen,
+      closingTime: nextClose,
+    }));
   };
 
   const toggleDay = (day) => {
-    const has = form.workingDays.includes(day);
-    patchForm({
+    const has = derived.workingDays.includes(day);
+    commit({
       workingDays: has
-        ? form.workingDays.filter((d) => d !== day)
-        : [...form.workingDays, day],
+        ? derived.workingDays.filter((d) => d !== day)
+        : [...derived.workingDays, day],
     });
   };
 
@@ -82,7 +104,7 @@ export default function CentreListingFields({
                 key={day}
                 type="button"
                 onClick={() => toggleDay(day)}
-                className={dayChip(form.workingDays.includes(day))}
+                className={dayChip(derived.workingDays.includes(day))}
               >
                 {CENTRE_WEEKDAY_LABELS[day].slice(0, 3)}
               </button>
@@ -94,20 +116,20 @@ export default function CentreListingFields({
           <div>
             <p className="mb-1 text-xs font-semibold text-gray-600">Opens</p>
             <AlarmTimePicker
-              value={form.openingTime}
+              value={openingTime}
               title="Opening time"
               fallback=""
-              onChange={(openingTime) => patchForm({ openingTime })}
+              onChange={(next) => commit({ openingTime: next })}
               className="w-full rounded-xl border border-gray-300 bg-gray-50 px-3 py-2.5 text-left text-[13px] font-semibold text-gray-900"
             />
           </div>
           <div>
             <p className="mb-1 text-xs font-semibold text-gray-600">Closes</p>
             <AlarmTimePicker
-              value={form.closingTime}
+              value={closingTime}
               title="Closing time"
               fallback=""
-              onChange={(closingTime) => patchForm({ closingTime })}
+              onChange={(next) => commit({ closingTime: next })}
               className="w-full rounded-xl border border-gray-300 bg-gray-50 px-3 py-2.5 text-left text-[13px] font-semibold text-gray-900"
             />
           </div>
