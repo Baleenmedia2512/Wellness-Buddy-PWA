@@ -290,7 +290,7 @@ export default function ManualEntryPage({
   const [pendingLogAsId, setPendingLogAsId] = useState(null);
   /** True while waiting for captureId after user tapped Food (AI path). */
   const [pendingFoodAi, setPendingFoodAi] = useState(false);
-  /** Task by Coach coach-OTP gate (apps ≥ 3.5.7). */
+  /** Task by Coach coach-OTP gate (apps ≥ 3.5.6). */
   const [habitOtp, setHabitOtp] = useState(null);
   const [habitOtpResending, setHabitOtpResending] = useState(false);
 

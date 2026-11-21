@@ -8,8 +8,8 @@ import {
 const MAX_SOURCE_SIDE_PX = 1600;
 
 function encodeJpegWithinBytes(canvas, targetBytes, startQuality) {
-  const maxDataUrlLen = Math.ceil((targetBytes || 22 * 1024) / 0.75) + 32;
-  let quality = startQuality || 0.65;
+  const maxDataUrlLen = Math.ceil((targetBytes || 300 * 1024) / 0.75) + 32;
+  let quality = startQuality || 0.9;
   let dataUrl = canvas.toDataURL('image/jpeg', quality);
 
   while (dataUrl.length > maxDataUrlLen && quality > 0.15) {
@@ -22,13 +22,13 @@ function encodeJpegWithinBytes(canvas, targetBytes, startQuality) {
 
 /**
  * Encode a square canvas as JPEG, stepping quality down until the payload
- * fits PROFILE_IMAGE_TARGET_BYTES (decoded, ~22 KB). Base64 wire size is ~4/3 of that.
+ * fits PROFILE_IMAGE_TARGET_BYTES (decoded, ~300 KB). Base64 wire size is ~4/3 of that.
  */
 function encodeWithinBudget(canvas) {
   return encodeJpegWithinBytes(
     canvas,
-    PROFILE_IMAGE_TARGET_BYTES || 22 * 1024,
-    PROFILE_IMAGE_JPEG_QUALITY || 0.65,
+    PROFILE_IMAGE_TARGET_BYTES || 300 * 1024,
+    PROFILE_IMAGE_JPEG_QUALITY || 0.9,
   );
 }
 
@@ -157,7 +157,7 @@ function downscaleSource(img, pixelCrop) {
 
 /**
  * Crop a region from a base64 image, supporting rotation + flip.
- * Square output (default) is capped to PROFILE_IMAGE_MAX_DIMENSION_PX and ≤ ~22 KB JPEG.
+ * Square output (default) is capped to PROFILE_IMAGE_MAX_DIMENSION_PX and ≤ ~300 KB JPEG.
  * Pass `{ square: false }` for portrait cover frames (keeps crop aspect).
  */
 export const getCroppedImg = async (
@@ -181,7 +181,7 @@ export const getCroppedImg = async (
   const { source, crop, release } = downscaleSource(img, pixelCrop);
   const square = opts.square !== false;
   const maxOut = opts.maxDimension
-    || (square ? (PROFILE_IMAGE_MAX_DIMENSION_PX || 256) : 1200);
+    || (square ? (PROFILE_IMAGE_MAX_DIMENSION_PX || 1080) : 1920);
 
   try {
     const srcW = source.width;

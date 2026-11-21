@@ -10,6 +10,7 @@ import {
   DEFAULT_PORTFOLIO_OFFERINGS,
   offeringsAreEmpty,
 } from './default-offerings.rules.js';
+import { clubHoursToPublicTimings } from './clubHoursToPublicTimings.js';
 import { normalizeFormJson } from './submission.rules.js';
 
 /** ISO 639-1 → display name for Profile languages on the public About checklist. */
@@ -83,6 +84,7 @@ function mapsLinkFromLatLng(lat, lng) {
  *   instagram?: string|null,
  *   youtube?: string|null,
  *   linkedin?: string|null,
+ *   openingHours?: object|null,
  * }} app
  * @returns {object}
  */
@@ -175,6 +177,16 @@ export function hydratePortfolioFormFromApp(rawForm, app = {}) {
   }
   if (offeringsAreEmpty(form.services.offerings)) {
     form.services.offerings = [...DEFAULT_PORTFOLIO_OFFERINGS];
+  }
+  // Linked centre hours always win — public page / publish overview use these.
+  if (app.openingHours != null) {
+    const timings = clubHoursToPublicTimings(app.openingHours);
+    form.timings = {
+      ...form.timings,
+      workingDays: timings.workingDays,
+      openingTime: timings.openingTime,
+      closingTime: timings.closingTime,
+    };
   }
   return form;
 }

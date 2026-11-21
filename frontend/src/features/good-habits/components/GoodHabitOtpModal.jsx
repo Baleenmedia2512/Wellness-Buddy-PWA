@@ -107,7 +107,7 @@ export default function GoodHabitOtpModal({
                 </>
               ) : null}
               {' '}
-              for the 4-digit code. They also received your Task by Coach photo.
+              for the 4-digit code (valid until 11:59:59 PM IST today). They got your photo and can share the code on WhatsApp.
             </p>
           </div>
         </div>
