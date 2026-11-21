@@ -300,7 +300,7 @@ export function buildCoachPageJsonLd(page, {
   const hasGeo = Number.isFinite(lat) && Number.isFinite(lng);
   if (hasClub && hasGeo) {
     const businessName = String(page?.centerName || '').trim()
-      || `${name} Wellness Center`;
+      || `${name} Wellness Centre`;
     graph.push({
       '@type': 'LocalBusiness',
       name: businessName,

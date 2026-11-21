@@ -309,6 +309,7 @@ export async function hydrateFormWithAppData(userId, form, { centerId = null } =
   } catch {
     // Intro columns may be missing on older DBs — never block portfolio.
   }
+  let openingHours = null;
   try {
     // Freestyle (no CenterId): keep typed City/Area — do not overwrite from primary club GPS.
     if (centerId != null) {
@@ -317,6 +318,7 @@ export async function hydrateFormWithAppData(userId, form, { centerId = null } =
         centerName = club.centerName;
         latitude = club.latitude;
         longitude = club.longitude;
+        openingHours = club.openingHours ?? null;
         if (latitude != null && longitude != null) {
           const place = await fetchCityVillage(latitude, longitude);
           city = place.city || null;
@@ -339,6 +341,7 @@ export async function hydrateFormWithAppData(userId, form, { centerId = null } =
     longitude,
     city,
     locality,
+    openingHours,
     professionalTitle: intro.professionalTitle,
     aboutMe: intro.aboutMe,
     qualification: intro.qualification,

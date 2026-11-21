@@ -42,6 +42,7 @@ import {
 } from '../../features/coach-portfolio/api/hydrate-from-app.service.js';
 import { applyLiveClubToPublicPage } from '../../features/coach-portfolio/domain/applyLiveClubToPublicPage.js';
 import { applyLiveProfileToPublicPage } from '../../features/coach-portfolio/domain/applyLiveProfileToPublicPage.js';
+import { formatWorkingDaysLabel } from '../../features/coach-portfolio/domain/formatWorkingDaysLabel.js';
 import * as publicRatingRepo from '../../features/coach-portfolio/data/public-rating.repo.js';
 import * as entitlementsRepo from '../../features/coach-portfolio/data/site-entitlements.repo.js';
 import { getProfileIntro } from '../../features/user/user.repository.js';
@@ -73,6 +74,29 @@ function mailtoEnquiryHref(email, { subject, body }) {
     body ? `body=${encodeURIComponent(body)}` : null,
   ].filter(Boolean).join('&');
   return q ? `mailto:${to}?${q}` : `mailto:${to}`;
+}
+
+/** Prefill WhatsApp with the consultation note (preferred over mailto on mobile). */
+function whatsappEnquiryHref(digits, body) {
+  const base = whatsappHref(digits);
+  if (!base) return null;
+  const text = String(body || '').trim();
+  if (!text) return base;
+  return `${base}?text=${encodeURIComponent(text)}`;
+}
+
+/**
+ * About me is stored in background; uniqueApproach is often mirrored for API
+ * compatibility — never paste the same copy twice on the public page.
+ */
+function pickAboutText(background, uniqueApproach) {
+  const a = String(background || '').trim();
+  const b = String(uniqueApproach || '').trim();
+  if (!a) return b;
+  if (!b) return a;
+  if (a === b) return a;
+  if (a.includes(b) || b.includes(a)) return a.length >= b.length ? a : b;
+  return `${a} ${b}`.trim();
 }
 
 function telHref(phone) {
@@ -628,10 +652,7 @@ export default function CoachPortfolioPage({
   const hasMedia = hasGallery || introVideoSrcs.length > 0 || hasTransformations;
   const basedIn = placeShort || page.city || null;
   const heroTag = page.title || 'Professional Wellness Coach';
-  const aboutText = [
-    page.background,
-    page.uniqueApproach,
-  ].filter(Boolean).join(' ').trim()
+  const aboutText = pickAboutText(page.background, page.uniqueApproach)
     || String(page.qualifications || '').trim()
     || [
       page.displayName || heroName,
@@ -1097,10 +1118,13 @@ export default function CoachPortfolioPage({
               {heroRating ? (
                 <p
                   className="biz-listing-review"
-                  aria-label={`Rated ${heroRating.label} out of 5 from ${heroRating.count} rating${heroRating.count === 1 ? '' : 's'}`}
+                  aria-label={`Rated ${heroRating.label} out of 5 from ${heroRating.count} ${heroRating.count === 1 ? 'person' : 'people'}`}
                 >
                   <FractionalStars value={heroRating.average} />
                   <span className="biz-listing-score">{heroRating.label}</span>
+                  <span className="biz-listing-count">
+                    ({heroRating.count} {heroRating.count === 1 ? 'person' : 'people'})
+                  </span>
                 </p>
               ) : null}
             </div>
@@ -1256,7 +1280,7 @@ export default function CoachPortfolioPage({
                 <section id="gallery" className="section gallery-section">
                   <div className="shell">
                     <div className="section-head center">
-                      <h2>Our Wellness Center</h2>
+                      <h2>Our Wellness Centre</h2>
                       <p className="panel-sub">A calm and welcoming space for your wellness journey</p>
                     </div>
                     <button
@@ -1274,7 +1298,7 @@ export default function CoachPortfolioPage({
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={src}
-                              alt={`${page.centerName || page.displayName || 'Wellness'} center photo${placeAlt ? ` in ${placeAlt}` : ''}`}
+                              alt={`${page.centerName || page.displayName || 'Wellness'} centre photo${placeAlt ? ` in ${placeAlt}` : ''}`}
                               loading="lazy"
                             />
                           </span>
@@ -1452,7 +1476,7 @@ export default function CoachPortfolioPage({
                     <li>
                       <span className="contact-ico" aria-hidden="true">📍</span>
                       <div>
-                        <span className="contact-label">Club</span>
+                        <span className="contact-label">Wellness Centre</span>
                         <p>{page.centerName}</p>
                       </div>
                     </li>
@@ -1475,7 +1499,7 @@ export default function CoachPortfolioPage({
                           <p>{page.openingTime || '—'} – {page.closingTime || '—'}</p>
                         ) : null}
                         {(page.workingDays || []).length ? (
-                          <p className="contact-sub">{(page.workingDays || []).join(', ')}</p>
+                          <p className="contact-sub">{formatWorkingDaysLabel(page.workingDays)}</p>
                         ) : null}
                       </div>
                     </li>
@@ -1487,7 +1511,7 @@ export default function CoachPortfolioPage({
                 <div className="map-panel">
                   <div className="map-frame">
                     <iframe
-                      title={hasClub ? 'Club location' : 'Location'}
+                      title={hasClub ? 'Wellness centre location' : 'Location'}
                       src={mapsEmbedSrc}
                       loading="lazy"
                       referrerPolicy="no-referrer-when-downgrade"
@@ -1556,9 +1580,11 @@ export default function CoachPortfolioPage({
                 <button type="button" className="book-close" onClick={() => setBookOpen(false)} aria-label="Close">✕</button>
               </div>
               <p className="book-lead">
-                {bookEmail
-                  ? 'Share a few details and we will reach out by email.'
-                  : 'Coach email is not set yet — add Business email on the website form to enable booking.'}
+                {wa
+                  ? 'Share a few details — we will open WhatsApp so you can send the request to the coach.'
+                  : bookEmail
+                    ? 'Share a few details and we will open your email app to send the request.'
+                    : 'Coach WhatsApp / email is not set yet — add contact details on the website form to enable booking.'}
               </p>
               <form
                 className="book-form"
@@ -1567,19 +1593,27 @@ export default function CoachPortfolioPage({
                   const name = bookName.trim();
                   const phone = bookPhone.trim();
                   const note = bookNote.trim() || DEFAULT_BOOK_NOTE;
-                  if (!name || !phone || !bookEmail) return;
-                  const href = mailtoEnquiryHref(bookEmail, {
-                    subject: `Consultation request — ${name}`,
-                    body: [
-                      `Hi ${page.displayName || page.fullName || 'Coach'},`,
-                      '',
-                      note,
-                      '',
-                      `Name: ${name}`,
-                      `Phone: ${phone}`,
-                    ].join('\n'),
-                  });
-                  if (href) window.location.href = href;
+                  if (!name || !phone) return;
+                  const body = [
+                    `Hi ${page.displayName || page.fullName || 'Coach'},`,
+                    '',
+                    note,
+                    '',
+                    `Name: ${name}`,
+                    `Phone: ${phone}`,
+                  ].join('\n');
+                  // Prefer WhatsApp so phones do not show the OS mailto app picker.
+                  const href = whatsappEnquiryHref(page.whatsapp, body)
+                    || mailtoEnquiryHref(bookEmail, {
+                      subject: `Consultation request — ${name}`,
+                      body,
+                    });
+                  if (!href) return;
+                  if (href.startsWith('https://wa.me/')) {
+                    window.open(href, '_blank', 'noopener,noreferrer');
+                  } else {
+                    window.location.href = href;
+                  }
                   setBookOpen(false);
                   setBookName('');
                   setBookPhone('');
@@ -1614,7 +1648,7 @@ export default function CoachPortfolioPage({
                     placeholder={BOOK_NOTE_PLACEHOLDER}
                   />
                 </label>
-                <button type="submit" className="btn btn-primary book-submit" disabled={!bookEmail}>
+                <button type="submit" className="btn btn-primary book-submit" disabled={!wa && !bookEmail}>
                   Book a Consultation
                 </button>
               </form>
