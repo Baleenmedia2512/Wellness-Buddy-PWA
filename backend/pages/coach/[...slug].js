@@ -696,6 +696,27 @@ export default function CoachPortfolioPage({
   const coachTitle = String(page.title || '').trim();
   const coachDisplayName = String(page.displayName || page.fullName || heroName || '').trim() || 'Coach';
   const centerLabel = String(page.centerName || '').trim();
+
+  const sharePage = async () => {
+    const url = String(pageUrl || (typeof window !== 'undefined' ? window.location.href : '')).trim();
+    const title = String(page.seoTitle || coachDisplayName || 'Wellness Valley').trim();
+    if (!url) return;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        await navigator.share({ title, url, text: title });
+        return;
+      }
+    } catch {
+      // User cancelled share sheet — ignore.
+    }
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      }
+    } catch {
+      // Clipboard unavailable — ignore.
+    }
+  };
   // Hero dashed line = form Professional Title (Other → professionalTitleOther via page.title).
   const heroRoleLabel = coachTitle || 'Wellness Coach';
   const aboutKicker = coachTitle
@@ -1048,6 +1069,20 @@ export default function CoachPortfolioPage({
             </button>
             <button
               type="button"
+              className="header-share"
+              aria-label="Share this page"
+              title="Share"
+              onClick={sharePage}
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none">
+                <circle cx="18" cy="5" r="2.6" stroke="currentColor" strokeWidth="1.8" />
+                <circle cx="6" cy="12" r="2.6" stroke="currentColor" strokeWidth="1.8" />
+                <circle cx="18" cy="19" r="2.6" stroke="currentColor" strokeWidth="1.8" />
+                <path d="M8.4 10.8l7.2-4.2M8.4 13.2l7.2 4.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </button>
+            <button
+              type="button"
               className="menu-btn"
               aria-label={menuOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={menuOpen}
@@ -1118,13 +1153,11 @@ export default function CoachPortfolioPage({
               {heroRating ? (
                 <p
                   className="biz-listing-review"
-                  aria-label={`Rated ${heroRating.label} out of 5 from ${heroRating.count} ${heroRating.count === 1 ? 'person' : 'people'}`}
+                  aria-label={`Rated ${heroRating.label} out of 5 from ${heroRating.count} ${heroRating.count === 1 ? 'rating' : 'ratings'}`}
                 >
                   <FractionalStars value={heroRating.average} />
                   <span className="biz-listing-score">{heroRating.label}</span>
-                  <span className="biz-listing-count">
-                    ({heroRating.count} {heroRating.count === 1 ? 'person' : 'people'})
-                  </span>
+                  <span className="biz-listing-count">({heroRating.count})</span>
                 </p>
               ) : null}
             </div>
@@ -1185,6 +1218,19 @@ export default function CoachPortfolioPage({
                   <a className="btn btn-whatsapp" href={wa} target="_blank" rel="noreferrer">
                     <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M20.5 3.5A11 11 0 0 0 3.2 17.7L2 22l4.4-1.2A11 11 0 1 0 20.5 3.5zm-8.6 17a9.1 9.1 0 0 1-4.6-1.3l-.3-.2-2.7.7.7-2.6-.2-.3a9.1 9.1 0 1 1 7.1 3.7zm5-6.8c-.3-.1-1.6-.8-1.8-.9s-.4-.1-.6.1-.7.9-.8 1-.3.2-.6.1a7.4 7.4 0 0 1-2.2-1.4 8.2 8.2 0 0 1-1.5-1.9c-.2-.3 0-.4.1-.6l.4-.5.1-.3a.5.5 0 0 0 0-.5l-.6-1.5c-.2-.4-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 2.9 2.9 0 0 0-.9 2.2 5 5 0 0 0 1.1 2.7 11.5 11.5 0 0 0 4.4 3.9 15 15 0 0 0 1.5.5 3.6 3.6 0 0 0 1.6.1 2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .2-1.2c-.1-.1-.3-.2-.6-.3z" /></svg>
                     Chat on WhatsApp
+                  </a>
+                ) : null}
+                {call ? (
+                  <a className="btn btn-call" href={call}>
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none">
+                      <path
+                        d="M6.6 3.8c.5-.5 1.3-.6 1.9-.3l2.1 1.1c.6.3.9 1 .8 1.7l-.4 2.2a1.6 1.6 0 0 1-.9 1.2l-1 .5a11.5 11.5 0 0 0 5.4 5.4l.5-1a1.6 1.6 0 0 1 1.2-.9l2.2-.4c.7-.1 1.4.2 1.7.8l1.1 2.1c.3.6.2 1.4-.3 1.9l-1.3 1.3c-.5.5-1.2.7-1.9.6-3.4-.5-6.6-2.4-9.1-4.9S5 9.8 4.5 6.4c-.1-.7.1-1.4.6-1.9L6.6 3.8z"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    Call
                   </a>
                 ) : null}
                 <button type="button" className="btn btn-outline" onClick={openBook}>Book a Consultation</button>
@@ -1565,11 +1611,25 @@ export default function CoachPortfolioPage({
           </div>
         </footer>
 
-        {wa ? (
-          <a className="float-wa" href={wa} target="_blank" rel="noreferrer" aria-label="Chat on WhatsApp" title="WhatsApp">
-            <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M20.5 3.5A11 11 0 0 0 3.2 17.7L2 22l4.4-1.2A11 11 0 1 0 20.5 3.5zm-8.6 17a9.1 9.1 0 0 1-4.6-1.3l-.3-.2-2.7.7.7-2.6-.2-.3a9.1 9.1 0 1 1 7.1 3.7zm5-6.8c-.3-.1-1.6-.8-1.8-.9s-.4-.1-.6.1-.7.9-.8 1-.3.2-.6.1a7.4 7.4 0 0 1-2.2-1.4 8.2 8.2 0 0 1-1.5-1.9c-.2-.3 0-.4.1-.6l.4-.5.1-.3a.5.5 0 0 0 0-.5l-.6-1.5c-.2-.4-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 2.9 2.9 0 0 0-.9 2.2 5 5 0 0 0 1.1 2.7 11.5 11.5 0 0 0 4.4 3.9 15 15 0 0 0 1.5.5 3.6 3.6 0 0 0 1.6.1 2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .2-1.2c-.1-.1-.3-.2-.6-.3z" /></svg>
-          </a>
-        ) : null}
+        <div className="float-actions">
+          {wa ? (
+            <a className="float-wa" href={wa} target="_blank" rel="noreferrer" aria-label="Chat on WhatsApp" title="WhatsApp">
+              <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M20.5 3.5A11 11 0 0 0 3.2 17.7L2 22l4.4-1.2A11 11 0 1 0 20.5 3.5zm-8.6 17a9.1 9.1 0 0 1-4.6-1.3l-.3-.2-2.7.7.7-2.6-.2-.3a9.1 9.1 0 1 1 7.1 3.7zm5-6.8c-.3-.1-1.6-.8-1.8-.9s-.4-.1-.6.1-.7.9-.8 1-.3.2-.6.1a7.4 7.4 0 0 1-2.2-1.4 8.2 8.2 0 0 1-1.5-1.9c-.2-.3 0-.4.1-.6l.4-.5.1-.3a.5.5 0 0 0 0-.5l-.6-1.5c-.2-.4-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 2.9 2.9 0 0 0-.9 2.2 5 5 0 0 0 1.1 2.7 11.5 11.5 0 0 0 4.4 3.9 15 15 0 0 0 1.5.5 3.6 3.6 0 0 0 1.6.1 2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .2-1.2c-.1-.1-.3-.2-.6-.3z" /></svg>
+            </a>
+          ) : null}
+          {call ? (
+            <a className="float-call" href={call} aria-label="Call" title="Call">
+              <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="none">
+                <path
+                  d="M6.6 3.8c.5-.5 1.3-.6 1.9-.3l2.1 1.1c.6.3.9 1 .8 1.7l-.4 2.2a1.6 1.6 0 0 1-.9 1.2l-1 .5a11.5 11.5 0 0 0 5.4 5.4l.5-1a1.6 1.6 0 0 1 1.2-.9l2.2-.4c.7-.1 1.4.2 1.7.8l1.1 2.1c.3.6.2 1.4-.3 1.9l-1.3 1.3c-.5.5-1.2.7-1.9.6-3.4-.5-6.6-2.4-9.1-4.9S5 9.8 4.5 6.4c-.1-.7.1-1.4.6-1.9L6.6 3.8z"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </a>
+          ) : null}
+        </div>
 
         {bookOpen ? (
           <div className="book-modal" role="dialog" aria-modal="true" aria-label="Book a consultation">
@@ -2027,8 +2087,24 @@ img { max-width: 100%; }
 }
 .desk-nav a:hover { color: var(--botanical); opacity: 1; }
 .btn.header-cta { display: none; }
-.menu-btn {
+.header-share {
   margin-left: auto;
+  appearance: none;
+  border: 0;
+  background: rgba(45, 106, 79, 0.08);
+  color: var(--botanical);
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.header-share:hover { background: rgba(45, 106, 79, 0.14); }
+.header-share svg { display: block; }
+.menu-btn {
+  margin-left: 0;
   appearance: none;
   border: 0;
   background: transparent;
@@ -2190,6 +2266,8 @@ img { max-width: 100%; }
   border: 1.5px solid rgba(255,255,255,0.45);
 }
 .btn-whatsapp { background: #25d366; color: #fff; }
+.btn-call { background: var(--botanical); color: #fff; }
+.btn-call:hover { background: var(--forest); }
 
 .hero {
   position: relative;
@@ -3412,20 +3490,33 @@ img { max-width: 100%; }
 .social-ico svg { display: block; }
 .footer-muted { opacity: 0.7; font-size: 14px; }
 
-.float-wa {
+.float-actions {
   position: fixed;
   right: 18px;
   bottom: 18px;
   z-index: 35;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 12px;
+}
+.float-wa,
+.float-call {
   width: 58px;
   height: 58px;
   border-radius: 999px;
-  background: #25d366;
-  color: #08381c;
   display: grid;
   place-items: center;
-  box-shadow: 0 14px 30px rgba(37,211,102,0.42);
   text-decoration: none;
+}
+.float-wa {
+  background: #25d366;
+  color: #08381c;
+  box-shadow: 0 14px 30px rgba(37,211,102,0.42);
+}
+.float-call {
+  background: var(--botanical);
+  color: #fff;
+  box-shadow: 0 14px 30px rgba(45,106,79,0.35);
 }
 
 .book-modal {
@@ -3877,8 +3968,8 @@ img { max-width: 100%; }
     background: transparent;
   }
   /* Same photo fade as base — do not swap crop/vignette on mobile. */
-  /* Hero already has WhatsApp CTA — hide floating duplicate on small screens. */
-  .float-wa { display: none; }
+  /* Hero already has WhatsApp / Call CTAs — hide floating duplicates on small screens. */
+  .float-actions { display: none; }
 
   /* About mobile: avatar | title row, then full-width text + bullets */
   .about-services-grid { gap: 18px; }
@@ -3986,9 +4077,12 @@ img { max-width: 100%; }
     justify-items: center;
   }
   .footer-social { justify-content: center; }
-  .float-wa {
+  .float-actions {
     right: 14px;
     bottom: 14px;
+  }
+  .float-wa,
+  .float-call {
     width: 54px;
     height: 54px;
   }
