@@ -14,8 +14,8 @@ import React, { useEffect, useCallback, useState, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom';
 import {
   AlertCircle, ArrowLeft, Camera, CheckCircle, CircleDot, Clock, Crop,
-  Images, Mail, Pencil, Plus, RefreshCw, Save, ShieldCheck, Upload, Users, Video,
-  X, TrendingDown, TrendingUp,
+  Images, Mail, Pencil, Plus, RefreshCw, Save, Share2, ShieldCheck, Trash2,
+  Upload, Users, Video, X, TrendingDown, TrendingUp,
 } from 'lucide-react';
 import CustomAlertModal from '../../../shared/components/CustomAlertModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
@@ -85,6 +85,7 @@ import {
   hasDistinctTransformationAfter,
   hasStoredTransformationBefore,
   hasStoredTransformationPhotoCard,
+  isProfileSeededTransformation,
 } from '../services/testimonialFormUtils.js';
 import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
 import { uniqueConditions, isSameIssueList, withoutHealthIssue } from '../utils/uniqueConditions.js';
@@ -99,9 +100,10 @@ import WebsiteDisplayConsentCard from './WebsiteDisplayConsentCard.jsx';
 import { isFlagEnabled } from '../../../config/featureFlags.js';
 import { compressImage } from '../utils/compressTestimonialImage.js';
 import {
-  COLLAGE_CHATGPT_PROMPT,
   copyTransformCollagePrompt,
+  copyAndOpenChatGptCollagePrompt,
 } from '../utils/transformationCollagePrompt.js';
+import { shareImageDirectly } from '../../../shared/utils/shareUtils.js';
 
 const COLLAGE_IMAGE_CLASS =
   'w-full aspect-[16/9] object-contain object-center overflow-hidden rounded-xl border border-gray-200 bg-white';
@@ -896,6 +898,12 @@ function MemberCard({
   const [uploadingBusiness, setUploadingBusiness] = useState(false);
   const [pickerSlot,        setPickerSlot]         = useState(null); // 'collage' | 'before' | 'after' | null
   const [promptCopied,      setPromptCopied]       = useState(false);
+  const [collageMetaOpen,   setCollageMetaOpen]    = useState(false);
+  const [collageMetaError,  setCollageMetaError]   = useState(null);
+  const [collageImageBroken, setCollageImageBroken] = useState(false);
+  const [collageGuideOpen,  setCollageGuideOpen]   = useState(false);
+  /** True only after user Saves the Transformation details form this session. */
+  const [collageMetaSaved,  setCollageMetaSaved]   = useState(false);
   const collageCamRef = useRef(null);
   const collageGalRef = useRef(null);
   const [isSubmitting,    setIsSubmitting]    = useState(false);
@@ -963,7 +971,14 @@ function MemberCard({
     Array.isArray(draftIssues) && 'issues',
   ].filter(Boolean);
   // hasDirtySlots: true for ANY pending change including weight-only edits or video drafts
-  const hasDirtySlots = dirtySlots.length > 0 || !!draftBefore || !!draftAfter || !!draftHealthPreview || !!draftBusinessPreview || !!draftHealthPath || !!draftBusinessPath || Array.isArray(draftIssues);
+  const hasDirtySlots = dirtySlots.length > 0
+    || (draftBefore != null && draftBefore.cleared !== true)
+    || (draftAfter != null && draftAfter.cleared !== true)
+    || !!draftHealthPreview
+    || !!draftBusinessPreview
+    || !!draftHealthPath
+    || !!draftBusinessPath
+    || Array.isArray(draftIssues);
   const changedCount = Math.max(dirtySlots.length, hasDirtySlots ? 1 : 0);
   const anyVideoUploading = uploadingHealth || uploadingBusiness;
 
@@ -982,6 +997,26 @@ function MemberCard({
   const liveDiff = liveWeightDiffKg(displayBeforeKg, displayAfterKg);
   const diff = liveDiff;
   const weightIsLoss = isTransformationWeightLoss(displayBeforeKg, displayAfterKg);
+  const collageClearedLocally = draftBefore?.cleared === true || draftAfter?.cleared === true;
+  const hasAfterWeightKg = Number(draftAfter?.weightKg ?? testimonial?.afterWeightKg) > 0;
+  const hasCollageMeta = !collageClearedLocally
+    && displayBeforeKg > 0
+    && hasAfterWeightKg
+    && usableDuration;
+  // Collage slot must not treat profile-seed Left photo as a ChatGPT collage.
+  const hasUploadedCollageDraft = Boolean(
+    draftBefore?.previewUrl
+    || draftBefore?.imageBase64
+    || draftAfter?.previewUrl
+    || draftAfter?.imageBase64,
+  );
+  const hasStoredCollagePhoto = (
+    (!isProfileSeededTransformation(testimonial) && hasStoredTransformationBefore(testimonial))
+    || hasDistinctTransformationAfter(testimonial)
+  );
+  const hasCollageImage = !collageClearedLocally
+    && !collageImageBroken
+    && (hasUploadedCollageDraft || hasStoredCollagePhoto);
 
   const mediaVersion = `${testimonial?.updatedAt ?? testimonial?.id ?? ''}-${mediaEpoch}`;
   const beforeRaw = draftBefore?.previewUrl
@@ -1103,6 +1138,142 @@ function MemberCard({
     closeDurationEdit();
   }, [closeDurationEdit, durationUnitDraft, durationValueText, testimonial?.beforeWeightKg, testimonial?.goalType]);
 
+  const openCollageMetaForm = useCallback(() => {
+    setCollageMetaError(null);
+    setBeforeWeightText(String(
+      draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? user?.latestWeightKg ?? '',
+    ));
+    setAfterWeightText(String(
+      draftAfter?.weightKg ?? testimonial?.afterWeightKg ?? '',
+    ));
+    const parsed = parseDurationText(draftBefore?.durationText ?? testimonial?.durationText);
+    setDurationValueText(parsed.durationValue);
+    setDurationUnitDraft(parsed.durationUnit);
+    setCollageMetaOpen(true);
+    setPickerSlot(null);
+  }, [
+    draftAfter?.weightKg,
+    draftBefore?.durationText,
+    draftBefore?.weightKg,
+    testimonial?.afterWeightKg,
+    testimonial?.beforeWeightKg,
+    testimonial?.durationText,
+    user?.latestWeightKg,
+  ]);
+
+  const closeCollageMetaForm = useCallback(() => {
+    setCollageMetaOpen(false);
+    setCollageMetaError(null);
+  }, []);
+
+  const submitCollageMetaForm = useCallback(async () => {
+    const beforeKg = parseWeightInput(beforeWeightText);
+    const afterKg = parseWeightInput(afterWeightText);
+    if (beforeKg == null) {
+      setCollageMetaError('Enter a valid before weight.');
+      return;
+    }
+    if (afterKg == null) {
+      setCollageMetaError('Enter a valid after weight.');
+      return;
+    }
+    const durationErr = validateDurationFields(durationUnitDraft, durationValueText);
+    if (durationErr) {
+      setCollageMetaError(durationErr);
+      return;
+    }
+    const durationText = formatDurationText(durationUnitDraft, durationValueText);
+    const goalType = beforeKg >= afterKg ? 'loss' : 'gain';
+    setDraftBefore((prev) => {
+      const { cleared: _cleared, ...rest } = prev || {};
+      return {
+        ...rest,
+        weightKg: beforeKg,
+        durationText,
+        goalType,
+      };
+    });
+    setDraftAfter((prev) => {
+      const { cleared: _cleared, ...rest } = prev || {};
+      return {
+        ...rest,
+        weightKg: afterKg,
+      };
+    });
+    setSubmitError(null);
+    setCollageMetaError(null);
+    setCollageMetaOpen(false);
+    setCollageImageBroken(false);
+    setCollageMetaSaved(true);
+    setPromptCopied(false);
+    setCollageGuideOpen(true);
+    setPickerSlot(null);
+  }, [
+    afterWeightText,
+    beforeWeightText,
+    durationUnitDraft,
+    durationValueText,
+    parseWeightInput,
+  ]);
+
+  const clearCollageSlot = useCallback(() => {
+    setDraftBefore((prev) => {
+      revokeBlobUrl(prev?.previewUrl);
+      return { cleared: true };
+    });
+    setDraftAfter((prev) => {
+      revokeBlobUrl(prev?.previewUrl);
+      return { cleared: true };
+    });
+    setPickerSlot(null);
+    setCollageMetaOpen(false);
+    setCollageGuideOpen(false);
+    setCollageImageBroken(false);
+    setCollageMetaSaved(false);
+    setPromptCopied(false);
+    setSubmitError(null);
+  }, []);
+
+  const handleCollageShare = useCallback(async () => {
+    const src = draftBefore?.previewUrl
+      || (draftBefore?.imageBase64 ? `data:image/jpeg;base64,${draftBefore.imageBase64}` : null)
+      || beforeImageSrc
+      || afterImageSrc;
+    if (!src || collageImageBroken) {
+      setSubmitError('Upload the ChatGPT collage photo first, then share.');
+      return;
+    }
+    try {
+      await shareImageDirectly(src, {
+        title: 'Transformation',
+        text: [
+          user?.userName || 'Transformation',
+          shownBeforeKg != null && shownAfterKg != null
+            ? `Before ${shownBeforeKg} kg → After ${shownAfterKg} kg`
+            : null,
+          usableDuration ? `in ${displayDuration}` : null,
+        ].filter(Boolean).join(' · '),
+        fileName: `transformation-collage-${Date.now()}.jpg`,
+      });
+    } catch (err) {
+      if (!err?.message?.toLowerCase().includes('cancel')) {
+        console.error('[Transformation] Collage share failed:', err);
+        setSubmitError('Could not share collage. Please try again.');
+      }
+    }
+  }, [
+    afterImageSrc,
+    beforeImageSrc,
+    collageImageBroken,
+    displayDuration,
+    draftBefore?.imageBase64,
+    draftBefore?.previewUrl,
+    shownAfterKg,
+    shownBeforeKg,
+    usableDuration,
+    user?.userName,
+  ]);
+
   const openPhotoPicker = useCallback((inputRef) => {
     setCaptureFlowBusy(true);
     setPickerSlot(null);
@@ -1129,6 +1300,8 @@ function MemberCard({
     if (!file) return;
     setPickerSlot(null);
     setSubmitError(null);
+    setCollageImageBroken(false);
+    setCollageGuideOpen(false);
     setCaptureFlowBusy(true);
     const beforeBase = {
       weightKg: testimonial?.beforeWeightKg,
@@ -1711,18 +1884,249 @@ function MemberCard({
       </div>
       <div className="px-4 pb-4 space-y-3">
 
-      {/* Transformation collage — one slot (ChatGPT Before|After|Now → paste here) */}
+      {/* Transformation collage — + → weight form → ChatGPT prompt → upload */}
       {(editable || (!showBrandedCard && testimonial && (testimonial.beforeImageUrl || testimonial.afterImageUrl))) && (
-        <div className="space-y-2">
-          {editable && (
-            <div className="rounded-2xl border border-green-200 bg-green-50/80 px-3 py-2.5 space-y-2">
-              <p className="text-xs font-bold text-green-900">How to upload</p>
-              <ol className="text-[11px] text-green-900/90 space-y-1 list-decimal list-inside leading-snug">
-                <li>Copy the ChatGPT prompt below.</li>
-                <li>In ChatGPT, paste it and upload photos in order: Before, After, Now.</li>
-                <li>Download the single collage image ChatGPT gives you.</li>
-                <li>Paste / upload that collage here.</li>
-              </ol>
+        <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+          <div className="flex items-center px-3 pt-3 pb-2 gap-2">
+            <div className="flex-1 min-w-0 flex items-center justify-start">
+              {isVerified && hasCollageImage ? (
+                <span
+                  className="h-7 w-7 rounded-full bg-green-500 text-white shadow flex items-center justify-center"
+                  aria-label="Verified"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+              ) : null}
+            </div>
+            <p className="shrink-0 text-sm font-bold text-gray-900 text-center">
+              Transformation
+            </p>
+            <div className="flex-1 min-w-0 flex items-center justify-end gap-1.5">
+              {editable && (hasCollageMeta || hasCollageImage) ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={openCollageMetaForm}
+                    className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full bg-gray-800 text-white"
+                    aria-label="Edit transformation details"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { void handleCollageShare(); }}
+                    className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-600 text-white"
+                    aria-label="Share transformation"
+                  >
+                    <Share2 className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearCollageSlot}
+                    className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full bg-red-50 text-red-600 border border-red-100"
+                    aria-label="Delete transformation"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="relative px-3 pb-3">
+            {hasCollageImage ? (
+              <button
+                type="button"
+                onClick={() => setExpandedPhoto({
+                  url: beforeImageSrc || afterImageSrc,
+                  label: `${user.userName} — Transformation`,
+                })}
+                className="w-full overflow-hidden rounded-xl"
+              >
+                <img
+                  key={`collage-${beforeImageSrc || afterImageSrc}`}
+                  src={beforeImageSrc || afterImageSrc}
+                  alt=""
+                  className={`${COLLAGE_IMAGE_CLASS} w-full cursor-zoom-in`}
+                  onError={() => setCollageImageBroken(true)}
+                  onLoad={() => setCollageImageBroken(false)}
+                />
+              </button>
+            ) : editable && !collageMetaSaved ? (
+              <button
+                type="button"
+                onClick={openCollageMetaForm}
+                className="w-full min-h-[11rem] rounded-xl border-2 border-dashed border-green-300 bg-white flex flex-col items-center justify-center gap-1 hover:bg-green-50 transition-colors"
+                aria-label="Add transformation details"
+              >
+                <Plus className="h-10 w-10 text-green-500" strokeWidth={2} />
+                <span className="text-[10px] font-bold text-green-700 px-2">Tap to add details</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={editable ? () => setPickerSlot(pickerSlot === 'collage' ? null : 'collage') : undefined}
+                className={`${COLLAGE_IMAGE_CLASS} w-full min-h-[9rem] flex flex-col items-center justify-center gap-1 border-2 border-dashed ${editable ? 'border-green-300 hover:bg-green-50' : 'border-gray-200'} transition-colors`}
+              >
+                {editable ? (
+                  <>
+                    <Plus className="h-7 w-7 text-green-400" />
+                    <span className="text-[10px] font-bold text-green-700 px-2">
+                      {promptCopied ? 'Prompt copied — upload collage' : 'Upload ChatGPT collage'}
+                    </span>
+                  </>
+                ) : (
+                  <AlertCircle className="h-5 w-5 text-gray-300" />
+                )}
+              </button>
+            )}
+
+            {(draftBefore?.compressing || draftAfter?.compressing) && (
+              <div className="absolute inset-3 bg-black/50 rounded-xl flex items-center justify-center z-10">
+                <div className="flex flex-col items-center gap-1">
+                  <div className="h-5 w-5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                  <span className="text-white text-[10px] font-bold">Preparing…</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {hasCollageMeta && (
+            <div className="px-3 pb-3 flex items-center justify-center gap-4 text-center">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Before</p>
+                <p className="text-base font-bold text-gray-900">
+                  {Number(draftBefore?.weightKg ?? testimonial?.beforeWeightKg).toFixed(1)}
+                  <span className="text-xs font-normal text-gray-400"> kg</span>
+                </p>
+              </div>
+              <div className="text-gray-300 text-lg font-light" aria-hidden="true">→</div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">After</p>
+                <p className="text-base font-bold text-gray-900">
+                  {Number(draftAfter?.weightKg ?? testimonial?.afterWeightKg).toFixed(1)}
+                  <span className="text-xs font-normal text-gray-400"> kg</span>
+                </p>
+              </div>
+              {usableDuration && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">In</p>
+                  <p className="text-sm font-bold text-gray-700">{displayDuration}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {editable && collageMetaOpen && (
+            <div className="mx-3 mb-3 rounded-2xl border border-green-200 bg-green-50/70 p-3 space-y-2.5 text-left">
+              <p className="text-xs font-bold text-green-900">Transformation details</p>
+              <label className="block">
+                <span className="text-[10px] font-semibold text-gray-500 uppercase">Before weight (kg)</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  value={beforeWeightText ?? ''}
+                  onChange={(e) => setBeforeWeightText(sanitizeWeightTyping(e.target.value))}
+                  className="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                  placeholder="e.g. 82"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[10px] font-semibold text-gray-500 uppercase">After weight (kg)</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  value={afterWeightText ?? ''}
+                  onChange={(e) => setAfterWeightText(sanitizeWeightTyping(e.target.value))}
+                  className="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                  placeholder="e.g. 74"
+                />
+              </label>
+              <div>
+                <span className="text-[10px] font-semibold text-gray-500 uppercase">Time to achieve</span>
+                <div className="mt-1 flex gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
+                    value={durationValueText ?? ''}
+                    onChange={(e) => setDurationValueText(sanitizeDurationDigits(e.target.value))}
+                    className="w-24 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                    placeholder="e.g. 3"
+                  />
+                  <select
+                    value={durationUnitDraft}
+                    onChange={(e) => setDurationUnitDraft(e.target.value)}
+                    className="flex-1 border border-gray-300 rounded-xl px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-400"
+                  >
+                    <option value="days">days</option>
+                    <option value="months">months</option>
+                  </select>
+                </div>
+              </div>
+              {collageMetaError && (
+                <p className="text-[11px] text-red-600 font-medium">{collageMetaError}</p>
+              )}
+              <div className="flex gap-2 pt-0.5">
+                <button
+                  type="button"
+                  onClick={closeCollageMetaForm}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void submitCollageMetaForm(); }}
+                  className="flex-1 py-2.5 rounded-xl bg-green-600 text-white text-xs font-bold"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
+
+          {editable && collageGuideOpen && !collageMetaOpen && (
+            <div className="mx-3 mb-3 rounded-2xl border-2 border-red-400 bg-red-50 p-3 space-y-2.5 text-left">
+              <p className="text-xs font-bold text-red-700 leading-snug">
+                Copy the ChatGPT prompt and open ChatGPT. Paste the prompt, add Before → After → Now photos, then upload the collage here.
+              </p>
+              <button
+                type="button"
+                onClick={async () => {
+                  const { copied } = await copyAndOpenChatGptCollagePrompt();
+                  setPromptCopied(Boolean(copied));
+                  setCollageGuideOpen(false);
+                  setPickerSlot('collage');
+                }}
+                className="w-full py-2.5 rounded-xl bg-green-600 text-white text-xs font-bold"
+              >
+                Copy and open
+              </button>
+            </div>
+          )}
+
+          {editable && pickerSlot === 'collage' && (
+            <div className="px-3 pb-3 flex flex-wrap gap-1.5 justify-center">
+              <button
+                type="button"
+                onClick={() => openPhotoPicker(collageCamRef)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-green-600 text-white text-[10px] font-bold"
+              >
+                <Camera className="h-3 w-3" /> Camera
+              </button>
+              <button
+                type="button"
+                onClick={() => openPhotoPicker(collageGalRef)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold"
+              >
+                <Images className="h-3 w-3" /> Gallery / Paste
+              </button>
               <button
                 type="button"
                 onClick={async () => {
@@ -1730,226 +2134,50 @@ function MemberCard({
                     const ok = await copyTransformCollagePrompt();
                     if (!ok) throw new Error('Clipboard unavailable');
                     setPromptCopied(true);
-                    window.setTimeout(() => setPromptCopied(false), 2000);
+                    window.setTimeout(() => setPromptCopied(false), 2500);
                   } catch {
-                    setSubmitError('Could not copy prompt. Select and copy it from the box below.');
+                    setSubmitError('Could not copy prompt.');
                   }
                 }}
-                className="w-full rounded-xl bg-green-600 text-white text-xs font-bold py-2.5"
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-green-300 text-green-800 text-[10px] font-bold"
               >
-                {promptCopied ? 'Prompt copied' : 'Copy ChatGPT prompt'}
+                <Share2 className="h-3 w-3" /> {promptCopied ? 'Copied' : 'Copy prompt'}
               </button>
-              <pre className="text-[9px] leading-snug text-gray-600 bg-white/90 border border-green-100 rounded-xl p-2 max-h-24 overflow-y-auto whitespace-pre-wrap">
-{COLLAGE_CHATGPT_PROMPT}
-              </pre>
+              <button
+                type="button"
+                onClick={() => setPickerSlot(null)}
+                className="px-2 py-1.5 rounded-xl border border-gray-200 text-gray-500 text-[10px] font-bold"
+              >
+                <X className="h-3 w-3" />
+              </button>
             </div>
           )}
 
-          <div className="text-center">
-            <div className="relative">
-              {(beforeImageSrc || afterImageSrc) ? (
-                <button
-                  type="button"
-                  onClick={() => setExpandedPhoto({
-                    url: beforeImageSrc || afterImageSrc,
-                    label: `${user.userName} — Transformation`,
-                  })}
-                  className="w-full overflow-hidden rounded-xl"
-                >
-                  <img
-                    key={`collage-${beforeImageSrc || afterImageSrc}`}
-                    src={beforeImageSrc || afterImageSrc}
-                    alt="Transformation collage"
-                    className={`${COLLAGE_IMAGE_CLASS} w-full cursor-zoom-in`}
-                  />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={editable ? () => setPickerSlot(pickerSlot === 'collage' ? null : 'collage') : undefined}
-                  className={`${COLLAGE_IMAGE_CLASS} w-full flex flex-col items-center justify-center gap-1 border-2 border-dashed ${editable ? 'border-green-300 hover:bg-green-50' : 'border-gray-200'} transition-colors`}
-                >
-                  {editable ? (
-                    <>
-                      <Plus className="h-7 w-7 text-green-400" />
-                      <span className="text-[10px] font-bold text-green-700 px-2">Upload collage</span>
-                    </>
-                  ) : (
-                    <AlertCircle className="h-5 w-5 text-gray-300" />
-                  )}
-                </button>
-              )}
-              {editable && (beforeImageSrc || afterImageSrc) && (
-                <button
-                  type="button"
-                  onClick={() => setPickerSlot(pickerSlot === 'collage' ? null : 'collage')}
-                  className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
-                  aria-label="Edit transformation collage"
-                >
-                  <Pencil className="h-3 w-3" />
-                </button>
-              )}
-              {isVerified && (beforeImageSrc || afterImageSrc) && (
-                <span
-                  className="absolute top-1.5 left-1.5 h-6 w-6 rounded-full bg-green-500 text-white shadow flex items-center justify-center"
-                  aria-label="Verified"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </span>
-              )}
-              {(draftBefore?.compressing || draftAfter?.compressing) && (
-                <div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center z-10">
-                  <div className="flex flex-col items-center gap-1">
-                    <div className="h-5 w-5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                    <span className="text-white text-[10px] font-bold">Preparing…</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {editable && pickerSlot === 'collage' && (
-              <div className="flex flex-wrap gap-1.5 mt-1.5 justify-center">
-                <button
-                  type="button"
-                  onClick={() => openPhotoPicker(collageCamRef)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-green-600 text-white text-[10px] font-bold"
-                >
-                  <Camera className="h-3 w-3" /> Camera
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openPhotoPicker(collageGalRef)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold"
-                >
-                  <Images className="h-3 w-3" /> Gallery / Paste
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPickerSlot(null)}
-                  className="px-2 py-1.5 rounded-xl border border-gray-200 text-gray-500 text-[10px] font-bold"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            )}
-            <input
-              ref={collageCamRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              aria-label="Collage camera upload"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) { void handleCollageFile(file); setPickerSlot(null); }
-              }}
-            />
-            <input
-              ref={collageGalRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              aria-label="Collage gallery upload"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) { void handleCollageFile(file); setPickerSlot(null); }
-              }}
-            />
-
-            <p className="mt-1 text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-              Before · After · Now
-            </p>
-            {editable && (
-              <div className="mt-1 flex items-center justify-center gap-3">
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] text-gray-400 font-semibold">Before</span>
-                  <p className="text-sm font-bold text-gray-800">
-                    {shownBeforeKg ?? '—'}
-                    {shownBeforeKg != null && shownBeforeKg !== '' && (
-                      <span className="text-xs font-normal text-gray-400"> kg</span>
-                    )}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={openBeforeWeightEdit}
-                    className="p-0.5 rounded-full text-gray-300 hover:text-green-600 transition-colors"
-                    aria-label="Edit before weight"
-                  >
-                    <Pencil className="h-2.5 w-2.5" />
-                  </button>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] text-gray-400 font-semibold">After</span>
-                  <p className="text-sm font-bold text-gray-800">
-                    {shownAfterKg ?? '—'}
-                    {shownAfterKg != null && shownAfterKg !== '' && (
-                      <span className="text-xs font-normal text-gray-400"> kg</span>
-                    )}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={openAfterWeightEdit}
-                    className="p-0.5 rounded-full text-gray-300 hover:text-purple-600 transition-colors"
-                    aria-label="Edit after weight"
-                  >
-                    <Pencil className="h-2.5 w-2.5" />
-                  </button>
-                </div>
-              </div>
-            )}
-            {editable && expandedSlots.has('beforeWeight') && (
-              <div className="flex items-center justify-center gap-1 mt-1">
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  enterKeyHint="done"
-                  autoComplete="off"
-                  autoFocus
-                  value={beforeWeightText ?? ''}
-                  onChange={(e) => {
-                    const raw = sanitizeWeightTyping(e.target.value);
-                    setBeforeWeightText(raw);
-                    commitBeforeWeight(raw);
-                  }}
-                  onBlur={(e) => closeBeforeWeightEdit(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') e.currentTarget.blur();
-                    if (e.key === 'Escape') closeBeforeWeightEdit(null);
-                  }}
-                  className="w-20 border border-gray-300 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-400"
-                />
-                <span className="text-xs text-gray-400">kg before</span>
-              </div>
-            )}
-            {editable && expandedSlots.has('afterWeight') && (
-              <div className="flex items-center justify-center gap-1 mt-1">
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  enterKeyHint="done"
-                  autoComplete="off"
-                  autoFocus
-                  value={afterWeightText ?? ''}
-                  onChange={(e) => {
-                    const raw = sanitizeWeightTyping(e.target.value);
-                    setAfterWeightText(raw);
-                    commitAfterWeight(raw);
-                  }}
-                  onBlur={(e) => closeAfterWeightEdit(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') e.currentTarget.blur();
-                    if (e.key === 'Escape') closeAfterWeightEdit(null);
-                  }}
-                  className="w-20 border border-purple-300 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-purple-400"
-                />
-                <span className="text-xs text-gray-400">kg after</span>
-              </div>
-            )}
-          </div>
+          <input
+            ref={collageCamRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            aria-label="Collage camera upload"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) { void handleCollageFile(file); setPickerSlot(null); }
+            }}
+          />
+          <input
+            ref={collageGalRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            aria-label="Collage gallery upload"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) { void handleCollageFile(file); setPickerSlot(null); }
+            }}
+          />
         </div>
       )}
 
@@ -2424,11 +2652,11 @@ function MemberCard({
           aria-hidden="true"
           style={{
             position: 'fixed',
-            left: 0,
+            left: -10000,
             top: 0,
             width: CARD_W,
             height: CARD_H,
-            opacity: 0.02,
+            opacity: 0,
             pointerEvents: 'none',
             zIndex: -1,
             overflow: 'hidden',

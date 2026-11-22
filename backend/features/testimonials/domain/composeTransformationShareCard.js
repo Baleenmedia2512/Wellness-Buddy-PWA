@@ -325,6 +325,37 @@ async function coverTopJpeg(input, width, height) {
     .toBuffer();
 }
 
+/** Letterbox a landscape collage into a fixed slot (ChatGPT Before|After|Now). */
+async function containJpeg(input, width, height) {
+  return sharp(input)
+    .rotate()
+    .resize(width, height, {
+      fit: 'contain',
+      background: { r: 243, g: 244, b: 246 },
+    })
+    .jpeg({ quality: 88, mozjpeg: true })
+    .toBuffer();
+}
+
+/**
+ * Mine collage: same image stored as Before + After (two paths, identical bytes).
+ * @param {{ beforeBuffer?: Buffer|null, afterBuffer?: Buffer|null, beforePath?: string|null, afterPath?: string|null, shareAsCollage?: boolean }} opts
+ */
+export function isShareAsCollagePair(opts = {}) {
+  if (opts.shareAsCollage === true) return true;
+  const beforePath = String(opts.beforePath || '').trim();
+  const afterPath = String(opts.afterPath || '').trim();
+  if (beforePath && afterPath && beforePath === afterPath) return true;
+  const beforeBuffer = opts.beforeBuffer;
+  const afterBuffer = opts.afterBuffer;
+  if (Buffer.isBuffer(beforeBuffer) && Buffer.isBuffer(afterBuffer)
+    && beforeBuffer.length > 0 && afterBuffer.length > 0
+    && beforeBuffer.equals(afterBuffer)) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * True when a share-card JPEG has real painted text (not librsvg tofu boxes).
  * Samples the member-name band under the green header.
@@ -422,6 +453,7 @@ function buildBrushBadgeSvg({ label, containerX, containerY, side }) {
  *   durationText?: string|null,
  *   appVersionLabel?: string|null,
  *   recoveredHealthIssues?: string[]|null,
+ *   shareAsCollage?: boolean,
  * }} opts
  * @returns {Promise<Buffer>} image/jpeg bytes
  */
@@ -434,6 +466,12 @@ export async function composeTransformationShareCardJpeg(opts) {
   if (!Buffer.isBuffer(afterBuffer) || !afterBuffer.length) {
     throw new Error('After photo required for share card');
   }
+
+  const shareAsCollage = isShareAsCollagePair({
+    beforeBuffer,
+    afterBuffer,
+    shareAsCollage: opts?.shareAsCollage,
+  });
 
   loadCardFonts();
   const name = String(opts.memberName || 'Customer').trim() || 'Customer';
@@ -451,9 +489,14 @@ export async function composeTransformationShareCardJpeg(opts) {
   const pillH = 30;
   const issues = normalizeIssueList(opts.recoveredHealthIssues);
   const photoH = PHOTO_H;
+  const collagePhotoW = CARD_W - PHOTO_SIDE_PAD * 2;
 
-  const beforeSlot = await coverTopJpeg(beforeBuffer, PHOTO_W, photoH);
-  const afterSlot = await coverTopJpeg(afterBuffer, PHOTO_W, photoH);
+  const beforeSlot = shareAsCollage
+    ? await containJpeg(beforeBuffer, collagePhotoW, photoH)
+    : await coverTopJpeg(beforeBuffer, PHOTO_W, photoH);
+  const afterSlot = shareAsCollage
+    ? null
+    : await coverTopJpeg(afterBuffer, PHOTO_W, photoH);
 
   const pillX = pillW ? Math.round((CARD_W - pillW) / 2) : 0;
   const version = String(opts.appVersionLabel || defaultAppVersionLabel() || '').trim();
@@ -464,15 +507,18 @@ export async function composeTransformationShareCardJpeg(opts) {
   const beforeX = PHOTO_SIDE_PAD;
   const afterX = PHOTO_SIDE_PAD + PHOTO_W + PHOTO_GAP;
   const metaY = PHOTO_TOP + photoH + 8;
-  const pillY = metaY + META_H + 8;
+  // Collage meta is a short "BEFORE · AFTER · NOW" + one weight line (not two columns).
+  const collageMetaH = 44;
+  const metaBlockH = shareAsCollage ? collageMetaH : META_H;
+  const pillY = metaY + metaBlockH + 8;
   const footerTop = PHOTO_TOP + photoH;
-  const issuesTop = pillLabel ? pillY + pillH + 12 : metaY + META_H + 10;
+  const issuesTop = pillLabel ? pillY + pillH + 12 : metaY + metaBlockH + 10;
   const { markup: issuesMarkup, height: issuesHeight } = buildHealthIssuesSvg(issues, issuesTop);
 
   // Disclaimer sits on the bottom edge, full card width.
   const discY = issuesMarkup
     ? issuesTop + issuesHeight + 12
-    : (pillLabel ? pillY + pillH + 14 : metaY + META_H + 14);
+    : (pillLabel ? pillY + pillH + 14 : metaY + metaBlockH + 14);
   const discH = DISCLAIMER_H - 14;
   const discTextX = 16;
   const cardH = discY + discH;
@@ -480,6 +526,20 @@ export async function composeTransformationShareCardJpeg(opts) {
   const burstY = pillY + 3;
   const burstLeftX = Math.max(8, pillX - 40);
   const burstRightX = Math.min(CARD_W - 40, pillX + pillW + 8);
+
+  const photoMetaMarkup = shareAsCollage
+    ? `
+      ${svgTextPath({ text: 'BEFORE · AFTER · NOW', x: CARD_W / 2, y: metaY + 14, size: 11, fill: '#9ca3af', bold: true, anchor: 'middle' })}
+      ${svgTextPath({ text: `${beforeKg} kg → ${afterKg} kg`, x: CARD_W / 2, y: metaY + 36, size: 15, fill: '#111827', bold: true, anchor: 'middle' })}
+      `
+    : `
+      ${buildBrushBadgeSvg({ label: 'Before', containerX: beforeX + 18, containerY: PHOTO_TOP + photoH - 16 - 92, side: 'left' })}
+      ${buildBrushBadgeSvg({ label: 'After', containerX: afterX + 18, containerY: PHOTO_TOP + photoH - 16 - 92, side: 'right' })}
+      ${svgTextPath({ text: 'BEFORE', x: beforeX + PHOTO_W / 2, y: metaY + 14, size: 11, fill: '#9ca3af', bold: true, anchor: 'middle' })}
+      ${svgTextPath({ text: `${beforeKg} kg`, x: beforeX + PHOTO_W / 2, y: metaY + 36, size: 17, fill: '#111827', bold: true, anchor: 'middle' })}
+      ${svgTextPath({ text: 'AFTER', x: afterX + PHOTO_W / 2, y: metaY + 14, size: 11, fill: '#9ca3af', bold: true, anchor: 'middle' })}
+      ${svgTextPath({ text: `${afterKg} kg`, x: afterX + PHOTO_W / 2, y: metaY + 36, size: 17, fill: '#111827', bold: true, anchor: 'middle' })}
+      `;
 
   // Overlay uses glyph paths only — no <text> (avoids tofu on serverless).
   const overlaySvg = Buffer.from(`
@@ -493,13 +553,8 @@ export async function composeTransformationShareCardJpeg(opts) {
       ${svgTextPath({ text: 'Transformation Results', x: titleX, y: 48, size: 13, fill: '#a7f3d0', bold: false })}
       <rect x="0" y="${HEADER_H}" width="${CARD_W}" height="${NAME_H}" fill="#ffffff"/>
       ${svgTextPath({ text: name, x: CARD_W / 2, y: HEADER_H + 34, size: 22, fill: '#111827', bold: true, anchor: 'middle' })}
-      ${buildBrushBadgeSvg({ label: 'Before', containerX: beforeX + 18, containerY: PHOTO_TOP + photoH - 16 - 92, side: 'left' })}
-      ${buildBrushBadgeSvg({ label: 'After', containerX: afterX + 18, containerY: PHOTO_TOP + photoH - 16 - 92, side: 'right' })}
       <rect x="0" y="${footerTop}" width="${CARD_W}" height="${cardH - footerTop}" fill="#ffffff"/>
-      ${svgTextPath({ text: 'BEFORE', x: beforeX + PHOTO_W / 2, y: metaY + 14, size: 11, fill: '#9ca3af', bold: true, anchor: 'middle' })}
-      ${svgTextPath({ text: `${beforeKg} kg`, x: beforeX + PHOTO_W / 2, y: metaY + 36, size: 17, fill: '#111827', bold: true, anchor: 'middle' })}
-      ${svgTextPath({ text: 'AFTER', x: afterX + PHOTO_W / 2, y: metaY + 14, size: 11, fill: '#9ca3af', bold: true, anchor: 'middle' })}
-      ${svgTextPath({ text: `${afterKg} kg`, x: afterX + PHOTO_W / 2, y: metaY + 36, size: 17, fill: '#111827', bold: true, anchor: 'middle' })}
+      ${photoMetaMarkup}
       ${pillLabel ? `
       <path d="M${burstLeftX + 34} ${burstY + 12}H${burstLeftX + 14}M${burstLeftX + 26} ${burstY + 4}L${burstLeftX + 8} ${burstY}M${burstLeftX + 26} ${burstY + 20}L${burstLeftX + 8} ${burstY + 24}" fill="none" stroke="#059669" stroke-width="3.5" stroke-linecap="round"/>
       <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${pillH}" rx="15" ry="15" fill="#dbeafe"/>
@@ -520,6 +575,17 @@ export async function composeTransformationShareCardJpeg(opts) {
     .png()
     .toBuffer();
 
+  const composites = shareAsCollage
+    ? [
+      { input: beforeSlot, top: PHOTO_TOP, left: beforeX },
+      { input: overlayPng, top: 0, left: 0 },
+    ]
+    : [
+      { input: beforeSlot, top: PHOTO_TOP, left: beforeX },
+      { input: afterSlot, top: PHOTO_TOP, left: afterX },
+      { input: overlayPng, top: 0, left: 0 },
+    ];
+
   return sharp({
     create: {
       width: CARD_W,
@@ -528,11 +594,7 @@ export async function composeTransformationShareCardJpeg(opts) {
       background: { r: 255, g: 255, b: 255 },
     },
   })
-    .composite([
-      { input: beforeSlot, top: PHOTO_TOP, left: beforeX },
-      { input: afterSlot, top: PHOTO_TOP, left: afterX },
-      { input: overlayPng, top: 0, left: 0 },
-    ])
+    .composite(composites)
     .jpeg({ quality: 85, mozjpeg: true })
     .toBuffer();
 }
