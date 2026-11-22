@@ -26,6 +26,7 @@ import {
 import * as pendingRepo from '../data/pending.repo.js';
 import { validateSaveHabit } from '../validation/save.schema.js';
 import { saveHabit } from './save.handler.js';
+import { emailCoachRejectOption } from './coach-reject.service.js';
 import { deleteById as deleteCaptureById } from '../../captures/captures.service.js';
 
 function featureDisabled() {
@@ -63,14 +64,14 @@ async function verifyCoachOtpCode(userId, otpKey, otp) {
   const recipient = goodHabitOtpRecipientKey(userId, otpKey);
   const otpData = await authRepo.fetchActiveOtp(recipient, GOOD_HABIT_OTP_CONTACT_TYPE);
   if (!otpData) {
-    return { ok: false, message: 'No active code found. Tap Save again to email your coach.' };
+    return { ok: false, message: 'No active code found. Tap Send to Coach again to email your coach.' };
   }
   const now = new Date();
   const istOffset = 5.5 * 60 * 60 * 1000;
   const currentIST = new Date(now.getTime() + istOffset);
   const expiresAt = new Date(`${otpData.ExpiresAt}Z`);
   if (currentIST > expiresAt) {
-    return { ok: false, message: 'OTP expired. Tap Save again to email your coach.' };
+    return { ok: false, message: 'OTP expired. Tap Send to Coach again to email your coach.' };
   }
   const valid = await bcrypt.compare(code, otpData.OTPHash);
   if (!valid) {
@@ -195,9 +196,17 @@ export async function verifyGoodHabitOtp({ userId: rawUserId, otp, otpKey }) {
   if (!payload) {
     throw new ValidationError(
       400,
-      'This verification expired. Tap Save again to email your coach a new code.',
+      'This verification expired. Tap Send to Coach again to email your coach a new code.',
     );
   }
+
+  const member = await findByUserId(
+    userId,
+    '"UserId", "UserName", "CoachId"',
+  );
+  const coach = member
+    ? await resolveMemberCoachApprover(member).catch(() => null)
+    : null;
 
   const result = await saveHabit({
     ...payload,
@@ -205,6 +214,27 @@ export async function verifyGoodHabitOtp({ userId: rawUserId, otp, otpKey }) {
     clientTimestamp: null,
     useServerNow: true,
   });
+
+  // Score is now included for today — email coach a Reject link to reverse it.
+  const habitId = result?.body?.data?.id;
+  if (habitId != null) {
+    try {
+      await emailCoachRejectOption({
+        habitId,
+        userId,
+        memberName: member?.UserName,
+        coachUserId: coach?.userId,
+        coachEmail: coach?.email,
+        coachName: coach?.name,
+      });
+    } catch (err) {
+      logger.warn('good-habits.verify: reject-option email failed', {
+        habitId,
+        userId: String(userId),
+        err: err?.message || String(err),
+      });
+    }
+  }
 
   if (payload.captureId) {
     try {

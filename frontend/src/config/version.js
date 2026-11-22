@@ -106,7 +106,7 @@ export const APP_VERSION = {
  *   ✨ Public coach page live-syncs profile about/title/photo + club media/location
  *
  * Version 3.5.6 (Code 87 / iOS build 85) - 2026-11-18 [ANDROID + iOS — not yet released]
- *   ✨ Task by Coach — coach email OTP before save; score only on verify IST day
+ *   ✨ Task by Coach — save + score now; coach email with Reject (no OTP)
  *   ✨ Home Top 10 date filter (Today / Yesterday / Last 10 / Custom up to 30 days)
  *   ✨ Profile role badge — Customer / Sponsor / Admin / Developer
  *
