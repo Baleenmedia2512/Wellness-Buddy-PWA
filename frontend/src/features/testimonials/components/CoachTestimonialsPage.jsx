@@ -7,8 +7,8 @@
  *   • Direct/Full: header → divider → branded card → Share Image → videos → Share Video
  *     (no duplicate video block above the branded card)
  *
- * With downline: Mine | Direct | Full + search + upload filters.
- * Without downline: own card only (no Direct/Full/search/filters).
+ * With downline: own card by default + search (no Mine/Direct/Full tabs).
+ * Without downline: own card only.
  */
 import React, { useEffect, useCallback, useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -97,6 +97,14 @@ import {
 import { seedMineTestimonialFromProfileSlots } from '../../user/domain/transformationBeforeAfter';
 import WebsiteDisplayConsentCard from './WebsiteDisplayConsentCard.jsx';
 import { isFlagEnabled } from '../../../config/featureFlags.js';
+import { compressImage } from '../utils/compressTestimonialImage.js';
+import {
+  COLLAGE_CHATGPT_PROMPT,
+  copyTransformCollagePrompt,
+} from '../utils/transformationCollagePrompt.js';
+
+const COLLAGE_IMAGE_CLASS =
+  'w-full aspect-[16/9] object-contain object-center overflow-hidden rounded-xl border border-gray-200 bg-white';
 
 // â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -886,7 +894,10 @@ function MemberCard({
   const [durationUnitDraft, setDurationUnitDraft] = useState('months');
   const [uploadingHealth,   setUploadingHealth]   = useState(false);
   const [uploadingBusiness, setUploadingBusiness] = useState(false);
-  const [pickerSlot,        setPickerSlot]         = useState(null); // 'before' | 'after' | null
+  const [pickerSlot,        setPickerSlot]         = useState(null); // 'collage' | 'before' | 'after' | null
+  const [promptCopied,      setPromptCopied]       = useState(false);
+  const collageCamRef = useRef(null);
+  const collageGalRef = useRef(null);
   const [isSubmitting,    setIsSubmitting]    = useState(false);
   const [submitError,     setSubmitError]     = useState(null);
   const [videoUploadError,setVideoUploadError]= useState(null);
@@ -938,10 +949,6 @@ function MemberCard({
     onError: (msg) => setSubmitError(msg || 'Could not read that photo. Please try another.'),
   });
 
-  const beforeCamRef   = useRef(null);
-  const beforeGalRef   = useRef(null);
-  const afterCamRef    = useRef(null);
-  const afterGalRef    = useRef(null);
   const healthVidRef   = useRef(null);
   const businessVidRef = useRef(null);
 
@@ -1116,6 +1123,54 @@ function MemberCard({
     setSubmitError(null);
     void coverCrop.pickFile(file, slot);
   }, [coverCrop]);
+
+  /** ChatGPT Before|After|Now collage → one slot; stored as before+after for existing save/OTP. */
+  const handleCollageFile = useCallback(async (file) => {
+    if (!file) return;
+    setPickerSlot(null);
+    setSubmitError(null);
+    setCaptureFlowBusy(true);
+    const beforeBase = {
+      weightKg: testimonial?.beforeWeightKg,
+      goalType: testimonial?.goalType,
+      durationText: testimonial?.durationText,
+    };
+    const afterBase = { weightKg: testimonial?.afterWeightKg };
+    setDraftBefore((prev) => ({ ...(prev || beforeBase), compressing: true }));
+    setDraftAfter((prev) => ({ ...(prev || afterBase), compressing: true }));
+    try {
+      const { base64, preview } = await compressImage(file, {
+        allowLandscape: true,
+        maxDim: 1920,
+      });
+      const previewBefore = jpegDataUrlToObjectUrl(preview) || preview;
+      const previewAfter = jpegDataUrlToObjectUrl(preview) || preview;
+      setDraftBefore((prev) => {
+        revokeBlobUrl(prev?.previewUrl);
+        return {
+          ...(prev || beforeBase),
+          previewUrl: previewBefore,
+          imageBase64: base64,
+          compressing: false,
+        };
+      });
+      setDraftAfter((prev) => {
+        revokeBlobUrl(prev?.previewUrl);
+        return {
+          ...(prev || afterBase),
+          previewUrl: previewAfter,
+          imageBase64: base64,
+          compressing: false,
+        };
+      });
+    } catch (err) {
+      setSubmitError(err?.message || 'Could not read that collage. Please try another image.');
+      setDraftBefore((prev) => (prev ? { ...prev, compressing: false } : null));
+      setDraftAfter((prev) => (prev ? { ...prev, compressing: false } : null));
+    } finally {
+      setCaptureFlowBusy(false);
+    }
+  }, [testimonial?.afterWeightKg, testimonial?.beforeWeightKg, testimonial?.durationText, testimonial?.goalType]);
 
   const handleAdjustExisting = useCallback((slot) => {
     const src = slot === 'after'
@@ -1610,6 +1665,8 @@ function MemberCard({
         : testimonial.durationText
     ),
     recoveredHealthIssues: draftIssues ?? testimonial.recoveredHealthIssues,
+    // Mine collage slot: one ChatGPT Before|After|Now image in share card.
+    shareAsCollage: true,
   } : null;
   const shareCardUserName = user?.userName || user?.displayName || user?.name || null;
   const showBrandedCard = Boolean(shareCardTestimonial && (beforeImageSrc || afterImageSrc));
@@ -1654,44 +1711,85 @@ function MemberCard({
       </div>
       <div className="px-4 pb-4 space-y-3">
 
-      {/* Photos — Mine always editable; team uses branded card when photos exist */}
+      {/* Transformation collage — one slot (ChatGPT Before|After|Now → paste here) */}
       {(editable || (!showBrandedCard && testimonial && (testimonial.beforeImageUrl || testimonial.afterImageUrl))) && (
-        <div className="flex gap-2">
-          <div className="flex-1 text-center">
+        <div className="space-y-2">
+          {editable && (
+            <div className="rounded-2xl border border-green-200 bg-green-50/80 px-3 py-2.5 space-y-2">
+              <p className="text-xs font-bold text-green-900">How to upload</p>
+              <ol className="text-[11px] text-green-900/90 space-y-1 list-decimal list-inside leading-snug">
+                <li>Copy the ChatGPT prompt below.</li>
+                <li>In ChatGPT, paste it and upload photos in order: Before, After, Now.</li>
+                <li>Download the single collage image ChatGPT gives you.</li>
+                <li>Paste / upload that collage here.</li>
+              </ol>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const ok = await copyTransformCollagePrompt();
+                    if (!ok) throw new Error('Clipboard unavailable');
+                    setPromptCopied(true);
+                    window.setTimeout(() => setPromptCopied(false), 2000);
+                  } catch {
+                    setSubmitError('Could not copy prompt. Select and copy it from the box below.');
+                  }
+                }}
+                className="w-full rounded-xl bg-green-600 text-white text-xs font-bold py-2.5"
+              >
+                {promptCopied ? 'Prompt copied' : 'Copy ChatGPT prompt'}
+              </button>
+              <pre className="text-[9px] leading-snug text-gray-600 bg-white/90 border border-green-100 rounded-xl p-2 max-h-24 overflow-y-auto whitespace-pre-wrap">
+{COLLAGE_CHATGPT_PROMPT}
+              </pre>
+            </div>
+          )}
+
+          <div className="text-center">
             <div className="relative">
-              {beforeImageSrc ? (
+              {(beforeImageSrc || afterImageSrc) ? (
                 <button
                   type="button"
-                  onClick={() => setExpandedPhoto({ url: beforeImageSrc, label: `${user.userName} — Before` })}
+                  onClick={() => setExpandedPhoto({
+                    url: beforeImageSrc || afterImageSrc,
+                    label: `${user.userName} — Transformation`,
+                  })}
                   className="w-full overflow-hidden rounded-xl"
                 >
                   <img
-                    key={`before-${beforeImageSrc}`}
-                    src={beforeImageSrc}
-                    alt="Before"
-                    className={`${PORTRAIT_IMAGE_CLASS_SM} w-full cursor-zoom-in`}
+                    key={`collage-${beforeImageSrc || afterImageSrc}`}
+                    src={beforeImageSrc || afterImageSrc}
+                    alt="Transformation collage"
+                    className={`${COLLAGE_IMAGE_CLASS} w-full cursor-zoom-in`}
                   />
                 </button>
               ) : (
                 <button
                   type="button"
-                  onClick={editable ? () => setPickerSlot('before') : undefined}
-                  className={`${PORTRAIT_IMAGE_CLASS_SM} w-full flex items-center justify-center bg-gray-50 border-2 border-dashed ${editable ? 'border-green-300 hover:bg-green-50' : 'border-gray-200'} transition-colors`}
+                  onClick={editable ? () => setPickerSlot(pickerSlot === 'collage' ? null : 'collage') : undefined}
+                  className={`${COLLAGE_IMAGE_CLASS} w-full flex flex-col items-center justify-center gap-1 border-2 border-dashed ${editable ? 'border-green-300 hover:bg-green-50' : 'border-gray-200'} transition-colors`}
                 >
-                  {editable ? <Plus className="h-7 w-7 text-green-400" /> : <AlertCircle className="h-5 w-5 text-gray-300" />}
+                  {editable ? (
+                    <>
+                      <Plus className="h-7 w-7 text-green-400" />
+                      <span className="text-[10px] font-bold text-green-700 px-2">Upload collage</span>
+                    </>
+                  ) : (
+                    <AlertCircle className="h-5 w-5 text-gray-300" />
+                  )}
                 </button>
               )}
-              {editable && beforeImageSrc && (
+              {editable && (beforeImageSrc || afterImageSrc) && (
                 <button
                   type="button"
-                  onClick={() => setPickerSlot(pickerSlot === 'before' ? null : 'before')}
+                  onClick={() => setPickerSlot(pickerSlot === 'collage' ? null : 'collage')}
                   className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
-                  aria-label="Edit before photo"
+                  aria-label="Edit transformation collage"
                 >
                   <Pencil className="h-3 w-3" />
                 </button>
               )}
-              {isVerified && beforeImageSrc && (
+              {isVerified && (beforeImageSrc || afterImageSrc) && (
                 <span
                   className="absolute top-1.5 left-1.5 h-6 w-6 rounded-full bg-green-500 text-white shadow flex items-center justify-center"
                   aria-label="Verified"
@@ -1701,7 +1799,7 @@ function MemberCard({
                   </svg>
                 </span>
               )}
-              {draftBefore?.compressing && (
+              {(draftBefore?.compressing || draftAfter?.compressing) && (
                 <div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center z-10">
                   <div className="flex flex-col items-center gap-1">
                     <div className="h-5 w-5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
@@ -1710,276 +1808,148 @@ function MemberCard({
                 </div>
               )}
             </div>
-            {editable && pickerSlot === 'before' && (
+
+            {editable && pickerSlot === 'collage' && (
               <div className="flex flex-wrap gap-1.5 mt-1.5 justify-center">
-                <button type="button" onClick={() => handleAdjustExisting('before')}
-                  disabled={coverCrop.isPreparing}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold disabled:opacity-50">
-                  <Crop className="h-3 w-3" /> Adjust
-                </button>
-                <button type="button" onClick={() => openPhotoPicker(beforeCamRef)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-green-600 text-white text-[10px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => openPhotoPicker(collageCamRef)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-green-600 text-white text-[10px] font-bold"
+                >
                   <Camera className="h-3 w-3" /> Camera
                 </button>
-                <button type="button" onClick={() => openPhotoPicker(beforeGalRef)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold">
-                  <Images className="h-3 w-3" /> Gallery
+                <button
+                  type="button"
+                  onClick={() => openPhotoPicker(collageGalRef)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold"
+                >
+                  <Images className="h-3 w-3" /> Gallery / Paste
                 </button>
-                <button type="button" onClick={() => setPickerSlot(null)}
-                  className="px-2 py-1.5 rounded-xl border border-gray-200 text-gray-500 text-[10px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setPickerSlot(null)}
+                  className="px-2 py-1.5 rounded-xl border border-gray-200 text-gray-500 text-[10px] font-bold"
+                >
                   <X className="h-3 w-3" />
                 </button>
               </div>
             )}
-            <input ref={beforeCamRef} type="file" accept="image/*" capture="environment" className="hidden" aria-label="Before camera upload"
+            <input
+              ref={collageCamRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              aria-label="Collage camera upload"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = '';
-                if (file) { handleImageFile('before', file); setPickerSlot(null); }
-              }} />
-            <input ref={beforeGalRef} type="file" accept="image/*" className="hidden" aria-label="Before gallery upload"
+                if (file) { void handleCollageFile(file); setPickerSlot(null); }
+              }}
+            />
+            <input
+              ref={collageGalRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              aria-label="Collage gallery upload"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = '';
-                if (file) { handleImageFile('before', file); setPickerSlot(null); }
-              }} />
-            <div className="mt-1 space-y-0.5">
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">BEFORE</p>
-              {editable && expandedSlots.has('beforeWeight') ? (
-                <div className="flex items-center justify-center gap-1 mt-1">
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    enterKeyHint="done"
-                    autoComplete="off"
-                    autoFocus
-                    value={beforeWeightText ?? ''}
-                    onChange={(e) => {
-                      const raw = sanitizeWeightTyping(e.target.value);
-                      setBeforeWeightText(raw);
-                      commitBeforeWeight(raw);
-                    }}
-                    onBlur={(e) => closeBeforeWeightEdit(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') e.currentTarget.blur();
-                      if (e.key === 'Escape') closeBeforeWeightEdit(null);
-                    }}
-                    className="w-20 border border-gray-300 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-400"
-                  />
-                  <span className="text-xs text-gray-400">kg</span>
-                  <button
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => closeBeforeWeightEdit(beforeWeightText)}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center gap-1">
+                if (file) { void handleCollageFile(file); setPickerSlot(null); }
+              }}
+            />
+
+            <p className="mt-1 text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+              Before · After · Now
+            </p>
+            {editable && (
+              <div className="mt-1 flex items-center justify-center gap-3">
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-gray-400 font-semibold">Before</span>
                   <p className="text-sm font-bold text-gray-800">
                     {shownBeforeKg ?? '—'}
-                    {shownBeforeKg != null && shownBeforeKg !== '' && <span className="text-xs font-normal text-gray-400"> kg</span>}
+                    {shownBeforeKg != null && shownBeforeKg !== '' && (
+                      <span className="text-xs font-normal text-gray-400"> kg</span>
+                    )}
                   </p>
-                  {editable && (
-                    <button type="button" onClick={openBeforeWeightEdit}
-                      className="p-0.5 rounded-full text-gray-300 hover:text-green-600 transition-colors" aria-label="Edit before weight">
-                      <Pencil className="h-2.5 w-2.5" />
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="flex-1 text-center">
-            <div className="relative">
-              {afterImageSrc ? (
-                <button
-                  type="button"
-                  onClick={() => setExpandedPhoto({ url: afterImageSrc, label: `${user.userName} — After` })}
-                  className="w-full overflow-hidden rounded-xl"
-                >
-                  <img
-                    key={`after-${afterImageSrc}`}
-                    src={afterImageSrc}
-                    alt="After"
-                    className={`${PORTRAIT_IMAGE_CLASS_SM} w-full cursor-zoom-in`}
-                  />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={editable ? () => setPickerSlot('after') : undefined}
-                  className={`${PORTRAIT_IMAGE_CLASS_SM} w-full flex items-center justify-center bg-gray-50 border-2 border-dashed ${editable ? 'border-purple-300 hover:bg-purple-50' : 'border-gray-200'} transition-colors`}
-                >
-                  {editable ? <Plus className="h-7 w-7 text-purple-400" /> : <AlertCircle className="h-5 w-5 text-gray-300" />}
-                </button>
-              )}
-              {editable && afterImageSrc && (
-                <button
-                  type="button"
-                  onClick={() => setPickerSlot(pickerSlot === 'after' ? null : 'after')}
-                  className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
-                  aria-label="Edit after photo"
-                >
-                  <Pencil className="h-3 w-3" />
-                </button>
-              )}
-              {isVerified && afterImageSrc && (
-                <span
-                  className="absolute top-1.5 left-1.5 h-6 w-6 rounded-full bg-green-500 text-white shadow flex items-center justify-center"
-                  aria-label="Verified"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </span>
-              )}
-              {draftAfter?.compressing && (
-                <div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center z-10">
-                  <div className="flex flex-col items-center gap-1">
-                    <div className="h-5 w-5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                    <span className="text-white text-[10px] font-bold">Preparing…</span>
-                  </div>
-                </div>
-              )}
-            </div>
-            {editable && pickerSlot === 'after' && (
-              <div className="flex flex-wrap gap-1.5 mt-1.5 justify-center">
-                <button type="button" onClick={() => handleAdjustExisting('after')}
-                  disabled={coverCrop.isPreparing || !(draftAfter?.previewUrl || testimonial?.afterImageUrl)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold disabled:opacity-50">
-                  <Crop className="h-3 w-3" /> Adjust
-                </button>
-                <button type="button" onClick={() => openPhotoPicker(afterCamRef)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-purple-600 text-white text-[10px] font-bold">
-                  <Camera className="h-3 w-3" /> Camera
-                </button>
-                <button type="button" onClick={() => openPhotoPicker(afterGalRef)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold">
-                  <Images className="h-3 w-3" /> Gallery
-                </button>
-                <button type="button" onClick={() => setPickerSlot(null)}
-                  className="px-2 py-1.5 rounded-xl border border-gray-200 text-gray-500 text-[10px] font-bold">
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            )}
-            <input ref={afterCamRef} type="file" accept="image/*" capture="environment" className="hidden" aria-label="After camera upload"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) { handleImageFile('after', file); setPickerSlot(null); }
-              }} />
-            <input ref={afterGalRef} type="file" accept="image/*" className="hidden" aria-label="After gallery upload"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) { handleImageFile('after', file); setPickerSlot(null); }
-              }} />
-            <div className="mt-1 space-y-0.5">
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">AFTER</p>
-              {editable && expandedSlots.has('afterWeight') ? (
-                <div className="flex items-center justify-center gap-1 mt-1">
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    enterKeyHint="done"
-                    autoComplete="off"
-                    autoFocus
-                    value={afterWeightText ?? ''}
-                    onChange={(e) => {
-                      const raw = sanitizeWeightTyping(e.target.value);
-                      setAfterWeightText(raw);
-                      commitAfterWeight(raw);
-                    }}
-                    onBlur={(e) => closeAfterWeightEdit(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') e.currentTarget.blur();
-                      if (e.key === 'Escape') closeAfterWeightEdit(null);
-                    }}
-                    className="w-20 border border-purple-300 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-purple-400"
-                  />
-                  <span className="text-xs text-gray-400">kg</span>
                   <button
                     type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => closeAfterWeightEdit(afterWeightText)}
-                    className="text-gray-400 hover:text-gray-600"
+                    onClick={openBeforeWeightEdit}
+                    className="p-0.5 rounded-full text-gray-300 hover:text-green-600 transition-colors"
+                    aria-label="Edit before weight"
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <Pencil className="h-2.5 w-2.5" />
                   </button>
                 </div>
-              ) : (
-                <div className="flex items-center justify-center gap-1">
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-gray-400 font-semibold">After</span>
                   <p className="text-sm font-bold text-gray-800">
                     {shownAfterKg ?? '—'}
-                    {shownAfterKg != null && shownAfterKg !== '' && <span className="text-xs font-normal text-gray-400"> kg</span>}
+                    {shownAfterKg != null && shownAfterKg !== '' && (
+                      <span className="text-xs font-normal text-gray-400"> kg</span>
+                    )}
                   </p>
-                  {editable && (
-                    <button type="button" onClick={openAfterWeightEdit}
-                      className="p-0.5 rounded-full text-gray-300 hover:text-purple-600 transition-colors" aria-label="Edit after weight">
-                      <Pencil className="h-2.5 w-2.5" />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={openAfterWeightEdit}
+                    className="p-0.5 rounded-full text-gray-300 hover:text-purple-600 transition-colors"
+                    aria-label="Edit after weight"
+                  >
+                    <Pencil className="h-2.5 w-2.5" />
+                  </button>
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Compact metadata strip — only when a new photo is being edited (not weight-only) */}
-      {editable && hasPhotoDraft && (
-        <div className="grid grid-cols-2 gap-2 px-1">
-          {draftBefore && (
-            <>
-              <div>
-                <label className="block text-[10px] font-medium text-gray-400 mb-1">Before weight (kg)</label>
-                <input type="text" inputMode="decimal" autoComplete="off" step="0.1" min="1" max="500"
-                  placeholder={String(testimonial?.beforeWeightKg ?? '')}
-                  value={draftBefore?.weightText ?? (draftBefore?.weightKg != null ? String(draftBefore.weightKg) : '')}
+              </div>
+            )}
+            {editable && expandedSlots.has('beforeWeight') && (
+              <div className="flex items-center justify-center gap-1 mt-1">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  enterKeyHint="done"
+                  autoComplete="off"
+                  autoFocus
+                  value={beforeWeightText ?? ''}
                   onChange={(e) => {
-                    const text = sanitizeWeightTyping(e.target.value);
-                    const v = parseWeightKg(text);
-                    setDraftBefore((prev) => ({
-                      ...prev,
-                      weightText: text,
-                      weightKg: v != null ? v : undefined,
-                    }));
+                    const raw = sanitizeWeightTyping(e.target.value);
+                    setBeforeWeightText(raw);
+                    commitBeforeWeight(raw);
                   }}
-                  className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                  onBlur={(e) => closeBeforeWeightEdit(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                    if (e.key === 'Escape') closeBeforeWeightEdit(null);
+                  }}
+                  className="w-20 border border-gray-300 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-400"
+                />
+                <span className="text-xs text-gray-400">kg before</span>
               </div>
-              <div>
-                <label className="block text-[10px] font-medium text-gray-400 mb-1">Goal</label>
-                <select value={draftBefore?.goalType || testimonial?.goalType || 'loss'}
-                  onChange={(e) => setDraftBefore(prev => ({ ...prev, goalType: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
-                  <option value="loss">Weight Loss</option>
-                  <option value="gain">Weight Gain</option>
-                </select>
+            )}
+            {editable && expandedSlots.has('afterWeight') && (
+              <div className="flex items-center justify-center gap-1 mt-1">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  enterKeyHint="done"
+                  autoComplete="off"
+                  autoFocus
+                  value={afterWeightText ?? ''}
+                  onChange={(e) => {
+                    const raw = sanitizeWeightTyping(e.target.value);
+                    setAfterWeightText(raw);
+                    commitAfterWeight(raw);
+                  }}
+                  onBlur={(e) => closeAfterWeightEdit(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                    if (e.key === 'Escape') closeAfterWeightEdit(null);
+                  }}
+                  className="w-20 border border-purple-300 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-purple-400"
+                />
+                <span className="text-xs text-gray-400">kg after</span>
               </div>
-            </>
-          )}
-          {draftAfter && (
-            <div className={draftBefore ? '' : 'col-span-2'}>
-              <label className="block text-[10px] font-medium text-gray-400 mb-1">After weight (kg)</label>
-              <input type="text" inputMode="decimal" autoComplete="off" step="0.1" min="1" max="500"
-                placeholder={String(hasAfter ? (testimonial?.afterWeightKg ?? '') : '')}
-                value={draftAfter?.weightText ?? (draftAfter?.weightKg != null ? String(draftAfter.weightKg) : '')}
-                onChange={(e) => {
-                  const text = sanitizeWeightTyping(e.target.value);
-                  const v = parseWeightKg(text);
-                  setDraftAfter((prev) => ({
-                    ...(prev || {}),
-                    weightText: text,
-                    weightKg: v != null ? v : undefined,
-                  }));
-                }}
-                className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
@@ -2145,9 +2115,9 @@ function MemberCard({
               <p className="text-xs text-amber-800 leading-relaxed">{videoUploadError}</p>
             </div>
           )}
-          <div className="flex gap-3">
-            <div className="flex-1 space-y-1">
-              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Health</p>
+          <div className="flex flex-col gap-3">
+            <div className="space-y-1">
+              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Health Result</p>
               {editable ? (
                 <div className="relative">
                   {draftHealthPreview || testimonial?.healthVideoUrl ? (
@@ -2169,9 +2139,9 @@ function MemberCard({
                     </>
                   ) : (
                     <button type="button" onClick={() => healthVidRef.current?.click()}
-                      className="w-full flex flex-col items-center justify-center gap-1.5 bg-gray-50 border-2 border-dashed border-green-300 rounded-xl py-5 hover:bg-green-50 transition-colors">
-                      <Plus className="h-6 w-6 text-green-400" />
-                      <span className="text-[10px] font-semibold text-green-600">Add video</span>
+                      className="w-full flex items-center justify-center bg-gray-50 border-2 border-dashed border-green-300 rounded-xl py-8 hover:bg-green-50 transition-colors"
+                      aria-label="Add health result video">
+                      <Plus className="h-7 w-7 text-green-400" />
                     </button>
                   )}
                   {uploadingHealth && (
@@ -2198,8 +2168,8 @@ function MemberCard({
                 />
               )}
             </div>
-            <div className="flex-1 space-y-1">
-              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Business</p>
+            <div className="space-y-1">
+              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Business Result</p>
               {editable ? (
                 <div className="relative">
                   {draftBusinessPreview || testimonial?.businessVideoUrl ? (
@@ -2221,9 +2191,9 @@ function MemberCard({
                     </>
                   ) : (
                     <button type="button" onClick={() => businessVidRef.current?.click()}
-                      className="w-full flex flex-col items-center justify-center gap-1.5 bg-gray-50 border-2 border-dashed border-blue-300 rounded-xl py-5 hover:bg-blue-50 transition-colors">
-                      <Plus className="h-6 w-6 text-blue-400" />
-                      <span className="text-[10px] font-semibold text-blue-600">Add video</span>
+                      className="w-full flex items-center justify-center bg-gray-50 border-2 border-dashed border-blue-300 rounded-xl py-8 hover:bg-blue-50 transition-colors"
+                      aria-label="Add business result video">
+                      <Plus className="h-7 w-7 text-blue-400" />
                     </button>
                   )}
                   {uploadingBusiness && (
@@ -2714,14 +2684,26 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setHighlightedSuggestion(-1);
     setHighlightedIssue(-1);
     setUploadFilter(UPLOAD_FILTERS.ALL);
+    setTeamScope(TEAM_SCOPES.MINE);
   }, []);
 
-  const handleTeamScopeChange = useCallback((value) => {
-    if (value === teamScope) return;
-    resetTeamSearch();
-    if (value === TEAM_SCOPES.FULL) setFullLoaded(false);
-    setTeamScope(value);
-  }, [teamScope, resetTeamSearch]);
+  // No Mine/Direct/Full tabs: own card by default; search uses Full-team API.
+  const syncScopeForSearch = useCallback((nextSearchQuery, nextIssueQuery) => {
+    if (!hasDownline) {
+      setTeamScope(TEAM_SCOPES.MINE);
+      return;
+    }
+    const searching = normalizeSearchQuery(nextSearchQuery).length > 0
+      || normalizeSearchQuery(nextIssueQuery).length > 0;
+    if (searching) {
+      setTeamScope((prev) => {
+        if (prev !== TEAM_SCOPES.FULL) setFullLoaded(false);
+        return TEAM_SCOPES.FULL;
+      });
+    } else {
+      setTeamScope(TEAM_SCOPES.MINE);
+    }
+  }, [hasDownline]);
 
   // ── Derived state ──────────────────────────────────────────────────────────
 
@@ -2930,24 +2912,31 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setSearchQuery(value);
     setIsSearchOpen(true);
     setHighlightedSuggestion(-1);
-  }, []);
+    syncScopeForSearch(value, committedHealthIssue);
+  }, [committedHealthIssue, syncScopeForSearch]);
 
   const handleIssueSearchChange = useCallback((value) => {
     setHealthIssueQuery(value);
     setIsIssueSearchOpen(true);
     setHighlightedIssue(-1);
+    let nextCommitted = committedHealthIssue;
     if (!value.trim()) {
+      nextCommitted = '';
       setCommittedHealthIssue('');
     } else if (normalizeSearchQuery(value) !== normalizeSearchQuery(committedHealthIssue)) {
+      nextCommitted = '';
       setCommittedHealthIssue('');
     }
-  }, [committedHealthIssue]);
+    syncScopeForSearch(searchQuery, nextCommitted || value);
+  }, [committedHealthIssue, searchQuery, syncScopeForSearch]);
 
   const handleSelectNameSuggestion = useCallback((row) => {
-    setSearchQuery(row?.user?.userName || '');
+    const name = row?.user?.userName || '';
+    setSearchQuery(name);
     setIsSearchOpen(false);
     setHighlightedSuggestion(-1);
-  }, []);
+    syncScopeForSearch(name, committedHealthIssue);
+  }, [committedHealthIssue, syncScopeForSearch]);
 
   const handleSelectIssueSuggestion = useCallback((issue) => {
     const label = typeof issue === 'string' ? issue : (issue?.label || '');
@@ -2955,7 +2944,8 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setCommittedHealthIssue(label);
     setIsIssueSearchOpen(false);
     setHighlightedIssue(-1);
-  }, []);
+    syncScopeForSearch(searchQuery, label);
+  }, [searchQuery, syncScopeForSearch]);
 
   const handleSearchKeyDown = useCallback((event) => {
     const hasQuery = normalizeSearchQuery(searchQuery).length > 0;
@@ -3014,9 +3004,11 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       if (highlightedIssue >= 0 && issueSuggestions[highlightedIssue]) {
         handleSelectIssueSuggestion(issueSuggestions[highlightedIssue]);
       } else {
-        setCommittedHealthIssue(healthIssueQuery.trim());
+        const label = healthIssueQuery.trim();
+        setCommittedHealthIssue(label);
         setIsIssueSearchOpen(false);
         setHighlightedIssue(-1);
+        syncScopeForSearch(searchQuery, label);
       }
       return;
     }
@@ -3024,13 +3016,14 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       setIsIssueSearchOpen(false);
       setHighlightedIssue(-1);
     }
-  }, [healthIssueQuery, issueSuggestions, highlightedIssue, handleSelectIssueSuggestion]);
+  }, [healthIssueQuery, issueSuggestions, highlightedIssue, handleSelectIssueSuggestion, searchQuery, syncScopeForSearch]);
 
   const hasActiveSearch = normalizeSearchQuery(searchQuery).length > 0
     || normalizeSearchQuery(committedHealthIssue).length > 0;
   const hasActiveUploadFilter = uploadFilter && uploadFilter !== UPLOAD_FILTERS.ALL;
   const showTeamChrome  = hasDownline;
   const showPageSkeleton = shouldShowTestimonialsPageSkeleton(loading, mineRow);
+  const showSearchLoading = fullLoading && !isMineScope && hasActiveSearch;
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-4 pb-24 space-y-4">
@@ -3040,7 +3033,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         <div className="flex items-center gap-2">
           <Users className="h-5 w-5 text-green-700" />
           <h1 className="text-lg font-bold text-gray-900">
-            {showTeamChrome ? 'Team Transformation' : 'My Transformation'}
+            {hasActiveSearch && showTeamChrome ? 'Team Transformation' : 'My Transformation'}
           </h1>
         </div>
         <TouchFeedbackButton
@@ -3053,100 +3046,65 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         </TouchFeedbackButton>
       </div>
 
-      {/* Team scope — only when user has a downline */}
+      {/* Search downlines — no Mine/Direct/Full tabs; empty search = own card only */}
       {!loading && showTeamChrome && (
-        <div className="bg-white rounded-xl border border-gray-200 px-1 py-1 flex gap-1" role="group" aria-label="Team scope">
-          {TEAM_SCOPE_OPTIONS.map(({ value, label, short }) => {
-            const isActive  = teamScope === value;
-            const count     = teamScopeCounts[value] ?? 0;
-            const showCount = value !== TEAM_SCOPES.MINE;
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => handleTeamScopeChange(value)}
-                aria-pressed={isActive}
-                className={`flex-1 py-2 rounded-lg text-[11px] sm:text-xs font-semibold transition-all duration-150 cursor-pointer min-w-0 px-1 ${
-                  isActive ? 'bg-green-600 text-white shadow-sm' : 'text-green-800 hover:bg-green-50'
-                }`}
-              >
-                <span className="hidden sm:inline">{showCount ? `${label} (${count})` : label}</span>
-                <span className="sm:hidden">{showCount ? `${short} (${count})` : short}</span>
-              </button>
-            );
-          })}
+        <div className="space-y-3">
+          <div className="relative">
+            <p className="text-xs font-semibold text-gray-600 mb-1.5">Search user name</p>
+            <TestimonialSearchBar
+              variant="name"
+              value={searchQuery}
+              onChange={handleSearchChange}
+              suggestions={nameSuggestions}
+              isOpen={isSearchOpen}
+              onOpenChange={(open) => {
+                setIsSearchOpen(open);
+                if (open) {
+                  setIsIssueSearchOpen(false);
+                  setHighlightedIssue(-1);
+                }
+              }}
+              highlightedIndex={highlightedSuggestion}
+              onHighlightChange={setHighlightedSuggestion}
+              onSelectSuggestion={handleSelectNameSuggestion}
+              onKeyDown={handleSearchKeyDown}
+            />
+          </div>
+          <div className="relative">
+            <p className="text-xs font-semibold text-gray-600 mb-1.5">Search health issue</p>
+            <TestimonialSearchBar
+              variant="issue"
+              value={healthIssueQuery}
+              onChange={handleIssueSearchChange}
+              suggestions={issueSuggestions}
+              isOpen={isIssueSearchOpen}
+              onOpenChange={(open) => {
+                setIsIssueSearchOpen(open);
+                if (open) {
+                  setIsSearchOpen(false);
+                  setHighlightedSuggestion(-1);
+                }
+              }}
+              highlightedIndex={highlightedIssue}
+              onHighlightChange={setHighlightedIssue}
+              onSelectSuggestion={handleSelectIssueSuggestion}
+              onKeyDown={handleIssueSearchKeyDown}
+            />
+          </div>
+          {hasActiveSearch ? (
+            <button
+              type="button"
+              onClick={resetTeamSearch}
+              className="text-xs font-semibold text-green-700 hover:text-green-800"
+            >
+              Clear search · show my transformation
+            </button>
+          ) : (
+            <p className="text-[11px] text-gray-400 leading-snug">
+              Your transformation is below. Search a downline name to view theirs.
+            </p>
+          )}
         </div>
-      )}
-
-      {/* Search + upload filters — team scopes only (not Mine / not leaf members) */}
-      {!loading && showTeamChrome && !isMineScope && (
-        <>
-          <div className="space-y-3">
-            <div className="relative">
-              <p className="text-xs font-semibold text-gray-600 mb-1.5">Search health issue</p>
-              <TestimonialSearchBar
-                variant="issue"
-                value={healthIssueQuery}
-                onChange={handleIssueSearchChange}
-                suggestions={issueSuggestions}
-                isOpen={isIssueSearchOpen}
-                onOpenChange={(open) => {
-                  setIsIssueSearchOpen(open);
-                  if (open) {
-                    setIsSearchOpen(false);
-                    setHighlightedSuggestion(-1);
-                  }
-                }}
-                highlightedIndex={highlightedIssue}
-                onHighlightChange={setHighlightedIssue}
-                onSelectSuggestion={handleSelectIssueSuggestion}
-                onKeyDown={handleIssueSearchKeyDown}
-              />
-            </div>
-            <div className="relative">
-              <p className="text-xs font-semibold text-gray-600 mb-1.5">Search user name</p>
-              <TestimonialSearchBar
-                variant="name"
-                value={searchQuery}
-                onChange={handleSearchChange}
-                suggestions={nameSuggestions}
-                isOpen={isSearchOpen}
-                onOpenChange={(open) => {
-                  setIsSearchOpen(open);
-                  if (open) {
-                    setIsIssueSearchOpen(false);
-                    setHighlightedIssue(-1);
-                  }
-                }}
-                highlightedIndex={highlightedSuggestion}
-                onHighlightChange={setHighlightedSuggestion}
-                onSelectSuggestion={handleSelectNameSuggestion}
-                onKeyDown={handleSearchKeyDown}
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide sm:flex-wrap sm:gap-2 sm:overflow-visible" role="group" aria-label="Upload completeness filter">
-            <UploadFilterChip
-              filterKey={UPLOAD_FILTERS.FULLY_UPLOADED}
-              count={uploadCounts.fully_uploaded}
-              activeFilter={uploadFilter}
-              onToggle={handleUploadToggle}
-            />
-            <UploadFilterChip
-              filterKey={UPLOAD_FILTERS.PARTIAL}
-              count={uploadCounts.partial_upload}
-              activeFilter={uploadFilter}
-              onToggle={handleUploadToggle}
-            />
-            <UploadFilterChip
-              filterKey={UPLOAD_FILTERS.NOT_UPLOADED}
-              count={uploadCounts.not_uploaded}
-              activeFilter={uploadFilter}
-              onToggle={handleUploadToggle}
-            />
-          </div>
-        </>
       )}
 
       {/* States */}
@@ -3162,14 +3120,14 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{error}</div>
       )}
 
-      {fullLoading && teamScope === TEAM_SCOPES.FULL && (
+      {showSearchLoading && (
         <div className="py-6">
           <LoadingSpinner context="normal" />
-          <p className="text-center text-sm text-gray-500 mt-2">Loading full team…</p>
+          <p className="text-center text-sm text-gray-500 mt-2">Searching team…</p>
         </div>
       )}
 
-      {!showPageSkeleton && !fullLoading && !error && filteredRows.length === 0 && (
+      {!showPageSkeleton && !showSearchLoading && !error && filteredRows.length === 0 && (
         <div className="text-center py-12 text-gray-400">
           <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
           <p className="font-medium">
@@ -3177,9 +3135,9 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
               ? 'No matching members found.'
               : hasActiveUploadFilter
                 ? 'No records match the selected filter.'
-                : (showTeamChrome ? 'No team members found' : 'Unable to load your transformation')}
+                : 'Unable to load your transformation'}
           </p>
-          {(hasActiveSearch || hasActiveUploadFilter) ? (
+          {hasActiveSearch ? (
             <button
               type="button"
               onClick={resetTeamSearch}
@@ -3191,8 +3149,8 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         </div>
       )}
 
-      {/* Member cards */}
-      {!showPageSkeleton && !fullLoading && filteredRows.map((row) => (
+      {/* Member cards — own transformation, or search matches only */}
+      {!showPageSkeleton && !showSearchLoading && filteredRows.map((row) => (
         <MemberCard
           key={row.user.userId}
           row={row}
@@ -3212,7 +3170,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         />
       ))}
 
-      {!showPageSkeleton && !fullLoading && !isMineScope && activePagination.hasMore && (
+      {!showPageSkeleton && !showSearchLoading && !isMineScope && activePagination.hasMore && (
         <div ref={loadMoreSentinelRef} className="py-4 flex justify-center">
           {loadingMore ? (
             <LoadingSpinner context="normal" />

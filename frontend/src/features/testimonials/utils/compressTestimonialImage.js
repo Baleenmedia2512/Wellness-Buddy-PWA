@@ -275,7 +275,7 @@ function loadImageFromUrl(url) {
 
 /**
  * @param {File} file
- * @param {{ targetBytes?: number, maxDim?: number }} [options]
+ * @param {{ targetBytes?: number, maxDim?: number, allowLandscape?: boolean }} [options]
  * @returns {Promise<{ base64: string, preview: string }>}
  */
 export async function compressImage(file, options = {}) {
@@ -289,6 +289,7 @@ export async function compressImage(file, options = {}) {
   const maxDim = Number(options.maxDim) > 0
     ? Number(options.maxDim)
     : MAX_DIM;
+  const allowLandscape = options.allowLandscape === true;
 
   const buffer = await readFileBuffer(file);
   const orientation = readJpegOrientation(buffer);
@@ -307,7 +308,7 @@ export async function compressImage(file, options = {}) {
       encoded?.height,
       orientation,
     );
-    if (resolved.height <= resolved.width) {
+    if (!allowLandscape && resolved.height <= resolved.width) {
       throw new Error('Please upload a portrait photo (vertical orientation). Landscape photos are not allowed.');
     }
 
