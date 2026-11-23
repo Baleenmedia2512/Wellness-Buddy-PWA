@@ -16,24 +16,18 @@ import {
 } from '../domain/otpEmail.rules.js';
 import { IANA_IST } from '../../../shared/lib/datetime/index.js';
 
-describe('requiresGoodHabitCoachOtp (§5.1)', () => {
-  it('requires OTP for apps at or above min version', () => {
+describe('requiresGoodHabitCoachOtp (OTP retired → Reject email)', () => {
+  it('never requires OTP — save + coach Reject email for all versions', () => {
     assert.equal(GOOD_HABIT_COACH_OTP_MIN_VERSION, '3.5.6');
-    assert.equal(requiresGoodHabitCoachOtp('3.5.6'), true);
-    assert.equal(requiresGoodHabitCoachOtp('3.5.7'), true);
-    assert.equal(requiresGoodHabitCoachOtp('4.0.0'), true);
-  });
-
-  it('keeps legacy immediate save for older / missing / invalid version', () => {
+    assert.equal(requiresGoodHabitCoachOtp('3.5.6'), false);
+    assert.equal(requiresGoodHabitCoachOtp('3.5.7'), false);
+    assert.equal(requiresGoodHabitCoachOtp('4.0.0'), false);
     assert.equal(requiresGoodHabitCoachOtp('3.5.5'), false);
-    assert.equal(requiresGoodHabitCoachOtp('3.5.0'), false);
     assert.equal(requiresGoodHabitCoachOtp(null), false);
-    assert.equal(requiresGoodHabitCoachOtp(undefined), false);
     assert.equal(requiresGoodHabitCoachOtp(''), false);
-    assert.equal(requiresGoodHabitCoachOtp('not-a-version'), false);
   });
 
-  it('builds a stable recipient key', () => {
+  it('builds a stable recipient key (legacy OTP clients)', () => {
     assert.equal(
       goodHabitOtpRecipientKey(1065, 'abc123'),
       'good-habit:1065:abc123',

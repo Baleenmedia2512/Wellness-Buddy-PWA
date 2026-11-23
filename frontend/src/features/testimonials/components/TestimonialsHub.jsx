@@ -9,7 +9,7 @@
  *   4. Business Results Video  (max 2 min)
  *   5. Health Issues  (filter-style multi-select, same as BCM)
  *
- * Overall status bar classifies the member's upload completeness across all 5 slots:
+ * Overall status bar classifies the member's upload completeness across collage + videos + issues:
  *   Not Uploaded → Partial Upload → Awaiting Approval → Fully Uploaded / Verified
  *
  * Users may upload any slot independently or fill multiple slots then submit each section.
@@ -118,14 +118,14 @@ function OverallStatusBar({ slots, photoSuccess, videoSuccess }) {
   const uploaded  = values.filter((s) => s !== 'none' && s !== 'locked').length;
   const pending   = values.filter((s) => s === 'pending').length;
   const verified  = values.filter((s) => s === 'verified').length;
-  const total     = 5;
+  const total     = values.length;
 
   let label, barPct;
   if (uploaded === 0) {
     label  = 'Upload any item below to start your transformation';
     barPct = 0;
   } else if (verified === total) {
-    label  = 'Fully Verified — all 5 items approved by your sponsor';
+    label  = 'Fully Verified — all items approved by your sponsor';
     barPct = 100;
   } else if (uploaded === total && pending > 0) {
     label  = `All ${total} items uploaded · ${pending} awaiting sponsor approval`;

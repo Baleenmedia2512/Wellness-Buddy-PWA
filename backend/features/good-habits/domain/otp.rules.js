@@ -1,24 +1,24 @@
 /**
- * Task by Coach — coach email OTP gate (pure).
- * Apps ≥ GOOD_HABIT_COACH_OTP_MIN_VERSION must verify before insert.
- * Missing / older version → legacy immediate save (§5.1).
+ * Task by Coach — coach notify helpers (pure).
+ *
+ * Product (current): immediate save + score; coach gets email with Reject (no OTP).
+ * OTP helpers remain for older clients that still call /otp until those apps are retired.
  */
 import { DateTime } from 'luxon';
-import { isAtLeastVersion } from '../../app-version/domain/version.rules.js';
 import { IANA_IST } from '../../../shared/lib/datetime/index.js';
 
-/** First app version that requires coach OTP before persisting a habit. */
-/** Matches the app build that ships the OTP UI (`frontend/src/config/version.js`). */
+/** @deprecated OTP gate retired — Reject-email flow replaced it. Kept for older APKs. */
 export const GOOD_HABIT_COACH_OTP_MIN_VERSION = '3.5.6';
 
 export const GOOD_HABIT_OTP_CONTACT_TYPE = 'good_habit_coach';
 
 /**
- * @param {string|null|undefined} appVersion
+ * OTP is no longer required for any app version (save + Reject email instead).
+ * @param {string|null|undefined} _appVersion
  * @returns {boolean}
  */
-export function requiresGoodHabitCoachOtp(appVersion) {
-  return isAtLeastVersion(appVersion, GOOD_HABIT_COACH_OTP_MIN_VERSION) === true;
+export function requiresGoodHabitCoachOtp(_appVersion) {
+  return false;
 }
 
 /**
