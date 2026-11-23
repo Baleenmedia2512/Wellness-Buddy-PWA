@@ -190,8 +190,9 @@ export function buildShareCardRow(shareCardSrc, previewHref = null) {
 }
 
 /**
- * One compact Previous/New cell: real Before | After photos (never a share-card
- * JPEG — those can bake nested UI into the After slot in Gmail).
+ * One compact Previous/New cell.
+ * Collage: single Transformation image (or full share-card JPEG).
+ * Classic: Before | After photos when no card JPEG.
  * Tap opens the full Transformation Card preview when previewHref is set.
  */
 function buildCompactTransformationPreview({
@@ -203,9 +204,13 @@ function buildCompactTransformationPreview({
   cardImageUrl = null,
   previewHref = null,
   tone = 'new',
+  shareAsCollage = false,
 }) {
-  const hasPair = Boolean(beforeUrl && afterUrl);
-  const faceUrl = hasPair ? null : (cardImageUrl || afterUrl);
+  const hasPair = Boolean(beforeUrl && afterUrl) && !shareAsCollage;
+  const collageUrl = shareAsCollage
+    ? (cardImageUrl || beforeUrl || afterUrl)
+    : null;
+  const faceUrl = hasPair ? null : (collageUrl || cardImageUrl || afterUrl || beforeUrl);
   if (!hasPair && !faceUrl) return '';
   const isPrev = tone === 'previous';
   const border = isPrev ? '#fecdd3' : '#bbf7d0';
@@ -214,6 +219,13 @@ function buildCompactTransformationPreview({
   const beforeKg = formatWeight(beforeWeight);
   const afterKg = formatWeight(afterWeight);
   const safeLabel = escapeHtml(label);
+  const thumbCaption = shareAsCollage
+    ? ((previewHref && /^https?:\/\//i.test(String(previewHref)))
+      ? 'Tap for full Transformation Card'
+      : 'Transformation collage')
+    : ((previewHref && /^https?:\/\//i.test(String(previewHref)))
+      ? 'Tap for full Transformation Card'
+      : 'Before &amp; After preview');
 
   const photosBlock = hasPair
     ? `
@@ -229,7 +241,9 @@ function buildCompactTransformationPreview({
           </td>
         </tr>
       </table>`
-    : buildPhotoImg(faceUrl, `${label} Transformation Card`, 140);
+    : `
+      ${buildPhotoImg(faceUrl, `${label} Transformation`, 140)}
+      ${shareAsCollage ? '<p style="margin:4px 0 0;color:#9ca3af;font-size:9px;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">Before · After · Now</p>' : ''}`;
 
   const body = `
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color:${bg};border:1px solid ${border};border-radius:8px;overflow:hidden;">
@@ -252,11 +266,7 @@ function buildCompactTransformationPreview({
       </tr>
       <tr>
         <td align="center" style="padding:0 6px 8px 6px;">
-          <p style="margin:0;color:#9ca3af;font-size:9px;font-family:Arial,Helvetica,sans-serif;">${
-            (previewHref && /^https?:\/\//i.test(String(previewHref)))
-              ? 'Tap for full Transformation Card'
-              : 'Before &amp; After preview'
-          }</p>
+          <p style="margin:0;color:#9ca3af;font-size:9px;font-family:Arial,Helvetica,sans-serif;">${thumbCaption}</p>
         </td>
       </tr>
     </table>`;
@@ -273,7 +283,7 @@ function buildCompactTransformationPreview({
 }
 
 /**
- * Previous + New side by side — each shows Before | After photos.
+ * Previous + New side by side — collage = single Transformation; else Before | After.
  * Tap opens the full Transformation Card preview.
  */
 export function buildTransformationCardCompareRow({
@@ -289,10 +299,19 @@ export function buildTransformationCardCompareRow({
   afterWeight,
   currentCardImageUrl = null,
   currentPreviewHref = null,
+  shareAsCollage = false,
+  previousShareAsCollage = false,
 }) {
-  // Prefer real Before|After photo pairs (clear in Gmail). Share-card JPEG is fallback only.
-  const hasPrevious = Boolean((previousBeforeUrl && previousAfterUrl) || previousCardImageUrl);
-  const hasCurrent = Boolean((beforeUrl && afterUrl) || currentCardImageUrl);
+  const hasPrevious = Boolean(
+    previousCardImageUrl
+    || (previousBeforeUrl && previousAfterUrl)
+    || (previousShareAsCollage && previousBeforeUrl),
+  );
+  const hasCurrent = Boolean(
+    currentCardImageUrl
+    || (beforeUrl && afterUrl)
+    || (shareAsCollage && beforeUrl),
+  );
   if (!hasPrevious || !hasCurrent) return '';
 
   // Prefer full share-card JPEGs when present so the thumb and tap target are the same file.
@@ -307,6 +326,7 @@ export function buildTransformationCardCompareRow({
     cardImageUrl: previousCardImageUrl || previousPreviewHref,
     previewHref: previousPreviewHref || previousCardImageUrl,
     tone: 'previous',
+    shareAsCollage: previousShareAsCollage,
   });
   const newCell = buildCompactTransformationPreview({
     label: 'New Transformation Card',
@@ -317,13 +337,14 @@ export function buildTransformationCardCompareRow({
     cardImageUrl: currentCardImageUrl || currentPreviewHref,
     previewHref: currentPreviewHref || currentCardImageUrl,
     tone: 'new',
+    shareAsCollage,
   });
 
   return `
     <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px 0;">
       <tr>
         <td align="center" style="padding:0 0 8px 0;">
-          <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">Transformation Card</p>
+          <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">Transformation</p>
           <p style="margin:4px 0 0;color:#9ca3af;font-size:11px;font-family:Arial,Helvetica,sans-serif;">Previous (before change) &#8594; New (after change) — tap to open full card</p>
         </td>
       </tr>
@@ -849,6 +870,7 @@ export function buildVideoCoachEmailSubject({ memberName }) {
 const SLOT_LABELS = {
   before:   'Before photo',
   after:    'After photo',
+  transformation: 'Transformation',
   health:   'Health Results Video',
   business: 'Business Results Video',
   issues:   'Recovered health issues',
@@ -856,6 +878,22 @@ const SLOT_LABELS = {
   weight:   'Starting / Current Weight',
   goal:     'Goal (Weight Loss / Gain)',
 };
+
+/**
+ * Collage Mine flow dual-writes Before+After as the same image — collapse to one label.
+ * @param {string[]} changedSlots
+ * @param {boolean} shareAsCollage
+ * @returns {string[]}
+ */
+export function normalizeChangedSlotsForEmail(changedSlots, shareAsCollage = false) {
+  const list = Array.isArray(changedSlots) ? changedSlots.filter(Boolean) : [];
+  if (!shareAsCollage) return list;
+  const hasPhoto = list.includes('before') || list.includes('after') || list.includes('transformation');
+  if (!hasPhoto) return list;
+  const out = list.filter((s) => s !== 'before' && s !== 'after' && s !== 'transformation');
+  out.unshift('transformation');
+  return out;
+}
 
 /**
  * "WHAT CHANGED" summary block — bold list of updated items.
@@ -1041,6 +1079,8 @@ export function buildUnifiedSubmitEmailHtml({
   recoveredHealthIssues,
   isComplete,
   shareCardSrc = null,
+  shareAsCollage = false,
+  previousShareAsCollage = false,
 }) {
   const safeMember = escapeHtml(memberName);
   const safeOtp    = formatOtpDisplay(otp);
@@ -1048,7 +1088,8 @@ export function buildUnifiedSubmitEmailHtml({
   const waText = `Hi ${memberName || 'Member'}, your Wellness Valley transformation verification code is ${rawOtp}.`;
   const whatsappUrl = buildWhatsAppShareUrl({ phone: memberPhone, text: waText });
   const whatsappButtonHtml = buildWhatsAppShareButtonHtml({ shareUrl: whatsappUrl, label: 'Share code on WhatsApp' });
-  const slots      = new Set(changedSlots || []);
+  const displaySlots = normalizeChangedSlotsForEmail(changedSlots, shareAsCollage);
+  const slots      = new Set(displaySlots);
 
   const goalLabel  = (goalType === 'loss') ? 'Weight Loss' : 'Weight Gain';
   const durationSafe = String(durationText ?? '').trim();
@@ -1060,12 +1101,16 @@ export function buildUnifiedSubmitEmailHtml({
     && durationSafe !== '—',
   );
 
-  const changedBlock = buildChangedSlotsBlock(changedSlots);
+  const changedBlock = buildChangedSlotsBlock(displaySlots);
 
   // Previous (before change) | New (after change) — prefer full share-card JPEGs.
   const compareCards = (
-    (previousCardImageUrl || previousPreviewHref || (previousBeforeUrl && previousAfterUrl))
-    && (currentCardImageUrl || currentPreviewHref || (beforeUrl && afterUrl))
+    (previousCardImageUrl || previousPreviewHref
+      || (previousBeforeUrl && previousAfterUrl)
+      || (previousShareAsCollage && previousBeforeUrl))
+    && (currentCardImageUrl || currentPreviewHref
+      || (beforeUrl && afterUrl)
+      || (shareAsCollage && beforeUrl))
   )
     ? buildTransformationCardCompareRow({
       previousBeforeUrl,
@@ -1080,6 +1125,8 @@ export function buildUnifiedSubmitEmailHtml({
       afterWeight,
       currentCardImageUrl,
       currentPreviewHref,
+      shareAsCollage,
+      previousShareAsCollage,
     })
     : '';
 
@@ -1088,7 +1135,23 @@ export function buildUnifiedSubmitEmailHtml({
     ? buildShareCardRow(currentCardImageUrl || currentPreviewHref, currentPreviewHref)
     : '';
 
-  const currentCard = (!compareCards && !singleShareCard && isComplete && beforeUrl && afterUrl)
+  // Collage without share-card JPEG: one Transformation image (not dual Before|After).
+  const collageOnlyCard = (!compareCards && !singleShareCard && shareAsCollage && beforeUrl)
+    ? buildCompactTransformationPreview({
+      label: 'New Transformation Card',
+      beforeUrl,
+      afterUrl: afterUrl || beforeUrl,
+      beforeWeight,
+      afterWeight,
+      cardImageUrl: beforeUrl,
+      previewHref: currentPreviewHref,
+      tone: 'new',
+      shareAsCollage: true,
+    })
+    : '';
+
+  const currentCard = (!compareCards && !singleShareCard && !collageOnlyCard
+    && isComplete && beforeUrl && afterUrl)
     ? buildTransformationCardEmailBlock({
       memberName,
       beforeUrl,
@@ -1102,7 +1165,19 @@ export function buildUnifiedSubmitEmailHtml({
     })
     : '';
 
-  const hasCard = Boolean(compareCards || singleShareCard || currentCard);
+  const collageOnlyBlock = collageOnlyCard
+    ? `
+    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 14px 0;">
+      <tr>
+        <td align="center" style="padding:0 0 8px 0;">
+          <p style="margin:0;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;font-family:Arial,Helvetica,sans-serif;">Transformation</p>
+        </td>
+      </tr>
+      <tr><td>${collageOnlyCard}</td></tr>
+    </table>`
+    : '';
+
+  const hasCard = Boolean(compareCards || singleShareCard || collageOnlyBlock || currentCard);
 
   const beforeDiff = '';
   const afterDiff = '';
@@ -1170,6 +1245,7 @@ export function buildUnifiedSubmitEmailHtml({
               ${beforeDiff}
               ${afterDiff}
               ${compareCards}
+              ${collageOnlyBlock}
               ${singleShareCard}
               ${previousCard}
               ${currentCard}
@@ -1242,10 +1318,12 @@ export function buildUnifiedSubmitEmailText({
   businessVideoUrl,
   recoveredHealthIssues,
   isComplete,
+  shareAsCollage = false,
 }) {
   const goalLabel   = (goalType === 'loss') ? 'Weight Loss' : 'Weight Gain';
   const issuesPlain = formatHealthIssuesPlain(recoveredHealthIssues);
-  const slots       = new Set(changedSlots || []);
+  const displaySlots = normalizeChangedSlotsForEmail(changedSlots, shareAsCollage);
+  const slots       = new Set(displaySlots);
   const durationSafe = String(durationText ?? '').trim();
   const canShowProgress = Boolean(
     isComplete
@@ -1268,7 +1346,7 @@ export function buildUnifiedSubmitEmailText({
   lines.push(
     '',
     'WHAT CHANGED:',
-    ...(changedSlots || []).map((s) => `  - ${SLOT_LABELS[s] || s}`),
+    ...displaySlots.map((s) => `  - ${SLOT_LABELS[s] || s}`),
     '',
   );
 

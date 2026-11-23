@@ -10,9 +10,12 @@
 
 const TARGET_BYTES = 900 * 1024;
 const MAX_DIM = 1200;
-/** Profile Left/Centre/Right — smaller wire payload for fast POST (R2 stores compressed again server-side). */
-export const PROFILE_TRANSFORM_TARGET_BYTES = 100 * 1024;
-export const PROFILE_TRANSFORM_MAX_DIM = 800;
+/**
+ * Profile Left/Centre/Right — keep body clarity on the wire.
+ * Server re-encodes with compressTransformationJpeg (≤1920 px / ~800 KB), not the 22 KB diary thumb.
+ */
+export const PROFILE_TRANSFORM_TARGET_BYTES = 800 * 1024;
+export const PROFILE_TRANSFORM_MAX_DIM = 1920;
 const LOAD_TIMEOUT_MS = 20000;
 
 /**
@@ -272,7 +275,7 @@ function loadImageFromUrl(url) {
 
 /**
  * @param {File} file
- * @param {{ targetBytes?: number, maxDim?: number }} [options]
+ * @param {{ targetBytes?: number, maxDim?: number, allowLandscape?: boolean }} [options]
  * @returns {Promise<{ base64: string, preview: string }>}
  */
 export async function compressImage(file, options = {}) {
@@ -286,6 +289,7 @@ export async function compressImage(file, options = {}) {
   const maxDim = Number(options.maxDim) > 0
     ? Number(options.maxDim)
     : MAX_DIM;
+  const allowLandscape = options.allowLandscape === true;
 
   const buffer = await readFileBuffer(file);
   const orientation = readJpegOrientation(buffer);
@@ -304,7 +308,7 @@ export async function compressImage(file, options = {}) {
       encoded?.height,
       orientation,
     );
-    if (resolved.height <= resolved.width) {
+    if (!allowLandscape && resolved.height <= resolved.width) {
       throw new Error('Please upload a portrait photo (vertical orientation). Landscape photos are not allowed.');
     }
 

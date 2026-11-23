@@ -17,7 +17,7 @@ function centreLabel(opt) {
   const text = String(opt?.name || opt?.center_name || '').trim();
   if (text) return text;
   const id = opt?.id;
-  return id != null && String(id).trim() !== '' ? `Centre #${id}` : 'Centre';
+  return id != null && String(id).trim() !== '' ? `Club #${id}` : 'Club';
 }
 
 function normalizeCentres(raw) {
@@ -69,7 +69,7 @@ const WorkingPhysicalCentreField = ({ userId, value, onChange }) => {
       })
       .catch((err) => {
         if (cancelled) return;
-        setError(err?.message || 'Failed to load physical centres.');
+        setError(err?.message || 'Failed to load clubs.');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -102,7 +102,7 @@ const WorkingPhysicalCentreField = ({ userId, value, onChange }) => {
 
   const selectedLabel =
     options.find((opt) => opt.id === selectedId)?.label
-    || (selectedId ? `Centre #${selectedId}` : 'None');
+    || (selectedId ? `Club #${selectedId}` : 'None');
 
   return (
     <div>
@@ -110,10 +110,10 @@ const WorkingPhysicalCentreField = ({ userId, value, onChange }) => {
         htmlFor="working-physical-centre-trigger"
         className="block text-sm font-medium text-gray-700 mb-1"
       >
-        Working Physical Centre
+        Working Club
       </label>
       {loading ? (
-        <p className="text-xs text-gray-500 mt-1">Loading centres...</p>
+        <p className="text-xs text-gray-500 mt-1">Loading clubs...</p>
       ) : error ? (
         <p className="text-xs text-red-600 mt-1">{error}</p>
       ) : (

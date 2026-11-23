@@ -24,10 +24,10 @@ describe('composeQuickShareCaption', () => {
     );
   });
 
-  it('puts food kcal on the brand line and each item on its own line', () => {
+  it('puts multi-line food suffixes under the brand with a blank line', () => {
     assert.equal(
       composeQuickShareCaption(BRAND, FOOD_SUFFIX),
-      `${BRAND}, 1890 kcal\nMasala Dosa - GI 65 m\nRagi Dosa - GI 45 l\nPlain Ghee Dosa - GI 72 h`,
+      `${BRAND}\n\n${FOOD_SUFFIX}`,
     );
   });
 
@@ -42,7 +42,7 @@ describe('composeQuickShareCaption', () => {
     const caption = composeQuickShareCaption(BRAND, FOOD_SUFFIX);
     assert.equal(
       appendMarathonWhatsAppNotice(caption, '2026-08-04'),
-      `${BRAND}, 1890 kcal\nMasala Dosa - GI 65 m\nRagi Dosa - GI 45 l\nPlain Ghee Dosa - GI 72 h\n_Tomorrow is Marathon Day 4 - Detox Day_`,
+      `${BRAND}\n\n${FOOD_SUFFIX}\n\n_Tomorrow is Marathon Day 4 - Detox Day_`,
     );
   });
 
@@ -63,7 +63,7 @@ describe('composeQuickShareCaption', () => {
     );
     assert.equal(
       result,
-      'System · Wellness Valley v 3.5.2\n\n*Day progress*\nPrev: 61 kg\nCurr: 61 kg\n\n_Tomorrow is Marathon Day 9 - Detox Day_\n*Lap progress*\nDay 0 : 60.50 kg → Curr: 61.00 kg ⬆️ 0.50 kg',
+      'System · Wellness Valley v 3.5.2\n\n*Day progress*\nPrev: 61 kg\nCurr: 61 kg\n\n*Lap progress*\nDay 0 : 60.50 kg → Curr: 61.00 kg ⬆️ 0.50 kg\n_Tomorrow is Marathon Day 9 - Detox Day_',
     );
   });
 
@@ -83,72 +83,84 @@ describe('composeQuickShareCaption', () => {
     );
     assert.equal(
       result,
-      'System · Wellness Valley v 3.5.2\n\n*Day progress*\nPrev: 61 kg\nCurr: 61 kg\n\n_Marathon Day 0 - Today Marathon_\n*Lap progress*\nPrevious Marathon End weight : 62.00 kg\nCurrent Weight : 61.00 kg ⬇️',
+      'System · Wellness Valley v 3.5.2\n\n*Day progress*\nPrev: 61 kg\nCurr: 61 kg\n\n*Lap progress*\nPrevious Marathon End weight : 62.00 kg\nCurrent Weight : 61.00 kg ⬇️\n_Marathon Day 0 - Today Marathon_',
     );
   });
-  it('formats transformation caption with DAY PROGRESS and LAP PROGRESS headings (Step 5 required test)', () => {
-    const brand = 'ALLAN · Wellness Valley v 3.5.2';
-    const suffix = [
-      'Ideal: 79.57 kg',
-      'Prev: 80 kg',
-      'Curr: 80 kg',
-      'Marathon Day 5',
-      'Day 0 : — → Curr: 80.00 kg',
-    ].join('\n');
 
-    const expected = [
-      'ALLAN · Wellness Valley v 3.5.2',
-      '',
-      'DAY PROGRESS',
-      '',
-      'Ideal: 79.57 kg',
-      'Prev: 80 kg',
-      'Curr: 80 kg',
-      '',
-      'LAP PROGRESS',
-      '',
-      'Marathon Day 5',
-      'Day 0 : — → Curr: 80.00 kg',
-    ].join('\n');
-
-    assert.equal(composeQuickShareCaption(brand, suffix), expected);
+  it('appends Overall below marathon notice when initial weight is present', () => {
+    const weightSuffix = '*Day progress*\nPrev: 73 kg\nCurr: 75 kg ⬆️ 2 kg';
+    const caption = composeQuickShareCaption('System · Wellness Valley v 3.5.7', weightSuffix);
+    const progress = {
+      mode: 'running',
+      currentDay: {
+        displayLine: 'Day 0 : 73.00 kg → Curr: 75.00 kg ⬆️ 2.00 kg',
+      },
+      currentWeight: 75,
+    };
+    const result = appendMarathonWhatsAppNotice(
+      caption,
+      '2026-08-04',
+      progress,
+      {
+        includeWeightComparison: true,
+        initialWeight: 70,
+        currentWeight: 75,
+      },
+    );
+    assert.equal(
+      result,
+      [
+        'System · Wellness Valley v 3.5.7',
+        '',
+        '*Day progress*',
+        'Prev: 73 kg',
+        'Curr: 75 kg ⬆️ 2 kg',
+        '',
+        '*Lap progress*',
+        'Day 0 : 73.00 kg → Curr: 75.00 kg ⬆️ 2.00 kg',
+        '_Tomorrow is Marathon Day 4 - Detox Day_',
+        '*Overall*',
+        'Initial : 70.00 kg → Curr: 75.00 kg ⬆️ 5.00 kg',
+      ].join('\n'),
+    );
   });
-
-  it('end-to-end integration: produces DAY PROGRESS and LAP PROGRESS when marathon notice appends to weight caption', () => {
+  it('end-to-end: Lap progress then Marathon day then Overall', () => {
     const brand = 'ALLAN · Wellness Valley v 3.5.2';
-    const weightSuffix = 'Ideal: 79.57 kg\nPrev: 80 kg\nCurr: 80 kg';
-    // Step 1: App.js calls composeQuickShareCaption(brand, activityCaption)
+    const weightSuffix = '*Day progress*\nIdeal: 79.57 kg\nPrev: 80 kg\nCurr: 80 kg';
     const composed = composeQuickShareCaption(brand, weightSuffix);
 
-    // Step 2: withMarathonWhatsAppNotice calls appendMarathonWhatsAppNotice with weight comparison
     const progress = {
       mode: 'running',
       marathonNumber: 1,
       marathonDay: 5,
       currentDay: { day: 5, displayLine: 'Day 0 : — → Curr: 80.00 kg' },
+      currentWeight: 80,
     };
 
-    // Date inside marathon: 2026-08-05 (Marathon Day 5)
     const finalCaption = appendMarathonWhatsAppNotice(
       composed,
       '2026-08-06',
       progress,
-      { includeWeightComparison: true },
+      {
+        includeWeightComparison: true,
+        initialWeight: 85,
+        currentWeight: 80,
+      },
     );
 
     const expected = [
       'ALLAN · Wellness Valley v 3.5.2',
       '',
-      'DAY PROGRESS',
-      '',
+      '*Day progress*',
       'Ideal: 79.57 kg',
       'Prev: 80 kg',
       'Curr: 80 kg',
       '',
-      'LAP PROGRESS',
-      '',
-      'Marathon Day 5',
+      '*Lap progress*',
       'Day 0 : — → Curr: 80.00 kg',
+      '_Marathon Day 5_',
+      '*Overall*',
+      'Initial : 85.00 kg → Curr: 80.00 kg ⬇️ 5.00 kg',
     ].join('\n');
 
     assert.equal(finalCaption, expected);

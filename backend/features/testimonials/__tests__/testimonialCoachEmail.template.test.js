@@ -11,6 +11,7 @@ import {
   buildShareCardRow,
   buildTransformationCardEmailBlock,
   buildTransformationCardCompareRow,
+  normalizeChangedSlotsForEmail,
 } from '../testimonialCoachEmail.template.js';
 
 function photoImgs(html) {
@@ -256,5 +257,50 @@ describe('testimonial coach email photos keep aspect ratio', () => {
     });
     assert.match(htmlWithPhone, /Share code on WhatsApp/);
     assert.match(htmlWithPhone, /https:\/\/wa\.me\/919840095500\?text=/);
+  });
+
+  it('collapses Before+After dirty slots to Transformation for collage emails', () => {
+    assert.deepEqual(
+      normalizeChangedSlotsForEmail(['before', 'after', 'duration'], true),
+      ['transformation', 'duration'],
+    );
+    assert.deepEqual(
+      normalizeChangedSlotsForEmail(['before', 'after', 'duration'], false),
+      ['before', 'after', 'duration'],
+    );
+  });
+
+  it('unified collage email lists Transformation (not Before/After photo) and single preview', () => {
+    const html = buildUnifiedSubmitEmailHtml({
+      memberName: 'System',
+      otp: '6748',
+      changedSlots: ['before', 'after', 'duration'],
+      goalType: 'gain',
+      beforeWeight: 45,
+      afterWeight: 48,
+      durationText: '2 months',
+      beforeUrl: 'https://example.com/collage.jpg',
+      afterUrl: 'https://example.com/collage.jpg',
+      previousBeforeUrl: 'https://example.com/old-collage.jpg',
+      previousAfterUrl: 'https://example.com/old-collage.jpg',
+      previousBeforeWeight: 45,
+      previousAfterWeight: 48,
+      currentCardImageUrl: 'https://example.com/new-card.jpg',
+      previousCardImageUrl: 'https://example.com/prev-card.jpg',
+      currentPreviewHref: 'https://example.com/new-card.jpg',
+      previousPreviewHref: 'https://example.com/prev-card.jpg',
+      recoveredHealthIssues: [],
+      isComplete: true,
+      shareAsCollage: true,
+      previousShareAsCollage: true,
+    });
+    assert.match(html, /WHAT CHANGED/);
+    assert.match(html, />Transformation</);
+    assert.doesNotMatch(html, /Before photo/);
+    assert.doesNotMatch(html, /After photo/);
+    assert.match(html, /Before · After · Now|BEFORE · AFTER · NOW/i);
+    assert.match(html, /Previous Transformation Card/);
+    assert.match(html, /New Transformation Card/);
+    assert.equal(photoImgs(html).length, 2);
   });
 });

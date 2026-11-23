@@ -83,7 +83,7 @@ export function buildEducationObjectKey(userId, logId, contentHash, ext = 'jpg')
   );
 }
 
-/** Centre photo slot: entrance | interior | name_board | wellness_activity. */
+/** Centre photo slot: entrance | interior | wellness_activity | legacy name_board. */
 export function buildNutritionCentreObjectKey(centerId, slot, contentHash, ext = 'jpg') {
   return joinKey(
     R2_FOLDERS.nutritionCentre,

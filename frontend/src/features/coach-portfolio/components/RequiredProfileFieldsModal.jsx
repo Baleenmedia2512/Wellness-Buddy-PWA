@@ -1,5 +1,5 @@
 /**
- * Publish blocked — show every missing Profile field in one popup.
+ * Publish blocked — show every missing Profile field; Go to Profile opens + highlights them.
  */
 import React from 'react';
 import { ListChecks, X } from 'lucide-react';
@@ -8,9 +8,15 @@ import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton'
 export default function RequiredProfileFieldsModal({
   items = [],
   onClose,
+  onGoToProfile,
 }) {
   const list = (Array.isArray(items) ? items : []).map((item) => String(item || '').trim()).filter(Boolean);
   if (!list.length) return null;
+
+  const go = () => {
+    if (typeof onGoToProfile === 'function') onGoToProfile(list);
+    else if (typeof onClose === 'function') onClose();
+  };
 
   return (
     <div
@@ -50,7 +56,7 @@ export default function RequiredProfileFieldsModal({
         </div>
         <div className="space-y-4 px-5 py-5">
           <p className="text-sm text-slate-600">
-            Fill the items below on your Profile, then come back and publish again.
+            We will open your Profile and mark the missing fields in red so you can fill them quickly.
           </p>
           <ul className="space-y-2 rounded-2xl border border-rose-100 bg-rose-50/70 p-3.5">
             {list.map((item) => (
@@ -61,10 +67,10 @@ export default function RequiredProfileFieldsModal({
             ))}
           </ul>
           <TouchFeedbackButton
-            onClick={onClose}
+            onClick={go}
             className="w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-bold text-white shadow-sm shadow-emerald-600/20"
           >
-            OK
+            Go to Profile
           </TouchFeedbackButton>
         </div>
       </div>

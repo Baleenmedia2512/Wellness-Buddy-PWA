@@ -18,7 +18,6 @@ function fullPhotos() {
   return {
     entrance: [jpeg],
     interior: [jpeg],
-    name_board: [jpeg, jpeg],
     wellness_activity: [jpeg],
   };
 }
@@ -57,6 +56,19 @@ describe('prepareCentreProfile', () => {
     });
     assert.equal(result.error, undefined);
     assert.equal(result.centerCode, 'RSAB12');
+    assert.equal(result.photos.wellness_activity.length, 1);
+  });
+
+  it('still accepts legacy name_board photos when an older client sends them', () => {
+    const photos = fullPhotos();
+    photos.name_board = [jpeg, jpeg];
+    const result = prepareCentreProfile({
+      centerCode: 'ab12',
+      photos,
+      appVersion: '3.5.6',
+      mode: 'register',
+    });
+    assert.equal(result.error, undefined);
     assert.equal(result.photos.name_board.length, 2);
   });
 
@@ -102,7 +114,7 @@ describe('prepareCentreProfile', () => {
       appVersion: null,
       mode: 'register',
     });
-    assert.match(result.error, /Centre interior photos/);
+    assert.match(result.error, /Shake counter Image/);
   });
 
   it('rejects a code that is only the prefix', () => {
@@ -122,15 +134,15 @@ describe('centre photo rows', () => {
     const rows = centrePhotoRows(9, {
       entrance: [entrance],
       interior: ['nutrition-centres/9/interior/abcd1234abcd1234.jpg'],
+      wellness_activity: ['nutrition-centres/9/wellness_activity/abcd1234abcd1234.jpg'],
       name_board: [
         'nutrition-centres/9/name_board/abcd1234abcd1234.jpg',
         'nutrition-centres/9/name_board/bbbb1234bbbb1234.jpg',
       ],
-      wellness_activity: ['nutrition-centres/9/wellness_activity/abcd1234abcd1234.jpg'],
     });
     assert.equal(rows.length, 5);
-    assert.equal(rows[2].category, 'name_board');
-    assert.equal(rows[2].image_key.endsWith('.jpg'), true);
+    assert.equal(rows[3].category, 'name_board');
+    assert.equal(rows[3].image_key.endsWith('.jpg'), true);
     assert.equal(rows[0].image_data, undefined);
     const grouped = groupCentrePhotos(rows);
     assert.equal(grouped.entrance[0], entrance);

@@ -36,7 +36,7 @@ export const NAV_PAGE_LABELS = Object.freeze({
   broadcast: 'BroadCast',
   'create-event': 'Create Event',
   'event-check-in': 'Check-in',
-  'paid-features': 'Digital Portfolio',
+  'paid-features': 'Paid Feature',
   'map-business': 'Google Map Business',
   'go-premium': 'Go Premium',
 });

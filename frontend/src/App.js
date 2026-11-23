@@ -269,6 +269,7 @@ import { ADMIN_CONFIG_TABS } from "./shell/domain/adminConfigSetupTabs";
 import { isAdminLikeRole, normalizeAppRole, ROLE_USER } from "./shared/constants/roles";
 import { canAccessReportsModule } from "./features/reports/domain/reportsAccess.rules.js";
 import { OPEN_COMMUNITY_POSITION_EVENT } from "./features/user/domain/communityPositionFocus";
+import { OPEN_PROFILE_INTRO_EVENT } from "./features/user/domain/profileIntroFocus";
 import {
   fetchNavAccessForMe,
   resolveNavTargetOrFallback,
@@ -3208,7 +3209,11 @@ function WellnessValleyApp() {
   useEffect(() => {
     const openProfile = () => navigateTo('profile');
     window.addEventListener(OPEN_COMMUNITY_POSITION_EVENT, openProfile);
-    return () => window.removeEventListener(OPEN_COMMUNITY_POSITION_EVENT, openProfile);
+    window.addEventListener(OPEN_PROFILE_INTRO_EVENT, openProfile);
+    return () => {
+      window.removeEventListener(OPEN_COMMUNITY_POSITION_EVENT, openProfile);
+      window.removeEventListener(OPEN_PROFILE_INTRO_EVENT, openProfile);
+    };
   }, [navigateTo]);
   // -- Permission flow ------------------------------------------------------
   //
@@ -8842,9 +8847,10 @@ function WellnessValleyApp() {
           profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
-          <Suspense fallback={<LoadingSpinner message="Loading Digital Portfolio..." />}>
+          <Suspense fallback={<LoadingSpinner message="Loading Paid Feature..." />}>
             <PaidFeaturesPage
               userId={user?.id || user?.UserId || user?.userId || null}
+              allowedPages={navAccessPages}
               onClose={() => navigateTo('home')}
             />
           </Suspense>

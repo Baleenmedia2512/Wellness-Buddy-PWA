@@ -1,22 +1,24 @@
 /**
- * Task by Coach — coach email OTP gate (pure).
- * Apps ≥ GOOD_HABIT_COACH_OTP_MIN_VERSION must verify before insert.
- * Missing / older version → legacy immediate save (§5.1).
+ * Task by Coach — coach notify helpers (pure).
+ *
+ * Product (current): immediate save + score; coach gets email with Reject (no OTP).
+ * OTP helpers remain for older clients that still call /otp until those apps are retired.
  */
-import { isAtLeastVersion } from '../../app-version/domain/version.rules.js';
+import { DateTime } from 'luxon';
+import { IANA_IST } from '../../../shared/lib/datetime/index.js';
 
-/** First app version that requires coach OTP before persisting a habit. */
-export const GOOD_HABIT_COACH_OTP_MIN_VERSION = '3.5.7';
+/** @deprecated OTP gate retired — Reject-email flow replaced it. Kept for older APKs. */
+export const GOOD_HABIT_COACH_OTP_MIN_VERSION = '3.5.6';
 
 export const GOOD_HABIT_OTP_CONTACT_TYPE = 'good_habit_coach';
-export const GOOD_HABIT_OTP_TTL_MINUTES = 20;
 
 /**
- * @param {string|null|undefined} appVersion
+ * OTP is no longer required for any app version (save + Reject email instead).
+ * @param {string|null|undefined} _appVersion
  * @returns {boolean}
  */
-export function requiresGoodHabitCoachOtp(appVersion) {
-  return isAtLeastVersion(appVersion, GOOD_HABIT_COACH_OTP_MIN_VERSION) === true;
+export function requiresGoodHabitCoachOtp(_appVersion) {
+  return false;
 }
 
 /**
@@ -29,12 +31,40 @@ export function goodHabitOtpRecipientKey(userId, otpKey) {
 }
 
 /**
- * @param {number} [minutesFromNow]
- * @returns {string} IST wall datetime for auth OTP ExpiresAt
+ * End of the current IST calendar day (23:59:59.999 Asia/Kolkata).
+ * @param {Date|string|number} [now]
+ * @returns {DateTime}
  */
-export function goodHabitOtpExpiryIst(minutesFromNow = GOOD_HABIT_OTP_TTL_MINUTES) {
-  const now = new Date();
-  const istOffset = 5.5 * 60 * 60 * 1000;
-  const expiresAt = new Date(now.getTime() + istOffset + minutesFromNow * 60 * 1000);
-  return expiresAt.toISOString().replace('T', ' ').replace('Z', '').substring(0, 23);
+export function goodHabitOtpEndOfIstDay(now = new Date()) {
+  return DateTime.fromJSDate(now instanceof Date ? now : new Date(now))
+    .setZone(IANA_IST)
+    .endOf('day');
+}
+
+/**
+ * Auth OTP `ExpiresAt` wall string (IST digits; compared as IST in verify).
+ * Valid until 11:59:59.999 PM IST the same day the code was sent.
+ * @param {Date|string|number} [now]
+ * @returns {string}
+ */
+export function goodHabitOtpExpiryIst(now = new Date()) {
+  return goodHabitOtpEndOfIstDay(now).toFormat('yyyy-MM-dd HH:mm:ss.SSS');
+}
+
+/**
+ * Pending-payload expiry as real UTC ISO (compared with Date.now()).
+ * @param {Date|string|number} [now]
+ * @returns {string}
+ */
+export function goodHabitOtpExpiryUtcIso(now = new Date()) {
+  return goodHabitOtpEndOfIstDay(now).toUTC().toISO();
+}
+
+/**
+ * Human label for emails / API (IST).
+ * @param {Date|string|number} [now]
+ * @returns {string}
+ */
+export function goodHabitOtpExpiryLabelIst(now = new Date()) {
+  return `${goodHabitOtpEndOfIstDay(now).toFormat('d MMM yyyy')}, 11:59:59 PM IST`;
 }

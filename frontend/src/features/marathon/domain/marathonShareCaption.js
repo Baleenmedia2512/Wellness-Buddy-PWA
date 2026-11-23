@@ -11,8 +11,11 @@ import {
   DETOX_MARATHON_DAYS,
   getMarathonCalendarState,
 } from './marathonCalendar.js';
-import { formatMarathonWeightWhatsAppNoticeLines } from './marathonWeightComparison.js';
-import { formatTransformationCaption } from '../../../shared/utils/shareCaption.js';
+import {
+  formatMarathonWeightWhatsAppNoticeLines,
+  formatOverallWeightWhatsAppNoticeLines,
+  isValidMarathonWeightKg,
+} from './marathonWeightComparison.js';
 
 export const MARATHON_START_WHATSAPP_LABEL = 'Marathon Starts';
 export const MARATHON_DAY_0_WHATSAPP_LABEL = 'Today Marathon';
@@ -129,14 +132,18 @@ export function getMarathonWhatsAppAdvanceNotice(ymd) {
  * @param {unknown} caption
  * @param {unknown} ymd YYYY-MM-DD
  * @param {object|null} [marathonWeightComparison]
- * @param {{ includeWeightComparison?: boolean }} [options]
+ * @param {{ includeWeightComparison?: boolean, initialWeight?: unknown, currentWeight?: unknown }} [options]
  * @returns {string}
  */
 export function appendMarathonWhatsAppNotice(
   caption,
   ymd,
   marathonWeightComparison = null,
-  { includeWeightComparison = false } = {},
+  {
+    includeWeightComparison = false,
+    initialWeight = null,
+    currentWeight = null,
+  } = {},
 ) {
   const notice = getMarathonWhatsAppAdvanceNotice(ymd);
   const currentDay = notice ? null : getMarathonWhatsAppCurrentDayNotice(ymd);
@@ -144,14 +151,28 @@ export function appendMarathonWhatsAppNotice(
   const additions = [];
   const state = getMarathonCalendarState(ymd);
 
-  if (currentDay && !base.includes(currentDay)) additions.push(currentDay);
-  if (notice && !base.includes(notice)) additions.push(notice);
-
+  // Order: Lap (Day 0) → Marathon/Tomorrow line → Overall (Initial → Curr)
   if (includeWeightComparison && marathonWeightComparison) {
     const weightLines = formatMarathonWeightWhatsAppNoticeLines(marathonWeightComparison, state);
     const hasWeightLine = weightLines.some((line) => base.includes(line));
     if (weightLines.length > 0 && !hasWeightLine) {
       additions.push(...weightLines);
+    }
+  }
+
+  if (currentDay && !base.includes(currentDay)) additions.push(currentDay);
+  if (notice && !base.includes(notice)) additions.push(notice);
+
+  if (includeWeightComparison) {
+    const overallCurrent = isValidMarathonWeightKg(currentWeight)
+      ? currentWeight
+      : (marathonWeightComparison?.currentWeight
+        ?? marathonWeightComparison?.currentDay?.dayWeight
+        ?? null);
+    const overallLines = formatOverallWeightWhatsAppNoticeLines(initialWeight, overallCurrent);
+    const hasOverall = overallLines.some((line) => base.includes(line));
+    if (overallLines.length > 0 && !hasOverall) {
+      additions.push(...overallLines);
     }
   }
 

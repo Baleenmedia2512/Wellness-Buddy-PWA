@@ -383,6 +383,19 @@ function photoSlotImages(el) {
  */
 export async function prepareTransformationCardPhotos(el, photoSrc = {}) {
   if (!el) return;
+  const collageImg = el.querySelector('img[data-share-slot="collage"]');
+  if (collageImg) {
+    const src = photoSrc.beforeSrc || photoSrc.afterSrc;
+    if (src) {
+      collageImg.removeAttribute('crossorigin');
+      collageImg.src = src;
+    }
+    await waitForImage(collageImg);
+    if (!(collageImg.complete && collageImg.naturalWidth > 0)) {
+      throw new Error('Transformation collage not ready for card capture');
+    }
+    return;
+  }
   const { beforeImg, afterImg } = photoSlotImages(el);
   if (beforeImg && photoSrc.beforeSrc) {
     beforeImg.removeAttribute('crossorigin');
@@ -844,6 +857,9 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const aw = Number(testimonial?.afterWeightKg ?? 0);
   const beforeSrc = testimonial?.beforeImageUrl || null;
   const afterSrc = testimonial?.afterImageUrl || null;
+  const shareAsCollage = testimonial?.shareAsCollage === true
+    || (beforeSrc && afterSrc && beforeSrc === afterSrc);
+  const collageSrc = beforeSrc || afterSrc;
   const showPhotoRow = Boolean(beforeSrc || afterSrc || bw > 0 || aw > 0);
   const isLoss = isTransformationWeightLoss(bw, aw);
   const diff = isLoss == null ? null : Math.abs(aw - bw).toFixed(1);
@@ -953,34 +969,110 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
 
       {showPhotoRow && (
         <div style={{ padding: '0 12px' }}>
-          <table
-            style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}
-            cellPadding={0}
-            cellSpacing={0}
-          >
-            <tbody>
-              <tr>
-                <PhotoCell
-                  src={beforeSrc}
-                  label="BEFORE"
-                  scriptLabel="Before"
-                  weightKg={bw}
-                  isVerified={isVerified}
-                  side="left"
-                  photoH={photoH}
+          {shareAsCollage && collageSrc ? (
+            <div style={{ width: '100%' }}>
+              <div
+                style={{
+                  position: 'relative',
+                  width: '100%',
+                  height: photoH,
+                  overflow: 'hidden',
+                  borderRadius: 14,
+                  background: FRAME_BG,
+                }}
+              >
+                <img
+                  data-share-slot="collage"
+                  src={collageSrc}
+                  alt="Transformation"
+                  crossOrigin="anonymous"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'contain',
+                    objectPosition: 'center',
+                    display: 'block',
+                  }}
                 />
-                <PhotoCell
-                  src={afterSrc}
-                  label="AFTER"
-                  scriptLabel="After"
-                  weightKg={aw}
-                  isVerified={isVerified}
-                  side="right"
-                  photoH={photoH}
-                />
-              </tr>
-            </tbody>
-          </table>
+                {isVerified ? (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: 8,
+                      left: 8,
+                      width: TICK_SIZE,
+                      height: TICK_SIZE,
+                      borderRadius: '50%',
+                      background: '#16a34a',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <img src={CHECK_MARK_SRC} alt="" width={14} height={14} />
+                  </span>
+                ) : null}
+              </div>
+              <p
+                style={{
+                  margin: '8px 0 0',
+                  textAlign: 'center',
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: '0.12em',
+                  color: '#9ca3af',
+                  fontFamily: CARD_FONT,
+                }}
+              >
+                BEFORE · AFTER · NOW
+              </p>
+              {(bw > 0 || aw > 0) && (
+                <p
+                  style={{
+                    margin: '4px 0 0',
+                    textAlign: 'center',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: '#111827',
+                    fontFamily: CARD_FONT,
+                  }}
+                >
+                  {bw > 0 ? `${bw} kg` : '—'}
+                  {' → '}
+                  {aw > 0 ? `${aw} kg` : '—'}
+                </p>
+              )}
+            </div>
+          ) : (
+            <table
+              style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}
+              cellPadding={0}
+              cellSpacing={0}
+            >
+              <tbody>
+                <tr>
+                  <PhotoCell
+                    src={beforeSrc}
+                    label="BEFORE"
+                    scriptLabel="Before"
+                    weightKg={bw}
+                    isVerified={isVerified}
+                    side="left"
+                    photoH={photoH}
+                  />
+                  <PhotoCell
+                    src={afterSrc}
+                    label="AFTER"
+                    scriptLabel="After"
+                    weightKg={aw}
+                    isVerified={isVerified}
+                    side="right"
+                    photoH={photoH}
+                  />
+                </tr>
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 

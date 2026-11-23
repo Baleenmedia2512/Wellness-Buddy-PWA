@@ -40,16 +40,65 @@ function minutes(value) {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
+/** New club form: no days selected, times empty until the user picks. */
 export function defaultOpeningHours() {
-  const openSlots = [
-    { open: '05:30', close: '13:00' },
-    { open: '17:00', close: '21:30' },
-  ];
+  return simpleFormToOpeningHours({
+    workingDays: [],
+    openingTime: '',
+    closingTime: '',
+  });
+}
+
+/**
+ * UI form: pick days once + one open/close (alarm picker).
+ * Storage stays per-day JSON for the API.
+ * @param {unknown} hours
+ * @returns {{ workingDays: string[], openingTime: string, closingTime: string }}
+ */
+export function openingHoursToSimpleForm(hours) {
+  const workingDays = [];
+  let openingTime = '';
+  let closingTime = '';
+  let tookSlot = false;
+  for (const day of CENTRE_WEEKDAYS) {
+    const entry = hours?.[day];
+    if (!entry || entry.closed) continue;
+    workingDays.push(day);
+    const slot = Array.isArray(entry.slots) ? entry.slots[0] : null;
+    // Keep partial picks (open-only / close-only) so the alarm picker does not wipe.
+    if (!tookSlot && slot) {
+      const open = String(slot.open || '').trim();
+      const close = String(slot.close || '').trim();
+      if (open || close) {
+        openingTime = open;
+        closingTime = close;
+        tookSlot = true;
+      }
+    }
+  }
+  return { workingDays, openingTime, closingTime };
+}
+
+/**
+ * @param {{ workingDays?: string[], openingTime?: string, closingTime?: string }} form
+ * @returns {Record<string, { closed: boolean, slots: { open: string, close: string }[] }>}
+ */
+export function simpleFormToOpeningHours(form = {}) {
+  const selected = new Set(
+    (Array.isArray(form.workingDays) ? form.workingDays : [])
+      .map((d) => String(d || '').toLowerCase())
+      .filter((d) => CENTRE_WEEKDAYS.includes(d)),
+  );
+  // Keep empty until the user chooses — do not invent default clock times.
+  const open = String(form.openingTime || '').trim();
+  const close = String(form.closingTime || '').trim();
   const hours = {};
   for (const day of CENTRE_WEEKDAYS) {
-    hours[day] = day === 'sunday'
-      ? { closed: true, slots: [] }
-      : { closed: false, slots: openSlots.map((slot) => ({ ...slot })) };
+    if (selected.has(day)) {
+      hours[day] = { closed: false, slots: [{ open, close }] };
+    } else {
+      hours[day] = { closed: true, slots: [] };
+    }
   }
   return hours;
 }
