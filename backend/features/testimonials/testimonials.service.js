@@ -64,6 +64,7 @@ import { isInlineImageReference } from './domain/profileTransformationPhotos.see
 import {
   bufferFromOptionalBase64,
   composeTransformationShareCardJpeg,
+  isShareAsCollagePair,
 } from './domain/composeTransformationShareCard.js';
 import { scheduleDeferredCoachDelivery } from './deferredCoachDelivery.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
@@ -242,11 +243,18 @@ async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPho
     && !(afterPath && repo.isVideoOnlyPlaceholder?.(afterPath)),
   );
 
-  // Prefer path/base64 compose so tap-preview matches NEW Before|After thumbs.
+  // Prefer path/base64 compose so tap-preview matches NEW collage / Before|After card.
   if (canCompose) {
     try {
       const { beforeBuffer, afterBuffer } = await resolveShareCardPhotoBuffers(composeFromPhotos);
       if (beforeBuffer && afterBuffer) {
+        const shareAsCollage = isShareAsCollagePair({
+          beforeBuffer,
+          afterBuffer,
+          beforePath,
+          afterPath,
+          shareAsCollage: composeFromPhotos?.shareAsCollage,
+        });
         newJpeg = await composeTransformationShareCardJpeg({
           beforeBuffer,
           afterBuffer,
@@ -256,6 +264,7 @@ async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPho
           goalType: composeFromPhotos.goalType,
           durationText: composeFromPhotos.durationText,
           recoveredHealthIssues: composeFromPhotos.recoveredHealthIssues,
+          shareAsCollage,
         });
       }
     } catch (err) {
@@ -327,6 +336,13 @@ async function restoreShareCardAfterCancel(userId, composeFromPhotos = null) {
       afterWeightKg: composeFromPhotos.afterWeightKg,
       goalType: composeFromPhotos.goalType,
       durationText: composeFromPhotos.durationText,
+      shareAsCollage: isShareAsCollagePair({
+        beforeBuffer,
+        afterBuffer,
+        beforePath: composeFromPhotos.beforeImagePath,
+        afterPath: composeFromPhotos.afterImagePath,
+        shareAsCollage: composeFromPhotos.shareAsCollage,
+      }),
       recoveredHealthIssues: composeFromPhotos.recoveredHealthIssues,
     });
     if (!jpeg?.length) return false;
@@ -1657,6 +1673,8 @@ async function sendUnifiedCoachEmail({
   userId = null,
   /** When false, do not link tap-preview to a possibly stale share_card.jpg. */
   shareCardReady = false,
+  /** Submit already knew Before+After bytes are the same collage. */
+  shareAsCollageHint = false,
 }) {
   const slots = new Set(changedSlots);
   void userId;
@@ -1746,6 +1764,10 @@ async function sendUnifiedCoachEmail({
   // Previous full card: always compose from the same previous Before|After paths used
   // for the Previous column — never link a stale archive that can disagree with thumbs.
   let previousPreviewHref = null;
+  let previousShareAsCollage = isShareAsCollagePair({
+    beforePath: previousCardBeforePath,
+    afterPath: previousCardAfterPath,
+  });
   if (userId && previousPairDistinct && previousCardBeforePath && previousCardAfterPath) {
     const prevSharePath = repo.previousShareCardStoragePath(userId);
     try {
@@ -1754,6 +1776,12 @@ async function sendUnifiedCoachEmail({
         repo.downloadBuffer(previousCardAfterPath, { retries: 2 }),
       ]);
       if (prevBeforeBuf?.length && prevAfterBuf?.length) {
+        previousShareAsCollage = isShareAsCollagePair({
+          beforeBuffer: prevBeforeBuf,
+          afterBuffer: prevAfterBuf,
+          beforePath: previousCardBeforePath,
+          afterPath: previousCardAfterPath,
+        });
         const prevJpeg = await composeTransformationShareCardJpeg({
           beforeBuffer: prevBeforeBuf,
           afterBuffer: prevAfterBuf,
@@ -1763,6 +1791,7 @@ async function sendUnifiedCoachEmail({
           goalType: previousGoalType ?? goalType,
           durationText: previousDurationText ?? durationText,
           recoveredHealthIssues: previousRecoveredHealthIssues ?? recoveredHealthIssues,
+          shareAsCollage: previousShareAsCollage,
         });
         if (prevJpeg?.length > 2000) {
           await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
@@ -1791,10 +1820,36 @@ async function sendUnifiedCoachEmail({
     }
   }
 
+  let shareAsCollage = Boolean(shareAsCollageHint)
+    || isShareAsCollagePair({
+      beforePath: beforeImagePath,
+      afterPath: afterImagePath,
+    });
+  if (!shareAsCollage && isComplete && beforeImagePath && afterImagePath
+    && beforeImagePath !== afterImagePath) {
+    try {
+      const [curBeforeBuf, curAfterBuf] = await Promise.all([
+        repo.downloadBuffer(beforeImagePath, { retries: 1 }),
+        repo.downloadBuffer(afterImagePath, { retries: 1 }),
+      ]);
+      shareAsCollage = isShareAsCollagePair({
+        beforeBuffer: curBeforeBuf,
+        afterBuffer: curAfterBuf,
+        beforePath: beforeImagePath,
+        afterPath: afterImagePath,
+      });
+    } catch {
+      // Keep path-based detection.
+    }
+  }
+
   const hasPhotoCompare = Boolean(
     previousPairDistinct
-    && (previousPreviewHref || (previousBeforeHref && previousAfterHref))
-    && (currentPreviewHref || (currentBeforeHref && currentAfterHref)),
+    && (previousPreviewHref || (previousBeforeHref && previousAfterHref)
+      || (shareAsCollage && previousBeforeHref)
+      || (previousShareAsCollage && previousBeforeHref))
+    && (currentPreviewHref || (currentBeforeHref && currentAfterHref)
+      || (shareAsCollage && currentBeforeHref)),
   );
 
   // No CID photo attachments — HTTPS only (no "4 Attachments" strip in Gmail).
@@ -1828,6 +1883,8 @@ async function sendUnifiedCoachEmail({
     recoveredHealthIssues: recoveredHealthIssues ?? [],
     isComplete,
     shareCardSrc: null,
+    shareAsCollage,
+    previousShareAsCollage: hasPhotoCompare ? previousShareAsCollage : false,
   };
 
   await sendTransactionalMail({
@@ -1901,12 +1958,38 @@ async function storeDisplayedTransformationPhotos({
   return repo.findByUserId(userId);
 }
 
+async function readBeforePhotoBytes(beforeRef) {
+  const ref = String(beforeRef || '').trim();
+  if (!ref) return null;
+  if (/^https?:\/\//i.test(ref) || /^data:image\//i.test(ref)) {
+    return bytesFromDisplayedImage(ref);
+  }
+  try {
+    return await repo.downloadBuffer(ref);
+  } catch (err) {
+    logger.warn('[testimonials.service] storage download for Before failed', {
+      message: err?.message || String(err),
+    });
+    return null;
+  }
+}
+
 async function copyBeforePhotoToAfter(existing, userId) {
   if (!displayedPairNeedsAfterCopy(existing)) return existing;
-  const bytes = await repo.downloadBuffer(existing.before_image_path);
-  const afterPath = `${userId}/after_${Date.now()}.jpg`;
-  await repo.uploadImage(bytes.toString('base64'), afterPath);
-  await repo.updateTestimonial(existing.id, { afterImagePath: afterPath });
+  const beforeRef = existing.before_image_path ?? existing.beforeImagePath;
+  const bytes = await readBeforePhotoBytes(beforeRef);
+  if (!bytes || bytes.length < 32) {
+    throw new Error('Could not read Before photo to create After for coach approval.');
+  }
+  const ts = Date.now();
+  const updates = { afterImagePath: `${userId}/after_${ts}.jpg` };
+  // If Before was stored as a raw URL, rewrite it to a real storage object too.
+  if (/^https?:\/\//i.test(String(beforeRef || '')) || /^data:image\//i.test(String(beforeRef || ''))) {
+    updates.beforeImagePath = `${userId}/before_${ts}.jpg`;
+    await repo.uploadImage(bytes.toString('base64'), updates.beforeImagePath);
+  }
+  await repo.uploadImage(bytes.toString('base64'), updates.afterImagePath);
+  await repo.updateTestimonial(existing.id, updates);
   return repo.findByUserId(userId);
 }
 
@@ -1978,9 +2061,12 @@ export async function submitAllEdits(rawBody) {
   // A card that already shows Before and After is ready without a new upload.
   if (!existing || !photosReady) {
     if ((hasPhotoDirty || payload.submitForApproval) && !hasPhotoBytes && !photosReady) {
+      const hasBefore = Boolean(existing && hasRealBeforePhoto(existing));
       throw new ValidationError(
         422,
-        'Add before and after photos before submitting for coach approval.',
+        hasBefore
+          ? 'Add a different After photo (not the same as Before) before submitting for coach approval.'
+          : 'Add before and after photos before submitting for coach approval.',
       );
     }
   }
@@ -2074,7 +2160,7 @@ export async function submitAllEdits(rawBody) {
   });
 
   // OTP only when Before and After are two different stored files.
-  const photoNeedsOtp = (hasPhotoDirty || payload.submitForApproval)
+  let photoNeedsOtp = (hasPhotoDirty || payload.submitForApproval)
     && shouldSendPhotoApprovalOtp(existing, {
     beforePath: newBeforePath,
     afterPath: newAfterPath,
@@ -2082,6 +2168,24 @@ export async function submitAllEdits(rawBody) {
     afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
     status: existing.status,
   });
+
+  // Approval submit with Left-in-both / missing After: materialize a distinct After
+  // so coach OTP can start (weight/duration-only edits used to save with otpSent:false).
+  if (payload.submitForApproval && !photoNeedsOtp && hasRealBeforePhoto(existing)) {
+    if (displayedPairNeedsAfterCopy(existing)) {
+      const copied = await copyBeforePhotoToAfter(existing, payload.userId);
+      if (copied) existing = copied;
+    }
+    const retryBefore = photoUpdates.beforeImagePath ?? existing.before_image_path;
+    const retryAfter = photoUpdates.afterImagePath ?? existing.after_image_path;
+    photoNeedsOtp = shouldSendPhotoApprovalOtp(existing, {
+      beforePath: retryBefore,
+      afterPath: retryAfter,
+      beforeWeightKg: photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
+      afterWeightKg: photoUpdates.afterWeightKg ?? existing.after_weight_kg,
+      status: existing.status,
+    });
+  }
 
   // Health issues are optional — empty list is allowed on photo submit.
   const resolvedHealthIssues = mergedIssues;
@@ -2108,6 +2212,16 @@ export async function submitAllEdits(rawBody) {
   }
 
   if (!needsOtp) {
+    // Do not return otpSent:false for an approval tap — that showed a confusing
+    // "Coach approval did not start" error after a silent save.
+    if (payload.submitForApproval) {
+      throw new ValidationError(
+        422,
+        hasRealBeforePhoto(existing)
+          ? 'Add a different After photo (not the same as Before) before submitting for coach approval.'
+          : 'Add before and after photos before submitting for coach approval.',
+      );
+    }
     if (hasPhotoDirty && !isComplete) {
       photoUpdates.status = 'incomplete';
     }
@@ -2225,6 +2339,15 @@ export async function submitAllEdits(rawBody) {
     }
 
     scheduleDeferredCoachDelivery('unified share-card + coach email', async () => {
+      const collageFromPayload = Boolean(
+        payload.beforeImageBase64
+        && payload.afterImageBase64
+        && payload.beforeImageBase64 === payload.afterImageBase64,
+      );
+      const shareAsCollageHint = collageFromPayload || isShareAsCollagePair({
+        beforePath: finalBeforePath,
+        afterPath: finalAfterPath,
+      });
       const shareCardExtras = {
         beforeImagePath: finalBeforePath,
         afterImagePath: finalAfterPath,
@@ -2236,6 +2359,7 @@ export async function submitAllEdits(rawBody) {
         goalType: photoUpdates.goalType ?? existing.goal_type,
         durationText: resolvedDuration,
         recoveredHealthIssues: resolvedHealthIssues,
+        shareAsCollage: shareAsCollageHint,
       };
       // Never let share-card compose/upload block the OTP email.
       let shareCardPath = null;
@@ -2257,6 +2381,7 @@ export async function submitAllEdits(rawBody) {
         memberPhone:            userInfo.phoneNumber,
         otp,
         changedSlots:           emailChangedSlots,
+        shareAsCollageHint,
         goalType:               photoUpdates.goalType    ?? existing.goal_type,
         beforeWeight:           photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
         afterWeight:            photoUpdates.afterWeightKg  ?? existing.after_weight_kg,

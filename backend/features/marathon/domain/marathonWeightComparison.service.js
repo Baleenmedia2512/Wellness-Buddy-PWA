@@ -35,13 +35,20 @@ export async function resolveMarathonWeightProgress({
 
   if (runningDates && state.inMarathon && state.marathonDay != null) {
     const dayYmds = listMarathonDayYmds(runningDates.currentDay0Ymd);
+    // Day 0 baseline = weight on Day 0, else the latest weight posted before that day
+    // (so Lap progress never shows "Day 0 : —" when the member already has a prior log).
+    // Days 1–10 stay exact calendar-day logs only.
     const [previousRow, ...rows] = await Promise.all([
       weightRepo.findLatestWeightOnOrBeforeCalendarDay(
         userId,
         runningDates.previousDay10Ymd,
         timezoneIana,
       ),
-      ...dayYmds.map((ymd) => weightRepo.findLatestWeightOnCalendarDay(userId, ymd, timezoneIana)),
+      ...dayYmds.map((ymd, day) => (
+        day === 0
+          ? weightRepo.findLatestWeightOnOrBeforeCalendarDay(userId, ymd, timezoneIana)
+          : weightRepo.findLatestWeightOnCalendarDay(userId, ymd, timezoneIana)
+      )),
     ]);
 
     /** @type {Record<number, unknown>} */

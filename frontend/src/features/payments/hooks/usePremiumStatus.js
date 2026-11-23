@@ -1,41 +1,34 @@
-import { useCallback, useEffect, useState } from 'react';
-import { INACTIVE_PREMIUM_STATUS } from '../domain/premiumStatusStore';
-import { premiumStatusStore } from '../services/premiumStatus';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { blankEntitlement } from '../domain/entitlementSnapshot';
+import { clearPremiumThemeClass, premiumStatusStore, watchEntitlementUser } from '../services/premiumStatus';
 
 /**
  * Premium state for one member, shared with every screen that shows it.
- * Pass null to skip the check. Any failure leaves the member as not Premium.
+ * Pass null to skip the check and clear the theme. A failed check keeps the
+ * last confirmed answer for this member.
  * @param {string|number|null} userId
- * @returns {{
- *   premium: boolean,
- *   daysLeft: number|null,
- *   expiresAt: string|null,
- *   expiresAtDisplay: string|null,
- *   showExpiryWarning: boolean,
- *   refresh: () => Promise<boolean>,
- * }}
  */
 export default function usePremiumStatus(userId) {
   const key = userId == null ? '' : String(userId).trim();
-  const [status, setStatus] = useState(() => (
-    key ? premiumStatusStore.getStatus(key) : { ...INACTIVE_PREMIUM_STATUS }
-  ));
+  const [version, setVersion] = useState(0);
+  const status = key ? premiumStatusStore.getStatus(key) : blankEntitlement();
+  void version;
 
   useEffect(() => {
-    if (!key) {
-      setStatus({ ...INACTIVE_PREMIUM_STATUS });
-      return undefined;
-    }
-    setStatus(premiumStatusStore.getStatus(key));
-    const unsubscribe = premiumStatusStore.subscribe(key, setStatus);
+    if (!key) return undefined;
+    const unsubscribe = premiumStatusStore.subscribe(key, () => setVersion((value) => value + 1));
     premiumStatusStore.load(key);
-    return unsubscribe;
+    const stopWatch = watchEntitlementUser(key);
+    return () => {
+      unsubscribe();
+      stopWatch();
+    };
   }, [key]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof document === 'undefined') return undefined;
     if (!key) {
-      document.documentElement.classList.remove('premium-theme');
+      clearPremiumThemeClass();
       return undefined;
     }
     document.documentElement.classList.toggle('premium-theme', status.premium === true);

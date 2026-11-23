@@ -79,28 +79,41 @@ export const APP_VERSION = {
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
   // NOTE: versionCode must never decrease for Play Store compatibility.
-  VERSION_CODE: 85,
+  VERSION_CODE: 88,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
-  IOS_BUILD_NUMBER: 80,
+  // Must be > last App Store build (3.5.5 was build 84).
+  IOS_BUILD_NUMBER: 86,
   
   // Release name (for Play Store / App Store)
   RELEASE_NAME: 'Version  3.5.7',
   
   // Build date
-  BUILD_DATE: '2026-11-12',
+  BUILD_DATE: '2026-11-20',
   
   // Platform release notes..
   PLATFORMS: {
-    ANDROID: { versionCode: 85, versionName: '3.5.7' },
-    IOS: { buildNumber: 80, versionName: '3.5.7' },
+    ANDROID: { versionCode: 88, versionName: '3.5.7' },
+    IOS: { buildNumber: 86, versionName: '3.5.7' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
  * 
- * Version 3.5.5 (Code 84 / iOS build 79) - 2026-10-31 [ANDROID + iOS — not yet released]
+ * Version 3.5.7 (Code 88 / iOS build 86) - 2026-11-20 [ANDROID + iOS — not yet released]
+ *   ✨ Digital Portfolio — ₹399/yr per website slot (Cashfree); hub open without Premium
+ *   ✨ Public coach page live-syncs profile about/title/photo + club media/location
+ *
+ * Version 3.5.6 (Code 87 / iOS build 85) - 2026-11-18 [ANDROID + iOS — not yet released]
+ *   ✨ Task by Coach — save + score now; coach email with Reject (no OTP)
+ *   ✨ Home Top 10 date filter (Today / Yesterday / Last 10 / Custom up to 30 days)
+ *   ✨ Profile role badge — Customer / Sponsor / Admin / Developer
+ *
+ * Version 3.5.6 (Code 85 / iOS build 80) - 2026-11-12 [ANDROID + iOS — not yet released]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.5.5 (Code 84 / iOS build 84) - 2026-10-31 [ANDROID + iOS RELEASE]
  *   🐛 Patch release — bug fixes and stability improvements
  *
  * Version 3.5.4 (Code 83 / iOS build 78) - 2026-10-29 [ANDROID + iOS — not yet released]

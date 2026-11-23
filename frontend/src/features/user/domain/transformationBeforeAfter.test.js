@@ -120,7 +120,8 @@ describe('transformation Before vs After pairing', () => {
     assert.equal(seeded.beforeImageUrl, 'data:image/jpeg;base64,left');
     assert.equal(seeded.beforeWeightKg, 55);
     assert.equal(seeded.afterWeightKg, 55);
-    assert.equal(seeded.afterImageUrl, null);
+    // New users: same Left in After until a real After is uploaded.
+    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,left');
   });
 
   it('does not replace a verified After photo with Left', () => {
@@ -165,7 +166,7 @@ describe('transformation Before vs After pairing', () => {
     assert.equal(seeded.beforeWeightKg, 48);
   });
 
-  it('shows Profile Left only as Before and does not copy it into After', () => {
+  it('shows Profile Left in both Before and After for new users', () => {
     const seeded = seedMineTestimonialFromProfileSlots({
       status: 'incomplete',
       beforeImageUrl: null,
@@ -175,7 +176,7 @@ describe('transformation Before vs After pairing', () => {
       rightUrl: 'data:image/jpeg;base64,right',
     });
     assert.equal(seeded.beforeImageUrl, 'data:image/jpeg;base64,left');
-    assert.equal(seeded.afterImageUrl, null);
+    assert.equal(seeded.afterImageUrl, 'data:image/jpeg;base64,left');
     assert.equal(seeded.photosFromProfileSeed, true);
   });
 

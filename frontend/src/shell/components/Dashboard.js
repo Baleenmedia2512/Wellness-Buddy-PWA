@@ -1458,6 +1458,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         isOpen={showMemberProfile}
         onClose={() => setShowMemberProfile(false)}
         memberEmail={selectedMember.email}
+        memberUserId={selectedMember.userId || selectedMember.id}
         apiBaseUrl={apiBaseUrl}
       />
     )}
@@ -1467,6 +1468,10 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         entry={goodHabitDetail}
         ownerUserId={ownerId}
         timezoneIana={diaryOwnerTimezoneIana}
+        canReject={!viewingSelf}
+        onRejected={() => {
+          reloadDiary();
+        }}
         onClose={() => setGoodHabitDetail(null)}
       />
     )}

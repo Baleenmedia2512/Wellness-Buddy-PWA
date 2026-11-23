@@ -207,3 +207,36 @@ export function formatEventPlacesSummary(event) {
   }
   return places.map((p) => (p.venue ? `${p.city} (${p.venue})` : p.city)).join(' · ');
 }
+
+export function todayIstParts() {
+  const now = new Date();
+  const date = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+  const time = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(now);
+  return { date, time };
+}
+
+export function isEventFinished(event, now = todayIstParts()) {
+  if (!event || !now?.date) return false;
+  const dates = getEventDatesList(event);
+  if (dates.length === 0) return false;
+  dates.sort((a, b) => a.date.localeCompare(b.date));
+  const last = dates[dates.length - 1];
+  if (now.date > last.date) return true;
+  if (now.date === last.date && last.endTime) {
+    const endMatch = /^(\d{2}):(\d{2})/.exec(String(last.endTime).trim());
+    if (endMatch) {
+      return String(now.time || '00:00') > `${endMatch[1]}:${endMatch[2]}`;
+    }
+  }
+  return false;
+}

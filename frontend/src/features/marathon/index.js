@@ -22,6 +22,7 @@ export {
 } from './domain/marathonShareCaption.js';
 export {
   withMarathonWhatsAppNotice,
+  peekMarathonWeightComparisonForShare,
   ensureMarathonWeightComparisonForShare,
   getClientMarathonBusinessYmd,
   loadProfileMarathonWeightComparison,

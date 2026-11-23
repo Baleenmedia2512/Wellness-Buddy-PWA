@@ -1,101 +1,86 @@
 import { useCallback, useEffect, useState } from 'react';
-import { fetchReportAccess, startReportTrial } from '../services/reportAccessApi';
+import { blankEntitlement } from '../../payments/domain/entitlementSnapshot';
+import { premiumStatusStore, watchEntitlementUser } from '../../payments/services/premiumStatus';
+import { startReportTrial } from '../services/reportAccessApi';
 
 const EMPTY = {
   loaded: false,
   access: 'none',
   daysLeft: null,
+  expiresAtDisplay: null,
   canSeeDetails: false,
   error: '',
   starting: false,
 };
 
+function viewOf(snapshot, { error = '', starting = false } = {}) {
+  const access = snapshot?.access || 'none';
+  const onTrial = access === 'trial';
+  return {
+    loaded: snapshot?.reportLoaded === true,
+    access,
+    daysLeft: access === 'premium' ? (snapshot.daysLeft ?? null) : (onTrial || access === 'ended' ? snapshot.trialDaysLeft : null),
+    expiresAtDisplay: onTrial ? (snapshot.trialExpiresAtDisplay ?? null) : (access === 'premium' ? snapshot.expiresAtDisplay : null),
+    canSeeDetails: snapshot?.canSeeReportDetails === true,
+    error,
+    starting,
+  };
+}
+
 /**
- * Server-owned report access for one member.
+ * Report access from the shared entitlement snapshot.
  * Pass null to leave details locked and skip the request.
  * @param {string|number|null} userId
  */
 export default function useReportAccess(userId) {
   const key = userId == null ? '' : String(userId).trim();
-  const [state, setState] = useState(EMPTY);
-
-  const apply = useCallback((access) => {
-    setState({
-      loaded: true,
-      access: access.access,
-      daysLeft: access.daysLeft,
-      canSeeDetails: access.canSeeDetails === true,
-      error: '',
-      starting: false,
-    });
-  }, []);
-
-  const refresh = useCallback(async () => {
-    if (!key) {
-      setState({ ...EMPTY, loaded: true });
-      return null;
-    }
-    const access = await fetchReportAccess(key);
-    if (!access) {
-      setState((prev) => ({
-        ...prev,
-        loaded: true,
-        canSeeDetails: false,
-        error: 'Could not check report access',
-        starting: false,
-      }));
-      return null;
-    }
-    apply(access);
-    return access;
-  }, [apply, key]);
+  const [version, setVersion] = useState(0);
+  const [error, setError] = useState('');
+  const [starting, setStarting] = useState(false);
+  const snapshot = key ? premiumStatusStore.getStatus(key) : blankEntitlement();
+  void version;
 
   useEffect(() => {
-    let cancelled = false;
-    if (!key) {
-      setState({ ...EMPTY, loaded: true });
-      return undefined;
-    }
-    setState(EMPTY);
-    fetchReportAccess(key).then((access) => {
-      if (cancelled) return;
-      if (!access) {
-        setState({
-          ...EMPTY,
-          loaded: true,
-          error: 'Could not check report access',
-        });
-        return;
-      }
-      apply(access);
-    });
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') refresh();
-    };
-    document.addEventListener('visibilitychange', onVisible);
+    if (!key) return undefined;
+    setError('');
+    const unsubscribe = premiumStatusStore.subscribe(key, () => setVersion((value) => value + 1));
+    const current = premiumStatusStore.getStatus(key);
+    premiumStatusStore.load(key, { force: current.reportLoaded !== true });
+    const stopWatch = watchEntitlementUser(key);
     return () => {
-      cancelled = true;
-      document.removeEventListener('visibilitychange', onVisible);
+      unsubscribe();
+      stopWatch();
     };
-  }, [apply, key, refresh]);
+  }, [key]);
+
+  const refresh = useCallback(async () => {
+    if (!key) return null;
+    await premiumStatusStore.load(key, { force: true });
+    const next = premiumStatusStore.getStatus(key);
+    if (next.reportLoaded !== true) {
+      setError('Could not check report access');
+      return null;
+    }
+    setError('');
+    return viewOf(next);
+  }, [key]);
 
   const startTrial = useCallback(async () => {
     if (!key) return null;
-    setState((prev) => ({ ...prev, starting: true, error: '' }));
+    setStarting(true);
+    setError('');
     try {
       const access = await startReportTrial(key);
-      apply(access);
+      premiumStatusStore.applyReport(key, access);
+      setStarting(false);
       return access;
-    } catch (error) {
-      setState((prev) => ({
-        ...prev,
-        starting: false,
-        canSeeDetails: false,
-        error: error?.message || 'The free trial could not be started',
-      }));
+    } catch (startError) {
+      setStarting(false);
+      setError(startError?.message || 'The free trial could not be started');
       return null;
     }
-  }, [apply, key]);
+  }, [key]);
 
-  return { ...state, refresh, startTrial };
+  if (!key) return { ...EMPTY, loaded: true, refresh, startTrial };
+  return { ...viewOf(snapshot, { error, starting }), refresh, startTrial };
 }

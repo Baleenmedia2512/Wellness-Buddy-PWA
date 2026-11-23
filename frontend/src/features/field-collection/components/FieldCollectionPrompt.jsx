@@ -2,10 +2,22 @@
  * One later field: skippable until the admin skip limit or must-fill day.
  */
 import React, { useState } from 'react';
+import { isFlagEnabled } from '../../../config/featureFlags';
 import { saveProfile } from '../../user/services/profileService';
 import { saveWeight } from '../../weight/services/weight.api';
 import DiseaseMultiSelect from '../../testimonials/components/DiseaseMultiSelect';
 import { EVENT_LEVEL_OPTIONS } from '../../user/domain/eventProfilePrefs';
+import {
+  COMMUNITY_POSITION_OTP_FLAG,
+  rememberConfirmedCommunityPosition,
+} from '../../user/domain/communityPosition';
+import { EMAIL_OTP_LENGTH } from '../../user/domain/otpLength';
+import useOtpInput from '../../user/hooks/useOtpInput';
+import OtpInputCells from '../../../shared/components/OtpInputCells.jsx';
+import {
+  requestCommunityPosition,
+  verifyCommunityPositionOtp,
+} from '../../user/services/communityPosition.api';
 import { recordFieldCollectionAction } from '../services/fieldCollection.api';
 import { deferFieldForSession } from '../domain/sessionDefer';
 import ProfileIntroFields from '../../user/components/profile/ProfileIntroFields';
@@ -26,6 +38,9 @@ export default function FieldCollectionPrompt({ user, prompt, apiBaseUrl, onDone
   const [languages, setLanguages] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [positionPending, setPositionPending] = useState(null);
+  const positionOtpCtl = useOtpInput(EMAIL_OTP_LENGTH);
+  const positionOtpEnabled = isFlagEnabled(COMMUNITY_POSITION_OTP_FLAG);
   const blocking = prompt?.mode === 'ask_blocking';
   const { email, userId } = accountIds(user);
 
@@ -77,6 +92,41 @@ export default function FieldCollectionPrompt({ user, prompt, apiBaseUrl, onDone
     } else if (prompt.key === 'healthIssues') {
       payload.recoveredHealthIssues = issues;
     } else if (prompt.key === 'communityPosition') {
+      if (!value) {
+        setError('Choose a community position.');
+        return false;
+      }
+      // 3.5.6+ ignores eventLevel on profile POST — use coach OTP instead.
+      if (positionOtpEnabled) {
+        if (positionPending?.status === 'pending') {
+          const data = await verifyCommunityPositionOtp({
+            userId: userId || undefined,
+            email: email || undefined,
+            otp: positionOtpCtl.value,
+          });
+          rememberConfirmedCommunityPosition(userId, data.positionCode || value);
+        } else {
+          const data = await requestCommunityPosition({
+            userId: userId || undefined,
+            email: email || undefined,
+            positionCode: value,
+          });
+          if (data.alreadyHeld) {
+            rememberConfirmedCommunityPosition(userId, data.positionCode || value);
+          } else {
+            setPositionPending(data.communityPositionRequest || null);
+            return false;
+          }
+        }
+        await recordFieldCollectionAction({
+          userId,
+          fieldKey: prompt.key,
+          action: 'filled',
+          apiBaseUrl,
+        });
+        if (Number(prompt.askEveryDays) === 0) deferFieldForSession(userId, prompt.key);
+        return true;
+      }
       if (!EVENT_LEVEL_OPTIONS.includes(value)) {
         setError('Choose a community position.');
         return false;
@@ -185,8 +235,13 @@ export default function FieldCollectionPrompt({ user, prompt, apiBaseUrl, onDone
                 <button
                   key={option}
                   type="button"
-                  onClick={() => { setValue(option); setError(''); }}
-                  className={`w-full text-left rounded-xl border px-3 py-3 text-sm font-semibold ${
+                  disabled={saving || positionPending?.status === 'pending'}
+                  onClick={() => {
+                    setValue(option);
+                    setError('');
+                    setPositionPending(null);
+                  }}
+                  className={`w-full text-left rounded-xl border px-3 py-3 text-sm font-semibold disabled:opacity-60 ${
                     value === option
                       ? 'border-green-500 bg-green-50 text-green-800'
                       : 'border-gray-200 bg-white text-gray-800'
@@ -195,6 +250,24 @@ export default function FieldCollectionPrompt({ user, prompt, apiBaseUrl, onDone
                   {option}
                 </button>
               ))}
+              {positionOtpEnabled && positionPending?.status === 'pending' ? (
+                <div className="space-y-3 pt-2">
+                  <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    We sent an approval code to your coach{' '}
+                    <strong>{positionPending.approverName || 'your coach'}</strong>
+                    {positionPending.approverEmail ? ` (${positionPending.approverEmail})` : ''}.
+                    Enter the code they give you.
+                  </p>
+                  <OtpInputCells
+                    otpCtl={positionOtpCtl}
+                    length={EMAIL_OTP_LENGTH}
+                    emailOtp
+                    disabled={saving}
+                    onComplete={() => handleSave()}
+                    cellClassName="w-10 h-12 text-center text-lg font-semibold border border-gray-300 rounded-lg"
+                  />
+                </div>
+              ) : null}
             </div>
           ) : prompt.key === 'healthIssues' ? (
             <DiseaseMultiSelect value={issues} onChange={setIssues} />
@@ -235,10 +308,19 @@ export default function FieldCollectionPrompt({ user, prompt, apiBaseUrl, onDone
         <button
           type="button"
           onClick={handleSave}
-          disabled={saving}
+          disabled={
+            saving
+            || (prompt.key === 'communityPosition'
+              && positionPending?.status === 'pending'
+              && !positionOtpCtl.isComplete)
+          }
           className="w-full py-3.5 rounded-xl bg-green-600 text-white font-bold disabled:opacity-50"
         >
-          {saving ? 'Saving…' : 'Save'}
+          {saving
+            ? 'Saving…'
+            : (prompt.key === 'communityPosition' && positionPending?.status === 'pending'
+              ? 'Confirm code'
+              : 'Save')}
         </button>
         {!blocking && (
           <button

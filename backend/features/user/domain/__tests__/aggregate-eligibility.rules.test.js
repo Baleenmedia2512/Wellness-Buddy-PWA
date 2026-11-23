@@ -6,18 +6,23 @@ import assert from 'node:assert/strict';
 import {
   filterPublicAggregateUsers,
   filterAncestorsForIdealCoach,
+  isProductionEnvironment,
   sanitizeSponsorCoachLabels,
   shouldExcludeDeveloperFromAggregates,
 } from '../aggregate-eligibility.rules.js';
 
 const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+const ORIGINAL_HIDE = process.env.HIDE_DEVELOPERS_FROM_PUBLIC_AGGREGATES;
 
 describe('aggregate-eligibility.rules (non-production)', () => {
   beforeEach(() => {
     process.env.NODE_ENV = 'development';
+    delete process.env.HIDE_DEVELOPERS_FROM_PUBLIC_AGGREGATES;
   });
   afterEach(() => {
     process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+    if (ORIGINAL_HIDE === undefined) delete process.env.HIDE_DEVELOPERS_FROM_PUBLIC_AGGREGATES;
+    else process.env.HIDE_DEVELOPERS_FROM_PUBLIC_AGGREGATES = ORIGINAL_HIDE;
   });
 
   it('does not filter developers outside production', () => {
@@ -25,14 +30,30 @@ describe('aggregate-eligibility.rules (non-production)', () => {
     assert.equal(filterPublicAggregateUsers(users).length, 2);
     assert.equal(shouldExcludeDeveloperFromAggregates({ UserId: 1, Role: 'developer' }), false);
   });
+
+  it('honours HIDE_DEVELOPERS_FROM_PUBLIC_AGGREGATES override', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.HIDE_DEVELOPERS_FROM_PUBLIC_AGGREGATES = 'true';
+    assert.equal(isProductionEnvironment(), true);
+    assert.deepEqual(
+      filterPublicAggregateUsers(
+        [{ UserId: 1, Role: 'developer' }, { UserId: 2, Role: 'user' }],
+        { publicLeaderboard: true },
+      ).map((u) => u.UserId),
+      [2],
+    );
+  });
 });
 
 describe('aggregate-eligibility.rules (production)', () => {
   beforeEach(() => {
     process.env.NODE_ENV = 'production';
+    delete process.env.HIDE_DEVELOPERS_FROM_PUBLIC_AGGREGATES;
   });
   afterEach(() => {
     process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+    if (ORIGINAL_HIDE === undefined) delete process.env.HIDE_DEVELOPERS_FROM_PUBLIC_AGGREGATES;
+    else process.env.HIDE_DEVELOPERS_FROM_PUBLIC_AGGREGATES = ORIGINAL_HIDE;
   });
 
   it('excludes developers from public aggregates but keeps self-access', () => {
@@ -79,6 +100,30 @@ describe('aggregate-eligibility.rules (production)', () => {
         { viewerUserId: 339, viewerRole: 'admin' },
       ),
       false,
+    );
+  });
+
+  it('public leaderboards hide other developers even for admin viewers', () => {
+    const users = [
+      { UserId: 1, Role: 'developer' },
+      { UserId: 2, Role: 'user' },
+      { UserId: 339, Role: 'admin' },
+    ];
+    assert.deepEqual(
+      filterPublicAggregateUsers(users, {
+        viewerUserId: 339,
+        viewerRole: 'admin',
+        publicLeaderboard: true,
+      }).map((u) => u.UserId),
+      [2, 339],
+    );
+    assert.deepEqual(
+      filterPublicAggregateUsers(users, {
+        viewerUserId: 1,
+        viewerRole: 'developer',
+        publicLeaderboard: true,
+      }).map((u) => u.UserId),
+      [1, 2, 339],
     );
   });
 

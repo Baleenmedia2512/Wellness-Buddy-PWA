@@ -56,7 +56,7 @@ export function canonicalizePremiumLevelCode(value) {
  * @returns {number}
  */
 export function roundPremiumRupees(rupees) {
-  return Math.round(Number(rupees) * 100) / 100;
+  return Math.round(Number(rupees));
 }
 
 /**
@@ -183,6 +183,8 @@ export function listPremiumPayableTotals(pricing = null) {
   const totals = new Set();
   for (const base of Object.values(config.bases)) {
     totals.add(applyPremiumGst(base, config.gstRate).totalAmount);
+    // Backward compatibility for in-flight orders with legacy decimals
+    totals.add(Math.round(base * (1 + config.gstRate) * 100) / 100);
   }
   return [...totals].sort((a, b) => a - b);
 }

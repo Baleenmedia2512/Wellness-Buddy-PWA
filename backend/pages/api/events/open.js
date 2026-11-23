@@ -20,8 +20,8 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'GET') {
-    validateListOpenEvents(req.query);
-    return runService(res, () => listOpenEvents());
+    const { userId } = validateListOpenEvents(req.query);
+    return runService(res, () => listOpenEvents(userId));
   }
   return methodNotAllowed(res);
 }

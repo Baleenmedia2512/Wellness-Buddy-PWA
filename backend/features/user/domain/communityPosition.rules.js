@@ -152,7 +152,8 @@ export function classifyCommunityPositionRequest({
   confirmedCode = null,
   activeCodes = [],
 } = {}) {
-  const code = normalizePositionCode(requestedCode);
+  // Accept released-app aliases (e.g. GET TEAM → GET) before catalog check.
+  const code = canonicalizePositionCode(requestedCode);
   if (!isValidPositionCode(code)) {
     return {
       ok: false,
@@ -161,7 +162,7 @@ export function classifyCommunityPositionRequest({
       code: null,
     };
   }
-  const allowed = (activeCodes || []).map(normalizePositionCode).filter(Boolean);
+  const allowed = (activeCodes || []).map(canonicalizePositionCode).filter(Boolean);
   if (!allowed.includes(code)) {
     return {
       ok: false,
@@ -170,7 +171,7 @@ export function classifyCommunityPositionRequest({
       code,
     };
   }
-  const current = normalizePositionCode(confirmedCode);
+  const current = canonicalizePositionCode(confirmedCode);
   if (current && current === code) {
     return {
       ok: false,

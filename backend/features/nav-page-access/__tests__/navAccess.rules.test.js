@@ -11,6 +11,7 @@ import {
   validateMatrixInput,
   mergeOmittedSystemAdmin,
   mergeOmittedCheckInPage,
+  mergeOmittedEventsPage,
   normalizeMatrix,
   matrixWithDefaultsForNewPages,
   DEFAULT_NAV_ACCESS_MATRIX,
@@ -53,9 +54,10 @@ describe('resolveMatrixRole', () => {
 });
 
 describe('DEFAULT_NAV_ACCESS_MATRIX', () => {
-  it('seeds customer to Home, Diary, Programmes, Transformation, and BroadCast', () => {
+  it('seeds customer to Home, Events, Diary, Programmes, Transformation, and BroadCast', () => {
     const pages = DEFAULT_NAV_ACCESS_MATRIX.user;
     assert.equal(pages.home, true);
+    assert.equal(pages.events, true);
     assert.equal(pages.dashboard, true);
     assert.equal(pages.enrollment, true);
     assert.equal(pages.testimonials, true);
@@ -67,6 +69,30 @@ describe('DEFAULT_NAV_ACCESS_MATRIX', () => {
     assert.equal(pages['physical-club'], false);
     assert.equal(pages.reports, false);
     assert.equal(pages['go-premium'], false);
+  });
+
+  it('fills Events from defaults when an older matrix omits it', () => {
+    const older = {
+      user: {
+        home: true,
+        dashboard: true,
+        enrollment: true,
+        testimonials: true,
+        'activity-report': false,
+        counselling: false,
+        'physical-club': false,
+        reports: false,
+        broadcast: true,
+      },
+      coach: { home: true },
+      admin: { home: true },
+      developer: { home: true },
+    };
+    const filled = matrixWithDefaultsForNewPages(older);
+    assert.equal(filled.user.events, true);
+    assert.equal(filled.coach.events, true);
+    assert.equal(filled.admin.events, true);
+    assert.equal(filled.developer.events, true);
   });
 
   it('fills Go Premium from defaults when an older matrix omits it', () => {
@@ -231,6 +257,34 @@ describe('validateMatrixInput', () => {
     );
     assert.equal(turnedOff.admin['event-check-in'], false);
     assert.equal(turnedOff.developer['event-check-in'], true);
+  });
+
+  it('keeps Events when an older save omits the page', () => {
+    const older = {
+      user: { home: true },
+      coach: { home: true },
+      admin: { home: true },
+      developer: { home: true },
+    };
+    const validated = validateMatrixInput(older);
+    const stored = {
+      user: { events: true },
+      coach: { events: false },
+      system_admin: { events: true },
+      admin: { events: true },
+      developer: { events: true },
+    };
+    const merged = mergeOmittedEventsPage(older, validated.matrix, stored);
+    assert.equal(merged.user.events, true);
+    assert.equal(merged.coach.events, false);
+    assert.equal(merged.admin.events, true);
+    const turnedOff = mergeOmittedEventsPage(
+      { ...older, admin: { home: true, events: false } },
+      validateMatrixInput({ ...older, admin: { home: true, events: false } }).matrix,
+      stored,
+    );
+    assert.equal(turnedOff.admin.events, false);
+    assert.equal(turnedOff.developer.events, true);
   });
 
   it('accepts full matrix and normalizes', () => {

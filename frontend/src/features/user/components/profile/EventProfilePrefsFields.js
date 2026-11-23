@@ -1,5 +1,5 @@
 /**
- * Profile: Translation and Your City — saved once for all event registrations.
+ * Profile: Translation and Living city — saved once for all event registrations.
  * Community Position lives on the profile, under Community ID.
  */
 import React from 'react';
@@ -55,10 +55,10 @@ export default function EventProfilePrefsFields({
       />
       <PrefSelect
         id="profile-event-your-city"
-        label="Your City"
+        label="Living city"
         value={eventYourCity}
         options={EVENT_YOUR_CITY_OPTIONS}
-        placeholder="Choose your city"
+        placeholder="Choose living city"
         onChange={setEventYourCity}
       />
     </div>

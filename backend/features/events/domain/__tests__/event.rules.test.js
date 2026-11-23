@@ -7,6 +7,7 @@ import {
   buildRegistrationQrPayload,
   computeRegistrationCharge,
   eventDeleteBlockedByBookings,
+  isEventFinished,
   normalizeBookingFor,
   selfBookingAlreadyTaken,
   generateEntryCode,
@@ -426,5 +427,43 @@ describe('registration payment helpers', () => {
     assert.match(code, /^\d{4}$/);
     assert.notEqual(code, '1000');
     assert.notEqual(code, '1001');
+  });
+});
+
+describe('isEventFinished', () => {
+  const now = { date: '2026-11-16', time: '13:00' };
+
+  it('marks past date events as finished', () => {
+    assert.equal(isEventFinished({ eventDate: '2026-11-05' }, now), true);
+    assert.equal(isEventFinished({ eventDate: '2026-11-15' }, now), true);
+  });
+
+  it('marks future date events as not finished', () => {
+    assert.equal(isEventFinished({ eventDate: '2026-11-17' }, now), false);
+    assert.equal(isEventFinished({ eventDate: '2026-12-05' }, now), false);
+  });
+
+  it('checks endTime for events on today', () => {
+    assert.equal(isEventFinished({ eventDate: '2026-11-16', endTime: '12:00' }, now), true);
+    assert.equal(isEventFinished({ eventDate: '2026-11-16', endTime: '14:00' }, now), false);
+    assert.equal(isEventFinished({ eventDate: '2026-11-16', endTime: null }, now), false);
+  });
+
+  it('checks the last date when multiple eventDates exist', () => {
+    const pastMulti = {
+      eventDates: [
+        { date: '2026-11-01' },
+        { date: '2026-11-05', endTime: '18:00' },
+      ],
+    };
+    assert.equal(isEventFinished(pastMulti, now), true);
+
+    const ongoingMulti = {
+      eventDates: [
+        { date: '2026-11-05' },
+        { date: '2026-11-20' },
+      ],
+    };
+    assert.equal(isEventFinished(ongoingMulti, now), false);
   });
 });

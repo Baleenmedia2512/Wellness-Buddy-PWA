@@ -117,6 +117,42 @@ function resolveShareUserId(user, userId) {
 }
 
 /**
+ * Sync marathon comparison for share (cache / profile only — no network).
+ * Use on mobile web before navigator.share so the user-gesture window is not lost.
+ *
+ * @param {object} [options]
+ * @param {object|null} [options.user]
+ * @param {unknown} [options.timezoneSource]
+ * @param {unknown} [options.currentMarathonDay0Weight]
+ * @param {object|null|undefined} [options.marathonWeightComparison]
+ * @returns {object|null}
+ */
+export function peekMarathonWeightComparisonForShare({
+  user = null,
+  timezoneSource,
+  currentMarathonDay0Weight,
+  marathonWeightComparison,
+} = {}) {
+  let comparison = marathonWeightComparison ?? null;
+  if (comparison == null) {
+    comparison = getMarathonWeightComparisonFromCache()
+      ?? resolveMarathonWeightComparisonFromProfileCache(user);
+  }
+
+  const ymd = getClientMarathonBusinessYmd(timezoneSource ?? user);
+  const state = getMarathonCalendarState(ymd);
+
+  if (currentMarathonDay0Weight !== undefined) {
+    return mergeMarathonWeightComparisonForShare(
+      comparison,
+      currentMarathonDay0Weight,
+      state.marathonDay,
+    );
+  }
+  return comparison;
+}
+
+/**
  * Load marathon Day 0 comparison for share when cache is empty or partial.
  * Uses the same business date as the Day 0 caption (profile/device tz + test override).
  *
@@ -206,8 +242,23 @@ function resolveIncludeWeightComparison(ymdOrOptions, currentMarathonDay0Weight)
 }
 
 /**
+ * @param {unknown} user
+ * @returns {number|null}
+ */
+function resolveInitialWeightFromProfileCache(user) {
+  if (!user || typeof user !== 'object') return null;
+  const direct = user.initialWeight ?? user.InitialWeight;
+  if (isValidMarathonWeightKg(direct)) return Number(direct);
+  const email = user.email || user.Email;
+  if (!email) return null;
+  const profile = getCachedProfile(email);
+  const fromProfile = profile?.data?.initialWeight;
+  return isValidMarathonWeightKg(fromProfile) ? Number(fromProfile) : null;
+}
+
+/**
  * @param {unknown} caption
- * @param {string|{ ymd?: string, user?: object, timezoneSource?: unknown, timezoneIana?: string, now?: Date, marathonWeightComparison?: object|null, currentMarathonDay0Weight?: unknown, includeWeightComparison?: boolean }} [ymdOrOptions]
+ * @param {string|{ ymd?: string, user?: object, timezoneSource?: unknown, timezoneIana?: string, now?: Date, marathonWeightComparison?: object|null, currentMarathonDay0Weight?: unknown, includeWeightComparison?: boolean, initialWeight?: unknown }} [ymdOrOptions]
  * @returns {string}
  */
 export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
@@ -216,6 +267,7 @@ export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
   let now;
   let marathonWeightComparison = null;
   let currentMarathonDay0Weight;
+  let initialWeight;
   let user;
 
   if (typeof ymdOrOptions === 'string') {
@@ -232,6 +284,9 @@ export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
     }
     if (ymdOrOptions.currentMarathonDay0Weight !== undefined) {
       currentMarathonDay0Weight = ymdOrOptions.currentMarathonDay0Weight;
+    }
+    if (ymdOrOptions.initialWeight !== undefined) {
+      initialWeight = ymdOrOptions.initialWeight;
     }
   }
 
@@ -270,10 +325,18 @@ export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
     ) ?? { mode: 'gap', partial: true, previousMarathonEndWeight: null, currentWeight: null };
   }
 
+  if (includeWeightComparison && !isValidMarathonWeightKg(initialWeight)) {
+    initialWeight = resolveInitialWeightFromProfileCache(user);
+  }
+
   return appendMarathonWhatsAppNotice(
     caption,
     ymd,
     includeWeightComparison ? marathonWeightComparison : null,
-    { includeWeightComparison },
+    {
+      includeWeightComparison,
+      initialWeight: includeWeightComparison ? initialWeight : null,
+      currentWeight: includeWeightComparison ? currentMarathonDay0Weight : null,
+    },
   );
 }

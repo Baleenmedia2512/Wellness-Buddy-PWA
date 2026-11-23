@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pencil, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, X } from 'lucide-react';
 import { getUserId } from '../../../shared/services/getUserId.js';
 import {
   createEvent,
@@ -15,11 +15,10 @@ import {
 import DesignatedPersonPicker from './DesignatedPersonPicker.jsx';
 import EventCheckInPanel from './EventCheckInPanel.jsx';
 import EventTicketReport from './EventTicketReport.jsx';
-import HostPersonPicker from './HostPersonPicker.jsx';
 
 const EMPTY_FORM = {
   eventName: '',
-  speakers: [],
+  speakers: '',
   places: [{ city: '', venue: '' }],
   eventDates: [{ date: '', startTime: '', endTime: '' }],
   ticketPrice: '',
@@ -34,19 +33,6 @@ function todayIstYmd() {
     month: '2-digit',
     day: '2-digit',
   }).format(new Date());
-}
-
-function speakersFromEvent(item) {
-  const names = eventSpeakerNames(item);
-  const stored = Array.isArray(item?.speakers) ? item.speakers : [];
-  return names.map((name) => {
-    const match = stored.find((speaker) => String(speaker?.name || '').trim() === name);
-    const userId = Number(match?.userId);
-    return {
-      name,
-      userId: Number.isInteger(userId) && userId > 0 ? userId : null,
-    };
-  });
 }
 
 const STATUS_LABEL = {
@@ -69,7 +55,7 @@ function formatPrice(amount) {
   return `₹${value.toFixed(2)}`;
 }
 
-export default function CreateEventPage({ user, initialTab = 'manage' }) {
+export default function CreateEventPage({ user, initialTab = 'manage', onBack }) {
   const [userId, setUserId] = useState(null);
   const [ready, setReady] = useState(false);
   const [pageTab, setPageTab] = useState(initialTab === 'checkin' ? 'checkin' : 'manage');
@@ -187,8 +173,12 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
     setSaving(true);
     setError('');
     const today = todayIstYmd();
-    if ((form.speakers || []).length === 0) {
-      setError('Add at least one speaker.');
+    const speakerNames = String(form.speakers || '')
+      .split(/[,·]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (speakerNames.length === 0) {
+      setError('Enter speaker name.');
       setSaving(false);
       return;
     }
@@ -199,6 +189,17 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
     }
     const primaryDate = form.eventDates[0] || {};
     const primaryPlace = form.places[0] || {};
+    const existingSpeakers = (events.find((e) => e.id === editingId)?.speakers) || [];
+    const speakersPayload = speakerNames.map((name) => {
+      const match = Array.isArray(existingSpeakers)
+        ? existingSpeakers.find((s) => String(s?.name || '').trim().toLowerCase() === name.toLowerCase())
+        : null;
+      return {
+        name,
+        userId: match?.userId ?? null,
+      };
+    });
+    const hostNamePayload = speakerNames.join(' · ');
     const payload = {
       userId,
       ...form,
@@ -207,8 +208,8 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
       eventDate: primaryDate.date || '',
       startTime: primaryDate.startTime || '',
       endTime: primaryDate.endTime || '',
-      speakers: form.speakers,
-      hostName: form.speakers.map((speaker) => speaker.name).join(' · '),
+      speakers: speakersPayload,
+      hostName: hostNamePayload,
     };
     try {
       if (editingId) {
@@ -227,6 +228,7 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
   };
 
   const onEdit = (item) => {
+    if (String(item?.status || '').toLowerCase() === 'cancelled') return;
     setEditingId(item.id);
     const existingDates = Array.isArray(item.eventDates) && item.eventDates.length > 0
       ? item.eventDates.map((d) => ({
@@ -250,9 +252,12 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
           venue: item.venue || '',
         }];
 
+    const speakerNames = eventSpeakerNames(item);
+    const speakerText = speakerNames.length > 0 ? speakerNames.join(', ') : (item.hostName || '');
+
     setForm({
       eventName: item.eventName || '',
-      speakers: speakersFromEvent(item),
+      speakers: speakerText,
       places: existingPlaces,
       eventDates: existingDates,
       ticketPrice: item.ticketPrice ?? '',
@@ -306,6 +311,18 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
   if (pageTab === 'checkin') {
     return (
       <div className="max-w-lg mx-auto px-4 py-4 pb-10">
+        {onBack && (
+          <div className="mb-3">
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-800 hover:text-emerald-950 px-3 py-1.5 rounded-xl bg-emerald-100/70 hover:bg-emerald-100 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Events</span>
+            </button>
+          </div>
+        )}
         <h1 className="text-xl font-extrabold text-green-800">Check-in</h1>
         <div className="mt-4">
           <EventCheckInPanel user={user} />
@@ -316,6 +333,18 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
 
   return (
     <div className="max-w-lg mx-auto px-4 py-4 pb-10">
+      {onBack && (
+        <div className="mb-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-800 hover:text-emerald-950 px-3 py-1.5 rounded-xl bg-emerald-100/70 hover:bg-emerald-100 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to Events</span>
+          </button>
+        </div>
+      )}
       <h1 className="text-xl font-extrabold text-green-800">Create Event</h1>
       <p className="mt-1 text-sm text-gray-600">
         Add an event, then update, postpone, cancel, or delete it.
@@ -335,11 +364,18 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
               Event name
               <input value={form.eventName} onChange={onChange('eventName')} maxLength={200} required className={inputClass} />
             </label>
-            <HostPersonPicker
-              userId={userId}
-              speakers={form.speakers}
-              onChange={(speakers) => setForm((prev) => ({ ...prev, speakers }))}
-            />
+            <label className="block text-sm font-medium text-gray-700">
+              Speaker
+              <input
+                type="text"
+                value={form.speakers}
+                onChange={onChange('speakers')}
+                placeholder="Enter Speaker name"
+                maxLength={200}
+                required
+                className={inputClass}
+              />
+            </label>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="block text-sm font-medium text-gray-700">
@@ -597,15 +633,17 @@ export default function CreateEventPage({ user, initialTab = 'manage' }) {
                     >
                       Report
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => onEdit(item)}
-                      aria-label="Edit event"
-                      title="Edit event"
-                      className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-green-800 focus:outline-none focus:ring-2 focus:ring-green-600"
-                    >
-                      <Pencil className="h-4 w-4" aria-hidden="true" />
-                    </button>
+                    {String(item.status || '').toLowerCase() !== 'cancelled' && (
+                      <button
+                        type="button"
+                        onClick={() => onEdit(item)}
+                        aria-label="Edit event"
+                        title="Edit event"
+                        className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2 text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-green-800 focus:outline-none focus:ring-2 focus:ring-green-600"
+                      >
+                        <Pencil className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setActionModalEvent(item)}

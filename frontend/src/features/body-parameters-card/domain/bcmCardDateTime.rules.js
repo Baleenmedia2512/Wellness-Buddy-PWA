@@ -266,3 +266,17 @@ export function resolveBcmCardAppointmentDate(card) {
   const base = card.createdAt || card.created_at || card.recordedDate || card.recorded_date;
   return computeDefaultAppointmentDate(base || new Date());
 }
+
+/** Fixed follow-up time shown on the BCM share card Appointment row. */
+export const BCM_DEFAULT_APPOINTMENT_TIME_LABEL = '7:00 AM';
+
+/**
+ * Appointment line for the BCM share card: `YYYY-MM-DD 7:00 AM`.
+ * @param {object|null|undefined} card
+ * @returns {string}
+ */
+export function formatBcmAppointmentDisplay(card) {
+  const date = resolveBcmCardAppointmentDate(card);
+  if (!date) return '';
+  return `${date} ${BCM_DEFAULT_APPOINTMENT_TIME_LABEL}`;
+}

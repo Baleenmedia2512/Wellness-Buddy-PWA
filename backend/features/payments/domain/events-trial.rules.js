@@ -1,8 +1,9 @@
 /**
- * Version gate for Digital Portfolio.
+ * Legacy version gate for Digital Portfolio (apps below PORTFOLIO_SITE_SLOTS_MIN).
+ * Next-release clients use per-site ₹399/yr credits instead (siteSlots.rules.js).
  * Create Event and Check-in stay open.
  * Trial length and window math live in report-trial.rules.js (centralized 14-day trial).
- * Apps older than 3.5.7, and requests with no version, keep free host tools.
+ * Apps older than EVENTS_HOST_MIN_VERSION, and requests with no version, keep free host tools.
  */
 import { isAtLeastVersion } from '../../app-version/domain/version.rules.js';
 import {

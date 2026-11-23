@@ -15,7 +15,7 @@
 // user has a phone number from auth, the app checks for a counselling lead
 // record with the same phone and pre-populates the form fields.
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, LogOut, Trash2, CheckCircle, Sparkles, Camera, KeyRound, Share2 } from 'lucide-react';
+import { ArrowLeft, LogOut, Trash2, CheckCircle, Sparkles, Camera, KeyRound } from 'lucide-react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import * as Session from '../../../shared/services/sessionStorage';
 import {
@@ -24,7 +24,6 @@ import {
 } from '../../../shared/utils/autoCameraPreference';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile, requestCommunityId, verifyCommunityIdOtp, requestHeightChangeOtp, verifyHeightChangeOtp } from '../services/profileService';
-import { shareAppInvite } from '../services/appInviteShare.service';
 import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import { loadProfileMarathonWeightComparison } from '../../marathon';
 import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/counsellingApi';
@@ -48,8 +47,14 @@ import ChangeProfilePhotoModal from './ChangeProfilePhotoModal';
 import ProfilePhotoViewer from './picture/ProfilePhotoViewer';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { invalidateHasTeamMembersCache } from '../../team/services/teamSearchService';
-import { bumpAvatarDisplayVersion } from '../services/avatarDisplayVersion';
+import {
+  bumpAvatarDisplayVersion,
+  getAvatarDisplayVersion,
+  resolveClientAvatarSrc,
+  subscribeAvatarDisplayVersion,
+} from '../services/avatarDisplayVersion';
 import { getCachedProfile, getProfile } from '../services/user.api';
+import { getApiBaseUrl } from '../../../config/api.config';
 import useTransformationPhotos from '../hooks/useTransformationPhotos';
 import { persistOnboardingTestimonialPhotos } from '../services/persistOnboardingTestimonialPhotos';
 import { hasValidProfileName } from '../domain/profileCompleteness';
@@ -62,6 +67,12 @@ import {
 } from '../domain/communityPosition';
 import { consumeCommunityPositionFill } from '../domain/communityPositionFocus';
 import {
+  clearProfileIntroFill,
+  peekProfileIntroFill,
+  profileIntroFieldDomId,
+  scrollProfileFieldIntoView,
+} from '../domain/profileIntroFocus';
+import {
   overlayProfileOtpConfirmation,
   rememberProfileOtpConfirmation,
 } from '../domain/profileOtpHold';
@@ -70,7 +81,10 @@ import { looksLikeEmail } from '../domain/onboardingEmail';
 import GoPremiumButton from '../../payments/components/GoPremiumButton';
 import { PremiumAvatarRing, PremiumCrownMark } from '../../payments/components/PremiumBadge';
 import usePremiumStatus from '../../payments/hooks/usePremiumStatus';
+import { buildHomePlanStatus } from '../../payments/domain/homePlanStatus.rules';
+import useReportAccess from '../../reports/hooks/useReportAccess';
 import { AdminGbpListingButton } from '../../gbp-listing';
+import { formatAppRoleLabel } from '../../../shared/constants/roles';
 
 const COLORS = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'];
 const colorOf = (name, email) => COLORS[(name || email || '').length % COLORS.length];
@@ -94,8 +108,6 @@ function resolveAccountEmail(user, formEmail) {
   return '';
 }
 
-const ROLE_LABELS = { admin: 'Admin', developer: 'Developer', coach: 'Coach', upline: 'Upline', system_admin: 'System Admin', user: 'Customer' };
-
 const UserProfilePage = ({
   user,
   userRole = 'user',
@@ -108,9 +120,26 @@ const UserProfilePage = ({
   const form = useProfileForm();
   const resolvedUserId = user?.id ?? user?._id ?? user?.UserId ?? user?.userId ?? form.userId ?? Session.getDbUserId() ?? null;
   const premiumUserId = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
-  const { premium: isPremiumMember, refresh: refreshPremium } = usePremiumStatus(premiumUserId);
+  const {
+    premium: isPremiumMember,
+    daysLeft: premiumDaysLeft,
+    expiresAtDisplay: premiumExpiresAtDisplay,
+    refresh: refreshPremium,
+  } = usePremiumStatus(premiumUserId);
+  const trialAccess = useReportAccess(isPremiumMember ? null : premiumUserId);
+  const onTrial = !isPremiumMember && trialAccess.access === 'trial';
+  const planStatus = buildHomePlanStatus({
+    premium: isPremiumMember,
+    trial: onTrial,
+    daysLeft: isPremiumMember ? premiumDaysLeft : trialAccess.daysLeft,
+    expiresAtDisplay: isPremiumMember
+      ? premiumExpiresAtDisplay
+      : trialAccess.expiresAtDisplay,
+  });
   const transformationPhotos = useTransformationPhotos();
   const [profileImagePreview, setProfileImagePreview] = useState(null);
+  const [avatarFailed, setAvatarFailed] = useState(false);
+  const [avatarVersion, setAvatarVersion] = useState(getAvatarDisplayVersion);
   const [latestWeight, setLatestWeight] = useState(null);
   const [initialWeight, setInitialWeight] = useState(null);
   const [initialWeightDate, setInitialWeightDate] = useState(null);
@@ -137,6 +166,7 @@ const UserProfilePage = ({
     if (!email && !uid) return false;
     return !getCachedProfile({ email, userId: uid })?.data;
   });
+  const [introHighlightKeys, setIntroHighlightKeys] = useState([]);
   useEffect(() => {
     if (isLoading || !consumeCommunityPositionFill()) return undefined;
     let tries = 0;
@@ -153,8 +183,47 @@ const UserProfilePage = ({
     }, 200);
     return () => clearInterval(timer);
   }, [isLoading]);
+  useEffect(() => {
+    if (isLoading) return undefined;
+    const keys = peekProfileIntroFill();
+    if (!keys.length) return undefined;
+    setIntroHighlightKeys(keys);
+    let tries = 0;
+    let done = false;
+    const firstId = profileIntroFieldDomId(keys[0]);
+    const attemptScroll = () => {
+      if (done) return;
+      const field = document.getElementById(firstId);
+      tries += 1;
+      if (field) {
+        done = true;
+        // Wait one frame so red highlight layout is applied, then scroll the ios-scroll-body.
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => {
+            scrollProfileFieldIntoView(field);
+            const focusable = field.querySelector('input, textarea, button');
+            try {
+              focusable?.focus?.({ preventScroll: true });
+            } catch {
+              focusable?.focus?.();
+            }
+            clearProfileIntroFill();
+          });
+        });
+        return;
+      }
+      if (tries > 40) {
+        done = true;
+        clearProfileIntroFill();
+      }
+    };
+    const timer = setInterval(attemptScroll, 100);
+    attemptScroll();
+    return () => {
+      clearInterval(timer);
+    };
+  }, [isLoading]);
   const [isSaving, setIsSaving] = useState(false);
-  const [isInviting, setIsInviting] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [hasSaved, setHasSaved] = useState(false);
@@ -687,22 +756,23 @@ const UserProfilePage = ({
       phone: result?.phone,
       teamSearchRefresh: true,
     });
+    // Recovered account = switched identity — land on Home like a fresh login.
+    if (result?.adopted) {
+      onBack?.();
+      return;
+    }
     const hadVerifiedEmail = looksLikeEmail(accountEmail);
     setSuccessMessage(
-      result?.adopted
-        ? 'Account recovered and email verified.'
-        : hadVerifiedEmail
-          ? 'Email updated and verified.'
-          : 'Email verified. You can appear as a sponsor to new members.',
+      hadVerifiedEmail
+        ? 'Email updated and verified.'
+        : 'Email verified. You can appear as a sponsor to new members.',
     );
     setHasSaved(true);
-    // Load recovered row by new id (sessionUserId in this closure is still old).
     await loadProfile({
       cacheBust: true,
-      userId: adoptedUserId || undefined,
-      email: adoptedUserId ? undefined : (nextEmail || undefined),
+      email: nextEmail || undefined,
     });
-  }, [form, onProfileUpdate, loadProfile, accountEmail, sessionUserId]);
+  }, [form, onProfileUpdate, loadProfile, accountEmail, sessionUserId, onBack]);
 
   const handlePhotoUploaded = useCallback(async (uploadedImage) => {
     // Optimistic preview — keep previous photo if refresh fails.
@@ -764,6 +834,11 @@ const UserProfilePage = ({
     if (form.isDirty || transformationPhotos.hasPendingUploads()) setHasSaved(false);
   }, [form.isDirty, transformationPhotos]);
 
+  useEffect(() => subscribeAvatarDisplayVersion(setAvatarVersion), []);
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [avatarVersion, resolvedUserId, profileImagePreview]);
+
   const displayWeightGoalMode = derivedWeightGoalMode || form.weightGoalMode || 'loss';
   const displayName = (() => {
     const phoneNumber = form.phone || user?.phoneNumber || user?.phone;
@@ -772,22 +847,16 @@ const UserProfilePage = ({
     const valid = candidates.find((n) => hasValidProfileName(n, { email, phoneNumber }));
     return valid || 'User';
   })();
-  const role = ROLE_LABELS[userRole] || 'Customer';
-
-  const handleAppInvite = useCallback(async () => {
-    if (isInviting) return;
-    setIsInviting(true);
-    try {
-      const result = await shareAppInvite({ inviterName: displayName });
-      if (result.method === 'clipboard') {
-        setSuccessMessage('Invite message & link copied to clipboard!');
-      }
-    } catch (err) {
-      console.warn('[UserProfilePage] App invite share failed', err);
-    } finally {
-      setIsInviting(false);
-    }
-  }, [isInviting, displayName]);
+  const role = formatAppRoleLabel(userRole || user?.role || user?.Role);
+  // Same-origin /api/user/avatar — raw Google/R2 URLs fail on iOS Safari (no-referrer).
+  const displayAvatarSrc = resolveClientAvatarSrc({
+    apiBaseUrl: getApiBaseUrl(),
+    userId: resolvedUserId,
+    version: avatarVersion,
+    optimisticSrc: profileImagePreview,
+    failed: avatarFailed,
+  });
+  const hasDisplayAvatar = Boolean(displayAvatarSrc);
 
   return (
     <div className="min-h-full bg-gray-50 pb-8">
@@ -808,22 +877,6 @@ const UserProfilePage = ({
             <ArrowLeft className="w-5 h-5" />
           </TouchFeedbackButton>
           <h1 className={`min-w-0 flex-1 truncate text-lg font-bold ${isPremiumMember ? 'text-sky-950' : 'text-white'}`}>My Profile</h1>
-          <TouchFeedbackButton
-            type="button"
-            onClick={handleAppInvite}
-            disabled={isInviting}
-            data-testid="profile-invite-button"
-            className={`px-3 py-1.5 rounded-full flex items-center gap-1.5 text-xs font-semibold shadow-sm transition-all active:scale-95 disabled:opacity-60 shrink-0 ${
-              isPremiumMember
-                ? 'bg-white hover:bg-sky-50 text-sky-950 border border-sky-300'
-                : 'bg-white/20 hover:bg-white/30 text-white border border-white/30 backdrop-blur-sm'
-            }`}
-            ariaLabel="Invite to Wellness Valley"
-            title="Invite to Wellness Valley"
-          >
-            <Share2 className="w-3.5 h-3.5" />
-            <span>{isInviting ? 'Sharing...' : 'Invite'}</span>
-          </TouchFeedbackButton>
           <GoPremiumButton
             userId={premiumUserId}
             isPremium={isPremiumMember}
@@ -841,22 +894,24 @@ const UserProfilePage = ({
                 type="button"
                 onClick={() => {
                   if (isUploadingPhoto || isSaving) return;
-                  if (profileImagePreview) setShowPhotoViewer(true);
+                  if (hasDisplayAvatar) setShowPhotoViewer(true);
                   else setShowChangePhotoModal(true);
                 }}
                 disabled={isUploadingPhoto || isSaving}
                 className="w-full h-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-70"
-                ariaLabel={profileImagePreview ? 'View profile photo' : 'Add profile photo'}
-                title={profileImagePreview ? 'View profile photo' : 'Add profile photo'}
+                ariaLabel={hasDisplayAvatar ? 'View profile photo' : 'Add profile photo'}
+                title={hasDisplayAvatar ? 'View profile photo' : 'Add profile photo'}
               >
-                {profileImagePreview ? (
+                {hasDisplayAvatar ? (
                   <img
-                    src={profileImagePreview}
+                    key={displayAvatarSrc}
+                    src={displayAvatarSrc}
                     alt={displayName}
                     className="w-full h-full object-cover pointer-events-none"
-                    loading="lazy"
+                    loading="eager"
                     decoding="async"
                     referrerPolicy="no-referrer"
+                    onError={() => setAvatarFailed(true)}
                   />
                 ) : (
                   <div className={`w-full h-full flex items-center justify-center text-white font-bold text-3xl ${colorOf(form.name, accountEmail)}`}>
@@ -885,6 +940,21 @@ const UserProfilePage = ({
             <p className={`text-xl font-bold truncate ${isPremiumMember ? 'text-sky-950' : 'text-white'}`}>{displayName}</p>
             <p className={`text-sm truncate ${isPremiumMember ? 'text-sky-700' : 'text-green-100'}`}>{accountEmail || user?.email}</p>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
+              {planStatus?.daysLabel ? (
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border ${
+                    planStatus.urgent
+                      ? 'bg-red-50 border-red-300 text-red-700'
+                      : isPremiumMember
+                        ? 'bg-amber-50 border-amber-300 text-amber-900'
+                        : 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                  }`}
+                  title={planStatus.endsOn || undefined}
+                  data-testid="profile-plan-days"
+                >
+                  {planStatus.daysLabel}
+                </span>
+              ) : null}
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-900">
                 {role}
               </span>
@@ -1045,7 +1115,11 @@ const UserProfilePage = ({
                     qualification: form.qualification,
                     languages: form.languages,
                   }}
-                  onChange={form.setIntroField}
+                  onChange={(key, value) => {
+                    form.setIntroField(key, value);
+                    setIntroHighlightKeys((prev) => prev.filter((k) => k !== key));
+                  }}
+                  highlightKeys={introHighlightKeys}
                 />
                 <IdealWeightCards
                   height={form.height}
@@ -1220,7 +1294,7 @@ const UserProfilePage = ({
 
       <ProfilePhotoViewer
         isOpen={showPhotoViewer}
-        src={profileImagePreview}
+        src={displayAvatarSrc}
         alt={displayName}
         onClose={() => setShowPhotoViewer(false)}
         onRecrop={() => {
@@ -1242,7 +1316,7 @@ const UserProfilePage = ({
         }}
         user={user}
         accountEmail={accountEmail}
-        currentPreviewUrl={profileImagePreview}
+        currentPreviewUrl={displayAvatarSrc || profileImagePreview}
         startWithRecrop={startPhotoRecrop}
         onStartWithRecropConsumed={() => setStartPhotoRecrop(false)}
         onUploaded={handlePhotoUploaded}

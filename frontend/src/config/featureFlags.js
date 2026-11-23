@@ -247,14 +247,22 @@ const REGISTRY = Object.freeze({
     description:    'Profile Wallet: unique balance and OTP-approved cash-in.',
   },
 
-  // Coach Website portfolio — paid gate + form entry (Cashfree later).
+  // Coach Website portfolio form + public pages.
   // Default ON. Set REACT_APP_FF_COACH_PORTFOLIO=false or
   // localStorage 'ff.coach-portfolio'='false' to hide.
   'ff.coach-portfolio': {
     envKey:         'REACT_APP_FF_COACH_PORTFOLIO',
     storageKey:     'ff.coach-portfolio',
     defaultEnabled: true,
-    description:    'Coach Website: paid unlock and portfolio form entry.',
+    description:    'Coach Website portfolio form and public pages.',
+  },
+
+  // Digital Portfolio ₹399/yr Cashfree checkout only. Default OFF until go-live.
+  'ff.portfolio-site-checkout': {
+    envKey:         'REACT_APP_FF_PORTFOLIO_SITE_CHECKOUT',
+    storageKey:     'ff.portfolio-site-checkout',
+    defaultEnabled: false,
+    description:    'Cashfree create/confirm for Digital Portfolio website slots (₹399/yr). Default OFF.',
   },
 
   'ff.gbp-listing': {
@@ -280,12 +288,13 @@ const REGISTRY = Object.freeze({
     description:    'Unpaid report details stay hidden until a 14-day trial or Premium.',
   },
 
-  // Digital Portfolio gate. Same shared 14-day trial as Reports. Create Event and Check-in stay open.
+  // Legacy Digital Portfolio gate for apps below PORTFOLIO_SITE_SLOTS_MIN.
+  // Next-release builds use per-site ₹399/yr credits instead. Create Event/Check-in stay open.
   'ff.events-trial': {
     envKey:         'REACT_APP_FF_EVENTS_TRIAL',
     storageKey:     'ff.events-trial',
     defaultEnabled: true,
-    description:    'Gates Digital Portfolio with the shared Reports 14-day trial. Create Event and Check-in stay open.',
+    description:    'Legacy Digital Portfolio trial/Premium gate for older apps. Create Event and Check-in stay open.',
   },
 });
 

@@ -15,6 +15,7 @@ describe('startReportTrial', () => {
     let stored = null;
     const deps = {
       hasPaid: async () => false,
+      hasEverPaid: async () => false,
       readStart: async () => stored,
       saveStart: async () => {
         stored = '2026-11-05T02:00:00.000Z';
@@ -28,6 +29,7 @@ describe('startReportTrial', () => {
     assert.equal(first.body.data.access, 'trial');
     assert.equal(first.body.data.daysLeft, 14);
     assert.equal(first.body.data.canSeeDetails, true);
+    assert.equal(first.body.data.expiresAtDisplay, '19 Nov 2026, 12:00 AM');
     assert.deepEqual(second.body.data, first.body.data);
   });
 
@@ -108,6 +110,31 @@ describe('startReportTrial after Premium', () => {
       (error) => error instanceof ValidationError
         && error.status === 422
         && error.message === COMMUNITY_POSITION_REQUIRED_MESSAGE,
+    );
+    assert.equal(saved, false);
+  });
+
+  it('does not treat a failed Premium lookup as a free member', async () => {
+    let saved = false;
+    await assert.rejects(
+      () => startReportTrial({ userId: 42 }, {
+        hasPaid: async () => { throw new Error('db down'); },
+        hasEverPaid: async () => false,
+        saveStart: async () => {
+          saved = true;
+          return '2026-11-05T02:00:00.000Z';
+        },
+        todayYmd: '2026-11-05',
+      }),
+      (error) => error instanceof ValidationError && error.status === 503,
+    );
+    await assert.rejects(
+      () => getReportAccess({ userId: 42 }, {
+        hasPaid: async () => false,
+        hasEverPaid: async () => { throw new Error('db down'); },
+        todayYmd: '2026-11-05',
+      }),
+      (error) => error instanceof ValidationError && error.status === 503,
     );
     assert.equal(saved, false);
   });

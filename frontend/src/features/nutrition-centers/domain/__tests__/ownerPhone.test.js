@@ -3,7 +3,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { splitOwnerPhone } from '../ownerPhone.js';
+import { accountPhoneFromUser, phonesMatch, splitOwnerPhone } from '../ownerPhone.js';
 
 describe('splitOwnerPhone', () => {
   it('keeps +91 ahead of +1 prefix match', () => {
@@ -28,5 +28,17 @@ describe('splitOwnerPhone', () => {
       countryCode: '+91',
       phone: '9876543210',
     });
+  });
+});
+
+describe('account phone', () => {
+  it('reads the signed-in mobile number', () => {
+    assert.equal(accountPhoneFromUser({ phoneNumber: '9876543210' }), '9876543210');
+    assert.equal(accountPhoneFromUser({ phone: '+919876543210' }), '+919876543210');
+  });
+
+  it('treats +91 and 10 digits as the same number', () => {
+    assert.equal(phonesMatch('+919876543210', '9876543210'), true);
+    assert.equal(phonesMatch('+919876543210', '9123456780'), false);
   });
 });

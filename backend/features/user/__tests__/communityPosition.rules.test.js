@@ -79,6 +79,17 @@ describe('classifyCommunityPositionRequest', () => {
     });
     assert.equal(result.status, POSITION_UNKNOWN);
   });
+
+  it('accepts released-app aliases mapped to catalog codes', () => {
+    const result = classifyCommunityPositionRequest({
+      requestedCode: 'MILL TEAM',
+      confirmedCode: '',
+      activeCodes,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.status, POSITION_REQUEST);
+    assert.equal(result.code, 'MILL');
+  });
 });
 
 describe('normalizeCommunityPositionDraft', () => {

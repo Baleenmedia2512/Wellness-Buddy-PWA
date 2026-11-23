@@ -3,7 +3,7 @@ import logger from '../../../shared/lib/logger.js';
 import { applyDayFilterWidened } from '../../../shared/lib/datetime/applyDayFilter.js';
 import {
   IANA_IST,
-  filterRowsByCalendarDay,
+  filterFoodRowsByCalendarDay,
   filterRowsByCalendarDateRange,
   shiftDateYmd,
 } from '../../../shared/lib/datetime/index.js';
@@ -191,7 +191,8 @@ export async function listHabitsForDate(userId, date, timezoneIana = IANA_IST) {
     });
     return [];
   }
-  return filterRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
+  // IST wall-clock CreatedAt (same as diary) — do not treat …Z as real UTC.
+  return filterFoodRowsByCalendarDay(data || [], date, timezoneIana, 'CreatedAt');
 }
 
 export async function restoreHabit(id, userId, updatedAt) {

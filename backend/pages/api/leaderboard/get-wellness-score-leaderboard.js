@@ -18,7 +18,7 @@ import { isActiveTeamStatus } from '../../../utils/teamHierarchyBuilder.js';
 import {
   aggregateWellnessWindowScores,
   rankWellnessLeaderboardEntries,
-  WELLNESS_LEADERBOARD_WINDOW_DAYS,
+  resolveWellnessLeaderboardWindowDays,
 } from '../../../utils/wellnessScoreLeaderboard.js';
 import { computeDailyScoreForDate } from '../../../features/wellness-score/api/daily-score.handler.js';
 import { resolveLeaderboardViewerId } from '../../../utils/leaderboardViewer.js';
@@ -38,11 +38,12 @@ const SCORE_LOOKUP_CHUNK = 150;
  *   logged-in user → allowed hierarchy → app users (Active + public-aggregate) →
  *   existing scores → sort → Top N.
  *
- * Ranking (days omitted or not 10): wellness % desc, then total_earned desc.
- * Ranking (days=10): summed earned points over the last 10 IST days (ending on
- * scoreDate), then wellness % of that sum. A day with no row adds 0/0.
+ * Ranking (days omitted / 1 / invalid / >30): wellness % desc, then total_earned.
+ * Ranking (days=2..30): summed earned over that many IST days ending on scoreDate,
+ * then wellness % of that sum. A day with no row adds 0/0.
  * Equal scores share the same rank. Display order: Rank 1 → Rank N (best first).
  * Missing `days` stays on today's board so already released apps are unchanged.
+ * days=10 keeps the released Last-10 behaviour; days=2..30 is additive for new UI.
  */
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -69,10 +70,8 @@ export default async function handler(req, res) {
   try {
     const db = getMysqlClient();
     const topN = Math.min(parseInt(req.query.topN, 10) || 10, 10);
-    // Missing or any value other than 10 stays on today's board (released apps).
-    const windowDays = parseInt(req.query.days, 10) === WELLNESS_LEADERBOARD_WINDOW_DAYS
-      ? WELLNESS_LEADERBOARD_WINDOW_DAYS
-      : 1;
+    // Missing / 1 / invalid / >10 → today (released apps + reject 11+ day windows).
+    const windowDays = resolveWellnessLeaderboardWindowDays(req.query.days);
     const viewerUserId = await resolveLeaderboardViewerId({
       userId: req.query.userId,
       email: req.query.email,
@@ -117,10 +116,11 @@ export default async function handler(req, res) {
       visibleUsers.map((u) => [Number(u.UserId), u]),
     );
 
-    // Existing app-user rule: Active + public-aggregate (excludes prod developers).
+    // Active + public-aggregate. Prod hides other developers from Home Top 10;
+    // local NODE_ENV=development keeps them visible for QA. Self still allowed.
     const appUsers = filterPublicAggregateUsers(
       [...visibleById.values()].filter((u) => isActiveTeamStatus(u.Status)),
-      { viewerUserId },
+      { viewerUserId, publicLeaderboard: true },
     );
 
     const allowedIds = appUsers
@@ -189,7 +189,7 @@ export default async function handler(req, res) {
         windowDays,
         message: windowDays === 1
           ? 'No wellness scores for today'
-          : 'No wellness scores in the last 10 days',
+          : `No wellness scores in the last ${windowDays} days`,
       });
     }
 

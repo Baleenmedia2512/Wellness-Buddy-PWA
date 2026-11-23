@@ -19,9 +19,9 @@ describe('PremiumPlanPage', () => {
           quote={{
             positionCode: 'SV',
             baseAmount: 299,
-            gstAmount: 53.82,
+            gstAmount: 54,
             gstRate: 0.18,
-            amount: 352.82,
+            amount: 353,
           }}
           onClose={() => {}}
           onPayNow={() => {}}
@@ -30,11 +30,11 @@ describe('PremiumPlanPage', () => {
     });
     const text = document.body.textContent;
     expect(text).toMatch(/Premium plan/);
-    expect(text).toMatch(/₹352\.82/);
+    expect(text).toMatch(/₹299/);
+    expect(text).toMatch(/\+18% GST/);
     expect(text).not.toMatch(/SV/);
-    expect(text).not.toMatch(/GST/);
     expect(text).not.toMatch(/Community Position/);
-    expect(text).toMatch(/Pay Now/);
+    expect(text).toMatch(/Pay Now - ₹353/);
     act(() => root.unmount());
     container.remove();
   });

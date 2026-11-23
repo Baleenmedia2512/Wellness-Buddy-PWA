@@ -8,7 +8,19 @@ import { isDeveloperBotName } from './developerBot.rules.js';
 
 export const DEVELOPER_ROLE = 'developer';
 
+/**
+ * Public leaderboards hide Role=developer in production-like runs.
+ * Local `next dev` (NODE_ENV=development) keeps developers visible for QA.
+ *
+ * Optional override (MilesWeb / mis-set NODE_ENV):
+ *   HIDE_DEVELOPERS_FROM_PUBLIC_AGGREGATES=true|false
+ */
 export function isProductionEnvironment() {
+  const override = String(process.env.HIDE_DEVELOPERS_FROM_PUBLIC_AGGREGATES || '')
+    .trim()
+    .toLowerCase();
+  if (override === '1' || override === 'true' || override === 'yes') return true;
+  if (override === '0' || override === 'false' || override === 'no') return false;
   return process.env.NODE_ENV === 'production';
 }
 
@@ -40,13 +52,20 @@ export function isDeveloperUser(userRow) {
  * - the viewer is an internal operator (admin / developer) so coach-facing
  *   team lists (e.g. Transformation Direct) can include developer test accounts.
  *
+ * Home / public leaderboards pass `publicLeaderboard: true` so other developers
+ * never rank in Top 10 for members (operator bypass does not apply).
+ *
  * @param {object} userRow
- * @param {{ viewerUserId?: string|number|null, viewerRole?: string|null }} [options]
+ * @param {{ viewerUserId?: string|number|null, viewerRole?: string|null, publicLeaderboard?: boolean }} [options]
  */
-export function shouldExcludeDeveloperFromAggregates(userRow, { viewerUserId, viewerRole } = {}) {
+export function shouldExcludeDeveloperFromAggregates(userRow, {
+  viewerUserId,
+  viewerRole,
+  publicLeaderboard = false,
+} = {}) {
   if (!isProductionEnvironment()) return false;
   if (!isDeveloperUser(userRow)) return false;
-  if (isInternalOperatorRole(viewerRole)) return false;
+  if (!publicLeaderboard && isInternalOperatorRole(viewerRole)) return false;
   const uid = userRow.UserId ?? userRow.userId;
   if (viewerUserId != null && uid != null && String(uid) === String(viewerUserId)) {
     return false;
@@ -56,7 +75,7 @@ export function shouldExcludeDeveloperFromAggregates(userRow, { viewerUserId, vi
 
 /**
  * @param {object[]} users
- * @param {{ viewerUserId?: string|number|null, viewerRole?: string|null }} [options]
+ * @param {{ viewerUserId?: string|number|null, viewerRole?: string|null, publicLeaderboard?: boolean }} [options]
  */
 export function filterPublicAggregateUsers(users, options = {}) {
   if (!Array.isArray(users)) return [];

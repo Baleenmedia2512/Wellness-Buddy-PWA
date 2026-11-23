@@ -10,6 +10,7 @@ describe('startEventsTrial (shared report trial)', () => {
     let stored = null;
     const deps = {
       hasPaid: async () => false,
+      hasEverPaid: async () => false,
       readStart: async () => stored,
       saveStart: async () => {
         stored = '2026-11-12T02:00:00.000Z';
@@ -29,6 +30,7 @@ describe('startEventsTrial (shared report trial)', () => {
   it('continues remaining days when Reports trial already started', async () => {
     const result = await getEventsAccess({ userId: 7 }, {
       hasPaid: async () => false,
+      hasEverPaid: async () => false,
       // Started 7 India days ago → 7 days left of the shared 14-day trial
       readStart: async () => '2026-11-05T02:00:00.000Z',
       todayYmd: '2026-11-12',
@@ -59,6 +61,7 @@ describe('getEventsAccess', () => {
   it('reports an ended shared trial without creating a new one', async () => {
     const result = await getEventsAccess({ userId: 7 }, {
       hasPaid: async () => false,
+      hasEverPaid: async () => false,
       readStart: async () => '2026-11-05T02:00:00.000Z',
       todayYmd: '2026-11-19',
     });

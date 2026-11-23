@@ -134,6 +134,7 @@ describe('getPremiumStatus', () => {
     assert.equal(result.body.data.premium, true);
     assert.equal(result.body.data.daysLeft, 12);
     assert.equal(result.body.data.expiresAt, '2026-12-13');
+    assert.equal(result.body.data.lookupOk, true);
   });
 
   it('asks for the current Cashfree mode so sandbox tests never count on live', async () => {
@@ -156,6 +157,7 @@ describe('getPremiumStatus', () => {
     assert.equal(result.httpStatus, 200);
     assert.equal(result.body.data.premium, false);
     assert.equal(result.body.data.showExpiryWarning, false);
+    assert.equal(result.body.data.lookupOk, false);
   });
 
   it('requires a user id', async () => {

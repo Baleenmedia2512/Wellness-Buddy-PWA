@@ -188,9 +188,11 @@ export default function NavPageAccessSetup({
               Sponsor uses the coach role. Upline accounts share Sponsor access.
               A customer gets Sponsor pages only after they have downline members
               (CoachId = them) — Community ID / joint coaching seat alone does not.
-              Their account role may still be Customer. Reports also needs the
-              Reports feature flag. Go Premium also needs the Go Premium feature
-              flag (profile chip / recharge — not a main nav tab).
+              Their account role may still be Customer. Events controls access to
+              the Events tab; Create Event controls the (+) button within Events.
+              Events also needs the Events feature flag. Reports also needs the Reports feature flag.
+              Go Premium also needs the Go Premium feature flag (profile chip /
+              recharge — not a main nav tab).
             </p>
 
             <div className="mt-4 flex items-center gap-3">
