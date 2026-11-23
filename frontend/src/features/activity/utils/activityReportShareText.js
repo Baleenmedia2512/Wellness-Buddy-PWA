@@ -11,6 +11,24 @@ export function formatActivityReportLevel(level) {
   return Number.isFinite(n) ? String(n) : '—';
 }
 
+/**
+ * API Reg. Time is HH:mm or HH:mm:ss (24h). Show like Diary: h:mm AM/PM.
+ * @param {unknown} time
+ * @returns {string}
+ */
+export function formatActivityReportTime(time) {
+  if (time == null || time === '' || time === 'N/A') return '';
+  const s = String(time).trim();
+  const match = /^(\d{1,2}):(\d{2})(?::\d{2})?/.exec(s);
+  if (!match) return s;
+  const hour = Number.parseInt(match[1], 10);
+  const minute = match[2];
+  if (!Number.isFinite(hour) || hour < 0 || hour > 23) return s;
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const h12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${h12}:${minute} ${ampm}`;
+}
+
 /** @deprecated Prefer formatHierarchyPersonType — kept for Activity Report imports. */
 export function formatActivityReportMemberType(memberType) {
   return formatHierarchyPersonType(memberType);
@@ -37,8 +55,9 @@ function activityDetailLine(record, activityId) {
   parts.push(`Level: ${formatActivityReportLevel(record.level)}`);
   parts.push(`Club: ${club}`);
   if (sponsor && sponsor !== 'N/A') parts.push(`Sponsor: ${sponsor}`);
+  const time12 = formatActivityReportTime(record.time);
   parts.push(
-    `${record.date || '—'} ${record.time || ''}`.trim(),
+    `${record.date || '—'} ${time12 || record.time || ''}`.trim(),
   );
 
   if (activityId === 'weight' && record.weight != null) {
