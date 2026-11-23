@@ -45,36 +45,15 @@ function formatClubFilterLabel(clubFilter) {
   return clubFilter;
 }
 
-function activityDetailLine(record, activityId) {
+function activityDetailLine(record) {
   const club = formatClub(record.clubName);
-  const parts = [
-    record.memberName || 'N/A',
-    formatActivityReportMemberType(record.memberType),
-  ];
-  const sponsor = record.sponsorName || record.coachName;
-  parts.push(`Level: ${formatActivityReportLevel(record.level)}`);
-  parts.push(`Club: ${club}`);
-  if (sponsor && sponsor !== 'N/A') parts.push(`Sponsor: ${sponsor}`);
   const time12 = formatActivityReportTime(record.time);
-  parts.push(
-    `${record.date || '—'} ${time12 || record.time || ''}`.trim(),
-  );
-
-  if (activityId === 'weight' && record.weight != null) {
-    parts.push(`Weight: ${record.weight} kg`);
-  } else if (['breakfast', 'lunch', 'dinner'].includes(activityId)) {
-    if (record.mealType) parts.push(`Meal: ${record.mealType}`);
-    if (record.calories != null) parts.push(`Calories: ${record.calories}`);
-  } else if (activityId === 'water' && record.waterLiters != null) {
-    parts.push(`Water: ${record.waterLiters} L`);
-  } else if (activityId === 'calories') {
-    if (record.steps != null) parts.push(`Steps: ${record.steps}`);
-    if (record.caloriesBurned != null) parts.push(`Burned: ${record.caloriesBurned} kcal`);
-  }
-
-  if (record.phone && record.phone !== 'N/A') parts.push(`Phone: ${record.phone}`);
-
-  return parts.join(' | ');
+  const dateTime = `${record.date || '—'} ${time12 || record.time || ''}`.trim();
+  return [
+    record.memberName || 'N/A',
+    `Club: ${club}`,
+    dateTime,
+  ].join(' | ');
 }
 
 /**
@@ -112,7 +91,7 @@ export function buildActivityReportShareText({
 
   const slice = Array.isArray(records) ? records.slice(0, SHARE_TEXT_MAX_ROWS) : [];
   slice.forEach((record, index) => {
-    lines.push(`${index + 1}. ${activityDetailLine(record, activityId)}`);
+    lines.push(`${index + 1}. ${activityDetailLine(record)}`);
   });
 
   const remaining = Math.max(0, (Number(totalRecords) || 0) - slice.length);

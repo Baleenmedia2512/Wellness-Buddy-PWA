@@ -32,7 +32,7 @@ describe('activity report level / member type display', () => {
     assert.equal(formatActivityReportMemberType('coach'), 'Customer');
   });
 
-  it('includes member type, club, then sponsor in share lines', () => {
+  it('share lines only include name, club, date and time', () => {
     const text = buildActivityReportShareText({
       activityLabel: 'Weight',
       activityId: 'weight',
@@ -46,10 +46,11 @@ describe('activity report level / member type display', () => {
         date: '2026-09-05',
         time: '07:00:00',
         weight: 62,
+        phone: '9999999999',
       }],
     });
-    assert.match(text, /Ana \| Sponsor \| Level: 1 \| Club: Remote \| Sponsor: Kiran/);
-    assert.match(text, /2026-09-05 7:00 AM/);
+    assert.match(text, /1\. Ana \| Club: Remote \| 2026-09-05 7:00 AM/);
+    assert.doesNotMatch(text, /Sponsor:|Level:|Weight:|Phone:|Customer|Sponsor \|/);
   });
 
   it('includes attendance in the share header', () => {
