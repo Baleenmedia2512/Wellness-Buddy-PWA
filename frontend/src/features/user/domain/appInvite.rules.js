@@ -14,22 +14,24 @@ export const PLAY_STORE_APP_URL = 'https://play.google.com/store/apps/details?id
  */
 export function buildAppInviteShareText({ inviterName = '' } = {}) {
   const trimmed = String(inviterName || '').trim();
-  const sponsorName = trimmed || 'your sponsor';
+  const sponsorName = trimmed ? `*${trimmed}*` : '*your sponsor*';
   return [
     'Join me on the Wellness Valley app!',
     '',
-    'Download the app using the link below:',
+    '📲 Download the app using the link below:',
     APP_SHARE_DISPLAY_URL,
     '',
     'Step 1: Enter your mobile number.',
     '',
     'Step 2: Enter the OTP sent to your mobile number.',
     '',
-    `Step 3: Enter ${sponsorName} under Sponsor Name and select it.`,
+    'Step 3: Enter your name.',
     '',
-    'Step 4: Enter the OTP received by your sponsor.',
+    `Step 4: Enter ${sponsorName} under Sponsor Name and select it.`,
     '',
-    'Step 5: Complete your profile and enjoy the app!',
+    'Step 5: Enter the OTP received by your sponsor.',
+    '',
+    'Step 6: Complete your profile and enjoy the app!',
   ].join('\n');
 }
 

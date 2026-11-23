@@ -19,26 +19,27 @@ describe('appInvite.rules', () => {
     const text = buildAppInviteShareText();
     assert.equal(text, APP_INVITE_MESSAGE);
     assert.ok(text.includes('Join me on the Wellness Valley app!'));
-    assert.ok(text.includes('Download the app using the link below:'));
+    assert.ok(text.includes('📲 Download the app using the link below:'));
     assert.ok(text.includes('wellnessvalley.in/share'));
     assert.ok(!text.includes('https://wellnessvalley.in/share'));
     assert.ok(text.includes('Step 1: Enter your mobile number.'));
     assert.ok(text.includes('Step 2: Enter the OTP sent to your mobile number.'));
-    assert.ok(text.includes('Step 3: Enter your sponsor under Sponsor Name and select it.'));
-    assert.ok(text.includes('Step 4: Enter the OTP received by your sponsor.'));
-    assert.ok(text.includes('Step 5: Complete your profile and enjoy the app!'));
+    assert.ok(text.includes('Step 3: Enter your name.'));
+    assert.ok(text.includes('Step 4: Enter *your sponsor* under Sponsor Name and select it.'));
+    assert.ok(text.includes('Step 5: Enter the OTP received by your sponsor.'));
+    assert.ok(text.includes('Step 6: Complete your profile and enjoy the app!'));
   });
 
-  it('replaces inviter name in step 3 when provided', () => {
+  it('replaces inviter name in step 4 when provided with bold formatting', () => {
     const text = buildAppInviteShareText({ inviterName: 'System Nitheesh' });
-    assert.ok(text.includes('Step 3: Enter System Nitheesh under Sponsor Name and select it.'));
+    assert.ok(text.includes('Step 4: Enter *System Nitheesh* under Sponsor Name and select it.'));
   });
 
   it('builds direct WhatsApp URL with encoded message', () => {
     const url = buildWhatsAppInviteUrl({ inviterName: 'System Nitheesh' });
     assert.ok(url.startsWith('https://api.whatsapp.com/send?text='));
     assert.ok(url.includes(encodeURIComponent('Join me on the Wellness Valley app!')));
-    assert.ok(url.includes(encodeURIComponent('Step 3: Enter System Nitheesh under Sponsor Name and select it.')));
+    assert.ok(url.includes(encodeURIComponent('Step 4: Enter *System Nitheesh* under Sponsor Name and select it.')));
   });
 
   it('builds share payload with title, url, text, and dialogTitle', () => {
