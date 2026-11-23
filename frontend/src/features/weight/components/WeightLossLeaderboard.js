@@ -67,6 +67,15 @@ function getLogoSrc() {
   return '/logo.png';
 }
 
+function getShareCardHeight(count) {
+  const n = Number(count) || 0;
+  if (n <= 0) return 1024;
+  if (n >= 10) return 1024;
+  // Fixed vertical overhead: padding-top(16) + header(~104) + border(2) + list-pt(4) + list-pb(24) + padding-bottom(40) = 190px
+  // Row slot height with comfortable row gaps: ~83.4px
+  return Math.round(190 + n * 83.4);
+}
+
 const cacheKeyFor = (userId) => `${WEIGHT_LB_CACHE_KEY_PREFIX}${userId || 'anon'}`;
 
 const stripWeightAvatars = (data) =>
@@ -132,6 +141,8 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
   });
 
   const isTodayFilter = filterPreset === LB_DATE_PRESETS.TODAY;
+  const tileRows = isTodayFilter ? leaderboardData : rangeData;
+  const shareHeight = getShareCardHeight(tileRows.length);
 
   const fetchLeaderboard = useCallback(async (days = 1, dateYmd = null) => {
     const windowDays = Number(days) >= 2 && Number(days) <= LB_MAX_WINDOW_DAYS
@@ -383,14 +394,15 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
     const target = shareCardRef.current || cardRef.current;
     if (!isTile || !target || !hasEntered) return undefined;
     let cancelled = false;
+    const currentShareHeight = getShareCardHeight(tileRows.length);
     const timer = setTimeout(() => {
       precaptureShareImage(target, {
         scale: 2,
         quality: 0.95,
         targetWidth: 768,
-        targetHeight: 1024,
+        targetHeight: currentShareHeight,
         width: 768,
-        height: 1024,
+        height: currentShareHeight,
       }).then((dataUrl) => {
         if (!cancelled && dataUrl) {
           cachedDataUrlRef.current = dataUrl;
@@ -401,7 +413,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [isTile, leaderboardData, rangeData, filterPreset, hasEntered]);
+  }, [isTile, leaderboardData, rangeData, filterPreset, hasEntered, tileRows.length]);
 
   // Don't render if no data or loading failed
   if (!isVisible || leaderboardData.length === 0) {
@@ -417,6 +429,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
         ? 'today'
         : `${filterPreset}-${filterMeta?.endYmd || filterMeta?.days || 'range'}`;
       const fileName = `top-${topN}-weight-loss-${modeSuffix}-${Date.now()}.jpg`;
+      const currentShareHeight = getShareCardHeight(tileRows.length);
       const shareOpts = {
         title: `Top ${topN} Weight Loss`,
         text: `Top ${topN} Weight Loss - Wellness Valley`,
@@ -424,9 +437,9 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
         scale: 2,
         quality: 0.95,
         targetWidth: 768,
-        targetHeight: 1024,
+        targetHeight: currentShareHeight,
         width: 768,
-        height: 1024,
+        height: currentShareHeight,
       };
 
       const cached = cachedDataUrlRef.current;
@@ -611,7 +624,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
     );
   };
 
-  const renderShareTileRow = (user) => {
+  const renderShareTileRow = (user, index, total) => {
     const formatted = formatWeightLoss(user.weightLoss);
     const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
     const sponsorCoachText = [
@@ -620,6 +633,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
     ]
       .filter(Boolean)
       .join(' · ');
+    const isLast = index != null && total != null ? index === total - 1 : false;
 
     return (
       <li
@@ -629,7 +643,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
           alignItems: 'center',
           gap: '16px',
           padding: '8px 12px',
-          borderBottom: '1px solid #ecfdf5',
+          borderBottom: isLast ? 'none' : '1px solid #ecfdf5',
           boxSizing: 'border-box',
           overflow: 'visible',
         }}
@@ -688,11 +702,12 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
                 flexShrink: 0,
                 backgroundColor: '#ecfdf5',
                 color: '#047857',
-                fontWeight: 700,
-                fontSize: '15px',
-                lineHeight: 1.2,
-                padding: '5px 12px',
-                borderRadius: '8px',
+                fontWeight: 800,
+                fontSize: '26px',
+                letterSpacing: '-0.02em',
+                lineHeight: 1.15,
+                padding: '7px 16px',
+                borderRadius: '12px',
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -724,7 +739,6 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
   };
 
   if (isTile) {
-    const tileRows = isTodayFilter ? leaderboardData : rangeData;
     const tileSubtitle = filterMeta?.subtitle || 'Today vs Yesterday';
     const buttonLabel = filterMeta?.buttonLabel || 'Today';
     const ariaPeriod = isTodayFilter ? null : (filterMeta?.subtitle || filterPreset);
@@ -839,7 +853,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
           {profileViewer}
         </section>
 
-        {/* Off-screen card used exclusively for sharing with exact 768x1024 poster resolution */}
+        {/* Off-screen card used exclusively for sharing with dynamic poster height */}
         <div
           ref={shareCardRef}
           aria-hidden="true"
@@ -848,7 +862,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
             left: '-9999px',
             top: 0,
             width: 768,
-            height: 1024,
+            height: shareHeight,
             boxSizing: 'border-box',
             overflow: 'hidden',
             backgroundColor: '#ffffff',
@@ -858,8 +872,8 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
           <div
             style={{
               width: 768,
-              height: 1024,
-              padding: '32px 36px 28px 36px',
+              height: shareHeight,
+              padding: '16px 36px 40px 36px',
               boxSizing: 'border-box',
               display: 'flex',
               flexDirection: 'column',
@@ -874,7 +888,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: '16px',
-                paddingBottom: '16px',
+                paddingBottom: '8px',
                 borderBottom: '2px solid #d1fae5',
                 flexShrink: 0,
                 boxSizing: 'border-box',
@@ -884,8 +898,8 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
                 <span
                   style={{
                     display: 'flex',
-                    width: '56px',
-                    height: '56px',
+                    width: '60px',
+                    height: '60px',
                     alignItems: 'center',
                     justifyContent: 'center',
                     borderRadius: '16px',
@@ -894,12 +908,12 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
                   }}
                   aria-hidden
                 >
-                  <Scale style={{ width: '32px', height: '32px', color: '#047857' }} />
+                  <Scale style={{ width: '36px', height: '36px', color: '#047857' }} />
                 </span>
                 <div>
                   <h3
                     style={{
-                      fontSize: '24px',
+                      fontSize: '26px',
                       fontWeight: 800,
                       color: '#064e3b',
                       letterSpacing: '-0.02em',
@@ -911,7 +925,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
                   </h3>
                   <p
                     style={{
-                      fontSize: '14px',
+                      fontSize: '15px',
                       fontWeight: 600,
                       color: '#047857',
                       opacity: 0.85,
@@ -940,13 +954,13 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
                 flex: 1,
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'space-between',
-                padding: '12px 0 0 0',
+                justifyContent: tileRows.length > 1 ? 'space-between' : 'flex-start',
+                padding: '4px 0 24px 0',
                 margin: 0,
                 listStyle: 'none',
               }}
             >
-              {tileRows.map((user) => renderShareTileRow(user))}
+              {tileRows.map((user, idx) => renderShareTileRow(user, idx, tileRows.length))}
             </ul>
           </div>
         </div>
