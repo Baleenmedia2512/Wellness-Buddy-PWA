@@ -336,7 +336,7 @@ export function calculateGoodHabitPost({ maxPoints, habitLogs }) {
   if (!logs.length) {
     return buildParameterScore({
       key: 'good_habit_post',
-      label: 'Today Task Given by Coach',
+      label: 'Task by Coach',
       section: 'logging',
       scoringMode: 'binary',
       maxPoints,
@@ -346,7 +346,7 @@ export function calculateGoodHabitPost({ maxPoints, habitLogs }) {
   }
   return buildParameterScore({
     key: 'good_habit_post',
-    label: 'Today Task Given by Coach',
+    label: 'Task by Coach',
     section: 'logging',
     scoringMode: 'binary',
     maxPoints,
