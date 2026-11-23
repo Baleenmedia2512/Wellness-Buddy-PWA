@@ -2,7 +2,7 @@ import { apiFetch } from '../../../shared/services/apiFetch.js';
 
 /**
  * @param {object|null} body
- * @returns {{ access: string, daysLeft: number|null, canSeeDetails: boolean }|null}
+ * @returns {{ access: string, daysLeft: number|null, canSeeDetails: boolean, expiresAtDisplay: string|null }|null}
  */
 function readAccess(body) {
   const data = body?.data;
@@ -10,10 +10,14 @@ function readAccess(body) {
     return null;
   }
   const daysLeft = data.daysLeft == null ? null : Number(data.daysLeft);
+  const expiresAtDisplay = typeof data.expiresAtDisplay === 'string' && data.expiresAtDisplay.trim()
+    ? data.expiresAtDisplay.trim()
+    : null;
   return {
     access: data.access,
     daysLeft: Number.isFinite(daysLeft) ? daysLeft : null,
     canSeeDetails: data.canSeeDetails === true,
+    expiresAtDisplay,
   };
 }
 

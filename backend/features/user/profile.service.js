@@ -537,13 +537,14 @@ export async function updateProfile(input) {
     eventLevel = undefined,
     profileIntro = undefined,
     appVersion = null,
+    skipOtp = false,
   } = input;
-  const deferCommunityId = shouldDeferCommunityIdToOtpFlow({
+  const deferCommunityId = !skipOtp && shouldDeferCommunityIdToOtpFlow({
     flagEnabled: isEnabled(COMMUNITY_ID_OTP_FLAG),
     appVersion,
   });
   const appliedCommunityId = deferCommunityId ? undefined : communityId;
-  const deferCommunityPosition = shouldDeferCommunityPositionToOtp({
+  const deferCommunityPosition = !skipOtp && shouldDeferCommunityPositionToOtp({
     flagEnabled: isEnabled(COMMUNITY_POSITION_OTP_FLAG),
     appVersion,
   });

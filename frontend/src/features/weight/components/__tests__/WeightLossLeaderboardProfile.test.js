@@ -48,6 +48,12 @@ jest.mock('../../../../shared/components/TeamMemberProfileModal', () => ({
   ),
 }));
 
+jest.mock('../../../../shared/utils/shareUtils.js', () => ({
+  captureAndShare: jest.fn().mockResolvedValue(true),
+  precaptureShareImage: jest.fn().mockResolvedValue('data:image/jpeg;base64,mock'),
+  shareCachedDataUrl: jest.fn().mockResolvedValue(true),
+}));
+
 describe('WeightLossLeaderboard profile photo flow', () => {
   let container;
   let root;
@@ -107,7 +113,7 @@ describe('WeightLossLeaderboard profile photo flow', () => {
       .toBe('42');
   });
 
-  it('toggles Last 10 days and requests days=10 from the weight leaderboard API', async () => {
+  it('opens date filter and requests days=10 for Last 10 Days', async () => {
     globalThis.fetch = jest.fn((url) => {
       const href = String(url);
       if (href.includes('days=10')) {
@@ -153,12 +159,21 @@ describe('WeightLossLeaderboard profile photo flow', () => {
     });
 
     expect(container.textContent).toContain('Today vs Yesterday');
-    const toggle = Array.from(container.querySelectorAll('button'))
-      .find((button) => button.textContent.includes('Last 10 days'));
-    expect(toggle).not.toBeUndefined();
+    const openFilter = container.querySelector('button[aria-label="Open weight loss date filter"]');
+    expect(openFilter).not.toBeNull();
+    expect(openFilter.textContent).toContain('Today');
 
     await act(async () => {
-      toggle.click();
+      openFilter.click();
+      await Promise.resolve();
+    });
+
+    const last10 = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.trim() === 'Last 10 Days');
+    expect(last10).not.toBeUndefined();
+
+    await act(async () => {
+      last10.click();
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -169,7 +184,35 @@ describe('WeightLossLeaderboard profile photo flow', () => {
     );
     expect(container.textContent).toContain('Last 10 days');
     expect(container.textContent).toContain('Ten Day Winner');
-    expect(container.textContent).toContain('Last 1 days');
+    expect(container.querySelector('button[aria-label="Open weight loss date filter"]')?.textContent)
+      .toContain('Last 10 Days');
+  });
+
+  it('renders a share button in the card header and triggers share on click', async () => {
+    const { captureAndShare, shareCachedDataUrl } = require('../../../../shared/utils/shareUtils.js');
+    await act(async () => {
+      root.render(
+        <WeightLossLeaderboard
+          variant="tile"
+          apiBaseUrl="https://example.test"
+          userId={1}
+          email="viewer@example.com"
+        />,
+      );
+      await Promise.resolve();
+    });
+
+    const shareButton = container.querySelector('button[aria-label="Share Top 10 Weight Loss as image"]');
+    expect(shareButton).not.toBeNull();
+    expect(shareButton.getAttribute('data-html2canvas-ignore')).toBe('true');
+
+    await act(async () => {
+      shareButton.click();
+      await Promise.resolve();
+    });
+
+    const shareInvoked = captureAndShare.mock.calls.length > 0 || shareCachedDataUrl.mock.calls.length > 0;
+    expect(shareInvoked).toBe(true);
   });
 });
 

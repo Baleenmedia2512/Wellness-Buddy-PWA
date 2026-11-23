@@ -48,6 +48,41 @@ function mimeTypeFromDataUrl(dataUrl, fallback = 'image/jpeg') {
   return dataUrl.slice(5, semi) || fallback;
 }
 
+/** Sync data-URL → File so web share stays inside the user-gesture window. */
+function dataUrlToShareFile(dataUrl, fileName, fallbackType = 'image/jpeg') {
+  try {
+    const comma = dataUrl.indexOf(',');
+    if (comma < 0) return null;
+    const mime = mimeTypeFromDataUrl(dataUrl, fallbackType);
+    const b64 = dataUrl.slice(comma + 1);
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: mime });
+    return new File([blob], fileName, { type: mime });
+  } catch {
+    return null;
+  }
+}
+
+async function copyWebShareCaptionBackup(text) {
+  const caption = String(text || '').trim();
+  if (!caption || typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(caption);
+    debugLog('📋 [CapacitorShare] web caption copied for WhatsApp paste');
+  } catch (clipErr) {
+    console.warn(
+      '⚠️ [CapacitorShare] web clipboard caption failed:',
+      clipErr?.message || clipErr,
+    );
+  }
+}
+
 async function copyAndroidShareCaptionBackup(text) {
   const caption = String(text || '').trim();
   if (!caption || !isAndroidNative()) return;
@@ -228,7 +263,13 @@ const isNativePlatform = () => {
  * with user interaction.
  */
 export const precaptureShareImage = (element, options = {}) => {
-  const { scale = 1.5, quality = 0.85, immediate = false } = options;
+  const {
+    scale = 2,
+    quality = 0.95,
+    immediate = false,
+    targetWidth,
+    targetHeight,
+  } = options;
 
   return new Promise((resolve) => {
     if (!element) {
@@ -239,21 +280,55 @@ export const precaptureShareImage = (element, options = {}) => {
     const run = async () => {
       try {
         const start = performance.now();
-        const canvas = await html2canvas(element, {
+        const canvasWidth = options.width || targetWidth;
+        const canvasHeight = options.height || targetHeight;
+        const winW = typeof window !== 'undefined'
+          ? Math.max(window.innerWidth || document.documentElement?.clientWidth || 0, canvasWidth || 0)
+          : canvasWidth;
+        const winH = typeof window !== 'undefined'
+          ? Math.max(window.innerHeight || document.documentElement?.clientHeight || 0, canvasHeight || 0)
+          : canvasHeight;
+
+        const html2canvasOpts = {
           backgroundColor: "#ffffff",
-          scale,
+          scale: typeof options.scale === "number" ? options.scale : (targetWidth ? 2 : scale),
           useCORS: true,
           allowTaint: false,
           logging: false,
           imageTimeout: immediate ? 1500 : 5000,
           removeContainer: true,
-          scrollY: -window.scrollY,
-          scrollX: -window.scrollX,
+          windowWidth: winW || undefined,
+          windowHeight: winH || undefined,
+          scrollY: 0,
+          scrollX: 0,
           foreignObjectRendering: false,
-        });
-        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        };
+        if (options.width) html2canvasOpts.width = options.width;
+        if (options.height) html2canvasOpts.height = options.height;
+
+        const canvas = await html2canvas(element, html2canvasOpts);
+
+        let finalCanvas = canvas;
+        if (
+          targetWidth &&
+          targetHeight &&
+          (canvas.width !== targetWidth || canvas.height !== targetHeight)
+        ) {
+          const resized = document.createElement("canvas");
+          resized.width = targetWidth;
+          resized.height = targetHeight;
+          const ctx = resized.getContext("2d");
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, targetWidth, targetHeight);
+          ctx.drawImage(canvas, 0, 0, targetWidth, targetHeight);
+          finalCanvas = resized;
+        }
+
+        const dataUrl = finalCanvas.toDataURL("image/jpeg", quality);
         debugLog(
-          `🟢 Pre-captured share image in ${Math.round(performance.now() - start)} ms (${Math.round(dataUrl.length / 1024)} KB string)`,
+          `🟢 Pre-captured share image in ${Math.round(performance.now() - start)} ms (${Math.round(dataUrl.length / 1024)} KB string, ${finalCanvas.width}x${finalCanvas.height})`,
         );
         resolve(dataUrl);
       } catch (err) {
@@ -428,22 +503,42 @@ export const shareViaCapacitorAPI = async (dataUrl, options = {}) => {
   }
 
   // ── WEB (navigator.share with file) ──────────────────────────────────
+  // Manual Log / classify: attach the photo (same caption style as native WA).
+  // Do not gate on canShare({ files }) — mobile Chrome often returns false
+  // even when file share works, which used to drop the image and send text only.
+  // Share the file FIRST (gesture-sensitive); clipboard caption is best-effort.
   try {
-    const blob = await (await fetch(dataUrl)).blob();
-    const file = new File([blob], fileName, { type: blob.type || "image/jpeg" });
-
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ title, text, files: [file] });
-      return { ok: true, dismissed: false };
+    if (!navigator.share) {
+      return { ok: false, error: new Error("Web Share API not available") };
     }
 
-    // Last-resort web fallback — share text/url only.
-    if (navigator.share) {
-      await navigator.share({ title, text });
+    const file = dataUrlToShareFile(dataUrl, fileName);
+    if (!file) {
+      return { ok: false, error: new Error("could not build share file") };
+    }
+    const caption = String(text || "").trim();
+
+    try {
+      await navigator.share(
+        caption
+          ? { title, text: caption, files: [file] }
+          : { title, files: [file] },
+      );
+      if (caption) void copyWebShareCaptionBackup(caption);
+      return { ok: true, dismissed: false };
+    } catch (mixErr) {
+      if (isCanceled(mixErr)) {
+        return { ok: true, dismissed: true };
+      }
+      // files+text is NotAllowed on some mobile browsers — retry image only.
+      debugLog(
+        "⚠️ [CapacitorShare] web files+text failed, retrying files only:",
+        mixErr?.name || mixErr?.message,
+      );
+      await navigator.share({ title, files: [file] });
+      if (caption) void copyWebShareCaptionBackup(caption);
       return { ok: true, dismissed: false };
     }
-
-    return { ok: false, error: new Error("Web Share API not available") };
   } catch (err) {
     if (isCanceled(err)) {
       return { ok: true, dismissed: true };
@@ -484,6 +579,30 @@ export const shareCachedDataUrl = async (dataUrl, options = {}) => {
 
       const start = performance.now();
       const shareText = await prepareAndroidImageShareCaption(text);
+
+      // Try package-targeted direct WhatsApp share first
+      if (typeof WhatsAppShare.shareToWhatsApp === "function") {
+        try {
+          await WhatsAppShare.shareToWhatsApp({
+            base64Data: dataUrl,
+            fileName: finalFileName,
+            text: shareText || '',
+            mimeType,
+          });
+          debugLog(`⚡ Direct WhatsApp share dispatched in ${Math.round(performance.now() - start)} ms`);
+          return true;
+        } catch (waErr) {
+          const isCanceled =
+            waErr?.message?.toLowerCase().includes("cancel") ||
+            waErr?.message?.toLowerCase().includes("cancelled");
+          if (isCanceled) {
+            debugLog("ℹ️ User cancelled WhatsApp direct share");
+            return true;
+          }
+          console.warn("⚠️ Direct WhatsApp share failed, falling back to shareImage:", waErr);
+        }
+      }
+
       await WhatsAppShare.shareImage({
         base64Data: dataUrl,
         fileName: finalFileName,
@@ -508,11 +627,35 @@ export const shareCachedDataUrl = async (dataUrl, options = {}) => {
     }
   }
 
-  // iOS / web — convert dataURL to blob and reuse existing pipeline.
+  // Web fast path — synchronous File creation keeps user gesture active for navigator.share
+  const isNative = Capacitor.isNativePlatform();
+  if (!isNative && typeof navigator !== "undefined" && navigator.share) {
+    try {
+      const file = dataUrlToShareFile(dataUrl, finalFileName, mimeType);
+      if (file) {
+        await navigator.share({
+          title,
+          files: [file],
+        });
+        debugLog("✅ Cached Web Share API dispatched inside user gesture");
+        return true;
+      }
+    } catch (webErr) {
+      const isCanceled =
+        webErr?.name === "AbortError" ||
+        webErr?.message?.toLowerCase().includes("cancel");
+      if (isCanceled) {
+        debugLog("ℹ️ User cancelled web share");
+        return true;
+      }
+      console.warn("⚠️ Cached web share failed, falling back to blob pipeline:", webErr);
+    }
+  }
+
+  // iOS / web fallback — convert dataURL to blob and reuse existing pipeline.
   try {
     const resp = await fetch(dataUrl);
     const blob = await resp.blob();
-    const isNative = Capacitor.isNativePlatform();
     if (isNative) {
       await shareNative(blob, {
         title,
@@ -684,11 +827,21 @@ export const captureAndShare = async (element, options = {}) => {
     //   but on web there's no Capacitor bridge cost so 2× is fine.
     const webScale = 2;
     const nativeScale = 1.5;
-    const captureScale = isNative ? nativeScale : webScale;
+    const canvasWidth = options.width || options.targetWidth;
+    const canvasHeight = options.height || options.targetHeight;
+    const winW = typeof window !== 'undefined'
+      ? Math.max(window.innerWidth || document.documentElement?.clientWidth || 0, canvasWidth || 0)
+      : canvasWidth;
+    const winH = typeof window !== 'undefined'
+      ? Math.max(window.innerHeight || document.documentElement?.clientHeight || 0, canvasHeight || 0)
+      : canvasHeight;
+
+    const captureScale = typeof options.scale === "number"
+      ? options.scale
+      : (options.targetWidth ? 2 : (isNative ? nativeScale : webScale));
     debugLog(`📐 Capture scale: ${captureScale}x`);
 
-    const captureStart = performance.now();
-    const canvas = await html2canvas(element, {
+    const html2canvasOpts = {
       backgroundColor: "#ffffff",
       scale: captureScale,
       useCORS: true,
@@ -696,20 +849,42 @@ export const captureAndShare = async (element, options = {}) => {
       logging: false,
       imageTimeout: 5000,
       removeContainer: true,
-      scrollY: -window.scrollY,
-      scrollX: -window.scrollX,
+      windowWidth: winW || undefined,
+      windowHeight: winH || undefined,
+      scrollY: options.targetWidth ? 0 : -window.scrollY,
+      scrollX: options.targetWidth ? 0 : -window.scrollX,
       foreignObjectRendering: false,
-      // No onclone hook: forcing maxWidth/naturalWidth on every image was both slow
-      // and risky (could balloon the captured canvas to many MB and cause layout
-      // shifts). Images already render at their on-screen size, which is what we want.
-    });
+    };
+    if (options.width) html2canvasOpts.width = options.width;
+    if (options.height) html2canvasOpts.height = options.height;
+
+    const captureStart = performance.now();
+    const canvas = await html2canvas(element, html2canvasOpts);
     debugLog(`⏱️ html2canvas took ${Math.round(performance.now() - captureStart)} ms`);
+
+    let finalCanvas = canvas;
+    if (
+      options.targetWidth &&
+      options.targetHeight &&
+      (canvas.width !== options.targetWidth || canvas.height !== options.targetHeight)
+    ) {
+      const resized = document.createElement("canvas");
+      resized.width = options.targetWidth;
+      resized.height = options.targetHeight;
+      const ctx = resized.getContext("2d");
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, options.targetWidth, options.targetHeight);
+      ctx.drawImage(canvas, 0, 0, options.targetWidth, options.targetHeight);
+      finalCanvas = resized;
+    }
 
     debugLog(
       "✅ Canvas created successfully with dimensions:",
-      canvas.width,
+      finalCanvas.width,
       "x",
-      canvas.height,
+      finalCanvas.height,
     );
 
     // FAST PATH (Android native): skip toBlob + FileReader round-trip.
@@ -720,11 +895,13 @@ export const captureAndShare = async (element, options = {}) => {
     //   to "share sheet takes too long to open".
     if (isNative && Capacitor.getPlatform() === "android") {
       const dataUrlMime = "image/jpeg";
-      const dataUrlQuality = 0.85;
+      const dataUrlQuality = typeof options.quality === "number"
+        ? options.quality
+        : (options.targetWidth ? 0.95 : 0.85);
       const fastFileName = fileName.replace(/\.png$/i, ".jpg");
 
       const dataUrlStart = performance.now();
-      const dataUrl = canvas.toDataURL(dataUrlMime, dataUrlQuality);
+      const dataUrl = finalCanvas.toDataURL(dataUrlMime, dataUrlQuality);
       debugLog(
         `⏱️ canvas.toDataURL took ${Math.round(performance.now() - dataUrlStart)} ms (${Math.round(dataUrl.length / 1024)} KB string, ~${Math.round((dataUrl.length * 0.75) / 1024)} KB binary)`,
       );
@@ -736,6 +913,31 @@ export const captureAndShare = async (element, options = {}) => {
         }
 
         const pluginStart = performance.now();
+        // Try direct WhatsApp share first if available
+        if (typeof WhatsAppShare.shareToWhatsApp === "function") {
+          try {
+            await WhatsAppShare.shareToWhatsApp({
+              base64Data: dataUrl,
+              fileName: fastFileName,
+              text: text || '',
+              mimeType: dataUrlMime,
+            });
+            debugLog(
+              `✅ Direct WhatsApp share launched in ${Math.round(performance.now() - pluginStart)} ms (fast path)`,
+            );
+            return;
+          } catch (waErr) {
+            const isCanceled =
+              waErr?.message?.toLowerCase().includes("cancel") ||
+              waErr?.message?.toLowerCase().includes("cancelled");
+            if (isCanceled) {
+              debugLog("ℹ️ User cancelled WhatsApp direct share");
+              return;
+            }
+            console.warn("⚠️ Direct WhatsApp share failed, falling back to shareImage:", waErr);
+          }
+        }
+
         const result = await WhatsAppShare.shareImage({
           base64Data: dataUrl,
           fileName: fastFileName,
@@ -769,9 +971,13 @@ export const captureAndShare = async (element, options = {}) => {
     // screenshots but roughly half the file size, which directly cuts base64 encoding,
     // Capacitor bridge transfer time, disk write time, and the receiving app's read time.
     const webMimeType = "image/jpeg";
-    const webQuality = 0.85;
+    const webQuality = typeof options.quality === "number"
+      ? options.quality
+      : (options.targetWidth ? 0.95 : 0.85);
     const nativeMimeType = "image/jpeg";
-    const nativeQuality = 0.85;
+    const nativeQuality = typeof options.quality === "number"
+      ? options.quality
+      : (options.targetWidth ? 0.95 : 0.85);
     const mimeType = isNative ? nativeMimeType : webMimeType;
     const quality = isNative ? nativeQuality : webQuality;
     const nativeFileName = fileName.replace(/\.png$/i, ".jpg");
@@ -779,7 +985,7 @@ export const captureAndShare = async (element, options = {}) => {
     const finalFileName = isNative ? nativeFileName : webFileName;
 
     const blob = await new Promise((resolve, reject) => {
-      canvas.toBlob(
+      finalCanvas.toBlob(
         (b) => {
           if (b) resolve(b);
           else reject(new Error("Failed to create blob from canvas"));
@@ -1078,10 +1284,20 @@ const downloadImage = async (blob, fileName) => {
 const shareWithRetryAndFallback = async (blob, options) => {
   const { title, fileName } = options;
 
+  const openWhatsAppFallback = () => {
+    try {
+      const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(
+        typeof navigator !== "undefined" ? navigator.userAgent : ""
+      );
+      window.open(isMobile ? "whatsapp://send" : "https://web.whatsapp.com", "_blank");
+    } catch {}
+  };
+
   // Check if Web Share API exists at all
   if (!navigator.share) {
-    debugLog("❌ Web Share API not supported in this browser, falling back to download");
+    debugLog("❌ Web Share API not supported in this browser, falling back to download and WhatsApp");
     await downloadImage(blob, fileName);
+    openWhatsAppFallback();
     return;
   }
 
@@ -1115,15 +1331,9 @@ const shareWithRetryAndFallback = async (blob, options) => {
     // NotAllowedError = gesture chain broken OR browser blocked.
     // With JPEG + scale:2, file is ~300-700 KB so size is NOT the issue here.
     if (error.name === "NotAllowedError") {
-      debugLog("⚠️ NotAllowedError — gesture context may have expired. Falling back to download.");
+      debugLog("⚠️ NotAllowedError — gesture context may have expired. Falling back to download and WhatsApp.");
       await downloadImage(blob, fileName);
-      alert(
-        "Image saved to your downloads! 📥\n\n" +
-        "To share on WhatsApp:\n" +
-        "1. Open WhatsApp\n" +
-        "2. Open the chat\n" +
-        "3. Tap 📎 → Gallery → select the downloaded image"
-      );
+      openWhatsAppFallback();
       return;
     }
 

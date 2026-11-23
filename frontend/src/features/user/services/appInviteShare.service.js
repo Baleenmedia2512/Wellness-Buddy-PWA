@@ -1,33 +1,43 @@
 /**
  * App invite sharing service.
  * Supports:
- *   - Native Android / iOS (via Capacitor Share, text-only)
- *   - Web Share API (text-only)
- *   - Clipboard fallback
+ *   - Native Android / iOS: Opens WhatsApp directly via `whatsapp://send?text=...` (Capacitor App plugin)
+ *     with fallback to Share.share.
+ *   - Web / Desktop / PWA: Opens WhatsApp directly via `https://api.whatsapp.com/send?text=...`.
+ *   - Clipboard fallback.
  *
- * Shares ONLY the text invitation message with the Google Play Store link.
- * No image or logo is attached.
+ * Direct WhatsApp sharing with invitation template text and share link.
  */
 import { Capacitor } from '@capacitor/core';
+import { App } from '@capacitor/app';
 import { Share } from '@capacitor/share';
-import { buildAppInviteSharePayload } from '../domain/appInvite.rules';
+import { buildAppInviteShareText, buildWhatsAppInviteUrl } from '../domain/appInvite.rules';
 
 /**
- * Execute the app invite share flow with text and Play Store link only.
+ * Execute the app invite share flow directly to WhatsApp.
  * @param {{ inviterName?: string }} [opts]
  * @returns {Promise<{ success: boolean, method: string }>}
  */
 export async function shareAppInvite({ inviterName = '' } = {}) {
-  const payload = buildAppInviteSharePayload({ inviterName });
-  const textWithUrl = payload.text;
+  const text = buildAppInviteShareText({ inviterName });
+  const encoded = encodeURIComponent(text);
 
-  // 1. Native Platform (Capacitor on Android / iOS) — text only, no image
+  // 1. Native Platform (Capacitor on Android / iOS) — open WhatsApp app directly
   if (Capacitor.isNativePlatform()) {
     try {
+      const { completed } = await App.openUrl({ url: `whatsapp://send?text=${encoded}` });
+      if (completed !== false) {
+        return { success: true, method: 'whatsapp-native' };
+      }
+    } catch (err) {
+      console.warn('[appInviteShare] App.openUrl failed, trying Share fallback:', err);
+    }
+
+    try {
       await Share.share({
-        title: payload.title,
-        text: textWithUrl,
-        dialogTitle: payload.dialogTitle,
+        title: 'Join me on Wellness Valley',
+        text,
+        dialogTitle: 'Share on WhatsApp',
       });
       return { success: true, method: 'native' };
     } catch (err) {
@@ -38,25 +48,29 @@ export async function shareAppInvite({ inviterName = '' } = {}) {
     }
   }
 
-  // 2. Web Share API (Mobile Browsers / Modern Desktops) — text only
-  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+  // 2. Web Browser / PWA — Open WhatsApp directly
+  if (typeof window !== 'undefined') {
+    const waUrl = buildWhatsAppInviteUrl({ inviterName });
     try {
-      await navigator.share({
-        title: payload.title,
-        text: textWithUrl,
-      });
-      return { success: true, method: 'web' };
-    } catch (err) {
-      if (err?.name === 'AbortError') {
-        return { success: true, method: 'cancelled' };
+      const win = window.open(waUrl, '_blank', 'noopener,noreferrer');
+      if (!win || win.closed || typeof win.closed === 'undefined') {
+        window.location.href = waUrl;
       }
-      console.warn('[appInviteShare] Web Share failed, falling back:', err);
+      return { success: true, method: 'whatsapp-web' };
+    } catch (err) {
+      console.warn('[appInviteShare] window.open failed, trying window.location:', err);
+      try {
+        window.location.href = waUrl;
+        return { success: true, method: 'whatsapp-web' };
+      } catch {
+        // continue to clipboard
+      }
     }
   }
 
-  // 3. Clipboard Fallback (Desktop Browsers / No Web Share)
+  // 3. Clipboard Fallback
   if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(textWithUrl);
+    await navigator.clipboard.writeText(text);
     return { success: true, method: 'clipboard' };
   }
 

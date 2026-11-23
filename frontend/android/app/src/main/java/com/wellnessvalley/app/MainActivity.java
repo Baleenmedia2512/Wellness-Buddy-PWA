@@ -21,6 +21,10 @@ import com.wellnessvalley.app.plugins.WhatsAppSharePlugin;
 import androidx.core.splashscreen.SplashScreen;
 
 public class MainActivity extends BridgeActivity {
+
+    /** Asked once. Opening it on every launch froze the logo when the user came back. */
+    private static final String KEY_BATTERY_ASKED = "battery_opt_asked";
+    private boolean batteryPromptLaunched = false;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -137,27 +141,54 @@ public class MainActivity extends BridgeActivity {
         // need these" screen. This is the industry-standard pattern used by Instagram,
         // Snapchat, and Headspace.
 
-        // Request battery optimization exemption (deferred to avoid blocking cold start)
+        // Ask once, after the first screen can paint. Repeating this on every
+        // open sent the user to battery details and left the logo frozen on return.
         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
             requestBatteryOptimizationExemption();
         }, 2000);
-        
+
         // ✅ Background service enabled — will run silently without notifications
         android.util.Log.d("MainActivity", "✅ Background service enabled (silent mode)");
-        
+
         // Mandatory updates are driven by the JS version-policy gate + InAppUpdatePlugin
         // (server update_required → Play IMMEDIATE). No unconditional native check here.
-        
+
         // Check if app was opened from notification
         handleNotificationIntent(getIntent());
-        
+
         android.util.Log.d("MainActivity", "✅ GalleryMonitorPlugin registered in MainActivity");
-        
+
         // Diagnostic only. A missing autofill method must not stop launch.
         try {
             diagnoseAutofillSetup();
         } catch (Throwable t) {
             android.util.Log.e("MainActivity", "Autofill diagnostic skipped", t);
+        }
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        resumeWebViewAfterSettings();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) resumeWebViewAfterSettings();
+    }
+
+    /** Battery settings pauses the WebView. Without this, the logo frame stays up. */
+    private void resumeWebViewAfterSettings() {
+        try {
+            if (getBridge() == null) return;
+            WebView webView = getBridge().getWebView();
+            if (webView == null) return;
+            webView.onResume();
+            webView.resumeTimers();
+            webView.invalidate();
+        } catch (Throwable t) {
+            android.util.Log.w("MainActivity", "WebView resume skipped", t);
         }
     }
     
@@ -250,14 +281,21 @@ public class MainActivity extends BridgeActivity {
     }
     
     private void requestBatteryOptimizationExemption() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+        if (batteryPromptLaunched) return;
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) return;
+        if (isFinishing()) return;
+        try {
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-            if (!pm.isIgnoringBatteryOptimizations(getPackageName())) {
-                Intent intent = new Intent();
-                intent.setAction(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-                intent.setData(Uri.parse("package:" + getPackageName()));
-                startActivity(intent);
-            }
+            if (pm == null || pm.isIgnoringBatteryOptimizations(getPackageName())) return;
+            SharedPreferences prefs = getSharedPreferences("app_prefs", MODE_PRIVATE);
+            if (prefs.getBoolean(KEY_BATTERY_ASKED, false)) return;
+            Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            batteryPromptLaunched = true;
+            startActivity(intent);
+            prefs.edit().putBoolean(KEY_BATTERY_ASKED, true).apply();
+        } catch (Throwable t) {
+            android.util.Log.w("MainActivity", "Battery optimization request skipped", t);
         }
     }
     

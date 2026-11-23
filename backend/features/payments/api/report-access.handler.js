@@ -21,6 +21,7 @@ import {
   canSeeReportDetails,
   resolveReportAccess,
   shouldGateReportDetails,
+  trialExpiresAtDisplay,
   trialStartIstYmd,
 } from '../domain/report-trial.rules.js';
 
@@ -36,6 +37,29 @@ function parseUserId(raw) {
   return Number.isFinite(userId) && userId > 0 ? userId : null;
 }
 
+/**
+ * Same Premium read Reports and Digital Portfolio share.
+ * A failed lookup is not "not Premium" — callers must not open a trial from it.
+ */
+async function readPremiumFlags({ hasPaid, hasEverPaid, userId, mode, logLabel }) {
+  let premium;
+  try {
+    premium = await hasPaid({ userId, mode });
+  } catch (error) {
+    logger.warn(logLabel, { userId, message: error?.message || String(error) });
+    throw new ValidationError(503, 'Premium status could not be checked');
+  }
+  if (premium === true) return { premium: true, everPaid: true };
+  let everPaid;
+  try {
+    everPaid = await hasEverPaid({ userId, mode });
+  } catch (error) {
+    logger.warn(logLabel, { userId, message: error?.message || String(error) });
+    throw new ValidationError(503, 'Premium status could not be checked');
+  }
+  return { premium: false, everPaid: everPaid === true };
+}
+
 function accessPayload({ premium, everPaid, startedAt, todayYmd }) {
   const startYmd = premium ? null : trialStartIstYmd(startedAt);
   const resolved = resolveReportAccess({
@@ -44,11 +68,17 @@ function accessPayload({ premium, everPaid, startedAt, todayYmd }) {
     startYmd,
     todayYmd,
   });
-  return {
+  const data = {
     access: resolved.access,
     daysLeft: resolved.daysLeft,
     canSeeDetails: canSeeReportDetails(resolved.access),
   };
+  // Extra field. Older apps ignore it. Only an active trial has an end time.
+  if (resolved.access === 'trial') {
+    const expiresAtDisplay = trialExpiresAtDisplay(startYmd);
+    if (expiresAtDisplay) data.expiresAtDisplay = expiresAtDisplay;
+  }
+  return data;
 }
 
 /**
@@ -69,28 +99,13 @@ export async function getReportAccess(input, deps = {}) {
 
   const todayYmd = deps.todayYmd || todayInTimezone(IANA_IST);
   const mode = cashfreeCheckoutMode(process.env.CASHFREE_ENV || 'sandbox');
-  let premium = false;
-  try {
-    premium = await hasPaid({ userId, mode });
-  } catch (error) {
-    logger.warn('Report access premium lookup failed', {
-      userId,
-      message: error?.message || String(error),
-    });
-  }
-
-  let everPaid = premium;
-  if (!premium) {
-    try {
-      everPaid = await hasEverPaid({ userId, mode });
-    } catch (error) {
-      logger.warn('Report access ever-paid lookup failed', {
-        userId,
-        message: error?.message || String(error),
-      });
-      everPaid = false;
-    }
-  }
+  const { premium, everPaid } = await readPremiumFlags({
+    hasPaid,
+    hasEverPaid,
+    userId,
+    mode,
+    logLabel: 'Report access premium lookup failed',
+  });
 
   // Trial start only matters for first-time (never paid) members.
   let startedAt = null;
@@ -128,15 +143,13 @@ export async function startReportTrial(input, deps = {}) {
 
   const todayYmd = deps.todayYmd || todayInTimezone(IANA_IST);
   const mode = cashfreeCheckoutMode(process.env.CASHFREE_ENV || 'sandbox');
-  let premium = false;
-  try {
-    premium = await hasPaid({ userId, mode });
-  } catch (error) {
-    logger.warn('Report trial premium lookup failed', {
-      userId,
-      message: error?.message || String(error),
-    });
-  }
+  const { premium, everPaid } = await readPremiumFlags({
+    hasPaid,
+    hasEverPaid,
+    userId,
+    mode,
+    logLabel: 'Report trial premium lookup failed',
+  });
   if (premium) {
     return {
       httpStatus: 200,
@@ -144,15 +157,6 @@ export async function startReportTrial(input, deps = {}) {
     };
   }
 
-  let everPaid = false;
-  try {
-    everPaid = await hasEverPaid({ userId, mode });
-  } catch (error) {
-    logger.warn('Report trial ever-paid lookup failed', {
-      userId,
-      message: error?.message || String(error),
-    });
-  }
   if (everPaid) {
     return {
       httpStatus: 200,

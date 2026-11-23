@@ -107,9 +107,10 @@ export default function GoodHabitFlow({
 
   const handleSave = async () => {
     if (!image?.base64) {
-      setError('Upload a photo to save.');
+      setError('Upload a photo to send to your coach.');
       return;
     }
+    if (saving) return;
     setSaving(true);
     setError(null);
     try {
@@ -119,8 +120,10 @@ export default function GoodHabitFlow({
         imageBase64: image.base64,
         shareImage: image.base64,
       });
+      // OTP modal opens on top — unlock for resend path / errors after dismiss.
+      setSaving(false);
     } catch (err) {
-      setError(err?.message || "Couldn't save Task by Coach.");
+      setError(err?.message || "Couldn't send Task by Coach.");
       setSaving(false);
     }
   };
@@ -132,7 +135,7 @@ export default function GoodHabitFlow({
           <div>
             <p id="good-habit-title" className="text-sm font-bold leading-snug text-emerald-900">Task by Coach</p>
             <p className="mt-0.5 text-[11px] leading-snug text-emerald-700/70">
-              Click Save if this photo shows a task by coach you completed today.
+              This photo is emailed to your coach. Your score updates now — they can Reject if incomplete.
             </p>
           </div>
           <button
@@ -153,7 +156,7 @@ export default function GoodHabitFlow({
           <ImageSlot image={image} compressing={compressing} onPick={pickImage} />
           <button type="button" disabled={!canSave} onClick={handleSave} className={SAVE_BTN}>
             {saving && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-            Save
+            {saving ? 'Sending to coach…' : 'Send to Coach'}
           </button>
         </div>
       </div>

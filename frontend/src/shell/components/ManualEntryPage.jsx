@@ -289,7 +289,6 @@ export default function ManualEntryPage({
   const [pendingLogAsId, setPendingLogAsId] = useState(null);
   /** True while waiting for captureId after user tapped Food (AI path). */
   const [pendingFoodAi, setPendingFoodAi] = useState(false);
-
   // New capture while this screen stays mounted — close any open sub-form.
   // Do not clear pendingLogAsId / pendingFoodAi here: captureId often flips null → id
   // on the same mount, and those pending taps must flush once ready.
@@ -445,11 +444,15 @@ export default function ManualEntryPage({
     return loadWorkoutToday({ showLoading: !workoutSummaryReadyRef.current });
   }, [activeForm, loadWorkoutToday]);
 
-  const exit = (shareMeta = null) => {
-    // Leave classify immediately — share sheet opens from App in the background.
-    // onSaved must read imageBase64 synchronously before onBack clears the payload.
-    onSaved?.(shareMeta);
-    onBack?.();
+  const exit = async (shareMeta = null) => {
+    // Await share on web so navigator.share({ files }) stays in the Save gesture
+    // window (otherwise the photo is dropped and only wa.me text opens).
+    // onSaved must read imageBase64 before onBack clears the payload.
+    try {
+      await onSaved?.(shareMeta);
+    } finally {
+      onBack?.();
+    }
   };
 
   /** Close classify — optionally discard a new capture (not when opened from Diary). */
@@ -1004,6 +1007,7 @@ export default function ManualEntryPage({
         idealWeight: pickIdealWeightKg(weightValue, idealRange),
       }),
       currentMarathonDay0Weight: weightValue,
+      shareImage: img,
     });
 
     void saveWeight({
@@ -1031,6 +1035,7 @@ export default function ManualEntryPage({
       activityCaption: buildDiaryShareSuffix('workout', {
         caloriesBurned,
       }),
+      shareImage: img,
     });
 
     void saveLog({
@@ -1111,6 +1116,7 @@ export default function ManualEntryPage({
         platform,
         session: topic,
       }),
+      shareImage: img,
     });
 
     void saveLog({
@@ -1131,18 +1137,18 @@ export default function ManualEntryPage({
     imageBase64: habitImage,
     shareImage,
   }) => {
-    // Persist first, then refresh score, then leave — exiting early left Home
-    // on the pre-save total until a full page reload.
+    // Save + score immediately; coach gets email with Reject (no OTP).
     await saveGoodHabit({
       userId,
       captureId,
       habitType,
       notes: '',
       imageBase64: habitImage,
-      clientTimestamp: originalCapturedAt || null,
+      clientTimestamp: null,
     });
+    setActiveForm(null);
     refreshAfterPersist('manual-good-habit-persisted');
-    onToast?.('Task by Coach saved to Diary');
+    onToast?.('Sent to coach — score updated');
     exit({
       activityCaption: buildDiaryShareSuffix('good-habit', { habitType }),
       shareImage: shareImage || habitImage || imageBase64,

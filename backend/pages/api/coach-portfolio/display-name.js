@@ -1,7 +1,7 @@
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import { checkDisplayNameAvailability } from '../../../features/coach-portfolio/api/submission.handler.js';
-import { assertEventsHostToolsAllowed } from '../../../features/payments/api/events-access.handler.js';
+import { assertDigitalPortfolioAllowed } from '../../../features/coach-portfolio/api/portfolio-access.guard.js';
 
 export default async function handler(req, res) {
   if (applyCors(req, res, 'GET, OPTIONS')) return;
@@ -12,7 +12,7 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     return runService(res, async () => {
-      await assertEventsHostToolsAllowed(req, req.query?.userId);
+      await assertDigitalPortfolioAllowed(req, req.query?.userId);
       return checkDisplayNameAvailability({
       userId: req.query?.userId,
       centerId: req.query?.centerId,

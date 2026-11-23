@@ -113,7 +113,7 @@ export function useTeamSearch({
   // so profile-name load does not re-download the full team-hierarchy payload.
   // Re-run when coachCommunityId arrives so direct-downline rows get Your CID.
   useEffect(() => {
-    if (!isCoach || !coachDbId) return undefined;
+    if (!isCoach || !coachDbId || !user) return undefined;
     if (refreshKey > 0) {
       invalidateHasTeamMembersCache(coachDbId);
     }
@@ -123,7 +123,7 @@ export function useTeamSearch({
     fetchTeamMembers({
       coachId: coachDbId,
       coachName: resolveTeamSearchDisplayName(savedUserName, user),
-      coachEmail: user.email,
+      coachEmail: user?.email || user?.Email || '',
       coachRole: userRole,
       coachCommunityId: coachCommunityIdRef.current || coachCommunityId,
       coachPhone: user?.phoneNumber || user?.PhoneNumber || user?.phone || null,

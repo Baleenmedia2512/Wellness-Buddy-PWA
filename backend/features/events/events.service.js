@@ -45,7 +45,9 @@ import {
   canScanEventRegistrations,
   computeRegistrationCharge,
   eventDeleteBlockedByBookings,
+  isEventFinished,
   parseEntryCode,
+  parseEventUserId,
   selfBookingAlreadyTaken,
 } from './domain/event.rules.js';
 import { creditEventTicketRefund, debitForEventTicket } from '../wallet/data/wallet.repo.js';
@@ -288,20 +290,30 @@ export function listEvents(input) {
   });
 }
 
-export function listOpenEvents() {
+export function listOpenEvents(viewerUserId = null) {
   return run(async () => {
     const events = await repo.listOpenEvents();
-    const takenMap = await countSeatsTakenByEventIds(events.map((event) => event.id));
-    const withSeats = events.map((event) => {
+    const now = istNowParts();
+    const parsedViewerUserId = parseEventUserId(viewerUserId);
+    const visibleEvents = events.filter((event) => {
+      const finished = isEventFinished(event, now);
+      if (!finished) return true;
+      if (parsedViewerUserId == null) return false;
+      return Number(event.createdByUserId) === Number(parsedViewerUserId);
+    });
+    const takenMap = await countSeatsTakenByEventIds(visibleEvents.map((event) => event.id));
+    const withSeats = visibleEvents.map((event) => {
       const seatCount = Number(event.seatCount) || 0;
       const seatsTaken = takenMap.get(Number(event.id)) || 0;
       const seatsLeft = seatCount > 0 ? Math.max(0, seatCount - seatsTaken) : null;
       const soldOut = seatCount > 0 && seatsTaken >= seatCount;
+      const isFinished = isEventFinished(event, now);
       return {
         ...event,
         seatsTaken,
         seatsLeft,
         soldOut,
+        isFinished,
       };
     });
     return { httpStatus: 200, body: { success: true, events: withSeats } };

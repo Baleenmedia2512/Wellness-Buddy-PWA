@@ -11,7 +11,9 @@ import {
   formatBcmListCardDateTime,
   formatBcmFormTime,
   bcmWallClockToIso,
+  BCM_DEFAULT_APPOINTMENT_TIME_LABEL,
   computeDefaultAppointmentDate,
+  formatBcmAppointmentDisplay,
   resolveBcmCardAppointmentDate,
 } from './bcmCardDateTime.rules.js';
 
@@ -194,5 +196,19 @@ describe('resolveBcmCardAppointmentDate', () => {
   it('returns empty string when card is null or non-object', () => {
     assert.equal(resolveBcmCardAppointmentDate(null), '');
     assert.equal(resolveBcmCardAppointmentDate(undefined), '');
+  });
+});
+
+describe('formatBcmAppointmentDisplay', () => {
+  it('appends the fixed 7:00 AM appointment time', () => {
+    assert.equal(BCM_DEFAULT_APPOINTMENT_TIME_LABEL, '7:00 AM');
+    assert.equal(
+      formatBcmAppointmentDisplay({ appointmentDate: '2026-10-22' }),
+      '2026-10-22 7:00 AM',
+    );
+  });
+
+  it('returns empty string when appointment date cannot be resolved', () => {
+    assert.equal(formatBcmAppointmentDisplay(null), '');
   });
 });

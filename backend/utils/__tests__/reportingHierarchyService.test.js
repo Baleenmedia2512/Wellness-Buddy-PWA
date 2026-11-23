@@ -451,4 +451,34 @@ describe('collectVisibleHierarchyUsers — upline people, own downline, not othe
     assert.equal(idSet.has(PaulMember), true, 'Paul is CoachId sibling peer');
     assert.equal(idSet.has(JasperKid), false, 'peer downline must stay hidden');
   });
+
+  it('member sees upline co-coach partner only (not partner downline / not other branches)', () => {
+    // Vasantha → Usharaj → Leenah; Balaji is Leenah's co-coach (not Vasantha's direct coach).
+    const Upline = 9200;
+    const BalajiPartner = 9201;
+    const LeenahUpline = 9202;
+    const UsharajCoach = 9203;
+    const VasanthaMember = 9204;
+    const BalajiKid = 9205;
+    const LeenahOtherBranch = 9206;
+    const tree = buildReportingContext([
+      { UserId: Upline, UserName: 'Upline', Role: 'coach', CoachId: null, Status: 'Active' },
+      { UserId: BalajiPartner, UserName: 'Balaji', Role: 'admin', CoachId: Upline, Status: 'Active' },
+      { UserId: LeenahUpline, UserName: 'Leenah', Role: 'user', CoachId: Upline, Status: 'Active' },
+      { UserId: UsharajCoach, UserName: 'Usharaj', Role: 'user', CoachId: LeenahUpline, Status: 'Active' },
+      { UserId: VasanthaMember, UserName: 'Vasantha', Role: 'user', CoachId: UsharajCoach, Status: 'Active' },
+      { UserId: BalajiKid, UserName: 'BalajiKid', Role: 'user', CoachId: BalajiPartner, Status: 'Active' },
+      { UserId: LeenahOtherBranch, UserName: 'OtherBranch', Role: 'user', CoachId: LeenahUpline, Status: 'Active' },
+    ]);
+    tree.ancestorCoCoachPartnerIds = [BalajiPartner];
+
+    const visible = collectVisibleHierarchyUsers(VasanthaMember, tree);
+    const idSet = new Set(visible.map((m) => m.UserId));
+    assert.equal(idSet.has(VasanthaMember), true);
+    assert.equal(idSet.has(UsharajCoach), true, 'direct coach upline');
+    assert.equal(idSet.has(LeenahUpline), true, 'grand-upline');
+    assert.equal(idSet.has(BalajiPartner), true, 'upline co-coach partner must show');
+    assert.equal(idSet.has(BalajiKid), false, 'partner downline stays hidden');
+    assert.equal(idSet.has(LeenahOtherBranch), false, 'upline other branch stays hidden');
+  });
 });

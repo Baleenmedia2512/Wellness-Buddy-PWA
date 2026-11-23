@@ -326,18 +326,22 @@ export function buildRecordedTrendSeries(
     inRange = unique.filter((entry) => toDateKey(entry.createdAt) >= startKey);
   }
 
-  const monthKeys = new Set(inRange.map((entry) => monthKeyFromYmd(toDateKey(entry.createdAt))));
-  const sameMonth = monthKeys.size <= 1;
-
+  // Axis labels: month+day on the first point of each month, then day-only
+  // (23, 24, 25) so custom ranges spanning months do not jam "Nov 15"/"Nov 16".
+  let lastMonthKey = null;
   return inRange.map((entry) => {
     const date = entry.createdAt;
     const key = toDateKey(date);
+    const month = monthKeyFromYmd(key);
     const label = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const dayOnly = dayLabelFromKey(key);
+    const compactLabel = month !== lastMonthKey ? label : dayOnly;
+    lastMonthKey = month;
     return {
       key,
       date,
       label,
-      compactLabel: sameMonth ? dayLabelFromKey(key) : label,
+      compactLabel,
       tooltipDate: formatTrendTooltipDate(date),
       hasRecorded: true,
       value: entry.value,

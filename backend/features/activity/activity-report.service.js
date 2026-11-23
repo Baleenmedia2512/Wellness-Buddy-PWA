@@ -39,6 +39,12 @@ import { resolveFoodTimestamp } from '../../shared/lib/datetime/foodTimestamp.js
 import { resolveSponsorAndIdealCoachForMembers } from '../../utils/sponsorCoachResolution.js';
 import { filterPublicAggregateUsers } from '../user/domain/aggregate-eligibility.rules.js';
 import { parseWatchKcalFromTopic } from './domain/watch-calories.helpers.js';
+import {
+  buildUserWeightRowsAsc,
+  collectUserIdsMissingPreviousWeight,
+  mergePriorWeightRows,
+  resolvePreviousWeightKg,
+} from './domain/activity-report.weight.js';
 import * as hiddenRepo from './activity-report-hidden.repository.js';
 import {
   activityReportHiddenCacheToken,
@@ -350,6 +356,7 @@ async function buildPagedActivityRecords({
   timeWindows,
   paginationOpts,
   attendanceStatus = ACTIVITY_REPORT_ATTENDANCE.POSTED,
+  startDateYmd = null,
 }) {
   const search = String(paginationOpts.search || '').trim();
   // Sponsor/coach search, export, and sponsor-column sort need names on every
@@ -381,6 +388,7 @@ async function buildPagedActivityRecords({
       stepRecords,
       watchRecords,
       timeWindows,
+      startDateYmd,
     })).map((row) => ({
       ...row,
       attendanceStatus: ACTIVITY_REPORT_ATTENDANCE.POSTED,
@@ -418,6 +426,7 @@ async function buildDetailRecordsFromBundle({
   stepRecords,
   watchRecords,
   timeWindows,
+  startDateYmd = null,
 }) {
   switch (activityType) {
     case 'weight': {
@@ -426,6 +435,12 @@ async function buildDetailRecordsFromBundle({
         timezoneIana,
         { timezoneByUserId },
       );
+      const weightRowsByUser = buildUserWeightRowsAsc(weightRecords);
+      const missingPriorIds = collectUserIdsMissingPreviousWeight(dedupedWeight, weightRowsByUser);
+      if (missingPriorIds.length > 0 && startDateYmd) {
+        const priorRows = await repo.fetchLatestWeightsBeforeDate(missingPriorIds, startDateYmd);
+        mergePriorWeightRows(weightRowsByUser, priorRows);
+      }
       const centerIds = [...new Set(
         dedupedWeight.filter((r) => !r.CenterName && r.NutritionCenterId).map((r) => r.NutritionCenterId),
       )];
@@ -434,6 +449,10 @@ async function buildDetailRecordsFromBundle({
         const member = memberMap[record.UserId] || {};
         const tz = ownerTz(timezoneByUserId, record.UserId, timezoneIana);
         const { date, time } = extractDateTime(record.CreatedAt, tz);
+        const previousWeight = resolvePreviousWeightKg(
+          record.CreatedAt,
+          weightRowsByUser.get(String(record.UserId)),
+        );
         return {
           userId: record.UserId,
           memberName: member.name,
@@ -445,6 +464,7 @@ async function buildDetailRecordsFromBundle({
           time,
           clubName: record.CenterName || centerMap[record.NutritionCenterId] || 'N/A',
           weight: record.Weight || 'N/A',
+          previousWeight,
         };
       });
     }
@@ -781,8 +801,8 @@ export function invalidateActivityReportCachesForViewer(_viewerUserId) {
 }
 
 /**
- * Team scope for the report with globally hidden members removed.
- * Hidden users stay out regardless of date / attendance / column filters.
+ * Team scope for the report with globally hidden members tracked.
+ * Counts include all members in scope; Not Posted detail table excludes hidden members.
  */
 async function resolveVisibleActivityReportUserIds({ userId, role, teamScope }) {
   const [scope, hiddenIds] = await Promise.all([
@@ -791,7 +811,7 @@ async function resolveVisibleActivityReportUserIds({ userId, role, teamScope }) 
   ]);
   return {
     ...scope,
-    userIds: excludeHiddenActivityReportUserIds(scope.userIds, hiddenIds),
+    userIds: scope.userIds,
     hiddenIds,
     hiddenCacheToken: activityReportHiddenCacheToken(hiddenIds),
   };
@@ -872,7 +892,7 @@ async function getActivityReportBootstrapUncached({
     ? hiddenCacheToken
     : activityReportHiddenCacheToken(resolvedHiddenIds);
   const { teamScope: resolvedScope, teamScopeCounts, memberMeta } = scope;
-  const userIds = excludeHiddenActivityReportUserIds(scope.userIds, resolvedHiddenIds);
+  const userIds = scope.userIds || [];
   const baseBody = {
     success: true,
     dateRange,
@@ -957,6 +977,7 @@ async function getActivityReportBootstrapUncached({
       attendanceStatus,
       userIds,
       attendedUserIds,
+      resolvedHiddenIds,
     );
 
     // Empty detail tab → skip member fetch + sponsor/ideal-coach chain walks.
@@ -980,6 +1001,7 @@ async function getActivityReportBootstrapUncached({
         timeWindows,
         paginationOpts,
         attendanceStatus,
+        startDateYmd: startStr,
       });
       records = paged.records;
       pagination = paged.pagination;
@@ -1372,6 +1394,7 @@ export async function getActivityDetails({
     attendanceStatus,
     userIds,
     attendedUserIds,
+    scope.hiddenIds,
   );
 
   if (tableUserIds.length === 0) {
@@ -1431,6 +1454,7 @@ export async function getActivityDetails({
     timeWindows,
     paginationOpts,
     attendanceStatus,
+    startDateYmd: startStr,
   });
   setCachedDetailRows(rowsCacheKey, preparedRows);
   setCachedDetailClubs(clubsCacheKey, availableClubs || [], availableFilters);

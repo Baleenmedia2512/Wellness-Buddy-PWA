@@ -4,20 +4,8 @@
  */
 
 export const APP_SHARE_URL = 'https://wellnessvalley.in/share';
+export const APP_SHARE_DISPLAY_URL = 'wellnessvalley.in/share';
 export const PLAY_STORE_APP_URL = 'https://play.google.com/store/apps/details?id=com.wellnessvalley.app';
-
-export const APP_INVITE_MESSAGE = [
-  '🎉 Welcome to Wellness Valley! 🌿',
-  '',
-  '📲 Download the app using the link below:',
-  APP_SHARE_URL,
-  '',
-  'Step 1: Enter your mobile number and verify it using the OTP.',
-  '',
-  "Step 2: Select the Sponsor's email address who invited you and verify it using the OTP sent to that email.",
-  '',
-  'Step 3: Fill in all the required details in the Complete Profile form.',
-].join('\n');
 
 /**
  * Builds the text message for inviting friends to the Wellness Valley app.
@@ -25,8 +13,36 @@ export const APP_INVITE_MESSAGE = [
  * @returns {string}
  */
 export function buildAppInviteShareText({ inviterName = '' } = {}) {
-  void inviterName;
-  return APP_INVITE_MESSAGE;
+  const trimmed = String(inviterName || '').trim();
+  const sponsorName = trimmed || 'your sponsor';
+  return [
+    'Join me on the Wellness Valley app!',
+    '',
+    'Download the app using the link below:',
+    APP_SHARE_DISPLAY_URL,
+    '',
+    'Step 1: Enter your mobile number.',
+    '',
+    'Step 2: Enter the OTP sent to your mobile number.',
+    '',
+    `Step 3: Enter ${sponsorName} under Sponsor Name and select it.`,
+    '',
+    'Step 4: Enter the OTP received by your sponsor.',
+    '',
+    'Step 5: Complete your profile and enjoy the app!',
+  ].join('\n');
+}
+
+export const APP_INVITE_MESSAGE = buildAppInviteShareText();
+
+/**
+ * Builds the WhatsApp share URL directly with the invite message.
+ * @param {{ inviterName?: string }} [opts]
+ * @returns {string}
+ */
+export function buildWhatsAppInviteUrl({ inviterName = '' } = {}) {
+  const text = buildAppInviteShareText({ inviterName });
+  return `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
 }
 
 /**
@@ -36,10 +52,10 @@ export function buildAppInviteShareText({ inviterName = '' } = {}) {
 export function buildAppInviteSharePayload({ inviterName = '' } = {}) {
   const text = buildAppInviteShareText({ inviterName });
   return {
-    title: 'Welcome to Wellness Valley',
+    title: 'Wellness Valley Invite',
     text,
     url: APP_SHARE_URL,
-    dialogTitle: 'Invite Friends to Wellness Valley',
-    fileName: 'wellness-valley-invite.png',
+    dialogTitle: 'Share on WhatsApp',
+    whatsappUrl: buildWhatsAppInviteUrl({ inviterName }),
   };
 }

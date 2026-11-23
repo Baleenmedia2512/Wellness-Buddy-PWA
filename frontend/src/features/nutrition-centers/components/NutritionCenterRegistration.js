@@ -8,12 +8,30 @@ import { Geolocation } from '@capacitor/geolocation';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { loadGoogleMaps } from '../services/googleMapsLoader';
 import { getUserId } from '../../../shared/services/userIdentity';
-import { splitOwnerPhone } from '../domain/ownerPhone.js';
+import { accountPhoneFromUser, phonesMatch, splitOwnerPhone } from '../domain/ownerPhone.js';
+import { cardAreaCity, formatAreaCity } from '../domain/placeAreaCity.js';
+import { geocodeAreaCity } from '../services/geocodeAreaCity.js';
+import {
+  centreCodeBody,
+  centreCodeError,
+  centreCodeFromSuffix,
+  centrePhotosError,
+  centrePhotosForApi,
+  centrePhotosFromApi,
+  emptyCentrePhotos,
+} from '../domain/centreProfile.rules.js';
+import CentrePhotoSlots from './CentrePhotoSlots';
+import CentreListingFields from './CentreListingFields';
+import { centreListingError, defaultOpeningHours, seatingCountError } from '../domain/centreListing.rules.js';
+import { apiFetch } from '../../../shared/services/apiFetch.js';
 
 const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) => {
   const [centerName, setCenterName] = useState('');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
+  const [area, setArea] = useState('');
+  const [city, setCity] = useState('');
+  const [resolvedPlaces, setResolvedPlaces] = useState({});
   const [ownerPhone, setOwnerPhone] = useState('');
   const [countryCode, setCountryCode] = useState('+91'); // Default to India
   const [loading, setLoading] = useState(false);
@@ -38,6 +56,21 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
   const [editingCenter, setEditingCenter] = useState(null); // set when opened from Physical Club Report
   const [nameAvailable, setNameAvailable] = useState(null); // null=unchecked, true=available, false=taken
   const [nameChecking, setNameChecking] = useState(false);
+  const [centreCodeSuffix, setCentreCodeSuffix] = useState('');
+  const [centrePhotos, setCentrePhotos] = useState(emptyCentrePhotos);
+  const [openingHours, setOpeningHours] = useState(defaultOpeningHours);
+  const [facilities, setFacilities] = useState([]);
+  const [seatingCount, setSeatingCount] = useState('');
+  const [approvalSent, setApprovalSent] = useState(false);
+  const [coachName, setCoachName] = useState('');
+  const [coachOtp, setCoachOtp] = useState('');
+  const [coachApproved, setCoachApproved] = useState(false);
+  const [approvalLoading, setApprovalLoading] = useState(false);
+  const [phoneOtpSent, setPhoneOtpSent] = useState(false);
+  const [phoneOtp, setPhoneOtp] = useState('');
+  const [phoneOtpVerified, setPhoneOtpVerified] = useState(false);
+  const [phoneOtpLoading, setPhoneOtpLoading] = useState(false);
+  const [photosLoading, setPhotosLoading] = useState(false);
   const nameCheckTimerRef = useRef(null);
   
   const mapRef = useRef(null);
@@ -82,6 +115,28 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
   const handleCenterNameChange = (value) => {
     setCenterName(value);
     checkNameAvailability(value);
+  };
+
+  const handleCentreCodeChange = (value) => {
+    setCentreCodeSuffix(centreCodeBody(value).slice(0, 16));
+  };
+
+  const centreProfilePayload = () => {
+    const codeError = centreCodeError(centreCodeSuffix);
+    if (codeError) throw new Error(codeError);
+    const photoError = centrePhotosError(centrePhotos);
+    if (photoError) throw new Error(photoError);
+    const listingError = centreListingError(openingHours, facilities);
+    if (listingError) throw new Error(listingError);
+    const seatError = seatingCountError(seatingCount);
+    if (seatError) throw new Error(seatError);
+    return {
+      centerCode: centreCodeFromSuffix(centreCodeSuffix),
+      photos: centrePhotosForApi(centrePhotos),
+      openingHours,
+      facilities,
+      seatingCount: String(seatingCount).trim() === '' ? null : Number(seatingCount),
+    };
   };
 
   // Load Google Maps script
@@ -263,7 +318,7 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
       // Setup Places Autocomplete
       if (searchBoxRef.current && window.google.maps.places) {
         const autocomplete = new window.google.maps.places.Autocomplete(searchBoxRef.current, {
-          fields: ['geometry', 'formatted_address', 'name'],
+          fields: ['geometry', 'formatted_address', 'name', 'address_components'],
         });
         
         autocomplete.bindTo('bounds', map);
@@ -347,6 +402,12 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     const lng = location.lng().toFixed(8);
     setLatitude(lat);
     setLongitude(lng);
+    geocodeAreaCity(lat, lng).then((place) => {
+      if (place.area || place.city) {
+        setArea(place.area);
+        setCity(place.city);
+      }
+    });
     debugLog('ðŸ“ Coordinates updated:', lat, lng);
 
     // Add drag listener
@@ -355,6 +416,12 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
       const newLng = event.latLng.lng().toFixed(8);
       setLatitude(newLat);
       setLongitude(newLng);
+      geocodeAreaCity(newLat, newLng).then((place) => {
+        if (place.area || place.city) {
+          setArea(place.area);
+          setCity(place.city);
+        }
+      });
       debugLog('ðŸ“ Marker dragged to:', newLat, newLng);
     });
   };
@@ -422,7 +489,28 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     const limitedValue = digitsOnly.slice(0, maxLength);
     
     setOwnerPhone(limitedValue);
+    setPhoneOtp('');
+    setPhoneOtpSent(false);
+    setPhoneOtpVerified(false);
   };
+
+  const accountPhone = accountPhoneFromUser(user);
+  const enteredPhone = ownerPhone ? `${countryCode}${ownerPhone}` : '';
+  const savedCentrePhone = editingCenter?.owner_phone || '';
+  const phoneNeedsOtp = Boolean(ownerPhone)
+    && !phonesMatch(enteredPhone, accountPhone)
+    && !phonesMatch(enteredPhone, savedCentrePhone);
+  const phoneAutofilledRef = useRef(false);
+
+  useEffect(() => {
+    if (phoneAutofilledRef.current || initialCenter) return;
+    const account = splitOwnerPhone(accountPhone);
+    if (!account.phone) return;
+    phoneAutofilledRef.current = true;
+    // Club form shows +91 only; keep national digits from the app profile.
+    setCountryCode('+91');
+    setOwnerPhone(account.phone.replace(/\D/g, '').slice(-10));
+  }, [accountPhone, initialCenter]);
 
   // Resolve DB UserId from session/user object (supports phone-login users without email)
   const resolveOwnerUserId = async () => {
@@ -463,6 +551,19 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
   };
 
   useEffect(() => {
+    if (!mapLoaded) return undefined;
+    let cancelled = false;
+    myCenters.forEach((center) => {
+      if (formatAreaCity(center.area, center.city)) return;
+      geocodeAreaCity(center.latitude, center.longitude).then((place) => {
+        if (cancelled || !formatAreaCity(place.area, place.city)) return;
+        setResolvedPlaces((prev) => (prev[center.id] ? prev : { ...prev, [center.id]: place }));
+      });
+    });
+    return () => { cancelled = true; };
+  }, [myCenters, mapLoaded]);
+
+  useEffect(() => {
     if (user) {
       fetchMyCenters();
     }
@@ -475,9 +576,16 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     setCenterName(center.center_name);
     setLatitude(String(center.latitude));
     setLongitude(String(center.longitude));
-    const { countryCode: nextCode, phone: nextPhone } = splitOwnerPhone(center.owner_phone);
-    setCountryCode(nextCode);
-    setOwnerPhone(nextPhone);
+    setArea(center.area || '');
+    setCity(center.city || '');
+    const { phone: nextPhone } = splitOwnerPhone(center.owner_phone);
+    setCountryCode('+91');
+    setOwnerPhone(String(nextPhone || '').replace(/\D/g, '').slice(-10));
+    setCentreCodeSuffix(centreCodeBody(center.center_code));
+    setCentrePhotos(emptyCentrePhotos());
+    if (center.openingHours) setOpeningHours(center.openingHours);
+    setFacilities(Array.isArray(center.facilities) ? center.facilities : []);
+    setSeatingCount(center.seatingCount == null ? '' : String(center.seatingCount));
     setNameAvailable(null);
     setNameChecking(false);
     setSearchAddress('');
@@ -496,6 +604,33 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
       });
       googleMapRef.current.panTo(pos);
     }
+    loadCentrePhotos(center.id);
+  };
+
+  const loadCentrePhotos = async (centerId) => {
+    setPhotosLoading(true);
+    try {
+      const userId = await resolveOwnerUserId();
+      const response = await apiFetch(
+        `/api/nutrition-centers?userId=${encodeURIComponent(userId)}&centerId=${encodeURIComponent(centerId)}&includePhotos=1`,
+        { apiBaseUrl, cache: 'no-store' },
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Could not load centre photos');
+      }
+      if (result.data?.centerCode) {
+        setCentreCodeSuffix(centreCodeBody(result.data.centerCode));
+      }
+      setCentrePhotos(centrePhotosFromApi(result.data?.photos));
+      if (result.data?.openingHours) setOpeningHours(result.data.openingHours);
+      setFacilities(Array.isArray(result.data?.facilities) ? result.data.facilities : []);
+      setSeatingCount(result.data?.seatingCount == null ? '' : String(result.data.seatingCount));
+    } catch (err) {
+      setError(err.message || 'Could not load centre photos');
+    } finally {
+      setPhotosLoading(false);
+    }
   };
 
   const handleCancelEdit = () => {
@@ -503,8 +638,20 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     setCenterName('');
     setLatitude('');
     setLongitude('');
+    setArea('');
+    setCity('');
     setOwnerPhone('');
     setCountryCode('+91');
+    setCentreCodeSuffix('');
+    setCentrePhotos(emptyCentrePhotos());
+    setOpeningHours(defaultOpeningHours());
+    setFacilities([]);
+    setSeatingCount('');
+    setApprovalSent(false);
+    setCoachName('');
+    setCoachOtp('');
+    setCoachApproved(false);
+    setPhotosLoading(false);
     setNameAvailable(null);
     setNameChecking(false);
     setSearchAddress('');
@@ -529,14 +676,22 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     setError(null);
     setSuccess(null);
     try {
+      if (phoneNeedsOtp && !phoneOtpVerified) {
+        throw new Error('Verify the new mobile number with the OTP sent to it');
+      }
       if (!centerName || !latitude || !longitude) {
         throw new Error('Please fill in all required fields and select a location on the map');
+      }
+      if (photosLoading) {
+        throw new Error('Centre photos are still loading');
       }
       if (nameAvailable === false) {
         throw new Error('This centre name is already taken. Please choose a different name.');
       }
+      const profile = centreProfilePayload();
       const userId = await resolveOwnerUserId();
-      const response = await fetch(`${apiBaseUrl}/api/nutrition-centers`, {
+      const response = await apiFetch(`${apiBaseUrl}/api/nutrition-centers`, {
+        apiBaseUrl,
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -546,6 +701,13 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
           latitude: parseFloat(latitude),
           longitude: parseFloat(longitude),
           ownerPhone: ownerPhone ? `${countryCode}${ownerPhone}` : null,
+          centerCode: profile.centerCode,
+          photos: profile.photos,
+          openingHours: profile.openingHours,
+          facilities: profile.facilities,
+          seatingCount: profile.seatingCount,
+          area: area || null,
+          city: city || null,
         }),
       });
       const result = await response.json();
@@ -572,6 +734,137 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount only
   }, []);
 
+  const handleSendPhoneOtp = async () => {
+    setError(null);
+    setPhoneOtpLoading(true);
+    try {
+      if (!ownerPhone || ownerPhone.length < getPhoneMaxLength(countryCode)) {
+        throw new Error('Enter the full mobile number before sending the OTP');
+      }
+      const userId = await resolveOwnerUserId();
+      const response = await apiFetch(`${apiBaseUrl}/api/nutrition-centers/phone-otp`, {
+        apiBaseUrl,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'request', userId, phone: `${countryCode}${ownerPhone}` }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Could not send the OTP');
+      }
+      setPhoneOtpSent(true);
+      setPhoneOtp('');
+      setPhoneOtpVerified(false);
+      setSuccess(result.message || 'OTP sent to this mobile number.');
+    } catch (err) {
+      setError(err.message || 'Could not send the OTP');
+    } finally {
+      setPhoneOtpLoading(false);
+    }
+  };
+
+  const handlePhoneOtpChange = async (value) => {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 4);
+    setPhoneOtp(digits);
+    setPhoneOtpVerified(false);
+    if (digits.length < 4) return;
+    setError(null);
+    setPhoneOtpLoading(true);
+    try {
+      const userId = await resolveOwnerUserId();
+      const response = await apiFetch(`${apiBaseUrl}/api/nutrition-centers/phone-otp`, {
+        apiBaseUrl,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'verify',
+          userId,
+          phone: `${countryCode}${ownerPhone}`,
+          otp: digits,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Invalid OTP');
+      }
+      setPhoneOtpVerified(true);
+      setSuccess(result.message || 'Mobile number verified.');
+    } catch (err) {
+      setPhoneOtpVerified(false);
+      setError(err.message || 'Invalid OTP');
+    } finally {
+      setPhoneOtpLoading(false);
+    }
+  };
+
+  const handleSendForApproval = async () => {
+    setError(null);
+    setSuccess(null);
+    setApprovalLoading(true);
+    try {
+      if (phoneNeedsOtp && !phoneOtpVerified) {
+        throw new Error('Verify the new mobile number with the OTP sent to it');
+      }
+      if (!centerName || !latitude || !longitude) {
+        throw new Error('Please fill in all required fields and select a location on the map');
+      }
+      if (photosLoading) throw new Error('Centre photos are still loading');
+      if (nameAvailable === false) {
+        throw new Error('This centre name is already taken. Please choose a different name.');
+      }
+      centreProfilePayload();
+      const userId = await resolveOwnerUserId();
+      const response = await apiFetch(`${apiBaseUrl}/api/nutrition-centers/approval`, {
+        apiBaseUrl,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'request', userId }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Could not send the centre for approval');
+      }
+      setApprovalSent(true);
+      setCoachApproved(false);
+      setCoachOtp('');
+      setCoachName(result.data?.coachName || '');
+      setSuccess(result.message || 'Sent for approval. OTP sent to your coach.');
+    } catch (err) {
+      setError(err.message || 'Could not send the centre for approval');
+    } finally {
+      setApprovalLoading(false);
+    }
+  };
+
+  const handleCoachOtpChange = async (value) => {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 4);
+    setCoachOtp(digits);
+    setCoachApproved(false);
+    if (digits.length < 4) return;
+    setError(null);
+    setApprovalLoading(true);
+    try {
+      const userId = await resolveOwnerUserId();
+      const response = await apiFetch(`${apiBaseUrl}/api/nutrition-centers/approval`, {
+        apiBaseUrl,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'verify', userId, otp: digits }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Invalid OTP');
+      }
+      setCoachApproved(true);
+      setSuccess(result.message || 'Coach approved. You can register this centre now.');
+    } catch (err) {
+      setCoachApproved(false);
+      setError(err.message || 'Invalid OTP');
+    } finally {
+      setApprovalLoading(false);
+    }
+  };
+
   // Handle form submission
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -580,6 +873,12 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     setSuccess(null);
 
     try {
+      if (phoneNeedsOtp && !phoneOtpVerified) {
+        throw new Error('Verify the new mobile number with the OTP sent to it');
+      }
+      if (!coachApproved) {
+        throw new Error('Send this centre for coach approval and enter the OTP first');
+      }
       if (!centerName || !latitude || !longitude) {
         throw new Error('Please fill in all required fields and select a location on the map');
       }
@@ -589,9 +888,11 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
         throw new Error('This centre name is already taken. Please choose a different name.');
       }
 
+      const profile = centreProfilePayload();
       const userId = await resolveOwnerUserId();
 
-      const response = await fetch(`${apiBaseUrl}/api/nutrition-centers`, {
+      const response = await apiFetch(`${apiBaseUrl}/api/nutrition-centers`, {
+        apiBaseUrl,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -603,6 +904,13 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
           educationHour: '09:00',
           ownerUserId: userId,
           ownerPhone: ownerPhone ? `${countryCode}${ownerPhone}` : null,
+          centerCode: profile.centerCode,
+          photos: profile.photos,
+          openingHours: profile.openingHours,
+          facilities: profile.facilities,
+          seatingCount: profile.seatingCount,
+          area: area || null,
+          city: city || null,
         }),
       });
 
@@ -725,7 +1033,7 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
                 <TouchFeedbackButton
                   type="button"
                   onClick={handleUpdate}
-                  disabled={loading || nameAvailable === false}
+                  disabled={loading || photosLoading || nameAvailable === false}
                   className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {loading ? (
@@ -751,6 +1059,30 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
             )}
           </div>
           <form onSubmit={editingCenter ? handleUpdate : handleRegister} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Centre Code <span className="text-red-500">*</span>
+              </label>
+              <div className="flex gap-2">
+                <div className="w-16 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-800 font-semibold text-center">
+                  RS
+                </div>
+                <input
+                  type="text"
+                  value={centreCodeSuffix}
+                  onChange={(e) => handleCentreCodeChange(e.target.value)}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent uppercase"
+                  placeholder="e.g. 1024"
+                  maxLength={16}
+                  autoCapitalize="characters"
+                  required
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {centreCodeSuffix ? `Saved as RS${centreCodeSuffix}` : 'Required. The code always starts with RS.'}
+              </p>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Centre Name <span className="text-red-500">*</span>
@@ -799,44 +1131,51 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
                 Phone Number
               </label>
               <div className="flex gap-2">
-                {/* Country Code Selector */}
-                <select
-                  value={countryCode}
-                  onChange={(e) => {
-                    setCountryCode(e.target.value);
-                    // Re-validate phone number with new country code
-                    handlePhoneInput(ownerPhone);
-                  }}
-                  className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
-                >
-                  <option value="+91">🇮🇳 +91</option>
-                  <option value="+1">🇺🇸 +1</option>
-                  <option value="+44">🇬🇧 +44</option>
-                  <option value="+61">🇦🇺 +61</option>
-                  <option value="+81">🇯🇵 +81</option>
-                  <option value="+86">🇨🇳 +86</option>
-                  <option value="+971">🇦🇪 +971</option>
-                  <option value="+966">🇸🇦 +966</option>
-                  <option value="+65">🇸🇬 +65</option>
-                  <option value="+60">🇲🇾 +60</option>
-                </select>
-                
-                {/* Phone Number Input */}
+                <div className="flex w-20 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-gray-50 px-2 text-sm font-semibold text-gray-800">
+                  +91
+                </div>
                 <div className="flex-1">
                   <input
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
                     value={ownerPhone}
-                    onChange={(e) => handlePhoneInput(e.target.value)}
+                    onChange={(e) => {
+                      if (countryCode !== '+91') setCountryCode('+91');
+                      handlePhoneInput(e.target.value);
+                    }}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder={`Enter ${getPhoneMaxLength(countryCode)} digit number`}
-                    maxLength={getPhoneMaxLength(countryCode)}
+                    placeholder="10 digit number"
+                    maxLength={10}
+                    aria-label="Phone number"
                   />
-                  {ownerPhone && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      {countryCode} {ownerPhone} ({ownerPhone.length}/{getPhoneMaxLength(countryCode)} digits)
-                    </p>
+                  {phoneNeedsOtp && !phoneOtpVerified && (
+                    <div className="mt-2 space-y-2">
+                      <p className="text-xs text-amber-700">This is a different number. Verify it with an OTP before using it.</p>
+                      <TouchFeedbackButton
+                        type="button"
+                        onClick={handleSendPhoneOtp}
+                        disabled={phoneOtpLoading}
+                        className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg disabled:bg-gray-300"
+                      >
+                        {phoneOtpLoading && !phoneOtpSent ? 'Sending OTP...' : 'Send OTP'}
+                      </TouchFeedbackButton>
+                      {phoneOtpSent && (
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={phoneOtp}
+                          onChange={(e) => handlePhoneOtpChange(e.target.value)}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg tracking-widest text-center"
+                          placeholder="Enter 4-digit OTP"
+                          maxLength={4}
+                          aria-label="Mobile number OTP"
+                        />
+                      )}
+                    </div>
+                  )}
+                  {phoneNeedsOtp && phoneOtpVerified && (
+                    <p className="text-xs text-green-600 mt-1">Mobile number verified.</p>
                   )}
                 </div>
               </div>
@@ -887,13 +1226,80 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
                 <p>Blue dot = Your current location</p>
                 <p>Red marker = Selected centre location (tap/click map or search to place)</p>
                 <p className="text-blue-600 font-medium">Tip: Tap once on the map to place a marker at that location</p>
+                {formatAreaCity(area, city) && (
+                  <p className="text-sm font-medium text-gray-800">{formatAreaCity(area, city)}</p>
+                )}
               </div>
             </div>
 
-            {!editingCenter && (
+            <CentreListingFields
+              hours={openingHours}
+              onHoursChange={setOpeningHours}
+              facilities={facilities}
+              onFacilitiesChange={setFacilities}
+            />
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                No. of seating
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={seatingCount}
+                onChange={(e) => setSeatingCount(e.target.value.replace(/[^\d]/g, '').slice(0, 3))}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                placeholder="Optional"
+              />
+              <p className="text-xs text-gray-500 mt-1">Optional. How many people can sit at the centre.</p>
+            </div>
+
+            <CentrePhotoSlots
+              photos={centrePhotos}
+              onChange={setCentrePhotos}
+              disabled={loading || photosLoading}
+              onError={setError}
+            />
+            {photosLoading && (
+              <p className="text-xs text-gray-400">Loading saved photos...</p>
+            )}
+
+            {!editingCenter && !coachApproved && (
+              <div className="space-y-3">
+                <TouchFeedbackButton
+                  type="button"
+                  onClick={handleSendForApproval}
+                  disabled={loading || photosLoading || approvalLoading || nameAvailable === false}
+                  className="w-full py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  {approvalLoading && !approvalSent ? 'Sending for approval...' : 'Send for approval'}
+                </TouchFeedbackButton>
+                {approvalSent && (
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2">
+                    <p className="text-sm text-blue-800">
+                      Sent for approval. OTP sent to your coach{coachName ? ` ${coachName}` : ''}.
+                    </p>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={coachOtp}
+                      onChange={(e) => handleCoachOtpChange(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg tracking-widest text-center"
+                      placeholder="Enter 4-digit OTP"
+                      maxLength={4}
+                      aria-label="Coach approval OTP"
+                    />
+                    {approvalLoading && coachOtp.length === 4 && (
+                      <p className="text-xs text-gray-500">Checking OTP...</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            {!editingCenter && coachApproved && (
               <TouchFeedbackButton
                 type="submit"
-                disabled={loading || nameAvailable === false}
+                disabled={loading || photosLoading || nameAvailable === false}
                 className="w-full py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {loading ? (
@@ -930,10 +1336,13 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
                 >
                   <div className="flex-1">
                     <h3 className="font-bold text-gray-800">{center.center_name}</h3>
+                    {center.center_code && (
+                      <p className="text-xs font-medium text-green-700 mt-0.5">{center.center_code}</p>
+                    )}
                     <div className="mt-2 space-y-1 text-sm text-gray-600">
                       <div className="flex items-center gap-2">
                         <MapPin className="h-4 w-4" />
-                        <span>{center.latitude}, {center.longitude}</span>
+                        <span>{cardAreaCity(center, resolvedPlaces) || `${center.latitude}, ${center.longitude}`}</span>
                       </div>
                       {center.education_hour && (
                         <div className="flex items-center gap-2">

@@ -13,6 +13,36 @@ export function hasCompleteTransformationPhotos(photos) {
   return allTransformationSlotsFilled(photos || {});
 }
 
+function browserLocal() {
+  try {
+    if (typeof localStorage !== 'undefined') return localStorage;
+  } catch { /* private mode */ }
+  return null;
+}
+
+export function transformationPhotosCompleteKey(userId) {
+  if (userId == null || String(userId).trim() === '') return '';
+  return `wv.transformationPhotos.complete.${String(userId).trim()}`;
+}
+
+/** All three poses were on the profile the last time this phone read them. */
+export function rememberTransformationPhotosComplete(userId, storage = browserLocal()) {
+  const key = transformationPhotosCompleteKey(userId);
+  if (!key || !storage) return;
+  try { storage.setItem(key, '1'); } catch { /* private mode */ }
+}
+
+export function readTransformationPhotosComplete(userId, storage = browserLocal()) {
+  const key = transformationPhotosCompleteKey(userId);
+  if (!key || !storage) return false;
+  try { return storage.getItem(key) === '1'; } catch { return false; }
+}
+
+/** Do not cover Home with the photo gate when this phone already has all three. */
+export function shouldSuppressPhotosStep(step, alreadyComplete) {
+  return step === 'photos' && alreadyComplete === true;
+}
+
 export function resolveTransformationPhotosGate({
   confirmedThisSession = false,
   profile = null,

@@ -77,6 +77,7 @@ import {
   DetoxDayReminder,
   ensureMarathonWeightComparisonForShare,
   isValidMarathonWeightKg,
+  peekMarathonWeightComparisonForShare,
   withMarathonWhatsAppNotice,
 } from "./features/marathon";
 import { EducationLogCard } from "./features/education";
@@ -268,6 +269,7 @@ import { ADMIN_CONFIG_TABS } from "./shell/domain/adminConfigSetupTabs";
 import { isAdminLikeRole, normalizeAppRole, ROLE_USER } from "./shared/constants/roles";
 import { canAccessReportsModule } from "./features/reports/domain/reportsAccess.rules.js";
 import { OPEN_COMMUNITY_POSITION_EVENT } from "./features/user/domain/communityPositionFocus";
+import { OPEN_PROFILE_INTRO_EVENT } from "./features/user/domain/profileIntroFocus";
 import {
   fetchNavAccessForMe,
   resolveNavTargetOrFallback,
@@ -743,6 +745,7 @@ function WellnessValleyApp() {
       const dataUrl = imageBase64.startsWith("data:")
         ? imageBase64
         : `data:image/jpeg;base64,${imageBase64}`;
+      const isWebShare = !Capacitor.isNativePlatform();
 
       const clearOverlayNow = () => {
         setSharingPendingImage((prev) => {
@@ -759,25 +762,25 @@ function WellnessValleyApp() {
         }
       };
 
-      // Snapchat-style "Getting ready to share" overlay while prep runs.
-      setSharingPendingImage(dataUrl);
-      if (sharingPendingTimerRef.current) {
-        clearTimeout(sharingPendingTimerRef.current);
-      }
-      sharingPendingTimerRef.current = setTimeout(clearOverlayNow, 120000);
-
-      // One frame is enough for the overlay to paint before the sheet opens.
-      await new Promise((resolve) => {
-        requestAnimationFrame(resolve);
-      });
-
       const isWeightShare = isValidMarathonWeightKg(currentMarathonDay0Weight);
-      const marathonWeightComparison = isWeightShare
-        ? await ensureMarathonWeightComparisonForShare({
-          user,
-          currentMarathonDay0Weight,
-        })
-        : null;
+
+      // Web must share the photo inside the Save tap gesture. Any await
+      // (marathon fetch / overlay paint) expires that gesture → NotAllowedError
+      // → old wa.me text-only path (image never attached).
+      let marathonWeightComparison = null;
+      if (isWeightShare) {
+        if (isWebShare) {
+          marathonWeightComparison = peekMarathonWeightComparisonForShare({
+            user,
+            currentMarathonDay0Weight,
+          });
+        } else {
+          marathonWeightComparison = await ensureMarathonWeightComparisonForShare({
+            user,
+            currentMarathonDay0Weight,
+          });
+        }
+      }
 
       const buildCaption = (shareDisplayName) => {
         const brand = buildQuickShareText(
@@ -796,54 +799,64 @@ function WellnessValleyApp() {
       };
 
       try {
-        // Sync name first (cached) — do not block share on a profile fetch.
-        const shareDisplayName = await ensureShareDisplayName(
-          savedUserNameRef.current ?? savedUserName,
-          user,
-          apiBaseUrl,
-        );
-        if (shareDisplayName && user?.email) {
-          cacheProfileUserName(user.email, shareDisplayName);
-          setSavedUserName(shareDisplayName);
-        }
-        const shareText = buildCaption(shareDisplayName);
-
-        clearOverlayNow();
-        if (Capacitor.isNativePlatform()) {
-          const result = await shareViaCapacitorAPI(dataUrl, {
-            title: shareDisplayName,
-            text: shareText,
-            fileName: `wellness-meal-${Date.now()}.jpg`,
-          });
-          _hasCompletedFirstShareRef.current = true;
-          if (!result?.ok || result.dismissed) {
-            foodAutoSharedRef.current = false;
-            return { shared: false };
-          }
-          return { shared: true };
-        }
-        const ok = await shareTextViaWhatsApp(shareText);
-        _hasCompletedFirstShareRef.current = true;
-        if (!ok) {
-          foodAutoSharedRef.current = false;
-          return { shared: false };
-        }
-        return { shared: true };
-      } catch (_) {
-        try {
-          const shareDisplayName = resolveShareDisplayName(
+        let shareDisplayName;
+        if (isWebShare) {
+          // Sync name only — do not await profile before navigator.share({ files }).
+          shareDisplayName = resolveShareDisplayName(
             savedUserNameRef.current ?? savedUserName,
             user,
           );
-          const shareText = buildCaption(shareDisplayName);
-          clearOverlayNow();
-          await shareTextViaWhatsApp(shareText);
-          _hasCompletedFirstShareRef.current = true;
-          return { shared: true };
-        } catch (__) {
-          foodAutoSharedRef.current = false;
-          return { shared: false };
+          void ensureShareDisplayName(
+            savedUserNameRef.current ?? savedUserName,
+            user,
+            apiBaseUrl,
+          ).then((freshName) => {
+            if (freshName && user?.email) {
+              cacheProfileUserName(user.email, freshName);
+              setSavedUserName(freshName);
+            }
+          });
+        } else {
+          // Snapchat-style overlay while native prep runs.
+          setSharingPendingImage(dataUrl);
+          if (sharingPendingTimerRef.current) {
+            clearTimeout(sharingPendingTimerRef.current);
+          }
+          sharingPendingTimerRef.current = setTimeout(clearOverlayNow, 120000);
+          await new Promise((resolve) => {
+            requestAnimationFrame(resolve);
+          });
+
+          shareDisplayName = await ensureShareDisplayName(
+            savedUserNameRef.current ?? savedUserName,
+            user,
+            apiBaseUrl,
+          );
+          if (shareDisplayName && user?.email) {
+            cacheProfileUserName(user.email, shareDisplayName);
+            setSavedUserName(shareDisplayName);
+          }
         }
+
+        const shareText = buildCaption(shareDisplayName);
+        clearOverlayNow();
+
+        // Always share the photo + caption (web + native). Never open wa.me
+        // text-only when we have an image — that is what dropped the photo.
+        const result = await shareViaCapacitorAPI(dataUrl, {
+          title: shareDisplayName,
+          text: shareText,
+          fileName: `wellness-meal-${Date.now()}.jpg`,
+        });
+        _hasCompletedFirstShareRef.current = true;
+        if (result?.ok && !result.dismissed) {
+          return { shared: true };
+        }
+        foodAutoSharedRef.current = false;
+        return { shared: false };
+      } catch (_) {
+        foodAutoSharedRef.current = false;
+        return { shared: false };
       } finally {
         clearOverlayNow();
       }
@@ -1373,7 +1386,6 @@ function WellnessValleyApp() {
       } else if (page === 'create-event' || page === 'event-check-in') {
         if (!isFlagEnabled('ff.create-event')) return;
         bumpTabVisitKeyRef.current('create-event');
-        setCreateEventTab(page === 'event-check-in' ? 'checkin' : 'manage');
         setShowDashboard(false);
         setShowWellnessCounselling(false);
         setShowUniversityEnrollment(false);
@@ -1388,8 +1400,16 @@ function WellnessValleyApp() {
         setShowAdminConfigSetup(false);
         setShowWellnessScore(false);
         setShowProfilePage(false);
-        setShowEvents(false);
-        startTransition(() => setShowCreateEvent(true));
+        if (page === 'event-check-in') {
+          setCreateEventTab('checkin');
+          setShowEvents(false);
+          startTransition(() => setShowCreateEvent(true));
+        } else {
+          const canCreate = canAccessNavPage(navAccessPagesRef.current, 'create-event');
+          setEventsInitialTab(canCreate ? 'create' : 'events');
+          setShowCreateEvent(false);
+          startTransition(() => setShowEvents(true));
+        }
         Session.setCurrentPage('main');
       } else if (page === 'paid-features') {
         if (!isFlagEnabled('ff.coach-portfolio')) return;
@@ -1624,6 +1644,12 @@ function WellnessValleyApp() {
         if (result.status === 'complete') {
           setShowCompleteProfile(false);
           profileCompletedRef.current = true;
+          // Field collection owns Community Position and the photo gate.
+          if (isFlagEnabled('ff.field-collection') && fieldCollectionLiveRef.current) {
+            transformationPhotosGateRef.current = false;
+            setShowOnboardingTransformationPhotos(false);
+            return;
+          }
           const photosDecision = resolveTransformationPhotosGate({
             confirmedThisSession: transformationPhotosConfirmedRef.current,
             profile: result.data,
@@ -2121,6 +2147,27 @@ function WellnessValleyApp() {
     return () => clearTimeout(timer);
   }, [showLaunchOverlay]);
 
+  // Returning from battery details must not leave the logo on top of Home.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return undefined;
+    let handle = null;
+    let cancelled = false;
+    nativeLifecycle
+      .addAppStateListener(({ isActive }) => {
+        if (!isActive || cancelled) return;
+        setShowLaunchOverlay(false);
+      })
+      .then((h) => {
+        if (cancelled) h?.remove?.();
+        else handle = h;
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      try { handle?.remove?.(); } catch { /* ignore */ }
+    };
+  }, []);
+
   // Deep-link handler: open the app via Android App Link
   // (https://<host>/share/<id>) or the custom scheme
   // (wellnessvalley://share/<id>) ? resolve the share identifier against the
@@ -2434,6 +2481,19 @@ function WellnessValleyApp() {
     }, 5000);
     return () => clearTimeout(authTimeout);
   }, []);
+
+  // The logo bridge has no other exit if a status check dies while battery
+  // settings is open. Leave it after 8 seconds so Home or Login can show.
+  const [authBridgeExpired, setAuthBridgeExpired] = useState(false);
+  useEffect(() => {
+    if (user) {
+      setAuthBridgeExpired(false);
+      return undefined;
+    }
+    if (!postAuthBridge && !authLoading && !(isOtpVerified && !user)) return undefined;
+    const timer = setTimeout(() => setAuthBridgeExpired(true), 8000);
+    return () => clearTimeout(timer);
+  }, [user, postAuthBridge, authLoading, isOtpVerified]);
 
   // ? NATIVE LIFECYCLE PHASE (May 2026): SplashScreen dismissal delegated to
   // shared/services/nativeLifecycle. Timing (500ms), error-swallowing, and
@@ -3076,9 +3136,15 @@ function WellnessValleyApp() {
         }
         break;
       case 'create-event':
+        if (isFlagEnabled('ff.create-event')) {
+          const canCreate = canAccessNavPage(navAccessPagesRef.current, 'create-event');
+          setEventsInitialTab(canCreate ? 'create' : 'events');
+          setShowEvents(true);
+        }
+        break;
       case 'event-check-in':
         if (isFlagEnabled('ff.create-event')) {
-          setCreateEventTab(targetPage === 'event-check-in' ? 'checkin' : 'manage');
+          setCreateEventTab('checkin');
           setShowCreateEvent(true);
         }
         break;
@@ -3143,7 +3209,11 @@ function WellnessValleyApp() {
   useEffect(() => {
     const openProfile = () => navigateTo('profile');
     window.addEventListener(OPEN_COMMUNITY_POSITION_EVENT, openProfile);
-    return () => window.removeEventListener(OPEN_COMMUNITY_POSITION_EVENT, openProfile);
+    window.addEventListener(OPEN_PROFILE_INTRO_EVENT, openProfile);
+    return () => {
+      window.removeEventListener(OPEN_COMMUNITY_POSITION_EVENT, openProfile);
+      window.removeEventListener(OPEN_PROFILE_INTRO_EVENT, openProfile);
+    };
   }, [navigateTo]);
   // -- Permission flow ------------------------------------------------------
   //
@@ -7602,6 +7672,9 @@ function WellnessValleyApp() {
       // ? Set React gate FIRST ? this immediately shows Login screen
       // and blocks any Firebase re-auth callbacks from re-logging in
       setForceLoggedOut(true);
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.remove('premium-theme');
+      }
 
       // Clear the fresh sign-in flag immediately to prevent re-login issues
       sessionStorage.removeItem("freshGoogleSignIn");
@@ -7952,11 +8025,11 @@ function WellnessValleyApp() {
     </>
   );
 
-  if (postAuthBridge) {
+  if (postAuthBridge && !authBridgeExpired) {
     return authBridgeScreen;
   }
 
-  if (authLoading) {
+  if (authLoading && !authBridgeExpired) {
     // On native, show the logo overlay instead of a blank screen.
     if (Capacitor.isNativePlatform()) {
       return authBridgeScreen;
@@ -7976,7 +8049,7 @@ function WellnessValleyApp() {
   }
 
   // OTP user restore / post-OTP handoff — never remount Login (looks like a glitch).
-  if (isOtpVerified && !user) {
+  if (isOtpVerified && !user && !authBridgeExpired) {
     return authBridgeScreen;
   }
 
@@ -8682,7 +8755,7 @@ function WellnessValleyApp() {
           profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
-          <EventsPage user={user} initialTab={eventsInitialTab} />
+          <EventsPage user={user} initialTab={eventsInitialTab} allowedPages={navAccessPages} />
         </div>
       </div>
     );
@@ -8774,9 +8847,10 @@ function WellnessValleyApp() {
           profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
-          <Suspense fallback={<LoadingSpinner message="Loading Digital Portfolio..." />}>
+          <Suspense fallback={<LoadingSpinner message="Loading Paid Feature..." />}>
             <PaidFeaturesPage
               userId={user?.id || user?.UserId || user?.userId || null}
+              allowedPages={navAccessPages}
               onClose={() => navigateTo('home')}
             />
           </Suspense>
@@ -8875,8 +8949,8 @@ function WellnessValleyApp() {
             // Always land on Home — history.back() can pop to a stale Diary entry.
             window.history.replaceState({ wvPage: 'main' }, '');
           }}
-          onSaved={(shareMeta) => {
-            // Read image before onBack clears payload (exit calls onSaved then onBack).
+          onSaved={async (shareMeta) => {
+            // Read image before onBack clears payload (exit awaits onSaved then onBack).
             // Do NOT refresh score here — ManualEntryPage refreshes after DB promote/save
             // so Home + sheet do not lock in a pre-save total.
             const image = shareMeta?.shareImage || manualEntryPayload?.imageBase64;
@@ -8898,7 +8972,7 @@ function WellnessValleyApp() {
               );
               processedImageRef.current = aiImage || image || null;
             }
-            void shareCaptureAfterClassify(image, {
+            await shareCaptureAfterClassify(image, {
               activityCaption: shareMeta?.activityCaption || null,
               currentMarathonDay0Weight: shareMeta?.currentMarathonDay0Weight ?? null,
             });

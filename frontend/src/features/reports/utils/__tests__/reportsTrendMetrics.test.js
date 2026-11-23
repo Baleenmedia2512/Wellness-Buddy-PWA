@@ -8,6 +8,7 @@ import {
   bodyParamsCardToTrendEntry,
   firstToCurrentMetricLabel,
   formatTrendMetricValue,
+  formatTrendSummaryDate,
   getReportsTrendMetric,
   mergeTrendHistory,
   readTrendMetricValue,
@@ -78,6 +79,14 @@ describe('mergeTrendHistory', () => {
   });
 });
 
+describe('formatTrendSummaryDate', () => {
+  it('formats as day + short month', () => {
+    assert.equal(formatTrendSummaryDate(new Date(2026, 10, 12)), '12 Nov');
+    assert.equal(formatTrendSummaryDate('already a label'), 'already a label');
+    assert.equal(formatTrendSummaryDate(null), '');
+  });
+});
+
 describe('firstToCurrentMetricLabel', () => {
   it('uses the metric unit on both ends', () => {
     assert.equal(
@@ -87,6 +96,16 @@ describe('firstToCurrentMetricLabel', () => {
     assert.equal(
       firstToCurrentMetricLabel(null, 22, 'fatPercent'),
       'First Fat % → Current Fat %',
+    );
+  });
+
+  it('prefers range endpoint dates over First/Current labels', () => {
+    assert.equal(
+      firstToCurrentMetricLabel(65, 64, 'weight', {
+        firstDate: new Date(2026, 10, 13),
+        latestDate: new Date(2026, 10, 18),
+      }),
+      '13 Nov 65.00 kg → 18 Nov 64.00 kg',
     );
   });
 });

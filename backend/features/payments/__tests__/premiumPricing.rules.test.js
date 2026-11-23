@@ -16,17 +16,17 @@ describe('applyPremiumGst', () => {
   it('adds 18% GST on the base', () => {
     assert.deepEqual(applyPremiumGst(199, PREMIUM_GST_RATE), {
       baseAmount: 199,
-      gstAmount: 35.82,
-      totalAmount: 234.82,
+      gstAmount: 36,
+      totalAmount: 235,
       gstRate: 0.18,
     });
-    assert.equal(applyPremiumGst(999).totalAmount, 1178.82);
+    assert.equal(applyPremiumGst(999).totalAmount, 1179);
   });
 });
 
 describe('resolvePremiumQuote', () => {
   it('prices each Community Position', () => {
-    assert.equal(resolvePremiumQuote('pc').totalAmount, 234.82);
+    assert.equal(resolvePremiumQuote('pc').totalAmount, 235);
     assert.equal(resolvePremiumQuote('ASSOCIATE').baseAmount, 199);
     assert.equal(resolvePremiumQuote('sv').baseAmount, 299);
     assert.equal(resolvePremiumQuote('WT').baseAmount, 499);
@@ -51,12 +51,13 @@ describe('resolvePremiumQuote', () => {
 describe('listPremiumPayableTotals', () => {
   it('lists distinct GST totals used for confirm', () => {
     const totals = listPremiumPayableTotals();
-    assert.ok(totals.includes(234.82));
-    assert.ok(totals.includes(352.82));
-    assert.ok(totals.includes(588.82));
-    assert.ok(totals.includes(824.82));
-    assert.ok(totals.includes(1060.82));
-    assert.ok(totals.includes(1178.82));
+    assert.ok(totals.includes(235));
+    assert.ok(totals.includes(353));
+    assert.ok(totals.includes(589));
+    assert.ok(totals.includes(825));
+    assert.ok(totals.includes(1061));
+    assert.ok(totals.includes(1179));
+    assert.equal(isAllowedPremiumTotal(235), true);
     assert.equal(isAllowedPremiumTotal(234.82), true);
     assert.equal(isAllowedPremiumTotal(199), false);
   });

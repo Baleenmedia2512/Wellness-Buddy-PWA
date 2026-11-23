@@ -7,7 +7,13 @@ import assert from 'node:assert/strict';
 import {
   communityPositionDraftAfterSync,
   communityPositionFromProfile,
+  clearSavedCommunityPosition,
+  readSavedCommunityPosition,
   rememberConfirmedCommunityPosition,
+  rememberSavedCommunityPosition,
+  shouldClearSavedCommunityPosition,
+  shouldConfirmCommunityPositionGate,
+  shouldSuppressCommunityPositionStep,
 } from './communityPosition.js';
 
 describe('communityPositionDraftAfterSync', () => {
@@ -84,5 +90,45 @@ describe('communityPositionFromProfile', () => {
       communityPositionFromProfile({ eventLevel: 'WT' }, 17, storage),
       'WT',
     );
+  });
+});
+
+describe('saved community position', () => {
+  const memory = () => {
+    const map = new Map();
+    return {
+      getItem: (key) => (map.has(key) ? map.get(key) : null),
+      setItem: (key, value) => map.set(key, String(value)),
+      removeItem: (key) => map.delete(key),
+    };
+  };
+
+  it('remembers a saved role across an app restart', () => {
+    const storage = memory();
+    rememberSavedCommunityPosition(42, 'PC', storage);
+    assert.equal(readSavedCommunityPosition(42, storage), 'PC');
+    assert.equal(shouldConfirmCommunityPositionGate({
+      step: 'communityPosition',
+    }), true);
+    assert.equal(shouldConfirmCommunityPositionGate({
+      step: 'communityPosition',
+      alreadyConfirmed: true,
+    }), false);
+    assert.equal(shouldConfirmCommunityPositionGate({
+      step: 'done',
+    }), false);
+    clearSavedCommunityPosition(42, storage);
+    assert.equal(readSavedCommunityPosition(42, storage), '');
+  });
+
+  it('does not clear a saved role when prompts say it is missing', () => {
+    assert.equal(shouldClearSavedCommunityPosition({
+      step: 'communityPosition',
+      confirmed: true,
+      responseOk: true,
+    }), false);
+    assert.equal(shouldSuppressCommunityPositionStep('communityPosition', 'PC'), true);
+    assert.equal(shouldSuppressCommunityPositionStep('communityPosition', ''), false);
+    assert.equal(shouldSuppressCommunityPositionStep('photos', 'PC'), false);
   });
 });

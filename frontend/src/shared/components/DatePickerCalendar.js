@@ -42,6 +42,21 @@ const DatePickerCalendar = ({
       currentMonthText: 'text-gray-700',
       otherMonthText: 'text-gray-400',
       headerText: 'text-white'
+    },
+    purple: {
+      bg: 'bg-white',
+      headerBg: 'bg-gradient-to-r from-violet-500 to-purple-600',
+      selectedBg: 'bg-violet-600',
+      selectedHover: 'hover:bg-violet-700',
+      todayBg: 'bg-violet-50',
+      todayText: 'text-violet-700',
+      todayBorder: 'border-violet-300',
+      hoverBg: 'hover:bg-violet-50',
+      buttonHover: 'hover:bg-violet-50',
+      disabledText: 'text-gray-400',
+      currentMonthText: 'text-gray-700',
+      otherMonthText: 'text-gray-400',
+      headerText: 'text-white'
     }
   };
 
@@ -132,7 +147,7 @@ const DatePickerCalendar = ({
         if (e.target === e.currentTarget && onClose) onClose();
       }}
     >
-      <div className={`${currentTheme.bg} rounded-3xl shadow-2xl p-6 w-full max-w-sm border border-gray-100`}>
+      <div className={`relative ${currentTheme.bg} rounded-3xl shadow-2xl p-6 w-full max-w-sm border border-gray-100`}>
         {/* Calendar Header */}
         <div className={`${currentTheme.headerBg} rounded-2xl p-4 mb-6`}>
           <div className="flex items-center justify-between">

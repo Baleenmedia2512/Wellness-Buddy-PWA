@@ -175,7 +175,7 @@ describe('appendMarathonWhatsAppNotice', () => {
     );
     assert.equal(
       result,
-      `${CURRENT_DAY_CAPTION}, _Marathon Day 1_, *Lap progress*, Day 0 : 75.00 kg → Curr: 74.50 kg ⬇️ 500 g`,
+      `${CURRENT_DAY_CAPTION}, *Lap progress*, Day 0 : 75.00 kg → Curr: 74.50 kg ⬇️ 500 g, _Marathon Day 1_`,
     );
   });
 

@@ -1,6 +1,7 @@
 // App top navigation — responsive from iPhone SE (320px) to Pro Max.
 // The container uses overflow-x-auto so extra tabs scroll naturally on small screens.
-import React from 'react';
+// Page switches remount Header, so scroll is restored + active tab is scrolled into view.
+import React, { useEffect, useRef } from 'react';
 import {
   Home,
   LayoutDashboard,
@@ -20,6 +21,9 @@ import {
 import NavTabButton from './NavTabButton';
 import { isFlagEnabled } from '../../config/featureFlags';
 import { canAccessNavPage } from '../../features/nav-page-access/domain/navAccess.rules.js';
+
+/** Survives Header remount when switching pages (Home → Reports, etc.). */
+let savedNavScrollLeft = 0;
 
 export default function AppNavTabs({
   activePage,
@@ -47,9 +51,39 @@ export default function AppNavTabs({
   const paidFeaturesEnabled = isFlagEnabled('ff.coach-portfolio');
   const mapBusinessEnabled = isFlagEnabled('ff.gbp-listing');
   const upcomingEventsEnabled = isFlagEnabled('ff.events');
+  const scrollerRef = useRef(null);
+
+  useEffect(() => {
+    const root = scrollerRef.current;
+    if (!root) return undefined;
+    const onScroll = () => {
+      savedNavScrollLeft = root.scrollLeft;
+    };
+    root.addEventListener('scroll', onScroll, { passive: true });
+    return () => root.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    const root = scrollerRef.current;
+    if (!root) return undefined;
+
+    // Restore last scroll first so remount doesn't flash at Home.
+    root.scrollLeft = savedNavScrollLeft;
+
+    const activeEl = root.querySelector('[aria-current="page"]');
+    if (activeEl && typeof activeEl.scrollIntoView === 'function') {
+      // Keep Reports / late tabs visible after page remount.
+      requestAnimationFrame(() => {
+        activeEl.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'auto' });
+        savedNavScrollLeft = root.scrollLeft;
+      });
+    }
+    return undefined;
+  }, [activePage]);
 
   return (
     <div
+      ref={scrollerRef}
       className="max-w-lg mx-auto px-0.5 xxs:px-1 xs:px-2 flex items-center justify-around overflow-x-auto scrollbar-hide w-full"
       style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}
     >
@@ -64,7 +98,7 @@ export default function AppNavTabs({
       {upcomingEventsEnabled && allow('events') && (
         <NavTabButton
           onClick={onShowEvents ?? (() => {})}
-          active={activePage === 'events'}
+          active={activePage === 'events' || activePage === 'create-event'}
           icon={CalendarDays}
           label="Events"
           ariaLabel="Events"
@@ -183,21 +217,7 @@ export default function AppNavTabs({
           ariaLabel="BroadCast"
         />
       )}
-      {createEventEnabled && allow('create-event') && (
-        <NavTabButton
-          onClick={onShowCreateEvent ?? (() => {})}
-          active={activePage === 'create-event'}
-          activeBg="bg-emerald-100"
-          hoverBg="hover:bg-emerald-50"
-          icon={CalendarPlus}
-          iconActiveClass="text-emerald-800"
-          iconClass="text-emerald-700"
-          labelActiveClass="text-emerald-900"
-          labelClass="text-emerald-800"
-          label="Create Event"
-          ariaLabel="Create Event"
-        />
-      )}
+
       {paidFeaturesEnabled && allow('paid-features') && (
         <NavTabButton
           onClick={onShowPaidFeatures ?? (() => {})}
@@ -209,8 +229,8 @@ export default function AppNavTabs({
           iconClass="text-emerald-700"
           labelActiveClass="text-emerald-900"
           labelClass="text-emerald-800"
-          label="Digital Portfolio"
-          ariaLabel="Digital Portfolio"
+          label="Paid Feature"
+          ariaLabel="Paid Feature"
         />
       )}
       {mapBusinessEnabled && allow('map-business') && (
