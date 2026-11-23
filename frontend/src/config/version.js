@@ -74,7 +74,8 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.5.7',
+  // iOS App Store resubmit stays on rejected marketing version 3.5.6 (build 87).
+  VERSION: '3.5.6',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
@@ -86,7 +87,7 @@ export const APP_VERSION = {
   IOS_BUILD_NUMBER: 87,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version  3.5.7',
+  RELEASE_NAME: 'Version  3.5.6',
   
   // Build date
   BUILD_DATE: '2026-11-23',
@@ -94,7 +95,7 @@ export const APP_VERSION = {
   // Platform release notes..
   PLATFORMS: {
     ANDROID: { versionCode: 88, versionName: '3.5.7' },
-    IOS: { buildNumber: 87, versionName: '3.5.7' },
+    IOS: { buildNumber: 87, versionName: '3.5.6' },
   },
 };
 
