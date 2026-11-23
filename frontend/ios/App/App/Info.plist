@@ -74,7 +74,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Wellness Valley needs camera access to capture food photos for nutrition analysis.</string>
 	<key>NSContactsUsageDescription</key>
-	<string>Wellness Valley saves new member phone numbers to your contacts when you create a Body Parameters card.</string>
+	<string>Wellness Valley can save a member's name and phone number to your device contacts when you create a Body Parameters card. Contact data is not uploaded to our servers.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Wellness Valley uses your location to verify attendance at your wellness center.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

@@ -76,7 +76,8 @@ export const PERMISSION_CONFIG = {
   contacts: {
     label: 'Contacts',
     icon: '👤',
-    reason: 'Save new Body Parameters members to your phone contacts when you create a card.',
+    reason:
+      'Optionally save a Body Parameters member\'s name and phone to your device contacts. We do not upload your contact book to our servers.',
     required: false,
   },
 };
