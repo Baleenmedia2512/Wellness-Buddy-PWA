@@ -191,7 +191,15 @@ export function appendMarathonWhatsAppNotice(
   if (additions.length === 0) return base;
   if (!base) return additions.join('\n');
 
-  const separator = base.includes('\n') ? '\n' : ', ';
-  const blockSeparator = base.includes('\n\n') ? '\n\n' : separator;
+  // Single-line captions with only the Marathon/Tomorrow line get a blank
+  // line before it (full WhatsApp view). Lap/Overall still comma-join on
+  // one-line bases.
+  const onlyMarathonNotice = additions.every(
+    (line) => line === currentDay || line === notice,
+  );
+  const separator = base.includes('\n') || onlyMarathonNotice ? '\n' : ', ';
+  const blockSeparator = (base.includes('\n\n') || onlyMarathonNotice)
+    ? '\n\n'
+    : separator;
   return `${base}${blockSeparator}${additions.join(separator)}`;
 }

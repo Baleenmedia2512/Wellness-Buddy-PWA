@@ -131,19 +131,19 @@ describe('appendMarathonWhatsAppNotice', () => {
   it('uses Tomorrow only for Marathon start and Detox; other days are Marathon Day N', () => {
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-07-31'),
-      `${CURRENT_DAY_CAPTION}, _Tomorrow is Marathon Day 0 - Marathon Starts_`,
+      `${CURRENT_DAY_CAPTION}\n\n_Tomorrow is Marathon Day 0 - Marathon Starts_`,
     );
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-14'),
-      `${CURRENT_DAY_CAPTION}, _Tomorrow is Marathon Day 0 - Marathon Starts_`,
+      `${CURRENT_DAY_CAPTION}\n\n_Tomorrow is Marathon Day 0 - Marathon Starts_`,
     );
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-01'),
-      `${CURRENT_DAY_CAPTION}, _Marathon Day 0 - Today Marathon_`,
+      `${CURRENT_DAY_CAPTION}\n\n_Marathon Day 0 - Today Marathon_`,
     );
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-02'),
-      `${CURRENT_DAY_CAPTION}, _Marathon Day 1_`,
+      `${CURRENT_DAY_CAPTION}\n\n_Marathon Day 1_`,
     );
     assert.equal(
       appendMarathonWhatsAppNotice(CURRENT_DAY_CAPTION, '2026-08-12'),
@@ -220,7 +220,7 @@ describe('appendMarathonWhatsAppNotice', () => {
       currentWeight: 74,
     });
     const result = appendMarathonWhatsAppNotice(food, '2026-08-31', progress);
-    assert.equal(result, `${food}\n_Tomorrow is Marathon Day 0 - Marathon Starts_`);
+    assert.equal(result, `${food}\n\n_Tomorrow is Marathon Day 0 - Marathon Starts_`);
     assert.equal(result.includes('Previous Marathon End'), false);
     assert.equal(result.includes('Current Weight'), false);
   });
