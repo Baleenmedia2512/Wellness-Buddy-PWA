@@ -25,6 +25,7 @@ import {
   ensureMarathonWeightComparisonForShare,
   withMarathonWhatsAppNotice,
 } from '../../../marathon';
+import { ensureDailyWellnessScoreForShare } from '../../../wellness-score-sheet/services/refreshDailyWellnessScoreNow';
 import {
   formatBusinessTime,
   formatBusinessDateTime,
@@ -312,11 +313,15 @@ export function FoodRow({
       }
       const target = shareCardRef.current || swipe.elRef.current;
       if (!target) return;
+      const wellnessScore = await ensureDailyWellnessScoreForShare({
+        user: shareUser,
+        timezoneSource: timezoneIana,
+      });
       await captureAndShare(target, {
         title: shareMealName,
         text: withMarathonWhatsAppNotice(
           composeBrandedShareCaption(shareText, { user: shareUser }),
-          { user: shareUser, timezoneIana },
+          { user: shareUser, timezoneIana, wellnessScore },
         ),
         fileName: `wellness-${activityType}-${Date.now()}.png`,
       });
@@ -540,6 +545,11 @@ export function WeightRow({
         timezoneSource: timezoneIana,
         currentMarathonDay0Weight: p.weight,
       });
+      const wellnessScore = await ensureDailyWellnessScoreForShare({
+        user: shareUser,
+        userId: ownerUserId || viewerUserId,
+        timezoneSource: timezoneIana,
+      });
       await captureAndShare(target, {
         title: `Weight ${p.weight} kg`,
         text: withMarathonWhatsAppNotice(
@@ -550,6 +560,7 @@ export function WeightRow({
             currentMarathonDay0Weight: p.weight,
             marathonWeightComparison,
             includeWeightComparison: true,
+            wellnessScore,
           },
         ),
         fileName: `wellness-weight-${Date.now()}.png`,
@@ -754,11 +765,18 @@ export function EducationRow({
     try {
       // Inline API→R2 photos as data URLs so html2canvas keeps the thumb.
       await inlineDiaryShareImages(swipe.elRef.current);
+      const shareUser = { id: viewerUserId || ownerUserId };
+      const wellnessScore = await ensureDailyWellnessScoreForShare({
+        user: shareUser,
+        userId: viewerUserId || ownerUserId,
+        timezoneSource: timezoneIana,
+      });
       await captureAndShare(swipe.elRef.current, {
         title: `Education - ${p.topic || 'Session'}`,
         text: withMarathonWhatsAppNotice(shareText, {
           timezoneIana,
-          user: { id: viewerUserId || ownerUserId },
+          user: shareUser,
+          wellnessScore,
         }),
         fileName: `wellness-education-${Date.now()}.png`,
       });
@@ -867,11 +885,18 @@ export function GoodHabitRow({
     try {
       // Inline API→R2 photos as data URLs so html2canvas keeps the thumb.
       await inlineDiaryShareImages(swipe.elRef.current);
+      const shareUser = { id: viewerUserId || ownerUserId };
+      const wellnessScore = await ensureDailyWellnessScoreForShare({
+        user: shareUser,
+        userId: viewerUserId || ownerUserId,
+        timezoneSource: timezoneIana,
+      });
       await captureAndShare(swipe.elRef.current, {
         title,
         text: withMarathonWhatsAppNotice(shareText, {
           timezoneIana,
-          user: { id: viewerUserId || ownerUserId },
+          user: shareUser,
+          wellnessScore,
         }),
         fileName: `wellness-good-habit-${Date.now()}.png`,
       });

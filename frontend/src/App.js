@@ -134,7 +134,10 @@ import {
   deleteNutritionAnalysis,
 } from "./features/nutrition";
 import { seedDailyWellnessScoreCache } from "./features/wellness-score-sheet/services/dailyWellnessScoreCache";
-import { refreshDailyWellnessScoreAfterSave } from "./features/wellness-score-sheet/services/refreshDailyWellnessScoreNow";
+import {
+  ensureDailyWellnessScoreForShare,
+  refreshDailyWellnessScoreAfterSave,
+} from "./features/wellness-score-sheet/services/refreshDailyWellnessScoreNow";
 import { analyzeImage as orchestrateAnalyzeImage } from "./shared/services/orchestratorService";
 import {
   reserveAiCredit,
@@ -768,6 +771,7 @@ function WellnessValleyApp() {
       // (marathon fetch / overlay paint) expires that gesture → NotAllowedError
       // → old wa.me text-only path (image never attached).
       let marathonWeightComparison = null;
+      let wellnessScore = null;
       if (isWeightShare) {
         if (isWebShare) {
           marathonWeightComparison = peekMarathonWeightComparisonForShare({
@@ -780,6 +784,13 @@ function WellnessValleyApp() {
             currentMarathonDay0Weight,
           });
         }
+      }
+      // Native can await a fresh /daily total; web keeps the gesture and uses cache.
+      if (!isWebShare) {
+        wellnessScore = await ensureDailyWellnessScoreForShare({
+          user,
+          apiBaseUrl,
+        });
       }
 
       const buildCaption = (shareDisplayName) => {
@@ -794,6 +805,7 @@ function WellnessValleyApp() {
             currentMarathonDay0Weight: isWeightShare ? currentMarathonDay0Weight : undefined,
             marathonWeightComparison,
             includeWeightComparison: isWeightShare,
+            wellnessScore,
           },
         );
       };
