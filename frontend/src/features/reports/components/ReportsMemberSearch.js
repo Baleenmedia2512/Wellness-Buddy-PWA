@@ -15,6 +15,10 @@ export default function ReportsMemberSearch({
   selectedMember,
   onMemberSelect,
   refreshKey = 0,
+  /** When true, render nothing for members who cannot search (e.g. Wellness Score sheet). */
+  hideWhenNotEligible = false,
+  /** Optional outer wrapper (e.g. sticky header padding on Wellness Score). */
+  className = '',
 }) {
   const vm = useTeamSearch({
     user, userRole, selectedMember, onMemberSelect, refreshKey,
@@ -22,15 +26,16 @@ export default function ReportsMemberSearch({
   const [profileMember, setProfileMember] = useState(null);
 
   if (!vm.isCoach) {
+    if (hideWhenNotEligible) return null;
     return (
-      <p className="text-xs text-gray-600">
+      <p className={`text-xs text-gray-600 ${className}`.trim()}>
         Selected User: <span className="font-semibold text-gray-900">My Profile</span>
       </p>
     );
   }
 
   return (
-    <>
+    <div className={className || undefined}>
       <div className="relative flex items-center gap-2">
         <div className="relative min-w-0 flex-1">
           <TeamSearchInput
@@ -69,18 +74,12 @@ export default function ReportsMemberSearch({
           </button>
         )}
       </div>
-      {/* <p className="mt-2 text-xs text-gray-600">
-        Selected User:{' '}
-        <span className="font-semibold text-gray-900">
-          {reportsSelectedUserLabel(selectedMember)}
-        </span>
-      </p> */}
       <TeamMemberProfileModal
         isOpen={Boolean(profileMember)}
         onClose={() => setProfileMember(null)}
         memberEmail={profileMember?.email}
         memberUserId={profileMember?.userId || profileMember?.id}
       />
-    </>
+    </div>
   );
 }
