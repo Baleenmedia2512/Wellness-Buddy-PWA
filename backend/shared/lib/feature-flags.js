@@ -381,6 +381,15 @@ registerFlag({
 });
 
 registerFlag({
+  name:           'ff.profile-change-sponsor-otp',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-24',
+  removeBy:       '2027-05-24',
+  description:    'ADR-0018 — One coach OTP on Profile Save for later changes to gated fields (phone, height, health issues, community ID/position, intro, photo, etc.). First fill free. Kill switch; version routing 3.5.8+. Legacy apps keep per-field OTP.',
+  defaultEnabled: true,
+});
+
+registerFlag({
   name:           'ff.broadcast',
   owner:          '@principal-eng',
   createdAt:      '2026-09-29',

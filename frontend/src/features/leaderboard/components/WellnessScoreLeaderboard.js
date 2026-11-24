@@ -10,6 +10,7 @@ import { Trophy, Share2, Loader2, Calendar } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import {
   captureAndShare,
+  composeBrandedShareCaption,
   precaptureShareImage,
   shareCachedDataUrl,
 } from '../../../shared/utils/shareUtils.js';
@@ -31,7 +32,12 @@ import {
   hasValidProfileName,
   isPlaceholderUserName,
 } from '../../user/domain/profileCompleteness';
-import { subscribeDailyWellnessScoreSeed } from '../../wellness-score-sheet/services/dailyWellnessScoreCache';
+import {
+  getDailyWellnessScoreCached,
+  subscribeDailyWellnessScoreSeed,
+} from '../../wellness-score-sheet/services/dailyWellnessScoreCache';
+import { formatWellnessScoreWhatsAppNoticeLines } from '../../wellness-score-sheet/domain/wellnessScoreShareCaption';
+import { withMarathonWhatsAppNotice } from '../../marathon';
 import { LEADERBOARD_CONFIG } from '../../../config/leaderboardConfig.js';
 import { useRaceLeaderboardRealtime } from '../hooks/useRaceLeaderboardRealtime.js';
 import {
@@ -67,6 +73,15 @@ function getLogoSrc() {
   return '/logo.png';
 }
 
+function getShareCardHeight(count) {
+  const n = Number(count) || 0;
+  if (n <= 0) return 1024;
+  if (n >= 10) return 1024;
+  // Fixed vertical overhead: padding-top(16) + header(~104) + border(2) + list-pt(4) + list-pb(24) + padding-bottom(40) = 190px
+  // Row slot height with comfortable row gaps: ~83.4px
+  return Math.round(190 + n * 83.4);
+}
+
 function displayLeaderboardName(entry, viewerUserId, viewerName) {
   const stored = String(entry?.userName || '').trim();
   const isViewer = Number(entry?.userId) === Number(viewerUserId);
@@ -78,6 +93,35 @@ function displayLeaderboardName(entry, viewerUserId, viewerName) {
     return String(viewerName).trim();
   }
   return stored || 'Unknown';
+}
+
+/**
+ * Viewer's own wellness score for WhatsApp caption (not Top N branding).
+ * Prefers the active leaderboard row; falls back to today's cached daily score.
+ * @returns {string}
+ */
+function buildViewerWellnessScoreShareSuffix({
+  userId,
+  rows = [],
+  dateYmd = null,
+} = {}) {
+  const viewerId = userId != null && userId !== '' ? Number(userId) : NaN;
+  const fromBoard = Number.isFinite(viewerId)
+    ? rows.find((row) => Number(row?.userId) === viewerId)
+    : null;
+
+  let earned = fromBoard?.totalEarned;
+  let possible = fromBoard?.totalPossible;
+  if (earned == null || possible == null) {
+    const cached = getDailyWellnessScoreCached(userId, dateYmd);
+    if (cached) {
+      earned = cached.totalEarned;
+      possible = cached.totalPossible;
+    }
+  }
+
+  const lines = formatWellnessScoreWhatsAppNoticeLines(earned, possible);
+  return lines.length > 0 ? lines.join('\n') : '*Wellness Score*';
 }
 
 const cacheKeyFor = (userId) => `${CACHE_KEY_PREFIX}${userId || 'anon'}`;
@@ -146,6 +190,8 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
   const fetchInFlightRef = useRef({});
 
   const isTodayFilter = filterPreset === LB_DATE_PRESETS.TODAY;
+  const tileRows = isTodayFilter ? leaderboardData : rangeData;
+  const shareHeight = getShareCardHeight(tileRows.length);
 
   const fetchLeaderboard = useCallback(async (days = 1, dateYmd = null) => {
     const windowDays = Number(days) >= 2 && Number(days) <= LB_MAX_WINDOW_DAYS
@@ -356,14 +402,15 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
     const target = shareCardRef.current || cardRef.current;
     if (!isTile || !target || !hasEntered) return undefined;
     let cancelled = false;
+    const currentShareHeight = getShareCardHeight(tileRows.length);
     const timer = setTimeout(() => {
       precaptureShareImage(target, {
         scale: 2,
         quality: 0.95,
         targetWidth: 768,
-        targetHeight: 1024,
+        targetHeight: currentShareHeight,
         width: 768,
-        height: 1024,
+        height: currentShareHeight,
       }).then((dataUrl) => {
         if (!cancelled && dataUrl) {
           cachedDataUrlRef.current = dataUrl;
@@ -374,7 +421,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [isTile, leaderboardData, rangeData, filterPreset, hasEntered]);
+  }, [isTile, leaderboardData, rangeData, filterPreset, hasEntered, tileRows.length]);
 
   const getRankColor = (rank) => {
     // Gold / silver / bronze by place (1 / 2 / 3), not by score %.
@@ -397,16 +444,33 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
         ? 'today'
         : `${filterPreset}-${filterMeta?.endYmd || filterMeta?.days || 'range'}`;
       const fileName = `top-${topN}-wellness-score-${modeSuffix}-${Date.now()}.jpg`;
+      const currentShareHeight = getShareCardHeight(tileRows.length);
+      const shareUser = {
+        email,
+        id: userId,
+        userName: viewerName,
+      };
+      const scoreSuffix = buildViewerWellnessScoreShareSuffix({
+        userId,
+        rows: tileRows,
+        dateYmd: filterMeta?.endYmd || filterMeta?.dateYmd || null,
+      });
       const shareOpts = {
-        title: `Top ${topN} Wellness Score`,
-        text: `Top ${topN} Wellness Score - Wellness Valley`,
+        title: 'Wellness Score',
+        text: withMarathonWhatsAppNotice(
+          composeBrandedShareCaption(scoreSuffix, {
+            savedUserName: viewerName,
+            user: shareUser,
+          }),
+          { user: shareUser },
+        ),
         fileName,
         scale: 2,
         quality: 0.95,
         targetWidth: 768,
-        targetHeight: 1024,
+        targetHeight: currentShareHeight,
         width: 768,
-        height: 1024,
+        height: currentShareHeight,
       };
 
       const cached = cachedDataUrlRef.current;
@@ -582,7 +646,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
     );
   };
 
-  const renderShareTileRow = (user) => {
+  const renderShareTileRow = (user, index, total) => {
     const shownName = displayLeaderboardName(user, userId, viewerName);
     const { sponsorName, idealCoachName } = resolveSponsorCoachNames(user);
     const sponsorCoachText = [
@@ -591,6 +655,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
     ]
       .filter(Boolean)
       .join(' · ');
+    const isLast = index != null && total != null ? index === total - 1 : false;
 
     return (
       <li
@@ -600,7 +665,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
           alignItems: 'center',
           gap: '16px',
           padding: '8px 12px',
-          borderBottom: '1px solid #f5f3ff',
+          borderBottom: isLast ? 'none' : '1px solid #f5f3ff',
           boxSizing: 'border-box',
           overflow: 'visible',
         }}
@@ -659,11 +724,12 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
                 flexShrink: 0,
                 backgroundColor: '#f5f3ff',
                 color: '#6d28d9',
-                fontWeight: 700,
-                fontSize: '15px',
-                lineHeight: 1.2,
-                padding: '5px 12px',
-                borderRadius: '8px',
+                fontWeight: 800,
+                fontSize: '26px',
+                letterSpacing: '-0.02em',
+                lineHeight: 1.15,
+                padding: '7px 16px',
+                borderRadius: '12px',
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -695,7 +761,6 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
   };
 
   if (isTile) {
-    const tileRows = isTodayFilter ? leaderboardData : rangeData;
     const tileSubtitle = filterMeta?.subtitle || "Today's ranking";
     const buttonLabel = filterMeta?.buttonLabel || 'Today';
     const ariaPeriod = isTodayFilter ? null : (filterMeta?.subtitle || filterPreset);
@@ -810,7 +875,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
           {profileViewer}
         </section>
 
-        {/* Off-screen card used exclusively for sharing with exact 768x1024 poster resolution */}
+        {/* Off-screen card used exclusively for sharing with dynamic poster height */}
         <div
           ref={shareCardRef}
           aria-hidden="true"
@@ -819,7 +884,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
             left: '-9999px',
             top: 0,
             width: 768,
-            height: 1024,
+            height: shareHeight,
             boxSizing: 'border-box',
             overflow: 'hidden',
             backgroundColor: '#ffffff',
@@ -829,8 +894,8 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
           <div
             style={{
               width: 768,
-              height: 1024,
-              padding: '32px 36px 28px 36px',
+              height: shareHeight,
+              padding: '16px 36px 40px 36px',
               boxSizing: 'border-box',
               display: 'flex',
               flexDirection: 'column',
@@ -845,7 +910,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: '16px',
-                paddingBottom: '16px',
+                paddingBottom: '8px',
                 borderBottom: '2px solid #ede9fe',
                 flexShrink: 0,
                 boxSizing: 'border-box',
@@ -855,8 +920,8 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
                 <span
                   style={{
                     display: 'flex',
-                    width: '56px',
-                    height: '56px',
+                    width: '60px',
+                    height: '60px',
                     alignItems: 'center',
                     justifyContent: 'center',
                     borderRadius: '16px',
@@ -865,12 +930,12 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
                   }}
                   aria-hidden
                 >
-                  <Trophy style={{ width: '32px', height: '32px', color: '#6d28d9' }} />
+                  <Trophy style={{ width: '36px', height: '36px', color: '#6d28d9' }} />
                 </span>
                 <div>
                   <h3
                     style={{
-                      fontSize: '24px',
+                      fontSize: '26px',
                       fontWeight: 800,
                       color: '#4c1d95',
                       letterSpacing: '-0.02em',
@@ -882,7 +947,7 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
                   </h3>
                   <p
                     style={{
-                      fontSize: '14px',
+                      fontSize: '15px',
                       fontWeight: 600,
                       color: '#6d28d9',
                       opacity: 0.85,
@@ -911,13 +976,13 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
                 flex: 1,
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'space-between',
-                padding: '12px 0 0 0',
+                justifyContent: tileRows.length > 1 ? 'space-between' : 'flex-start',
+                padding: '4px 0 24px 0',
                 margin: 0,
                 listStyle: 'none',
               }}
             >
-              {tileRows.map((user) => renderShareTileRow(user))}
+              {tileRows.map((user, idx) => renderShareTileRow(user, idx, tileRows.length))}
             </ul>
           </div>
         </div>

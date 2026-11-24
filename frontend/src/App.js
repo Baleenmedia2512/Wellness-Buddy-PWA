@@ -134,7 +134,10 @@ import {
   deleteNutritionAnalysis,
 } from "./features/nutrition";
 import { seedDailyWellnessScoreCache } from "./features/wellness-score-sheet/services/dailyWellnessScoreCache";
-import { refreshDailyWellnessScoreAfterSave } from "./features/wellness-score-sheet/services/refreshDailyWellnessScoreNow";
+import {
+  ensureDailyWellnessScoreForShare,
+  refreshDailyWellnessScoreAfterSave,
+} from "./features/wellness-score-sheet/services/refreshDailyWellnessScoreNow";
 import { analyzeImage as orchestrateAnalyzeImage } from "./shared/services/orchestratorService";
 import {
   reserveAiCredit,
@@ -733,7 +736,11 @@ function WellnessValleyApp() {
   // Optional `activityCaption` is the activity-specific WhatsApp template
   // (water volume, food macros, etc.) — appended above the branding line.
   const shareCaptureAfterClassify = useCallback(
-    async (imageBase64, { activityCaption = null, currentMarathonDay0Weight = null } = {}) => {
+    async (imageBase64, {
+      activityCaption = null,
+      currentMarathonDay0Weight = null,
+      wellnessScore: wellnessScoreFromSave = null,
+    } = {}) => {
       const autoShareEnabled =
         localStorage.getItem("autoShareOnCapture") !== "false";
       if (!autoShareEnabled || foodAutoSharedRef.current || !imageBase64) {
@@ -768,6 +775,9 @@ function WellnessValleyApp() {
       // (marathon fetch / overlay paint) expires that gesture → NotAllowedError
       // → old wa.me text-only path (image never attached).
       let marathonWeightComparison = null;
+      // Prefer score refreshed after DB save (Manual Entry water/food). Otherwise
+      // native re-fetches; web uses cache so the Save gesture is not lost.
+      let wellnessScore = wellnessScoreFromSave || null;
       if (isWeightShare) {
         if (isWebShare) {
           marathonWeightComparison = peekMarathonWeightComparisonForShare({
@@ -780,6 +790,12 @@ function WellnessValleyApp() {
             currentMarathonDay0Weight,
           });
         }
+      }
+      if (!wellnessScore && !isWebShare) {
+        wellnessScore = await ensureDailyWellnessScoreForShare({
+          user,
+          apiBaseUrl,
+        });
       }
 
       const buildCaption = (shareDisplayName) => {
@@ -794,6 +810,7 @@ function WellnessValleyApp() {
             currentMarathonDay0Weight: isWeightShare ? currentMarathonDay0Weight : undefined,
             marathonWeightComparison,
             includeWeightComparison: isWeightShare,
+            wellnessScore,
           },
         );
       };
@@ -3220,8 +3237,9 @@ function WellnessValleyApp() {
   // Design: zero custom screens before OS dialogs. Permissions are requested
   // immediately in order. The PermissionBlockedDialog appears only AFTER an OS
   // prompt has been denied, as a last-resort block. Required permissions
-  // (camera, location) block the app entirely; optional ones (notifications, contacts)
-  // are silently skipped on denial.
+  // (camera, location) block the app entirely; optional notifications are
+  // silently skipped on denial. Contacts is NOT requested here — only when a
+  // coach saves a Body Parameters member to device contacts (App Store 5.1.2).
   //
   // States
   //   activePermission = null          ? no gate, home accessible
@@ -3235,10 +3253,11 @@ function WellnessValleyApp() {
   const _permissionFlowRunningRef = useRef(false);
 
   /**
-   * Walk [camera → location → contacts → notifications] in order.
+   * Walk [camera → location → notifications] in order.
    *
-   * Contacts is asked before notifications so the dialog is not dropped after
-   * the push prompt. Contacts is optional — denial does not block the app.
+   * Contacts is intentionally omitted: request only at Body Parameters card
+   * save time (local device write; never uploaded). Asking at login caused
+   * App Store Guideline 5.1.2 review flags.
    *
    * For every non-granted permission, requestPermission() is called
    * IMMEDIATELY — no pre-dialog, no canRequest gate on the first check.
@@ -3251,8 +3270,8 @@ function WellnessValleyApp() {
    * the blocking dialog before the OS prompt ever fired.
    *
    * The OS itself is the arbiter:
-   *   � First-time / 'prompt' ? OS shows the system dialog.
-   *   � Permanent denial    ? OS silently returns 'denied'; no dialog shown.
+   *   First-time / 'prompt' → OS shows the system dialog.
+   *   Permanent denial → OS silently returns 'denied'; no dialog shown.
    *
    * After requestPermission returns we re-check canRequest to decide whether
    * to offer "Allow Again" (still requestable) or just "Exit App" (permanent).
@@ -3263,9 +3282,7 @@ function WellnessValleyApp() {
     _permissionFlowRunningRef.current = true;
 
     try {
-      // Contacts before notifications — iOS often drops a 4th prompt if it
-      // immediately follows the push dialog. Brief pause lets prior sheet settle.
-      const PERMISSIONS = ['camera', 'location', 'contacts', 'notifications'];
+      const PERMISSIONS = ['camera', 'location', 'notifications'];
 
       for (const type of PERMISSIONS) {
         const config = PermissionManager.PERMISSION_CONFIG[type];
@@ -3285,18 +3302,6 @@ function WellnessValleyApp() {
           }
         }
 
-        if (type === 'contacts') {
-          const nativeOk = await PermissionManager.isContactsNativeAvailable();
-          if (!nativeOk) {
-            console.error(
-              '[App] Skipping Contacts prompt — native plugin not linked. Rebuild iOS after pod install.',
-            );
-            continue;
-          }
-          // Let the previous OS sheet fully dismiss before showing Contacts.
-          await new Promise((r) => setTimeout(r, 450));
-        }
-
         // Not granted — request directly. The OS either shows a dialog
         // (first-time or 'prompt') or silently returns denied (permanent).
         // We never show a custom screen before this call.
@@ -3304,7 +3309,7 @@ function WellnessValleyApp() {
         if (nowGranted) continue;
 
         // Request returned denied.
-        if (!config.required) continue; // Notifications / contacts optional — skip.
+        if (!config.required) continue; // Notifications optional — skip.
 
         // Required permission denied. Re-check canRequest NOW — this
         // post-request value is accurate: Capacitor correctly maps 'prompt'
@@ -8975,6 +8980,7 @@ function WellnessValleyApp() {
             await shareCaptureAfterClassify(image, {
               activityCaption: shareMeta?.activityCaption || null,
               currentMarathonDay0Weight: shareMeta?.currentMarathonDay0Weight ?? null,
+              wellnessScore: shareMeta?.wellnessScore ?? null,
             });
           }}
           onToast={(msg) => showToast(msg)}
@@ -8996,8 +9002,10 @@ function WellnessValleyApp() {
         <WellnessScorePage
           key={wellnessScoreSession}
           user={user}
+          userRole={userRole}
           apiBaseUrl={apiBaseUrl}
           nutritionRefreshKey={nutritionRefreshKey}
+          teamSearchRefreshKey={teamSearchRefreshKey}
           initialDateRange={wellnessScoreInitialRange.dateRange}
           initialCustomStartDate={wellnessScoreInitialRange.customStartDate}
           initialCustomEndDate={wellnessScoreInitialRange.customEndDate}

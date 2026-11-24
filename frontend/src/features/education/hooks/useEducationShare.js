@@ -8,6 +8,7 @@ import {
   captureAndShare, precaptureShareImage, shareCachedDataUrl,
 } from '../../../shared/utils/shareUtils';
 import { withMarathonWhatsAppNotice } from '../../marathon';
+import { ensureDailyWellnessScoreForShare } from '../../wellness-score-sheet/services/refreshDailyWellnessScoreNow';
 
 export function useEducationShare({ educationData, imagePreview, user = null, deps = [] } = {}) {
   const [isSharing, setIsSharing] = useState(false);
@@ -32,6 +33,7 @@ export function useEducationShare({ educationData, imagePreview, user = null, de
     setIsSharing(true);
     await new Promise((r) => setTimeout(r, 0));
     try {
+      const wellnessScore = await ensureDailyWellnessScoreForShare({ user });
       const shareOpts = {
         title: `Education Session - ${educationData.topic}`,
         text: withMarathonWhatsAppNotice([
@@ -39,7 +41,7 @@ export function useEducationShare({ educationData, imagePreview, user = null, de
           '',
           `Platform: ${educationData.platform || '—'}`,
           `Session: ${educationData.topic || '—'}`,
-        ].join('\n'), { user }),
+        ].join('\n'), { user, wellnessScore }),
         fileName: `wellness-valley-education-${educationData.topic.toLowerCase().replace(/\s+/g, '-')}.png`,
       };
       const cached = cachedRef.current;

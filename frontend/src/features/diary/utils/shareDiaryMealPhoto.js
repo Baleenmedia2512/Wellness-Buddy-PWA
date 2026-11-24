@@ -6,6 +6,7 @@
 
 import { shareImageDirectly, composeBrandedShareCaption } from '../../../shared/utils/shareUtils';
 import { withMarathonWhatsAppNotice } from '../../marathon';
+import { ensureDailyWellnessScoreForShare } from '../../wellness-score-sheet/services/refreshDailyWellnessScoreNow';
 import { fetchDiaryShareImageSrc } from './diaryThumbUrl';
 
 /**
@@ -17,6 +18,7 @@ import { fetchDiaryShareImageSrc } from './diaryThumbUrl';
  * @param {string} [opts.timezoneIana]
  * @param {string} [opts.fileName]
  * @param {string} [opts.fallbackImageSrc] used when thumb fetch yields only a template
+ * @param {string} [opts.apiBaseUrl]
  */
 export async function shareDiaryMealPhoto({
   thumb,
@@ -26,6 +28,7 @@ export async function shareDiaryMealPhoto({
   timezoneIana,
   fileName,
   fallbackImageSrc = null,
+  apiBaseUrl = process.env.REACT_APP_API_BASE_URL,
 } = {}) {
   const isPlaceholder = (src) =>
     !src
@@ -46,9 +49,15 @@ export async function shareDiaryMealPhoto({
     throw new Error('No meal photo to share');
   }
 
+  const wellnessScore = await ensureDailyWellnessScoreForShare({
+    user: shareUser,
+    timezoneSource: timezoneIana,
+    apiBaseUrl,
+  });
+
   const text = withMarathonWhatsAppNotice(
     composeBrandedShareCaption(shareText, { user: shareUser }),
-    { user: shareUser, timezoneIana },
+    { user: shareUser, timezoneIana, wellnessScore },
   );
 
   await shareImageDirectly(photoSrc, {

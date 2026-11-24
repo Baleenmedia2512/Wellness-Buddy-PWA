@@ -9,11 +9,11 @@ import { applyDateRangeFilterWidened } from '../../shared/lib/datetime/applyDayF
 import {
   IANA_IST,
   filterRowsByCalendarDateRange,
-  normalizeStoredTimestampToUtcIso,
   timestampToCalendarYmd,
 } from '../../shared/lib/datetime/index.js';
 import {
   filterFoodRowsByCalendarDateRange,
+  normalizeActivityCreatedAt,
   resolveFoodTimestamp,
 } from '../../shared/lib/datetime/foodTimestamp.js';
 import { resolveTimezoneFromMap } from '../user/domain/userTimezone.js';
@@ -442,8 +442,8 @@ function recordCalendarYmd(record, timezoneIana, {
     if (foodTimestamp) {
       return resolveFoodTimestamp(raw, tz).calendarYmd;
     }
-    // Legacy IST wall storage → UTC, then owner calendar day.
-    return timestampToCalendarYmd(normalizeStoredTimestampToUtcIso(raw, IANA_IST), tz);
+    // Weight/education IST wall storage (strip driver Z) → UTC, then owner calendar day.
+    return timestampToCalendarYmd(normalizeActivityCreatedAt(raw), tz);
   } catch {
     return 'unknown';
   }

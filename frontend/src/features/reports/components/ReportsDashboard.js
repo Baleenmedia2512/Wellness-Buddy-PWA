@@ -4,12 +4,11 @@
  * Tabs:
  *   1. Ideal Weight (default) — existing DownlineWeightReport
  *   2. Wellness Score Report — existing WellnessScoreReport (ff.wellness-score-sheet)
- *   3. Nutrition — selected member's nutrition (existing dashboard cards/APIs)
- *   4. Trend — selected member's body-metric history (weight + BPC fields)
+ *   3. Trend — selected member's body-metric history (weight + BPC fields)
  *
- * Ideal Weight and Wellness Score stay mounted after first visit so filters
- * survive tab switches. Nutrition and Trend each have their own search bar
- * and selected member — picking someone on one tab does not change the other.
+ * Downline nutrition / full wellness score detail lives on the Wellness Score
+ * sheet (Home), not here. Ideal Weight and Wellness Score stay mounted after
+ * first visit so filters survive tab switches. Trend has its own member search.
  * The page title follows the active tab. Refresh lives in this header and
  * reloads whichever tab is showing.
  */
@@ -22,7 +21,6 @@ import ReportAccessBanner from './ReportAccessBanner';
 import DownlineWeightReport from './DownlineWeightReport';
 import WellnessScoreReport from './WellnessScoreReport';
 import ReportsMemberSearch from './ReportsMemberSearch';
-import ReportsNutritionTab from './ReportsNutritionTab';
 import ReportsTrendTab from './ReportsTrendTab';
 import {
   REPORT_DASHBOARD_TABS,
@@ -70,18 +68,12 @@ export default function ReportsDashboard({
     () => resolveReportsDashboardTab(initialTab, wellnessScoreEnabled)
       === REPORT_DASHBOARD_TABS.WELLNESS_SCORE,
   );
-  const [nutritionMounted, setNutritionMounted] = useState(
-    () => resolveReportsDashboardTab(initialTab, wellnessScoreEnabled)
-      === REPORT_DASHBOARD_TABS.NUTRITION,
-  );
   const [trendMounted, setTrendMounted] = useState(
     () => resolveReportsDashboardTab(initialTab, wellnessScoreEnabled)
       === REPORT_DASHBOARD_TABS.TREND,
   );
-  const [nutritionMember, setNutritionMember] = useState(null);
   const [trendMember, setTrendMember] = useState(null);
   const [trendDisplayTitle, setTrendDisplayTitle] = useState(null);
-  const nutritionMemberKey = nutritionMember?.id || nutritionMember?.userId || 'self';
   const refreshFnsRef = useRef({});
   const [refreshingByTab, setRefreshingByTab] = useState({});
 
@@ -101,10 +93,6 @@ export default function ReportsDashboard({
     (api) => bindTabRefresh(REPORT_DASHBOARD_TABS.WELLNESS_SCORE, api),
     [bindTabRefresh],
   );
-  const bindNutritionRefresh = useCallback(
-    (api) => bindTabRefresh(REPORT_DASHBOARD_TABS.NUTRITION, api),
-    [bindTabRefresh],
-  );
   const bindTrendRefresh = useCallback(
     (api) => bindTabRefresh(REPORT_DASHBOARD_TABS.TREND, api),
     [bindTabRefresh],
@@ -122,7 +110,6 @@ export default function ReportsDashboard({
     const next = resolveReportsDashboardTab(initialTab, wellnessScoreEnabled);
     setActiveTab(next);
     if (next === REPORT_DASHBOARD_TABS.WELLNESS_SCORE) setWellnessScoreMounted(true);
-    if (next === REPORT_DASHBOARD_TABS.NUTRITION) setNutritionMounted(true);
     if (next === REPORT_DASHBOARD_TABS.TREND) setTrendMounted(true);
   }, [initialTab, wellnessScoreEnabled]);
 
@@ -134,7 +121,6 @@ export default function ReportsDashboard({
     startTransition(() => {
       setActiveTab(tab);
       if (tab === REPORT_DASHBOARD_TABS.WELLNESS_SCORE) setWellnessScoreMounted(true);
-      if (tab === REPORT_DASHBOARD_TABS.NUTRITION) setNutritionMounted(true);
       if (tab === REPORT_DASHBOARD_TABS.TREND) setTrendMounted(true);
       scrollReportsViewportToTop();
     });
@@ -142,9 +128,8 @@ export default function ReportsDashboard({
 
   const idealActive = activeTab === REPORT_DASHBOARD_TABS.IDEAL_WEIGHT;
   const wellnessActive = activeTab === REPORT_DASHBOARD_TABS.WELLNESS_SCORE;
-  const nutritionActive = activeTab === REPORT_DASHBOARD_TABS.NUTRITION;
   const trendActive = activeTab === REPORT_DASHBOARD_TABS.TREND;
-  const memberSearchVisible = nutritionActive || trendActive;
+  const memberSearchVisible = trendActive;
   const embeddedStickyClass = memberSearchVisible
     ? 'sticky top-[9.75rem] z-20'
     : 'sticky top-[6.5rem] z-20';
@@ -215,18 +200,6 @@ export default function ReportsDashboard({
             <button
               type="button"
               role="tab"
-              id="reports-tab-nutrition"
-              aria-controls="reports-panel-nutrition"
-              aria-selected={nutritionActive}
-              tabIndex={nutritionActive ? 0 : -1}
-              onClick={() => selectTab(REPORT_DASHBOARD_TABS.NUTRITION)}
-              className={TAB_BTN(nutritionActive)}
-            >
-              <span className="truncate">Nutrition</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
               id="reports-tab-trend"
               aria-controls="reports-panel-trend"
               aria-selected={trendActive}
@@ -255,17 +228,6 @@ export default function ReportsDashboard({
             />
           ) : null}
 
-          {!detailsLocked && nutritionMounted && (
-            <div className={`mt-3 ${nutritionActive ? '' : 'hidden'}`}>
-              <ReportsMemberSearch
-                user={user}
-                userRole={userRole}
-                selectedMember={nutritionMember}
-                onMemberSelect={setNutritionMember}
-                refreshKey={teamSearchRefreshKey}
-              />
-            </div>
-          )}
           {!detailsLocked && trendMounted && (
             <div className={`mt-3 ${trendActive ? '' : 'hidden'}`}>
               <ReportsMemberSearch
@@ -336,25 +298,6 @@ export default function ReportsDashboard({
             embeddedStickyClass={embeddedStickyClass}
             onRefreshRegister={bindWellnessRefresh}
           />
-        </div>
-      )}
-
-      {!detailsLocked && nutritionMounted && (
-        <div
-          id="reports-panel-nutrition"
-          role="tabpanel"
-          aria-labelledby="reports-tab-nutrition"
-          hidden={!nutritionActive}
-          className={nutritionActive ? undefined : 'hidden'}
-        >
-          {detailsLocked ? null : (
-            <ReportsNutritionTab
-              key={`nutrition-${nutritionMemberKey}`}
-              user={user}
-              selectedMember={nutritionMember}
-              onRefreshRegister={bindNutritionRefresh}
-            />
-          )}
         </div>
       )}
 
