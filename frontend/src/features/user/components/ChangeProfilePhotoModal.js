@@ -258,6 +258,7 @@ const ChangeProfilePhotoModal = ({
                 length={EMAIL_OTP_LENGTH}
                 emailOtp
                 disabled={isSaving}
+                onComplete={handleVerifyOtp}
                 cellClassName="w-10 h-12 text-center text-lg font-semibold border border-gray-300 rounded-lg"
               />
               <button
