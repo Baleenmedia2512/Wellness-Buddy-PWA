@@ -134,7 +134,10 @@ import {
   deleteNutritionAnalysis,
 } from "./features/nutrition";
 import { seedDailyWellnessScoreCache } from "./features/wellness-score-sheet/services/dailyWellnessScoreCache";
-import { refreshDailyWellnessScoreAfterSave } from "./features/wellness-score-sheet/services/refreshDailyWellnessScoreNow";
+import {
+  ensureDailyWellnessScoreForShare,
+  refreshDailyWellnessScoreAfterSave,
+} from "./features/wellness-score-sheet/services/refreshDailyWellnessScoreNow";
 import { analyzeImage as orchestrateAnalyzeImage } from "./shared/services/orchestratorService";
 import {
   reserveAiCredit,
@@ -733,7 +736,11 @@ function WellnessValleyApp() {
   // Optional `activityCaption` is the activity-specific WhatsApp template
   // (water volume, food macros, etc.) — appended above the branding line.
   const shareCaptureAfterClassify = useCallback(
-    async (imageBase64, { activityCaption = null, currentMarathonDay0Weight = null } = {}) => {
+    async (imageBase64, {
+      activityCaption = null,
+      currentMarathonDay0Weight = null,
+      wellnessScore: wellnessScoreFromSave = null,
+    } = {}) => {
       const autoShareEnabled =
         localStorage.getItem("autoShareOnCapture") !== "false";
       if (!autoShareEnabled || foodAutoSharedRef.current || !imageBase64) {
@@ -768,6 +775,9 @@ function WellnessValleyApp() {
       // (marathon fetch / overlay paint) expires that gesture → NotAllowedError
       // → old wa.me text-only path (image never attached).
       let marathonWeightComparison = null;
+      // Prefer score refreshed after DB save (Manual Entry water/food). Otherwise
+      // native re-fetches; web uses cache so the Save gesture is not lost.
+      let wellnessScore = wellnessScoreFromSave || null;
       if (isWeightShare) {
         if (isWebShare) {
           marathonWeightComparison = peekMarathonWeightComparisonForShare({
@@ -780,6 +790,12 @@ function WellnessValleyApp() {
             currentMarathonDay0Weight,
           });
         }
+      }
+      if (!wellnessScore && !isWebShare) {
+        wellnessScore = await ensureDailyWellnessScoreForShare({
+          user,
+          apiBaseUrl,
+        });
       }
 
       const buildCaption = (shareDisplayName) => {
@@ -794,6 +810,7 @@ function WellnessValleyApp() {
             currentMarathonDay0Weight: isWeightShare ? currentMarathonDay0Weight : undefined,
             marathonWeightComparison,
             includeWeightComparison: isWeightShare,
+            wellnessScore,
           },
         );
       };
@@ -8963,6 +8980,7 @@ function WellnessValleyApp() {
             await shareCaptureAfterClassify(image, {
               activityCaption: shareMeta?.activityCaption || null,
               currentMarathonDay0Weight: shareMeta?.currentMarathonDay0Weight ?? null,
+              wellnessScore: shareMeta?.wellnessScore ?? null,
             });
           }}
           onToast={(msg) => showToast(msg)}
