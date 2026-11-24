@@ -225,6 +225,46 @@ describe('appendMarathonWhatsAppNotice', () => {
     assert.equal(result.includes('Current Weight'), false);
   });
 
+  it('appends Wellness Score before Marathon day on food captions', () => {
+    const food = 'BALAJI · Wellness Valley v 3.5.7\n\n1890 kcal\nMasala Dosa';
+    const result = appendMarathonWhatsAppNotice(
+      food,
+      '2026-08-09',
+      null,
+      {
+        wellnessScoreLines: ['*Wellness Score*', '450 / 900'],
+      },
+    );
+    assert.equal(
+      result,
+      [
+        'BALAJI · Wellness Valley v 3.5.7',
+        '',
+        '1890 kcal',
+        'Masala Dosa',
+        '',
+        '*Wellness Score*',
+        '450 / 900',
+        '',
+        '_Tomorrow is Marathon Day 9 - Detox Day_',
+      ].join('\n'),
+    );
+  });
+
+  it('does not duplicate Wellness Score when caption already has it', () => {
+    const caption = 'BALAJI · Wellness Valley v 3.5.7\n\n*Wellness Score*\n450 / 900';
+    const result = appendMarathonWhatsAppNotice(
+      caption,
+      '2026-08-12',
+      null,
+      {
+        wellnessScoreLines: ['*Wellness Score*', '450 / 900'],
+      },
+    );
+    assert.equal(result, caption);
+    assert.equal(result.split('*Wellness Score*').length - 1, 1);
+  });
+
   it('returns the day sequence when the caption is empty', () => {
     assert.equal(
       appendMarathonWhatsAppNotice('', '2026-08-14'),

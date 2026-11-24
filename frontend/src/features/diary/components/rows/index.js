@@ -756,7 +756,10 @@ export function EducationRow({
       await inlineDiaryShareImages(swipe.elRef.current);
       await captureAndShare(swipe.elRef.current, {
         title: `Education - ${p.topic || 'Session'}`,
-        text: withMarathonWhatsAppNotice(shareText, { timezoneIana }),
+        text: withMarathonWhatsAppNotice(shareText, {
+          timezoneIana,
+          user: { id: viewerUserId || ownerUserId },
+        }),
         fileName: `wellness-education-${Date.now()}.png`,
       });
     } catch (err) {
@@ -866,7 +869,10 @@ export function GoodHabitRow({
       await inlineDiaryShareImages(swipe.elRef.current);
       await captureAndShare(swipe.elRef.current, {
         title,
-        text: withMarathonWhatsAppNotice(shareText, { timezoneIana }),
+        text: withMarathonWhatsAppNotice(shareText, {
+          timezoneIana,
+          user: { id: viewerUserId || ownerUserId },
+        }),
         fileName: `wellness-good-habit-${Date.now()}.png`,
       });
     } catch (err) {

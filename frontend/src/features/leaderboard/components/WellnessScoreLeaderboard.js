@@ -36,6 +36,7 @@ import {
   getDailyWellnessScoreCached,
   subscribeDailyWellnessScoreSeed,
 } from '../../wellness-score-sheet/services/dailyWellnessScoreCache';
+import { formatWellnessScoreWhatsAppNoticeLines } from '../../wellness-score-sheet/domain/wellnessScoreShareCaption';
 import { withMarathonWhatsAppNotice } from '../../marathon';
 import { LEADERBOARD_CONFIG } from '../../../config/leaderboardConfig.js';
 import { useRaceLeaderboardRealtime } from '../hooks/useRaceLeaderboardRealtime.js';
@@ -111,7 +112,6 @@ function buildViewerWellnessScoreShareSuffix({
 
   let earned = fromBoard?.totalEarned;
   let possible = fromBoard?.totalPossible;
-
   if (earned == null || possible == null) {
     const cached = getDailyWellnessScoreCached(userId, dateYmd);
     if (cached) {
@@ -120,13 +120,8 @@ function buildViewerWellnessScoreShareSuffix({
     }
   }
 
-  const earnedN = Number(earned);
-  const possibleN = Number(possible);
-  if (!Number.isFinite(earnedN) || !Number.isFinite(possibleN) || possibleN <= 0) {
-    return '*Wellness Score*';
-  }
-
-  return `*Wellness Score*\n${Math.round(earnedN)} / ${Math.round(possibleN)}`;
+  const lines = formatWellnessScoreWhatsAppNoticeLines(earned, possible);
+  return lines.length > 0 ? lines.join('\n') : '*Wellness Score*';
 }
 
 const cacheKeyFor = (userId) => `${CACHE_KEY_PREFIX}${userId || 'anon'}`;

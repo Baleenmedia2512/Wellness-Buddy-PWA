@@ -9,6 +9,8 @@ import {
 } from '../../shared/utils/datetimeUtils';
 import { getDeviceTimezoneIana } from '../../shared/utils/deviceTimezone';
 import storage from '../../shared/lib/storage';
+import { isFlagEnabled } from '../../config/featureFlags';
+import { readNumericDbUserId } from '../../shared/services/numericDbUserId';
 import {
   getMarathonCalendarState,
   resolveMarathonToday,
@@ -23,6 +25,8 @@ import {
 import { getMarathonWeightComparisonFromCache } from './marathonWeightComparisonCache';
 import { getCachedProfile } from '../user/services/user.api';
 import { refreshMarathonWeightComparisonCache } from '../weight/services/weight.api';
+import { getDailyWellnessScoreCached } from '../wellness-score-sheet/services/dailyWellnessScoreCache';
+import { formatWellnessScoreWhatsAppNoticeLines } from '../wellness-score-sheet/domain/wellnessScoreShareCaption';
 
 /**
  * Profile IANA when set; otherwise the device timezone (same as DetoxDayReminder).
@@ -329,6 +333,23 @@ export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
     initialWeight = resolveInitialWeightFromProfileCache(user);
   }
 
+  // Current wellness score on every share (food / water / edu / weight / …).
+  // Uses live business today — not marathon.testDate — and skips when flag off
+  // or no cached totals yet.
+  let wellnessScoreLines = [];
+  if (isFlagEnabled('ff.wellness-score-sheet')) {
+    const scoreUserId = readNumericDbUserId(user);
+    const scoreDate = todayBusinessDate(
+      tz,
+      now instanceof Date ? now : new Date(),
+    );
+    const cachedScore = getDailyWellnessScoreCached(scoreUserId, scoreDate);
+    wellnessScoreLines = formatWellnessScoreWhatsAppNoticeLines(
+      cachedScore?.totalEarned,
+      cachedScore?.totalPossible,
+    );
+  }
+
   return appendMarathonWhatsAppNotice(
     caption,
     ymd,
@@ -337,6 +358,7 @@ export function withMarathonWhatsAppNotice(caption, ymdOrOptions) {
       includeWeightComparison,
       initialWeight: includeWeightComparison ? initialWeight : null,
       currentWeight: includeWeightComparison ? currentMarathonDay0Weight : null,
+      wellnessScoreLines,
     },
   );
 }
