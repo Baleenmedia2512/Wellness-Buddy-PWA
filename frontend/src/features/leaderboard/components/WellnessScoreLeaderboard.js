@@ -10,6 +10,7 @@ import { Trophy, Share2, Loader2, Calendar } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import {
   captureAndShare,
+  composeBrandedShareCaption,
   precaptureShareImage,
   shareCachedDataUrl,
 } from '../../../shared/utils/shareUtils.js';
@@ -31,7 +32,12 @@ import {
   hasValidProfileName,
   isPlaceholderUserName,
 } from '../../user/domain/profileCompleteness';
-import { subscribeDailyWellnessScoreSeed } from '../../wellness-score-sheet/services/dailyWellnessScoreCache';
+import {
+  getDailyWellnessScoreCached,
+  subscribeDailyWellnessScoreSeed,
+} from '../../wellness-score-sheet/services/dailyWellnessScoreCache';
+import { formatWellnessScoreWhatsAppNoticeLines } from '../../wellness-score-sheet/domain/wellnessScoreShareCaption';
+import { withMarathonWhatsAppNotice } from '../../marathon';
 import { LEADERBOARD_CONFIG } from '../../../config/leaderboardConfig.js';
 import { useRaceLeaderboardRealtime } from '../hooks/useRaceLeaderboardRealtime.js';
 import {
@@ -87,6 +93,35 @@ function displayLeaderboardName(entry, viewerUserId, viewerName) {
     return String(viewerName).trim();
   }
   return stored || 'Unknown';
+}
+
+/**
+ * Viewer's own wellness score for WhatsApp caption (not Top N branding).
+ * Prefers the active leaderboard row; falls back to today's cached daily score.
+ * @returns {string}
+ */
+function buildViewerWellnessScoreShareSuffix({
+  userId,
+  rows = [],
+  dateYmd = null,
+} = {}) {
+  const viewerId = userId != null && userId !== '' ? Number(userId) : NaN;
+  const fromBoard = Number.isFinite(viewerId)
+    ? rows.find((row) => Number(row?.userId) === viewerId)
+    : null;
+
+  let earned = fromBoard?.totalEarned;
+  let possible = fromBoard?.totalPossible;
+  if (earned == null || possible == null) {
+    const cached = getDailyWellnessScoreCached(userId, dateYmd);
+    if (cached) {
+      earned = cached.totalEarned;
+      possible = cached.totalPossible;
+    }
+  }
+
+  const lines = formatWellnessScoreWhatsAppNoticeLines(earned, possible);
+  return lines.length > 0 ? lines.join('\n') : '*Wellness Score*';
 }
 
 const cacheKeyFor = (userId) => `${CACHE_KEY_PREFIX}${userId || 'anon'}`;
@@ -410,9 +445,25 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
         : `${filterPreset}-${filterMeta?.endYmd || filterMeta?.days || 'range'}`;
       const fileName = `top-${topN}-wellness-score-${modeSuffix}-${Date.now()}.jpg`;
       const currentShareHeight = getShareCardHeight(tileRows.length);
+      const shareUser = {
+        email,
+        id: userId,
+        userName: viewerName,
+      };
+      const scoreSuffix = buildViewerWellnessScoreShareSuffix({
+        userId,
+        rows: tileRows,
+        dateYmd: filterMeta?.endYmd || filterMeta?.dateYmd || null,
+      });
       const shareOpts = {
-        title: `Top ${topN} Wellness Score`,
-        text: `Top ${topN} Wellness Score - Wellness Valley`,
+        title: 'Wellness Score',
+        text: withMarathonWhatsAppNotice(
+          composeBrandedShareCaption(scoreSuffix, {
+            savedUserName: viewerName,
+            user: shareUser,
+          }),
+          { user: shareUser },
+        ),
         fileName,
         scale: 2,
         quality: 0.95,

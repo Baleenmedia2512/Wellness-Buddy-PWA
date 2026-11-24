@@ -77,13 +77,18 @@ export function rankWellnessLeaderboardEntries(entries, topN = 10, options = {})
 
 /**
  * Sum persisted daily rows inside a window.
- * A calendar day with no row adds nothing (0 earned, 0 possible).
+ * A calendar day with no row adds 0 earned towards the window total.
  * One row per user per score_date; a later computed_at wins if duplicated.
+ * When `windowDays` is provided (e.g. 10), each user's totalPossible is fixed
+ * at windowDays * dailyPossible (e.g. 10 * 1000 = 10000, or 10 * 1100 = 11000)
+ * so that every user is evaluated out of the same total.
  *
  * @param {Array<{ user_id: number, score_date?: string, total_earned?: number, total_possible?: number, computed_at?: string }>} rows
+ * @param {number|null} [windowDays=null]
+ * @param {number} [dailyPossible=1000] Daily max score configured by admin (defaults to 1000)
  * @returns {Map<number, { totalEarned: number, totalPossible: number, wellnessPercentage: number }>}
  */
-export function aggregateWellnessWindowScores(rows) {
+export function aggregateWellnessWindowScores(rows, windowDays = null, dailyPossible = 1000) {
   const byUserDate = new Map();
   for (const row of rows || []) {
     const uid = Number(row?.user_id);
@@ -100,6 +105,9 @@ export function aggregateWellnessWindowScores(rows) {
     if (nextAt >= existingAt) byUserDate.set(key, row);
   }
 
+  const dailyTarget = Number(dailyPossible) > 0 ? Number(dailyPossible) : 1000;
+  const fixedPossible = Number(windowDays) > 0 ? Math.round(Number(windowDays) * dailyTarget) : null;
+
   const byUser = new Map();
   for (const row of byUserDate.values()) {
     const uid = Number(row.user_id);
@@ -110,6 +118,9 @@ export function aggregateWellnessWindowScores(rows) {
   }
 
   for (const totals of byUser.values()) {
+    if (fixedPossible != null) {
+      totals.totalPossible = fixedPossible;
+    }
     totals.wellnessPercentage = totals.totalPossible > 0
       ? Math.round((totals.totalEarned / totals.totalPossible) * 100)
       : 0;

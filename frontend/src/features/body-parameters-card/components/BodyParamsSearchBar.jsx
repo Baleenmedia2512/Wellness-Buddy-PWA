@@ -1,6 +1,6 @@
 /**
  * BodyParamsSearchBar.jsx
- * Name/phone search input with prefix-first autocomplete dropdown.
+ * Name/phone/venue search input with prefix-first autocomplete dropdown.
  * Keeps the existing Body Composition Metrics search look; adds suggestions only.
  */
 import React, { useEffect, useRef } from 'react';
@@ -10,7 +10,7 @@ import { Search } from 'lucide-react';
  * @param {{
  *   value: string,
  *   onChange: (value: string) => void,
- *   suggestions: Array<{ id?: string|number|null, term: string, name?: string, phoneNumber?: string }>,
+ *   suggestions: Array<{ id?: string|number|null, term: string, name?: string, phoneNumber?: string, locationName?: string }>,
  *   isOpen: boolean,
  *   onOpenChange: (open: boolean) => void,
  *   highlightedIndex: number,
@@ -51,12 +51,12 @@ export default function BodyParamsSearchBar({
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} aria-hidden="true" />
         <input
           type="text"
-          placeholder="Search by name or phone..."
+          placeholder="Search by name or phone or venue..."
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => onOpenChange(true)}
           onKeyDown={onKeyDown}
-          aria-label="Search body composition cards by name or phone"
+          aria-label="Search body composition cards by name or phone or venue"
           aria-expanded={showSuggestions}
           aria-controls={showSuggestions ? listId : undefined}
           aria-autocomplete="list"
@@ -87,12 +87,24 @@ export default function BodyParamsSearchBar({
                   }`}
                 >
                   <div className="text-sm font-medium text-gray-900 truncate">{row.term}</div>
-                  {row.name && row.phoneNumber && row.term !== row.phoneNumber ? (
-                    <div className="text-xs text-gray-500 truncate">{row.phoneNumber}</div>
-                  ) : null}
-                  {row.name && row.term === row.phoneNumber ? (
-                    <div className="text-xs text-gray-500 truncate">{row.name}</div>
-                  ) : null}
+                  {row.term === row.locationName ? (
+                    <div className="text-xs text-gray-500 truncate">
+                      {row.name ? `${row.name} • Venue` : 'Venue'}
+                    </div>
+                  ) : (
+                    <>
+                      {row.name && row.phoneNumber && row.term !== row.phoneNumber ? (
+                        <div className="text-xs text-gray-500 truncate">
+                          {row.phoneNumber}{row.locationName ? ` • ${row.locationName}` : ''}
+                        </div>
+                      ) : null}
+                      {row.name && row.term === row.phoneNumber ? (
+                        <div className="text-xs text-gray-500 truncate">
+                          {row.name}{row.locationName ? ` • ${row.locationName}` : ''}
+                        </div>
+                      ) : null}
+                    </>
+                  )}
                 </button>
               </li>
             );
