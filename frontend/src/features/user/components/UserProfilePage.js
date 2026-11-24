@@ -628,9 +628,10 @@ const UserProfilePage = ({
     profileChangeOtpCtl,
   ]);
 
-  const handleProfileChangeVerifyOtp = useCallback(async () => {
+  const handleProfileChangeVerifyOtp = useCallback(async (codeArg) => {
     setProfileChangeOtpError('');
-    if (!profileChangeOtpCtl.isComplete) {
+    const code = String(codeArg || profileChangeOtpCtl.value || '').trim();
+    if (!/^\d{4}$/.test(code)) {
       setProfileChangeOtpError('Enter the 4-digit approval code from your coach.');
       return;
     }
@@ -639,7 +640,7 @@ const UserProfilePage = ({
       const data = await verifyProfileChangeOtp({
         userId: user?.id || undefined,
         email: accountEmail || undefined,
-        otp: profileChangeOtpCtl.value,
+        otp: code,
       });
       setProfileChangeOtpOpen(false);
       setPendingProfileChange(null);

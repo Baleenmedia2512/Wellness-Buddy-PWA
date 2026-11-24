@@ -40,7 +40,18 @@ export default function OtpInputCells({
       dispatchMultiDigit(raw);
       return;
     }
+    const text = String(raw ?? '');
+    if (!/^\d*$/.test(text)) {
+      handleChange(index, raw);
+      return;
+    }
+    const digit = text.slice(-1);
+    // Compute next value before setState so digit-by-digit entry can auto-verify.
+    const next = otp.map((d, i) => (i === index ? digit : d));
     handleChange(index, raw);
+    if (digit && next.every((d) => d !== '') && onComplete) {
+      onComplete(next.join(''));
+    }
   };
 
   const onCellBeforeInput = (e) => {

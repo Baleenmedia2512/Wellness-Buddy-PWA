@@ -135,8 +135,9 @@ const ChangeProfilePhotoModal = ({
     onClose();
   };
 
-  const handleVerifyOtp = async () => {
-    if (!otpCtl.isComplete) {
+  const handleVerifyOtp = async (codeArg) => {
+    const code = String(codeArg || otpCtl.value || '').trim();
+    if (!/^\d{4}$/.test(code)) {
       setError('Enter the 4-digit approval code from your coach.');
       return;
     }
@@ -146,7 +147,7 @@ const ChangeProfilePhotoModal = ({
       await verifyProfileChangeOtp({
         userId: user?.id ?? userId,
         email: email || undefined,
-        otp: otpCtl.value,
+        otp: code,
       });
       completeUpload(profileImage);
     } catch (err) {
