@@ -1323,7 +1323,6 @@ const UserProfilePage = ({
                 length={EMAIL_OTP_LENGTH}
                 emailOtp
                 disabled={profileChangeOtpBusy}
-                onComplete={handleProfileChangeVerifyOtp}
                 cellClassName="w-10 h-12 text-center text-lg font-semibold border border-gray-300 rounded-lg"
               />
               {profileChangeOtpError && (
