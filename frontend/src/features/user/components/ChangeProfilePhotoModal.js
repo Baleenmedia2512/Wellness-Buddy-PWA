@@ -1,8 +1,12 @@
 // Modal to change the signed-in user's profile photo (camera / gallery → crop → save).
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, Upload, X } from 'lucide-react';
+import { Camera, KeyRound, Upload, X } from 'lucide-react';
 import useImageCropper from '../hooks/useImageCropper';
-import { saveProfile } from '../services/profileService';
+import {
+  saveProfile,
+  requestProfileChangeOtp,
+  verifyProfileChangeOtp,
+} from '../services/profileService';
 import {
   bumpAvatarDisplayVersion,
   buildUserAvatarUrl,
@@ -13,6 +17,10 @@ import CropOverlay from './shared/CropOverlay';
 import CameraGalleryButtons from './shared/CameraGalleryButtons';
 import PicturePreview from './picture/PicturePreview';
 import * as Session from '../../../shared/services/sessionStorage';
+import { usesUnifiedProfileChangeOtp } from '../domain/profileChange';
+import { EMAIL_OTP_LENGTH } from '../domain/otpLength';
+import useOtpInput from '../hooks/useOtpInput';
+import OtpInputCells from '../../../shared/components/OtpInputCells.jsx';
 
 /**
  * @param {{
@@ -23,6 +31,7 @@ import * as Session from '../../../shared/services/sessionStorage';
  *   startWithRecrop?: boolean,
  *   onStartWithRecropConsumed?: () => void,
  *   onUploaded: (profileImage: string) => void,
+ *   hasExistingPhoto?: boolean,
  * }} props
  */
 const ChangeProfilePhotoModal = ({
@@ -34,11 +43,16 @@ const ChangeProfilePhotoModal = ({
   startWithRecrop = false,
   onStartWithRecropConsumed,
   onUploaded,
+  hasExistingPhoto = false,
 }) => {
   const [profileImage, setProfileImage] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [otpPending, setOtpPending] = useState(false);
+  const [approverName, setApproverName] = useState('');
+  const otpCtl = useOtpInput(EMAIL_OTP_LENGTH);
+  const needsSponsorOtp = usesUnifiedProfileChangeOtp() && hasExistingPhoto;
 
   const cropper = useImageCropper({
     onError: setError,
@@ -54,7 +68,7 @@ const ChangeProfilePhotoModal = ({
   const userId = user?.id ?? user?.UserId ?? user?.userId ?? null;
 
   const handleRecrop = useCallback(() => {
-    if (busy) return;
+    if (busy || otpPending) return;
     setError('');
     if (cropper.rawImageSrc) {
       cropper.reopenCropper();
@@ -67,12 +81,15 @@ const ChangeProfilePhotoModal = ({
       { inline: true },
     );
     cropper.openExistingImage(displayPreview, { fallbackSrc });
-  }, [busy, cropper, displayPreview, userId]);
+  }, [busy, otpPending, cropper, displayPreview, userId]);
 
   const recropStartedRef = useRef(false);
   useEffect(() => {
     if (!isOpen) {
       recropStartedRef.current = false;
+      setOtpPending(false);
+      setApproverName('');
+      otpCtl.reset();
       return;
     }
     if (!startWithRecrop || recropStartedRef.current) return;
@@ -80,6 +97,7 @@ const ChangeProfilePhotoModal = ({
     recropStartedRef.current = true;
     onStartWithRecropConsumed?.();
     handleRecrop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- otpCtl.reset only on close
   }, [isOpen, startWithRecrop, displayPreview, busy, handleRecrop, onStartWithRecropConsumed]);
 
   if (!isOpen) return null;
@@ -97,8 +115,45 @@ const ChangeProfilePhotoModal = ({
     setError('');
     setProfileImage(null);
     setPreviewUrl(null);
+    setOtpPending(false);
+    setApproverName('');
+    otpCtl.reset();
     cropper.cancelCropper();
     onClose();
+  };
+
+  const completeUpload = (image) => {
+    if (email) Session.markProfilePictureUploaded(email);
+    bumpAvatarDisplayVersion();
+    onUploaded?.(image);
+    setProfileImage(null);
+    setPreviewUrl(null);
+    setOtpPending(false);
+    setApproverName('');
+    otpCtl.reset();
+    cropper.cancelCropper();
+    onClose();
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!otpCtl.isComplete) {
+      setError('Enter the 4-digit approval code from your coach.');
+      return;
+    }
+    setError('');
+    setIsSaving(true);
+    try {
+      await verifyProfileChangeOtp({
+        userId: user?.id ?? userId,
+        email: email || undefined,
+        otp: otpCtl.value,
+      });
+      completeUpload(profileImage);
+    } catch (err) {
+      setError(err?.message || 'That approval code did not match.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleUpload = async () => {
@@ -113,22 +168,26 @@ const ChangeProfilePhotoModal = ({
     setError('');
     setIsSaving(true);
     try {
+      if (needsSponsorOtp) {
+        const otpRes = await requestProfileChangeOtp({
+          userId: user?.id ?? userId,
+          email: email || undefined,
+          pendingProfile: { profileImage },
+        });
+        setApproverName(otpRes.approverName || otpRes.destination || 'your coach');
+        otpCtl.reset();
+        setOtpPending(true);
+        return;
+      }
+
       // Profile photo only — do not overwrite Centre (transformation front).
-      // New users get profile from Centre on first Centre upload; later profile
-      // changes must leave Centre unchanged.
       const payload = {
         profileImage,
       };
       if (email) payload.email = email;
       if (user?.id != null) payload.userId = user.id;
       await saveProfile(payload);
-      if (email) Session.markProfilePictureUploaded(email);
-      bumpAvatarDisplayVersion();
-      onUploaded?.(profileImage);
-      setProfileImage(null);
-      setPreviewUrl(null);
-      cropper.cancelCropper();
-      onClose();
+      completeUpload(profileImage);
     } catch (err) {
       setError(err?.message || 'Failed to update profile photo. Please try again.');
     } finally {
@@ -160,7 +219,11 @@ const ChangeProfilePhotoModal = ({
             </div>
             <div className="min-w-0">
               <h2 className="text-lg font-bold text-white truncate">Change Profile Photo</h2>
-              <p className="text-sm text-green-50">Crop this photo or choose a new one</p>
+              <p className="text-sm text-green-50">
+                {otpPending
+                  ? `Ask ${approverName || 'your coach'} for the approval code`
+                  : 'Crop this photo or choose a new one'}
+              </p>
             </div>
           </div>
           <button
@@ -178,7 +241,7 @@ const ChangeProfilePhotoModal = ({
           <PicturePreview
             previewUrl={displayPreview}
             faceStatus={cropper.isPreparingCrop ? 'detecting' : 'idle'}
-            onRecrop={displayPreview ? handleRecrop : undefined}
+            onRecrop={displayPreview && !otpPending ? handleRecrop : undefined}
             isSaving={busy}
           />
 
@@ -188,40 +251,68 @@ const ChangeProfilePhotoModal = ({
             </div>
           )}
 
-          <CameraGalleryButtons
-            disabled={busy}
-            onCameraSelect={cropper.selectFile}
-            onGallerySelect={cropper.selectFile}
-          />
-
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={handleClose}
-              disabled={isSaving}
-              className="flex-1 py-3 px-4 border border-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleUpload}
-              disabled={!profileImage || busy}
-              className="flex-1 py-3 px-4 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:from-green-600 hover:to-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-            >
-              {isSaving ? (
-                <>
+          {otpPending ? (
+            <div className="space-y-3">
+              <OtpInputCells
+                otpCtl={otpCtl}
+                length={EMAIL_OTP_LENGTH}
+                emailOtp
+                disabled={isSaving}
+                onComplete={handleVerifyOtp}
+                cellClassName="w-10 h-12 text-center text-lg font-semibold border border-gray-300 rounded-lg"
+              />
+              <button
+                type="button"
+                onClick={handleVerifyOtp}
+                disabled={!otpCtl.isComplete || isSaving}
+                className="w-full py-3 px-4 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isSaving ? (
                   <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
-                  <span>Uploading...</span>
-                </>
-              ) : (
-                <>
-                  <Upload className="w-5 h-5" />
-                  <span>Save Photo</span>
-                </>
-              )}
-            </button>
-          </div>
+                ) : (
+                  <KeyRound className="w-5 h-5" />
+                )}
+                <span>Confirm photo</span>
+              </button>
+            </div>
+          ) : (
+            <>
+              <CameraGalleryButtons
+                disabled={busy}
+                onCameraSelect={cropper.selectFile}
+                onGallerySelect={cropper.selectFile}
+              />
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  disabled={isSaving}
+                  className="flex-1 py-3 px-4 border border-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUpload}
+                  disabled={!profileImage || busy}
+                  className="flex-1 py-3 px-4 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:from-green-600 hover:to-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                >
+                  {isSaving ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent" />
+                      <span>{needsSponsorOtp ? 'Sending…' : 'Uploading...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-5 h-5" />
+                      <span>Save Photo</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
