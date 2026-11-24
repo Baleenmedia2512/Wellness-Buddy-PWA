@@ -8984,8 +8984,10 @@ function WellnessValleyApp() {
         <WellnessScorePage
           key={wellnessScoreSession}
           user={user}
+          userRole={userRole}
           apiBaseUrl={apiBaseUrl}
           nutritionRefreshKey={nutritionRefreshKey}
+          teamSearchRefreshKey={teamSearchRefreshKey}
           initialDateRange={wellnessScoreInitialRange.dateRange}
           initialCustomStartDate={wellnessScoreInitialRange.customStartDate}
           initialCustomEndDate={wellnessScoreInitialRange.customEndDate}

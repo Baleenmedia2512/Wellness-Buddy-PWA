@@ -45,24 +45,21 @@ describe('resolveReportsDashboardTab', () => {
       'Wellness Score',
     );
     assert.equal(
-      getReportsDashboardTitle(REPORT_DASHBOARD_TABS.NUTRITION),
-      'Nutrition',
-    );
-    assert.equal(
       getReportsDashboardTitle(REPORT_DASHBOARD_TABS.TREND),
       'Trend',
     );
     assert.equal(getReportsDashboardTitle('unknown'), 'Ideal Weight');
+    assert.equal(getReportsDashboardTitle('nutrition'), 'Ideal Weight');
   });
 
-  it('opens Nutrition and Trend when requested', () => {
-    assert.equal(
-      resolveReportsDashboardTab(REPORT_DASHBOARD_TABS.NUTRITION, true),
-      REPORT_DASHBOARD_TABS.NUTRITION,
-    );
+  it('opens Trend when requested; legacy nutrition deep-link → Ideal Weight', () => {
     assert.equal(
       resolveReportsDashboardTab(REPORT_DASHBOARD_TABS.TREND, false),
       REPORT_DASHBOARD_TABS.TREND,
+    );
+    assert.equal(
+      resolveReportsDashboardTab('nutrition', true),
+      REPORT_DASHBOARD_TABS.IDEAL_WEIGHT,
     );
   });
 });
