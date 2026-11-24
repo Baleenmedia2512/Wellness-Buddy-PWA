@@ -1,5 +1,6 @@
 // src/shared/components/TeamMemberProfileModal/TeamMemberProfileModal.js
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, User, Mail, Ruler, Flame, Salad, Phone, Activity, Building2, HeartPulse } from 'lucide-react';
 import { EmojiOrNative } from '../icons/EmojiImage';
 import PhoneContactActions from '../PhoneContactActions.jsx';
@@ -104,9 +105,12 @@ const TeamMemberProfileModal = ({
   const activity = activityLevelLabel(profile?.physicalActivityLevel);
   const calories = formatCalorieTarget(profile?.calorieTarget);
 
-  return (
+  // Portal to body — sticky headers with backdrop-blur create a containing
+  // block that traps position:fixed and clips this sheet over page content
+  // (e.g. Wellness Score search → profile button).
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center"
+      className="fixed inset-0 z-[100] flex items-end justify-center"
       onClick={onClose}
       style={{ WebkitTapHighlightColor: 'transparent' }}
     >
@@ -343,7 +347,8 @@ const TeamMemberProfileModal = ({
         title={`${profile?.userName || 'Team member'}'s profile photo`}
         onClose={() => setShowProfilePhoto(false)}
       />
-    </div>
+    </div>,
+    document.body,
   );
 };
 
