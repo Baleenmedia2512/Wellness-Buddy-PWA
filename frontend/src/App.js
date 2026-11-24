@@ -736,7 +736,11 @@ function WellnessValleyApp() {
   // Optional `activityCaption` is the activity-specific WhatsApp template
   // (water volume, food macros, etc.) — appended above the branding line.
   const shareCaptureAfterClassify = useCallback(
-    async (imageBase64, { activityCaption = null, currentMarathonDay0Weight = null } = {}) => {
+    async (imageBase64, {
+      activityCaption = null,
+      currentMarathonDay0Weight = null,
+      wellnessScore: wellnessScoreFromSave = null,
+    } = {}) => {
       const autoShareEnabled =
         localStorage.getItem("autoShareOnCapture") !== "false";
       if (!autoShareEnabled || foodAutoSharedRef.current || !imageBase64) {
@@ -771,7 +775,9 @@ function WellnessValleyApp() {
       // (marathon fetch / overlay paint) expires that gesture → NotAllowedError
       // → old wa.me text-only path (image never attached).
       let marathonWeightComparison = null;
-      let wellnessScore = null;
+      // Prefer score refreshed after DB save (Manual Entry water/food). Otherwise
+      // native re-fetches; web uses cache so the Save gesture is not lost.
+      let wellnessScore = wellnessScoreFromSave || null;
       if (isWeightShare) {
         if (isWebShare) {
           marathonWeightComparison = peekMarathonWeightComparisonForShare({
@@ -785,8 +791,7 @@ function WellnessValleyApp() {
           });
         }
       }
-      // Native can await a fresh /daily total; web keeps the gesture and uses cache.
-      if (!isWebShare) {
+      if (!wellnessScore && !isWebShare) {
         wellnessScore = await ensureDailyWellnessScoreForShare({
           user,
           apiBaseUrl,
@@ -8975,6 +8980,7 @@ function WellnessValleyApp() {
             await shareCaptureAfterClassify(image, {
               activityCaption: shareMeta?.activityCaption || null,
               currentMarathonDay0Weight: shareMeta?.currentMarathonDay0Weight ?? null,
+              wellnessScore: shareMeta?.wellnessScore ?? null,
             });
           }}
           onToast={(msg) => showToast(msg)}
