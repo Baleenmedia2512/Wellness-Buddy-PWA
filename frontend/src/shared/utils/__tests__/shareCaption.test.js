@@ -63,7 +63,7 @@ describe('composeQuickShareCaption', () => {
     );
     assert.equal(
       result,
-      'System · Wellness Valley v 3.5.2\n\n*Day progress*\nPrev: 61 kg\nCurr: 61 kg\n\n*Lap progress*\nDay 0 : 60.50 kg → Curr: 61.00 kg ⬆️ 0.50 kg\n_Tomorrow is Marathon Day 9 - Detox Day_',
+      'System · Wellness Valley v 3.5.2\n\n*Day progress*\nPrev: 61 kg\nCurr: 61 kg\n\n*Lap progress*\nDay 0 : 60.50 kg → Curr: 61.00 kg ⬆️ 0.50 kg\n\n_Tomorrow is Marathon Day 9 - Detox Day_',
     );
   });
 
@@ -83,11 +83,11 @@ describe('composeQuickShareCaption', () => {
     );
     assert.equal(
       result,
-      'System · Wellness Valley v 3.5.2\n\n*Day progress*\nPrev: 61 kg\nCurr: 61 kg\n\n*Lap progress*\nPrevious Marathon End weight : 62.00 kg\nCurrent Weight : 61.00 kg ⬇️\n_Marathon Day 0 - Today Marathon_',
+      'System · Wellness Valley v 3.5.2\n\n*Day progress*\nPrev: 61 kg\nCurr: 61 kg\n\n*Lap progress*\nPrevious Marathon End weight : 62.00 kg\nCurrent Weight : 61.00 kg ⬇️\n\n_Marathon Day 0 - Today Marathon_',
     );
   });
 
-  it('appends Overall below marathon notice when initial weight is present', () => {
+  it('appends Overall before marathon notice when initial weight is present', () => {
     const weightSuffix = '*Day progress*\nPrev: 73 kg\nCurr: 75 kg ⬆️ 2 kg';
     const caption = composeQuickShareCaption('System · Wellness Valley v 3.5.7', weightSuffix);
     const progress = {
@@ -118,13 +118,15 @@ describe('composeQuickShareCaption', () => {
         '',
         '*Lap progress*',
         'Day 0 : 73.00 kg → Curr: 75.00 kg ⬆️ 2.00 kg',
-        '_Tomorrow is Marathon Day 4 - Detox Day_',
+        '',
         '*Overall*',
         'Initial : 70.00 kg → Curr: 75.00 kg ⬆️ 5.00 kg',
+        '',
+        '_Tomorrow is Marathon Day 4 - Detox Day_',
       ].join('\n'),
     );
   });
-  it('end-to-end: Lap progress then Marathon day then Overall', () => {
+  it('end-to-end: Lap progress then Overall then Marathon day last', () => {
     const brand = 'ALLAN · Wellness Valley v 3.5.2';
     const weightSuffix = '*Day progress*\nIdeal: 79.57 kg\nPrev: 80 kg\nCurr: 80 kg';
     const composed = composeQuickShareCaption(brand, weightSuffix);
@@ -158,9 +160,11 @@ describe('composeQuickShareCaption', () => {
       '',
       '*Lap progress*',
       'Day 0 : — → Curr: 80.00 kg',
-      '_Marathon Day 5_',
+      '',
       '*Overall*',
       'Initial : 85.00 kg → Curr: 80.00 kg ⬇️ 5.00 kg',
+      '',
+      '_Marathon Day 5_',
     ].join('\n');
 
     assert.equal(finalCaption, expected);

@@ -556,4 +556,26 @@ export function validateHeightChangeVerify(body) {
   return { ...identity, height: check.value, otp };
 }
 
+export function validateProfileChangeRequest(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const pendingProfile = body.pendingProfile && typeof body.pendingProfile === 'object'
+    ? body.pendingProfile
+    : (body.pending && typeof body.pending === 'object' ? body.pending : null);
+  if (!pendingProfile || Object.keys(pendingProfile).length === 0) {
+    throw new ValidationError(400, 'Missing pending profile changes to approve.');
+  }
+  return { ...identity, pendingProfile };
+}
+
+export function validateProfileChangeVerify(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const identity = parseProfileIdentity(body);
+  const otp = body?.otp != null ? String(body.otp).trim() : '';
+  if (!otp || !/^\d{4}$/.test(otp)) {
+    throw new ValidationError(400, 'Enter the 4-digit approval code from your coach');
+  }
+  return { ...identity, otp };
+}
+
 export { VALID_DIETS, VALID_GENDERS };

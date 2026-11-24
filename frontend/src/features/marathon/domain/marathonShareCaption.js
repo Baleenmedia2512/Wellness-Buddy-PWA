@@ -151,17 +151,22 @@ export function appendMarathonWhatsAppNotice(
   const additions = [];
   const state = getMarathonCalendarState(ymd);
 
-  // Order: Lap (Day 0) → Marathon/Tomorrow line → Overall (Initial → Curr)
+  // Order: Lap (Day 0) → Overall (Initial → Curr) → Marathon/Tomorrow line (last)
+  // Weight posts use blank lines between those sections.
+  const blankBetweenWeightSections = includeWeightComparison && (!base || base.includes('\n'));
+  const pushWeightSection = (lines) => {
+    if (!lines || lines.length === 0) return;
+    if (blankBetweenWeightSections && additions.length > 0) additions.push('');
+    additions.push(...lines);
+  };
+
   if (includeWeightComparison && marathonWeightComparison) {
     const weightLines = formatMarathonWeightWhatsAppNoticeLines(marathonWeightComparison, state);
     const hasWeightLine = weightLines.some((line) => base.includes(line));
     if (weightLines.length > 0 && !hasWeightLine) {
-      additions.push(...weightLines);
+      pushWeightSection(weightLines);
     }
   }
-
-  if (currentDay && !base.includes(currentDay)) additions.push(currentDay);
-  if (notice && !base.includes(notice)) additions.push(notice);
 
   if (includeWeightComparison) {
     const overallCurrent = isValidMarathonWeightKg(currentWeight)
@@ -172,8 +177,15 @@ export function appendMarathonWhatsAppNotice(
     const overallLines = formatOverallWeightWhatsAppNoticeLines(initialWeight, overallCurrent);
     const hasOverall = overallLines.some((line) => base.includes(line));
     if (overallLines.length > 0 && !hasOverall) {
-      additions.push(...overallLines);
+      pushWeightSection(overallLines);
     }
+  }
+
+  if (currentDay && !base.includes(currentDay)) {
+    pushWeightSection([currentDay]);
+  }
+  if (notice && !base.includes(notice)) {
+    pushWeightSection([notice]);
   }
 
   if (additions.length === 0) return base;

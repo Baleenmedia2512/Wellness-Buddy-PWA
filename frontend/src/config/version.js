@@ -75,27 +75,27 @@
 export const APP_VERSION = {
   // Current version number (displayed to users)
   // iOS App Store resubmit stays on rejected marketing version 3.5.6 (build 87).
-  VERSION: '3.5.6',
+  VERSION: '3.5.8',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
   // NOTE: versionCode must never decrease for Play Store compatibility.
-  VERSION_CODE: 88,
+  VERSION_CODE: 89,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
   // Must be > last App Store submitted build (3.5.6 was build 86).
   IOS_BUILD_NUMBER: 87,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version  3.5.6',
+  RELEASE_NAME: 'Version  3.5.8',
   
   // Build date
-  BUILD_DATE: '2026-11-23',
+  BUILD_DATE: '2026-11-24',
   
   // Platform release notes..
   PLATFORMS: {
-    ANDROID: { versionCode: 88, versionName: '3.5.7' },
-    IOS: { buildNumber: 87, versionName: '3.5.6' },
+    ANDROID: { versionCode: 89, versionName: '3.5.8' },
+    IOS: { buildNumber: 87, versionName: '3.5.8' },
   },
 };
 
