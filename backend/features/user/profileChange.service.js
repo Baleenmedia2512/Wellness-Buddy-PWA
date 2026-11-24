@@ -33,7 +33,9 @@ function featureDisabled() {
 }
 
 async function loadUser({ email, userId }) {
-  const cols = [
+  // Do not SELECT AvatarKey — many DBs have not run the R2 avatars migration.
+  // ProfileImage is enough to know whether a photo already exists.
+  const colsFull = [
     '"UserId"',
     '"UserName"',
     '"Email"',
@@ -44,17 +46,37 @@ async function loadUser({ email, userId }) {
     '"EventLevel"',
     '"EventTranslation"',
     '"ProfileImage"',
-    'AvatarKey',
     'recovered_health_issues',
   ].join(', ');
-  if (userId) {
-    const row = await userRepo.findByUserId(userId, cols);
-    if (row) return row;
+  const colsMinimal = [
+    '"UserId"',
+    '"UserName"',
+    '"Email"',
+    '"PhoneNumber"',
+    '"Height"',
+    '"CoachId"',
+    '"CommunityId"',
+    '"ProfileImage"',
+  ].join(', ');
+
+  async function loadWith(cols) {
+    if (userId) {
+      const row = await userRepo.findByUserId(userId, cols);
+      if (row) return row;
+    }
+    if (email) {
+      return userRepo.findByEmail(email, cols);
+    }
+    return null;
   }
-  if (email) {
-    return userRepo.findByEmail(email, cols);
+
+  try {
+    return await loadWith(colsFull);
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (!/recovered_health_issues|EventLevel|EventTranslation/i.test(msg)) throw err;
+    return loadWith(colsMinimal);
   }
-  return null;
 }
 
 async function resolveCoachApprover(user) {
@@ -143,7 +165,7 @@ export async function requestProfileChangeOtp(input = {}) {
 
   const existing = existingSnapshotFromUser(user, {
     profileIntro,
-    hasProfileImage: Boolean(user.ProfileImage || user.AvatarKey),
+    hasProfileImage: Boolean(user.ProfileImage),
   });
   const incoming = extractGatedIncoming(pendingProfile);
   const classified = classifyProfileGatedChanges({ existing, incoming });

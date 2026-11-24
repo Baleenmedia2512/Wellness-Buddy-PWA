@@ -586,8 +586,11 @@ export async function updateProfile(input) {
   }
 
   let user;
-  const photoCols = '"UserId", "Email", "PhoneNumber", "Height", "CommunityId", "EventLevel", "EventTranslation", "ProfileImage", AvatarKey, recovered_health_issues, transformation_photos';
-  const idCols = '"UserId", "Email", "PhoneNumber", "Height", "CommunityId", "EventLevel", "EventTranslation", "ProfileImage", AvatarKey, recovered_health_issues';
+  // Do not SELECT AvatarKey here — many environments lack the R2 column.
+  // recovered_health_issues / event / transformation cols are additive with fallbacks.
+  const photoCols = '"UserId", "Email", "PhoneNumber", "Height", "CommunityId", "EventLevel", "EventTranslation", "ProfileImage", recovered_health_issues, transformation_photos';
+  const colsNoTransform = '"UserId", "Email", "PhoneNumber", "Height", "CommunityId", "EventLevel", "EventTranslation", "ProfileImage", recovered_health_issues';
+  const colsMinimal = '"UserId", "Email", "PhoneNumber", "Height", "CommunityId", "ProfileImage"';
   try {
     // Prefer userId when present (matches GET profile). Email alone is for
     // legacy clients; email+userId used to resolve the wrong account and drop Fat %.
@@ -598,11 +601,21 @@ export async function updateProfile(input) {
     }
   } catch (err) {
     const msg = String(err?.message || err || '');
-    if (!/transformation_photos|AvatarKey|recovered_health_issues|EventLevel|EventTranslation/i.test(msg)) throw err;
-    if (inputUserId) {
-      user = await repo.findByUserId(inputUserId, idCols);
-    } else if (email) {
-      user = await repo.findByEmail(email, idCols);
+    if (!/transformation_photos|recovered_health_issues|EventLevel|EventTranslation/i.test(msg)) throw err;
+    try {
+      if (inputUserId) {
+        user = await repo.findByUserId(inputUserId, colsNoTransform);
+      } else if (email) {
+        user = await repo.findByEmail(email, colsNoTransform);
+      }
+    } catch (err2) {
+      const msg2 = String(err2?.message || err2 || '');
+      if (!/recovered_health_issues|EventLevel|EventTranslation/i.test(msg2)) throw err2;
+      if (inputUserId) {
+        user = await repo.findByUserId(inputUserId, colsMinimal);
+      } else if (email) {
+        user = await repo.findByEmail(email, colsMinimal);
+      }
     }
   }
   if (!user) return notFound();
@@ -619,7 +632,7 @@ export async function updateProfile(input) {
     }
     const existing = existingSnapshotFromUser(user, {
       profileIntro: existingIntro,
-      hasProfileImage: Boolean(user.ProfileImage || user.AvatarKey),
+      hasProfileImage: Boolean(user.ProfileImage),
     });
     const incoming = extractGatedIncoming({
       phoneNumber,
