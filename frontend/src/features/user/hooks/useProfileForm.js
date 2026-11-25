@@ -82,7 +82,47 @@ function formSnapshot(values) {
   });
 }
 
+export function getDraftHealthIssuesStorageKey(userId) {
+  return userId ? `wellness_draft_health_issues_${userId}` : 'wellness_draft_health_issues';
+}
+
+export function readDraftHealthIssues(userId) {
+  try {
+    if (typeof window === 'undefined' || !window.sessionStorage) return null;
+    const key = getDraftHealthIssuesStorageKey(userId);
+    const raw = window.sessionStorage.getItem(key) || window.sessionStorage.getItem('wellness_draft_health_issues');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeDraftHealthIssues(userId, issues) {
+  try {
+    if (typeof window === 'undefined' || !window.sessionStorage) return;
+    const key = getDraftHealthIssuesStorageKey(userId);
+    if (Array.isArray(issues) && issues.length > 0) {
+      window.sessionStorage.setItem(key, JSON.stringify(issues));
+    } else {
+      window.sessionStorage.removeItem(key);
+      window.sessionStorage.removeItem('wellness_draft_health_issues');
+    }
+  } catch {}
+}
+
+export function clearDraftHealthIssues(userId) {
+  try {
+    if (typeof window === 'undefined' || !window.sessionStorage) return;
+    const key = getDraftHealthIssuesStorageKey(userId);
+    window.sessionStorage.removeItem(key);
+    window.sessionStorage.removeItem('wellness_draft_health_issues');
+  } catch {}
+}
+
 export default function useProfileForm(initial = {}) {
+  const currentUserId = initial.userId || initial.id || null;
   const [name, setName] = useState(initial.name || '');
   const [height, setHeight] = useState(initial.height || '');
   const [phone, setPhone] = useState(initial.phone || '');
@@ -108,9 +148,23 @@ export default function useProfileForm(initial = {}) {
     Array.isArray(initial.languages) ? initial.languages : []
   ));
   const [bodyMetrics, setBodyMetrics] = useState(() => metricsFromProfile(initial));
-  const [recoveredHealthIssues, setRecoveredHealthIssues] = useState(() => (
-    Array.isArray(initial.recoveredHealthIssues) ? initial.recoveredHealthIssues : []
-  ));
+  const [recoveredHealthIssues, setRecoveredHealthIssuesState] = useState(() => {
+    const draft = readDraftHealthIssues(currentUserId);
+    if (draft && draft.length > 0) return draft;
+    return Array.isArray(initial.recoveredHealthIssues) ? initial.recoveredHealthIssues : [];
+  });
+  const draftHealthIssuesRef = useRef(recoveredHealthIssues);
+  draftHealthIssuesRef.current = recoveredHealthIssues;
+
+  const setRecoveredHealthIssues = (valOrFn) => {
+    setRecoveredHealthIssuesState((prev) => {
+      const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
+      const issues = Array.isArray(next) ? next : [];
+      draftHealthIssuesRef.current = issues;
+      writeDraftHealthIssues(currentUserId, issues);
+      return issues;
+    });
+  };
   const savedSnapshotRef = useRef('');
 
   const setIntroField = (key, value) => {
@@ -140,7 +194,7 @@ export default function useProfileForm(initial = {}) {
     setBodyMetrics((prev) => ({ ...prev, [key]: value }));
   };
 
-  const reload = (p) => {
+  const reload = (p, { preserveDraft = false } = {}) => {
     const nextName = p.name ?? '';
     const nextHeight = p.height ?? '';
     const nextPhone = p.phone ?? '';
@@ -166,7 +220,15 @@ export default function useProfileForm(initial = {}) {
     const nextQualification = p.qualification ? String(p.qualification) : '';
     const nextLanguages = Array.isArray(p.languages) ? p.languages : [];
     const nextMetrics = metricsFromProfile(p);
-    const nextIssues = Array.isArray(p.recoveredHealthIssues) ? p.recoveredHealthIssues : [];
+    const serverIssues = Array.isArray(p.serverRecoveredHealthIssues ?? p.recoveredHealthIssues)
+      ? (p.serverRecoveredHealthIssues ?? p.recoveredHealthIssues)
+      : [];
+    const activeDraft = draftHealthIssuesRef.current || readDraftHealthIssues(currentUserId);
+    const hasActiveDraft = Array.isArray(activeDraft) && activeDraft.length > 0;
+    const incomingIssues = Array.isArray(p.recoveredHealthIssues) ? p.recoveredHealthIssues : [];
+    const nextIssues = (preserveDraft || hasActiveDraft) && hasActiveDraft
+      ? activeDraft
+      : incomingIssues;
     setName(nextName);
     setHeight(nextHeight);
     setPhone(nextPhone);
@@ -190,9 +252,13 @@ export default function useProfileForm(initial = {}) {
     setQualification(nextQualification);
     setLanguages(nextLanguages);
     setBodyMetrics(nextMetrics);
-    setRecoveredHealthIssues(nextIssues);
+    draftHealthIssuesRef.current = nextIssues;
+    setRecoveredHealthIssuesState(nextIssues);
+    if (hasActiveDraft) {
+      writeDraftHealthIssues(currentUserId, nextIssues);
+    }
     savedSnapshotRef.current = formSnapshot({
-      name: nextName,
+      name: preserveDraft ? (p.serverName ?? nextName) : nextName,
       height: nextHeight,
       phone: nextPhone,
       dietType: nextDietType,
@@ -214,7 +280,7 @@ export default function useProfileForm(initial = {}) {
       qualification: nextQualification,
       languages: nextLanguages,
       bodyMetrics: nextMetrics,
-      recoveredHealthIssues: nextIssues,
+      recoveredHealthIssues: (preserveDraft || hasActiveDraft) ? serverIssues : nextIssues,
     });
   };
 
