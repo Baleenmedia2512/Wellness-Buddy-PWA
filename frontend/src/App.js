@@ -8409,6 +8409,11 @@ function WellnessValleyApp() {
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
+          isIdealWeight={
+            (lastWeight && idealWeight)
+              ? (Number(lastWeight) >= (idealWeight.min - 0.5) && Number(lastWeight) <= (idealWeight.value + 0.5))
+              : undefined
+          }
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -8458,6 +8463,11 @@ function WellnessValleyApp() {
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
+          isIdealWeight={
+            (lastWeight && idealWeight)
+              ? (Number(lastWeight) >= (idealWeight.min - 0.5) && Number(lastWeight) <= (idealWeight.value + 0.5))
+              : undefined
+          }
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -8503,6 +8513,11 @@ function WellnessValleyApp() {
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
+          isIdealWeight={
+            (lastWeight && idealWeight)
+              ? (Number(lastWeight) >= (idealWeight.min - 0.5) && Number(lastWeight) <= (idealWeight.value + 0.5))
+              : undefined
+          }
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -8547,6 +8562,11 @@ function WellnessValleyApp() {
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
+          isIdealWeight={
+            (lastWeight && idealWeight)
+              ? (Number(lastWeight) >= (idealWeight.min - 0.5) && Number(lastWeight) <= (idealWeight.value + 0.5))
+              : undefined
+          }
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -8590,6 +8610,11 @@ function WellnessValleyApp() {
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
+          isIdealWeight={
+            (lastWeight && idealWeight)
+              ? (Number(lastWeight) >= (idealWeight.min - 0.5) && Number(lastWeight) <= (idealWeight.value + 0.5))
+              : undefined
+          }
         />
         <div className="ios-scroll-body">
           <Suspense fallback={null}>
@@ -8632,6 +8657,11 @@ function WellnessValleyApp() {
             onShowReports={() => navigateTo('reports')}
             onOpenProfile={() => navigateTo('profile')}
             profileKey={headerProfileKey}
+          isIdealWeight={
+            (lastWeight && idealWeight)
+              ? (Number(lastWeight) >= (idealWeight.min - 0.5) && Number(lastWeight) <= (idealWeight.value + 0.5))
+              : undefined
+          }
           />
           <div className="ios-scroll-body">
             <Suspense fallback={<LoadingSpinner message="Loading nutrition centers map..." />}>
@@ -8698,6 +8728,11 @@ function WellnessValleyApp() {
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
+          isIdealWeight={
+            (lastWeight && idealWeight)
+              ? (Number(lastWeight) >= (idealWeight.min - 0.5) && Number(lastWeight) <= (idealWeight.value + 0.5))
+              : undefined
+          }
         />
         <div className="ios-scroll-body">
           <Suspense fallback={<LoadingSpinner message="Loading testimonials�" />}>
@@ -8748,6 +8783,11 @@ function WellnessValleyApp() {
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
+          isIdealWeight={
+            (lastWeight && idealWeight)
+              ? (Number(lastWeight) >= (idealWeight.min - 0.5) && Number(lastWeight) <= (idealWeight.value + 0.5))
+              : undefined
+          }
         />
         <div className="ios-scroll-body">
           <EventsPage user={user} initialTab={eventsInitialTab} allowedPages={navAccessPages} />
@@ -8778,6 +8818,11 @@ function WellnessValleyApp() {
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
+          isIdealWeight={
+            (lastWeight && idealWeight)
+              ? (Number(lastWeight) >= (idealWeight.min - 0.5) && Number(lastWeight) <= (idealWeight.value + 0.5))
+              : undefined
+          }
         />
         <div className="ios-scroll-body">
           <Suspense fallback={<LoadingSpinner message="Loading BroadCast..." />}>
@@ -8810,6 +8855,11 @@ function WellnessValleyApp() {
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
+          isIdealWeight={
+            (lastWeight && idealWeight)
+              ? (Number(lastWeight) >= (idealWeight.min - 0.5) && Number(lastWeight) <= (idealWeight.value + 0.5))
+              : undefined
+          }
         />
         <div className="ios-scroll-body">
           <Suspense fallback={<LoadingSpinner message="Loading Create Event..." />}>
@@ -8840,6 +8890,11 @@ function WellnessValleyApp() {
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
+          isIdealWeight={
+            (lastWeight && idealWeight)
+              ? (Number(lastWeight) >= (idealWeight.min - 0.5) && Number(lastWeight) <= (idealWeight.value + 0.5))
+              : undefined
+          }
         />
         <div className="ios-scroll-body">
           <Suspense fallback={<LoadingSpinner message="Loading Digital Portfolio..." />}>
@@ -8874,6 +8929,11 @@ function WellnessValleyApp() {
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
+          isIdealWeight={
+            (lastWeight && idealWeight)
+              ? (Number(lastWeight) >= (idealWeight.min - 0.5) && Number(lastWeight) <= (idealWeight.value + 0.5))
+              : undefined
+          }
         />
         <div className="ios-scroll-body">
           <Suspense fallback={<LoadingSpinner message="Loading Google Map Business..." />}>
@@ -8990,8 +9050,10 @@ function WellnessValleyApp() {
         <WellnessScorePage
           key={wellnessScoreSession}
           user={user}
+          userRole={userRole}
           apiBaseUrl={apiBaseUrl}
           nutritionRefreshKey={nutritionRefreshKey}
+          teamSearchRefreshKey={teamSearchRefreshKey}
           initialDateRange={wellnessScoreInitialRange.dateRange}
           initialCustomStartDate={wellnessScoreInitialRange.customStartDate}
           initialCustomEndDate={wellnessScoreInitialRange.customEndDate}
@@ -9058,6 +9120,11 @@ function WellnessValleyApp() {
           onShowReports={() => navigateTo('reports')}
           onOpenProfile={() => navigateTo('profile')}
           profileKey={headerProfileKey}
+          isIdealWeight={
+            (lastWeight && idealWeight)
+              ? (Number(lastWeight) >= (idealWeight.min - 0.5) && Number(lastWeight) <= (idealWeight.value + 0.5))
+              : undefined
+          }
         />
         <div className="ios-scroll-body">
           <Suspense fallback={<LoadingSpinner message="Loading reports…" />}>
@@ -9408,6 +9475,11 @@ function WellnessValleyApp() {
             navigateTo('profile');
           }}
           profileKey={headerProfileKey}
+          isIdealWeight={
+            (lastWeight && idealWeight)
+              ? (Number(lastWeight) >= (idealWeight.min - 0.5) && Number(lastWeight) <= (idealWeight.value + 0.5))
+              : undefined
+          }
           // manualModeActive={manualModeActive}   // AI TOGGLE DISABLED
           // onToggleManualMode={toggleManualMode}  // AI TOGGLE DISABLED
           onProfileSaved={(profileData) => {
