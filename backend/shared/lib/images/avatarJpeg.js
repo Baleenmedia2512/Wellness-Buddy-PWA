@@ -1,6 +1,6 @@
 /**
- * Avatar JPEG budget for R2. Keep in sync with frontend
- * PROFILE_IMAGE_TARGET_BYTES / PROFILE_IMAGE_MAX_DIMENSION_PX.
+ * Diary / activity / food thumb JPEG budget (≤22 KB / 256 px).
+ * Profile avatar + transformation photos use clarityJpeg.js instead.
  */
 import sharp from 'sharp';
 

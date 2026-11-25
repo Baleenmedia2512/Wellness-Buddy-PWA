@@ -51,20 +51,22 @@ function hasBusinessVideo(t) {
 }
 
 /**
- * Compute how many of the 5 testimonial slots a member has filled.
- * Slots: before photo, after photo, health video, business video, recovered health issues.
- * Returns { filledCount, totalSlots: 5, level: 'not_uploaded'|'partial_upload'|'fully_uploaded' }
+ * Compute how many transformation slots a member has filled.
+ * Slots (4): transformation collage/photo (Before+After = one section),
+ * health video, business video, recovered health issues.
  */
 export function computeMemberCompleteness(row) {
   const t = row?.testimonial;
-  if (!t) return { filledCount: 0, totalSlots: 5, level: UPLOAD_FILTERS.NOT_UPLOADED };
+  const TOTAL_SLOTS = 4;
+  if (!t) return { filledCount: 0, totalSlots: TOTAL_SLOTS, level: UPLOAD_FILTERS.NOT_UPLOADED };
 
   const healthIssues    = t.recoveredHealthIssues ?? t.recovered_health_issues ?? [];
   const hasHealthIssues = Array.isArray(healthIssues) && healthIssues.length > 0;
+  // UI is one collage section — Before/After no longer count as two slots.
+  const hasTransformPhoto = hasBeforePhoto(t) || hasAfterPhoto(t);
 
   const filledCount = [
-    hasBeforePhoto(t),
-    hasAfterPhoto(t),
+    hasTransformPhoto,
     hasHealthVideo(t),
     hasBusinessVideo(t),
     hasHealthIssues,
@@ -73,10 +75,10 @@ export function computeMemberCompleteness(row) {
 
   let level;
   if (filledCount === 0)  level = UPLOAD_FILTERS.NOT_UPLOADED;
-  else if (filledCount === 5) level = UPLOAD_FILTERS.FULLY_UPLOADED;
+  else if (filledCount === TOTAL_SLOTS) level = UPLOAD_FILTERS.FULLY_UPLOADED;
   else                        level = UPLOAD_FILTERS.PARTIAL;
 
-  return { filledCount, totalSlots: 5, level };
+  return { filledCount, totalSlots: TOTAL_SLOTS, level };
 }
 
 /** Filter coach rows by upload completeness. */

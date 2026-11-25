@@ -2,6 +2,7 @@ import { ValidationError } from '../../../shared/lib/ValidationError.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import { findByUserId } from '../../user/user.repository.js';
 import * as accessRepo from '../data/access.repo.js';
+import * as entitlementsRepo from '../data/site-entitlements.repo.js';
 import {
   PORTFOLIO_FLAG,
   PORTFOLIO_SOURCE,
@@ -16,7 +17,8 @@ function featureDisabled() {
 }
 
 /**
- * Admin/developer marks a coach portfolio as paid or not paid (Phase 1 test unlock).
+ * Admin/developer marks a coach portfolio as paid or not paid.
+ * Paid = grant one unbound 365-day site credit (new truth) + legacy access audit row.
  */
 export async function adminMarkPortfolioAccess({
   requesterUserId: rawRequesterId,
@@ -48,17 +50,35 @@ export async function adminMarkPortfolioAccess({
     markedBy: requesterUserId,
   });
 
+  let grantedCredit = null;
+  if (paid) {
+    grantedCredit = await entitlementsRepo.grantAdminCredit({
+      userId: targetUserId,
+      markedBy: requesterUserId,
+    });
+  }
+
   return {
     httpStatus: 200,
     body: {
       ok: true,
-      data: toPublicAccess({
-        userId: targetUserId,
-        status: access?.status || status,
-        source: access?.source || PORTFOLIO_SOURCE.ADMIN,
-        markedAt: access?.markedAt || null,
-        userName: target.UserName || null,
-      }),
+      data: {
+        ...toPublicAccess({
+          userId: targetUserId,
+          status: access?.status || status,
+          source: access?.source || PORTFOLIO_SOURCE.ADMIN,
+          markedAt: access?.markedAt || null,
+          userName: target.UserName || null,
+        }),
+        siteCredit: grantedCredit
+          ? {
+              orderId: grantedCredit.orderId,
+              expiresAt: grantedCredit.expiresAt instanceof Date
+                ? grantedCredit.expiresAt.toISOString()
+                : String(grantedCredit.expiresAt),
+            }
+          : null,
+      },
     },
   };
 }

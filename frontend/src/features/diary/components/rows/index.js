@@ -19,12 +19,13 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { Smartphone, GraduationCap, HelpCircle, Share2, ArrowUp, ArrowDown, Star } from 'lucide-react';
 import { useSwipeToDelete } from '../../../../shared/hooks/useSwipeToDelete';
-import { parseAnalysisData, recalculateTotals, getMealCategory } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
+import { parseAnalysisData, getMealCategory } from '../../../nutrition/services/nutritionDashboard/analysisHelpers';
 import { captureAndShare, composeBrandedShareCaption } from '../../../../shared/utils/shareUtils';
 import {
   ensureMarathonWeightComparisonForShare,
   withMarathonWhatsAppNotice,
 } from '../../../marathon';
+import { ensureDailyWellnessScoreForShare } from '../../../wellness-score-sheet/services/refreshDailyWellnessScoreNow';
 import {
   formatBusinessTime,
   formatBusinessDateTime,
@@ -43,6 +44,7 @@ import {
   waitForShareImageDecode,
   inlineDiaryShareImages,
 } from '../../utils/diaryThumbUrl';
+import { shareDiaryMealPhoto } from '../../utils/shareDiaryMealPhoto';
 import { activityPhotoTemplate, handleActivityPhotoError } from '../../../../shared/assets/activityPhotoTemplates';
 
 /** Red up / green down arrow for weight delta (SVG — avoids blue emoji squares). */
@@ -62,27 +64,6 @@ function useDiaryRowSwipe({ canDelete = true, onDelete, entry }) {
     onDelete: swipeEnabled ? () => onDelete?.(entry) : undefined,
   });
   return { swipe, swipeEnabled };
-}
-
-function resolveFoodShareTotals(payload, foodData) {
-  const t = payload?.totals || {};
-  const n = foodData?.nutrition || {};
-  const fromItems = foodData?.detailedItems?.length
-    ? recalculateTotals(foodData.detailedItems)
-    : null;
-
-  const pick = (key) => t[key] ?? n[key] ?? fromItems?.[key] ?? 0;
-
-  return {
-    calories: pick('calories'),
-    protein: pick('protein'),
-    carbs: pick('carbs'),
-    fat: pick('fat'),
-    fiber: pick('fiber'),
-    sugar: pick('sugar'),
-    sodium: pick('sodium'),
-    cholesterol: pick('cholesterol'),
-  };
 }
 
 const WEIGHT_MANUAL_LOG_ICON_SRC = `${process.env.PUBLIC_URL || ''}/scale.png`;
@@ -224,7 +205,6 @@ export function FoodRow({
   const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
   const [isSharing, setIsSharing] = useState(false);
   const shareCardRef = useRef(null);
-  const shareImgRef = useRef(null);
   const thumb = thumbPropsFromEntry(entry, { ownerUserId, viewerUserId });
 
   // Prefer lean listSummary from paginated API; fall back to legacy analysisData.
@@ -301,70 +281,47 @@ export function FoodRow({
   } = presentation;
   const isWater = activityType === DIARY_FOOD_ACTIVITY.WATER;
   const isAfresh = activityType === DIARY_FOOD_ACTIVITY.AFRESH;
-  const isShake = activityType === DIARY_FOOD_ACTIVITY.SHAKE;
   const showNutritionShare = !isWater && !isAfresh;
   const foodItems = Array.isArray(foodData.detailedItems) ? foodData.detailedItems : [];
   const shareMealName = foodItems
     .map((item) => String(item?.name || '').trim())
     .filter(Boolean)
     .join(', ') || mealName;
-
-  const t = resolveFoodShareTotals(p, foodData);
-  const macros = [
-    { label: 'Calories', value: Math.round(t.calories ?? 0), unit: 'kcal', color: '#f97316' },
-    { label: 'Protein',  value: Math.round(t.protein  ?? 0), unit: 'g',    color: '#3b82f6' },
-    { label: 'Carbs',    value: Math.round(t.carbs    ?? 0), unit: 'g',    color: '#eab308' },
-    { label: 'Fat',      value: Math.round(t.fat      ?? 0), unit: 'g',    color: '#ef4444' },
-    { label: 'Fiber',    value: Math.round(t.fiber    ?? 0), unit: 'g',    color: '#22c55e' },
-    { label: 'Sugar',    value: Math.round(t.sugar    ?? 0), unit: 'g',    color: '#a855f7' },
-  ];
   const shareTime = formatShareDateTime(entry.capturedAt, timezoneIana);
 
   const sharingLockRef = useRef(false);
 
-  // Share taps the full off-screen nutrition card, not the compact row.
-  // Water / Afresh captions use THIS card's volume / scoops.
-  // Day totals ("so far today") belong to Manual Entry share after save.
-  // Photo src is set only on share — avoids a second eager meal-image GET
-  // for every row (same URL as the visible Thumb).
+  // Food / shake: share the meal photo itself (same as meal-detail share).
+  // Water / Afresh: no meal photo — keep the small off-screen activity card.
   const handleShare = async (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (sharingLockRef.current || swipe.leaving) return;
     sharingLockRef.current = true;
-    const target = shareCardRef.current || swipe.elRef.current;
-    if (!target) {
-      sharingLockRef.current = false;
-      return;
-    }
     setIsSharing(true);
     try {
-      const photoSrc = await fetchDiaryShareImageSrc(thumb);
-      if (photoSrc) {
-        if (shareImgRef.current) {
-          shareImgRef.current.src = photoSrc;
-          shareImgRef.current.style.display = 'block';
-          try {
-            if (typeof shareImgRef.current.decode === 'function') {
-              await shareImgRef.current.decode();
-            } else {
-              await waitForShareImageDecode(photoSrc);
-            }
-          } catch {
-            await waitForShareImageDecode(photoSrc);
-          }
-        } else {
-          await waitForShareImageDecode(photoSrc);
-        }
-        await new Promise((resolve) => {
-          requestAnimationFrame(() => requestAnimationFrame(resolve));
+      if (showNutritionShare) {
+        await shareDiaryMealPhoto({
+          thumb,
+          title: shareMealName,
+          shareText,
+          shareUser,
+          timezoneIana,
+          fileName: `wellness-${activityType}-${Date.now()}.jpg`,
         });
+        return;
       }
+      const target = shareCardRef.current || swipe.elRef.current;
+      if (!target) return;
+      const wellnessScore = await ensureDailyWellnessScoreForShare({
+        user: shareUser,
+        timezoneSource: timezoneIana,
+      });
       await captureAndShare(target, {
         title: shareMealName,
         text: withMarathonWhatsAppNotice(
           composeBrandedShareCaption(shareText, { user: shareUser }),
-          { user: shareUser, timezoneIana },
+          { user: shareUser, timezoneIana, wellnessScore },
         ),
         fileName: `wellness-${activityType}-${Date.now()}.png`,
       });
@@ -384,94 +341,43 @@ export function FoodRow({
 
   return (
     <SwipeDeleteShell swipe={swipe} enabled={swipeEnabled}>
-      {/* Off-screen full nutrition share card — captured by html2canvas on share tap */}
-      <div
-        ref={shareCardRef}
-        aria-hidden="true"
-        style={{ position: 'fixed', left: '-9999px', top: 0, width: 500, background: '#ffffff', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}
-      >
-        {/* Header */}
-        <div style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', padding: '16px 20px 12px' }}>
-          <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', margin: 0, letterSpacing: 0.3 }}>WELLNESS VALLEY · {shareTime}</p>
-          <p style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: '4px 0 0', lineHeight: 1.2 }}>{shareMealName}</p>
-          {showMealBadge && meal && (
-            <span style={{ display: 'inline-block', marginTop: 5, fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: 'rgba(255,255,255,0.2)', color: '#fff' }}>
-              {meal.label}
-            </span>
-          )}
-        </div>
-        {/* Food photo — src assigned on share tap only (avoids duplicate meal-image GET) */}
-        <img
-          ref={shareImgRef}
-          alt=""
-          style={{
-            width: '100%',
-            height: 'auto',
-            display: 'none',
-            maxHeight: 420,
-            objectFit: 'contain',
-            background: '#f9fafb',
-          }}
-          onError={(e) => handleActivityPhotoError(e, thumb.kind || 'food')}
-        />
-        {/* Activity-specific body */}
-        {isWater && (
-          <div style={{ padding: '28px 20px', textAlign: 'center' }}>
-            <p style={{ fontSize: 40, margin: 0 }} aria-hidden="true">💧</p>
-            <p style={{ fontSize: 28, fontWeight: 700, color: '#0ea5e9', margin: '8px 0 0' }}>
-              {primaryValue}{primaryUnit ? ` ${primaryUnit}` : ''}
-            </p>
-            <p style={{ fontSize: 12, color: '#6b7280', margin: '6px 0 0', fontWeight: 600 }}>Water Intake</p>
+      {/* Water / Afresh only — food/shake share the meal photo directly */}
+      {!showNutritionShare && (
+        <div
+          ref={shareCardRef}
+          aria-hidden="true"
+          style={{ position: 'fixed', left: '-9999px', top: 0, width: 500, background: '#ffffff', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}
+        >
+          <div style={{ background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)', padding: '16px 20px 12px' }}>
+            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', margin: 0, letterSpacing: 0.3 }}>WELLNESS VALLEY · {shareTime}</p>
+            <p style={{ fontSize: 20, fontWeight: 700, color: '#fff', margin: '4px 0 0', lineHeight: 1.2 }}>{shareMealName}</p>
           </div>
-        )}
-        {isAfresh && (
-          <div style={{ padding: '28px 20px', textAlign: 'center' }}>
-            <p style={{ fontSize: 40, margin: 0 }} aria-hidden="true">🥤</p>
-            <p style={{ fontSize: 28, fontWeight: 700, color: '#ea580c', margin: '8px 0 0' }}>
-              {primaryValue}{primaryUnit ? ` ${primaryUnit}` : ''}
-            </p>
-            {secondaryLabel ? (
-              <p style={{ fontSize: 13, color: '#6b7280', margin: '6px 0 0', fontWeight: 600 }}>{secondaryLabel}</p>
-            ) : null}
-            <p style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 0', fontWeight: 600 }}>Afresh</p>
-          </div>
-        )}
-        {showNutritionShare && (
-          <>
-            {/* Macro grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: '14px 14px 8px' }}>
-              {macros.map((m) => (
-                <div key={m.label} style={{ background: '#f9fafb', borderRadius: 10, padding: '10px 6px', textAlign: 'center', border: '1px solid #f3f4f6' }}>
-                  <p style={{ fontSize: 17, fontWeight: 700, color: m.color, margin: 0, lineHeight: 1 }}>
-                    {m.value}<span style={{ fontSize: 10, fontWeight: 500, color: '#9ca3af' }}> {m.unit}</span>
-                  </p>
-                  <p style={{ fontSize: 9, color: '#6b7280', margin: '3px 0 0', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4 }}>{m.label}</p>
-                </div>
-              ))}
+          {isWater && (
+            <div style={{ padding: '28px 20px', textAlign: 'center' }}>
+              <p style={{ fontSize: 40, margin: 0 }} aria-hidden="true">💧</p>
+              <p style={{ fontSize: 28, fontWeight: 700, color: '#0ea5e9', margin: '8px 0 0' }}>
+                {primaryValue}{primaryUnit ? ` ${primaryUnit}` : ''}
+              </p>
+              <p style={{ fontSize: 12, color: '#6b7280', margin: '6px 0 0', fontWeight: 600 }}>Water Intake</p>
             </div>
-            {/* Food items */}
-            {foodItems.length > 0 && (
-              <div style={{ padding: '0 14px 14px' }}>
-                <p style={{ fontSize: 10, fontWeight: 700, color: '#374151', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  {isShake ? 'Shake' : 'Foods Detected'}
-                </p>
-                {foodItems.slice(0, 8).map((item, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>
-                    <p style={{ fontSize: 12, color: '#374151', margin: 0, flex: 1 }}>{item.name || 'Item'}</p>
-                    <p style={{ fontSize: 11, color: '#6b7280', margin: 0, fontWeight: 500 }}>
-                      {Math.round(item.calories ?? item.nutrition?.calories ?? 0)} kcal
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-        {/* Footer */}
-        <div style={{ background: '#f0fdf4', padding: '8px 14px', borderTop: '1px solid #dcfce7' }}>
-          <p style={{ fontSize: 9, color: '#16a34a', margin: 0, textAlign: 'center', fontWeight: 600, letterSpacing: 0.3 }}>Track your wellness journey • Wellness Valley</p>
+          )}
+          {isAfresh && (
+            <div style={{ padding: '28px 20px', textAlign: 'center' }}>
+              <p style={{ fontSize: 40, margin: 0 }} aria-hidden="true">🥤</p>
+              <p style={{ fontSize: 28, fontWeight: 700, color: '#ea580c', margin: '8px 0 0' }}>
+                {primaryValue}{primaryUnit ? ` ${primaryUnit}` : ''}
+              </p>
+              {secondaryLabel ? (
+                <p style={{ fontSize: 13, color: '#6b7280', margin: '6px 0 0', fontWeight: 600 }}>{secondaryLabel}</p>
+              ) : null}
+              <p style={{ fontSize: 12, color: '#6b7280', margin: '4px 0 0', fontWeight: 600 }}>Afresh</p>
+            </div>
+          )}
+          <div style={{ background: '#f0fdf4', padding: '8px 14px', borderTop: '1px solid #dcfce7' }}>
+            <p style={{ fontSize: 9, color: '#16a34a', margin: 0, textAlign: 'center', fontWeight: 600, letterSpacing: 0.3 }}>Track your wellness journey • Wellness Valley</p>
+          </div>
         </div>
-      </div>
+      )}
       {swipeEnabled && (
         <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
           <div
@@ -574,6 +480,7 @@ export function WeightRow({
   previousWeight = null,
   ownerUserId = null,
   viewerUserId = null,
+  shareUser = null,
 }) {
   const p = entry.payload || {};
   const { swipe, swipeEnabled } = useDiaryRowSwipe({ canDelete, onDelete, entry });
@@ -633,19 +540,27 @@ export function WeightRow({
         });
       }
       const marathonWeightComparison = await ensureMarathonWeightComparisonForShare({
+        user: shareUser,
         userId: ownerUserId,
         timezoneSource: timezoneIana,
         currentMarathonDay0Weight: p.weight,
+      });
+      const wellnessScore = await ensureDailyWellnessScoreForShare({
+        user: shareUser,
+        userId: ownerUserId || viewerUserId,
+        timezoneSource: timezoneIana,
       });
       await captureAndShare(target, {
         title: `Weight ${p.weight} kg`,
         text: withMarathonWhatsAppNotice(
           composeBrandedShareCaption(shareText),
           {
+            user: shareUser,
             timezoneIana,
             currentMarathonDay0Weight: p.weight,
             marathonWeightComparison,
             includeWeightComparison: true,
+            wellnessScore,
           },
         ),
         fileName: `wellness-weight-${Date.now()}.png`,
@@ -850,9 +765,19 @@ export function EducationRow({
     try {
       // Inline API→R2 photos as data URLs so html2canvas keeps the thumb.
       await inlineDiaryShareImages(swipe.elRef.current);
+      const shareUser = { id: viewerUserId || ownerUserId };
+      const wellnessScore = await ensureDailyWellnessScoreForShare({
+        user: shareUser,
+        userId: viewerUserId || ownerUserId,
+        timezoneSource: timezoneIana,
+      });
       await captureAndShare(swipe.elRef.current, {
         title: `Education - ${p.topic || 'Session'}`,
-        text: withMarathonWhatsAppNotice(shareText, { timezoneIana }),
+        text: withMarathonWhatsAppNotice(shareText, {
+          timezoneIana,
+          user: shareUser,
+          wellnessScore,
+        }),
         fileName: `wellness-education-${Date.now()}.png`,
       });
     } catch (err) {
@@ -960,9 +885,19 @@ export function GoodHabitRow({
     try {
       // Inline API→R2 photos as data URLs so html2canvas keeps the thumb.
       await inlineDiaryShareImages(swipe.elRef.current);
+      const shareUser = { id: viewerUserId || ownerUserId };
+      const wellnessScore = await ensureDailyWellnessScoreForShare({
+        user: shareUser,
+        userId: viewerUserId || ownerUserId,
+        timezoneSource: timezoneIana,
+      });
       await captureAndShare(swipe.elRef.current, {
         title,
-        text: withMarathonWhatsAppNotice(shareText, { timezoneIana }),
+        text: withMarathonWhatsAppNotice(shareText, {
+          timezoneIana,
+          user: shareUser,
+          wellnessScore,
+        }),
         fileName: `wellness-good-habit-${Date.now()}.png`,
       });
     } catch (err) {

@@ -1,6 +1,6 @@
 /**
  * avatar-storage.service.js — upload custom profile photos to R2 and save the key.
- * Bytes are JPEG-compressed to ≤22 KB / 256 px before PUT.
+ * Clarity JPEG (≤1080 px / ~300 KB) — not the 22 KB diary thumb compressor.
  * Non-fatal: callers keep writing team_table.ProfileImage (legacy Base64 / Google URL).
  */
 import crypto from 'crypto';
@@ -9,7 +9,7 @@ import {
   parseDataUri,
   shouldStoreProfileImageInR2,
 } from '../../shared/lib/images/dataUri.js';
-import { compressAvatarJpeg } from '../../shared/lib/images/avatarJpeg.js';
+import { compressProfileJpeg } from '../../shared/lib/images/clarityJpeg.js';
 import {
   isR2Configured,
   putObject,
@@ -45,7 +45,7 @@ export async function uploadAvatarDataUri(userId, profileImage) {
   const parsed = parseDataUri(profileImage);
   if (!parsed) return null;
 
-  const compressed = await compressAvatarJpeg(parsed.bytes);
+  const compressed = await compressProfileJpeg(parsed.bytes);
   const hash = crypto.createHash('sha256').update(compressed.bytes).digest('hex').slice(0, 16);
   const key = buildAvatarObjectKey(userId, hash, 'jpg');
   if (!isKeyInFolder(key, R2_FOLDERS.avatar)) {

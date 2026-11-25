@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import {
   composeTransformationShareCardJpeg,
+  isShareAsCollagePair,
   layoutHealthIssueChips,
   shareCardJpegHasReadableText,
 } from '../domain/composeTransformationShareCard.js';
@@ -175,5 +176,47 @@ describe('composeTransformationShareCardJpeg', () => {
       }),
       /After photo required/,
     );
+  });
+
+  it('detects collage when Before and After bytes match', () => {
+    const buf = Buffer.from('same-collage-bytes');
+    assert.equal(isShareAsCollagePair({ beforeBuffer: buf, afterBuffer: buf }), true);
+    assert.equal(isShareAsCollagePair({
+      beforeBuffer: buf,
+      afterBuffer: Buffer.from('other'),
+    }), false);
+    assert.equal(isShareAsCollagePair({
+      beforePath: 'u/before.jpg',
+      afterPath: 'u/before.jpg',
+    }), true);
+  });
+
+  it('builds a single-panel collage share card when photos are identical', async () => {
+    const collage = await solidJpeg(800, 400, { r: 40, g: 120, b: 200 });
+    const jpeg = await composeTransformationShareCardJpeg({
+      beforeBuffer: collage,
+      afterBuffer: collage,
+      memberName: 'Collage Member',
+      beforeWeightKg: 45,
+      afterWeightKg: 48,
+      durationText: '3 months',
+      shareAsCollage: true,
+    });
+    assert.ok(Buffer.isBuffer(jpeg));
+    assert.ok(jpeg.length > 2000);
+    const meta = await sharp(jpeg).metadata();
+    assert.equal(meta.format, 'jpeg');
+    assert.equal(meta.width, 540);
+    // Mid collage band should show blue letterboxed photo, not white dual-gap.
+    const band = await sharp(jpeg)
+      .extract({ left: 200, top: 200, width: 40, height: 40 })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    let bluish = 0;
+    for (let i = 0; i < band.data.length; i += band.info.channels) {
+      if (band.data[i + 2] > 150 && band.data[i] < 100) bluish += 1;
+    }
+    assert.ok(bluish > 20, 'collage photo should fill the centre of the card');
+    assert.equal(await shareCardJpegHasReadableText(jpeg), true);
   });
 });

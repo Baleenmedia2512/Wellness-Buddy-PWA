@@ -14,6 +14,7 @@ import TouchFeedbackButton from "./TouchFeedbackButton";
 import CustomAlertModal from "./CustomAlertModal";
 import { Camera as CameraIcon, Image as GalleryIcon } from "lucide-react";
 import { debugLog } from '../utils/logger.js';
+import * as PermissionManager from "../services/permissionManager.js";
 import {
   validateImageFreshness,
   validateImageForEducation,
@@ -60,6 +61,10 @@ const ImageUpload = forwardRef(
       //   onCameraStateChange('opened', { source: 'camera' | 'gallery' })
       //   onCameraStateChange('closed', { source, hadResult: boolean })
       onCameraStateChange = null,
+      // App Store 5.1.1(iv): when the user taps camera/gallery and access is
+      // denied, parent shows a dismissible Settings notice (never re-prompt OS).
+      // kind: 'camera' | 'photos'
+      onCameraPermissionNeeded = null,
     },
     ref,
   ) => {
@@ -193,9 +198,39 @@ const ImageUpload = forwardRef(
       }
     };
 
-    const triggerCamera = async () => {
+    /**
+     * @param {{ userInitiated?: boolean }} [opts]
+     * userInitiated=true  → user tapped Take Photo; if Camera denied, notify parent
+     *                       (dismissible Settings notice — App Store 5.1.1(iv)).
+     * userInitiated=false → auto-open / resume; if Camera denied, stay silent
+     *                       (do not nag right after an OS denial).
+     */
+    const triggerCamera = async ({ userInitiated = true } = {}) => {
       // Use Capacitor Camera for native platforms
       if (Capacitor.isNativePlatform()) {
+        // Camera permission rules (App Store 5.1.1(iv) + launch safety):
+        // - Auto-open (userInitiated=false): only open if already granted.
+        //   Never call getPhoto while still "prompt"/denied — that can leave a
+        //   black native camera screen on iOS before/without a real preview.
+        // - User tap: if permanently denied → Settings notice. Otherwise getPhoto
+        //   may show the OS prompt once (no custom "Allow Again").
+        try {
+          const { granted, canRequest } = await PermissionManager.checkPermission('camera');
+          if (!granted) {
+            if (!userInitiated) {
+              try { onCameraStateChange?.('closed', { source: 'camera', hadResult: false }); } catch (_) {}
+              return;
+            }
+            if (!canRequest) {
+              try { onCameraStateChange?.('closed', { source: 'camera', hadResult: false }); } catch (_) {}
+              try { onCameraPermissionNeeded?.('camera'); } catch (_) { /* ignore */ }
+              return;
+            }
+          }
+        } catch (permErr) {
+          debugLog('Camera permission check failed (continuing to getPhoto):', permErr?.message);
+        }
+
         setCameraActive(true);
         let hadResult = false;
         // Notify parent BEFORE awaiting Camera.getPhoto so the launch overlay
@@ -273,6 +308,15 @@ const ImageUpload = forwardRef(
           if (!isCancel) {
             debugLog('Camera capture error (native):', msg);
           }
+          // After an OS denial on a user tap: Settings notice only (no Allow Again).
+          if (userInitiated && !isCancel) {
+            try {
+              const { granted } = await PermissionManager.checkPermission('camera');
+              if (!granted) {
+                try { onCameraPermissionNeeded?.('camera'); } catch (_) { /* ignore */ }
+              }
+            } catch (_) { /* ignore */ }
+          }
         } finally {
           lastCameraCloseRef.current = Date.now();
           setCameraActive(false);
@@ -287,6 +331,19 @@ const ImageUpload = forwardRef(
     const triggerGallery = async () => {
       // Use Capacitor Camera for native platforms (more reliable for gallery)
       if (Capacitor.isNativePlatform()) {
+        // After Don’t Allow, iOS will NOT show the Photos prompt again.
+        // Offer Settings instead of a silent failure (App Store 5.1.1(iv)).
+        try {
+          const { granted, canRequest } = await PermissionManager.checkPermission('photos');
+          if (!granted && !canRequest) {
+            try { onCameraStateChange?.('closed', { source: 'gallery', hadResult: false }); } catch (_) {}
+            try { onCameraPermissionNeeded?.('photos'); } catch (_) { /* ignore */ }
+            return;
+          }
+        } catch (permErr) {
+          debugLog('Photos permission check failed (continuing to gallery):', permErr?.message);
+        }
+
         setCameraActive(true);
         let hadResult = false;
         try { onCameraStateChange?.('opened', { source: 'gallery' }); } catch (_) {}
@@ -577,6 +634,14 @@ const ImageUpload = forwardRef(
           if (!isCancel) {
             debugLog('Gallery selection error (native):', msg);
           }
+          if (!isCancel) {
+            try {
+              const { granted } = await PermissionManager.checkPermission('photos');
+              if (!granted) {
+                try { onCameraPermissionNeeded?.('photos'); } catch (_) { /* ignore */ }
+              }
+            } catch (_) { /* ignore */ }
+          }
         } finally {
           lastCameraCloseRef.current = Date.now();
           setCameraActive(false);
@@ -597,8 +662,9 @@ const ImageUpload = forwardRef(
         if (galleryInputRef.current) galleryInputRef.current.value = "";
         if (fallbackInputRef.current) fallbackInputRef.current.value = "";
       },
-      // Called by App.js to auto-open the camera (same as tapping Take Photo)
-      openCamera: () => triggerCamera(),
+      // Called by App.js / Take Photo. Pass { userInitiated: false } for auto-open
+      // so a prior Camera denial stays silent (App Store 5.1.1(iv)).
+      openCamera: (opts) => triggerCamera(opts),
       // Called by App.js to open the gallery picker
       openGallery: () => triggerGallery(),
       // Returns the timestamp (ms) when the camera/gallery dialog last closed.

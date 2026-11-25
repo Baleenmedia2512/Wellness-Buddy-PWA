@@ -121,17 +121,64 @@ describe('aggregateWellnessWindowScores', () => {
       total_possible: 1000,
     });
 
-    const totals = aggregateWellnessWindowScores(rows);
+    const totals = aggregateWellnessWindowScores(rows, 10);
     const tenDay = totals.get(2);
     assert.equal(tenDay.totalEarned, 9000);
     assert.equal(tenDay.totalPossible, 10000);
+    assert.equal(tenDay.wellnessPercentage, 90);
+
+    const oneDay = totals.get(1);
+    assert.equal(oneDay.totalEarned, 1000);
+    assert.equal(oneDay.totalPossible, 10000);
+    assert.equal(oneDay.wellnessPercentage, 10);
 
     const ranked = rankWellnessLeaderboardEntries([
-      { userId: 1, userName: 'Today only', ...totals.get(1) },
+      { userId: 1, userName: 'Today only', ...oneDay },
       { userId: 2, userName: 'Steady', ...tenDay },
     ], 10, { orderBy: 'earned' });
     assert.equal(ranked[0].userName, 'Steady');
     assert.equal(ranked[0].totalEarned, 9000);
     assert.equal(ranked[0].totalPossible, 10000);
+  });
+
+  it('evaluates all users out of windowDays * 1000 (e.g. 10000 for 10 days, 5000 for 5 days)', () => {
+    const rows = [
+      { user_id: 10, score_date: '2026-11-01', total_earned: 500, total_possible: 1000 },
+      { user_id: 20, score_date: '2026-11-01', total_earned: 900, total_possible: 1000 },
+      { user_id: 20, score_date: '2026-11-02', total_earned: 900, total_possible: 1000 },
+    ];
+    // Last 10 days:
+    const last10 = aggregateWellnessWindowScores(rows, 10);
+    assert.equal(last10.get(10).totalEarned, 500);
+    assert.equal(last10.get(10).totalPossible, 10000);
+    assert.equal(last10.get(10).wellnessPercentage, 5);
+    assert.equal(last10.get(20).totalEarned, 1800);
+    assert.equal(last10.get(20).totalPossible, 10000);
+    assert.equal(last10.get(20).wellnessPercentage, 18);
+
+    // Custom 5 days:
+    const custom5 = aggregateWellnessWindowScores(rows, 5);
+    assert.equal(custom5.get(10).totalEarned, 500);
+    assert.equal(custom5.get(10).totalPossible, 5000);
+    assert.equal(custom5.get(10).wellnessPercentage, 10);
+    assert.equal(custom5.get(20).totalEarned, 1800);
+    assert.equal(custom5.get(20).totalPossible, 5000);
+    assert.equal(custom5.get(20).wellnessPercentage, 36);
+  });
+
+  it('supports admin setting daily max score to 1100 or other values (10 * 1100 = 11000)', () => {
+    const rows = [
+      { user_id: 30, score_date: '2026-11-01', total_earned: 990, total_possible: 1100 },
+      { user_id: 40, score_date: '2026-11-01', total_earned: 1100, total_possible: 1100 },
+      { user_id: 40, score_date: '2026-11-02', total_earned: 1100, total_possible: 1100 },
+    ];
+    // Last 10 days with 1100 daily max:
+    const totals = aggregateWellnessWindowScores(rows, 10, 1100);
+    assert.equal(totals.get(30).totalEarned, 990);
+    assert.equal(totals.get(30).totalPossible, 11000);
+    assert.equal(totals.get(30).wellnessPercentage, 9);
+    assert.equal(totals.get(40).totalEarned, 2200);
+    assert.equal(totals.get(40).totalPossible, 11000);
+    assert.equal(totals.get(40).wellnessPercentage, 20);
   });
 });

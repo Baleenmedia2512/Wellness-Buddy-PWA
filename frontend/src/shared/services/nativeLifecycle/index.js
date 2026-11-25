@@ -171,8 +171,8 @@ export async function getLaunchUrl() {
  * the remaining steps (the original single-try-catch was the primary reason
  * Location was never requested during onboarding).
  *
- * Order follows the required UX spec:
- *   1. Camera + Photos  (REQUIRED)
+ * Order:
+ *   1. Camera + Photos  (OPTIONAL — App Store 5.1.1(iv); denial must not block the app)
  *   2. Location         (REQUIRED — must be granted before home access)
  *   3. Notifications    (OPTIONAL — failure never blocks the flow)
  *
@@ -188,7 +188,7 @@ export async function requestAllPermissions() {
 
   debugLog('📱 Requesting permissions sequentially…');
 
-  // ── Step 1: Camera + Photos (REQUIRED) ───────────────────────────────────
+  // ── Step 1: Camera + Photos (OPTIONAL — never blocks the app) ─────────────
   // Isolated try/catch: failure here must never prevent Location from being requested.
   let cameraGranted = false;
   try {
@@ -312,10 +312,10 @@ export async function openLocationSettings() {
       const { GalleryMonitorPlugin } = await import('../../plugins/galleryMonitorPlugin.js');
       await GalleryMonitorPlugin.openLocationSettings();
     } else {
-      // iOS: opens this app's specific Settings pane where the user can adjust
-      // the Location permission. There is no public API to open the system
-      // Location Services toggle directly on iOS 15+.
-      await CapacitorApp.openUrl({ url: 'app-settings:' });
+      // iOS: app Settings pane (no public API for system Location Services).
+      // @capacitor/app v8 removed openUrl — use AppSettingsPlugin instead.
+      const { openNativeAppSettings } = await import('../../plugins/appSettingsPlugin.js');
+      await openNativeAppSettings();
     }
   } catch (err) {
     console.warn('Failed to open Location Settings:', err);
@@ -386,15 +386,9 @@ export async function checkNotificationPermission() {
  * On web: no-op.
  */
 export async function openAppSettings() {
-  if (!Capacitor.isNativePlatform()) return;
-  const platform = Capacitor.getPlatform();
   try {
-    if (platform === 'android') {
-      const { GalleryMonitorPlugin } = await import('../../plugins/galleryMonitorPlugin.js');
-      await GalleryMonitorPlugin.openAppSettings();
-    } else {
-      await CapacitorApp.openUrl({ url: 'app-settings:' });
-    }
+    const { openNativeAppSettings } = await import('../../plugins/appSettingsPlugin.js');
+    await openNativeAppSettings();
   } catch (err) {
     console.warn('Failed to open App Settings:', err);
   }

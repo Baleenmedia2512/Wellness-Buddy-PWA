@@ -1,4 +1,10 @@
-export { PORTFOLIO_FLAG, isCoachPortfolioRole, isPortfolioAdminRole } from './domain/portfolio.rules';
+export {
+  PORTFOLIO_FLAG,
+  PORTFOLIO_SITE_SLOTS_MIN,
+  usesPortfolioSiteSlots,
+  isCoachPortfolioRole,
+  isPortfolioAdminRole,
+} from './domain/portfolio.rules';
 export { default as CoachWebsiteButton } from './components/CoachWebsiteButton';
 export { default as AdminPortfolioAccessButton } from './components/AdminPortfolioAccessButton';
 export { default as CoachPortfolioForm } from './components/CoachPortfolioForm';

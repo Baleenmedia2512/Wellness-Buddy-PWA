@@ -60,8 +60,7 @@ import { useNutritionRefreshOptional } from '../../shared/context/NutritionRefre
 import { refreshDailyWellnessScoreAfterSave } from '../../features/wellness-score-sheet/services/refreshDailyWellnessScoreNow';
 import GoodHabitFlow from './GoodHabitFlow';
 import ManualFoodAiAnalysisModal from './ManualFoodAiAnalysisModal';
-import { requestGoodHabitOtp } from '../../features/good-habits';
-import GoodHabitOtpModal from '../../features/good-habits/components/GoodHabitOtpModal';
+import { saveGoodHabit } from '../../features/good-habits';
 import {
   MANUAL_LOG_CATEGORY,
   DRY_SALAD_META,
@@ -208,10 +207,10 @@ export default function ManualEntryPage({
   onToast,
 }) {
   const nutritionRefresh = useNutritionRefreshOptional();
-  const refreshAfterPersist = useCallback((source) => {
+  const refreshAfterPersist = useCallback(async (source) => {
     // Fire only after DB write — early refresh locks in a stale Home/sheet total.
     nutritionRefresh?.triggerRefresh({ immediate: true, source });
-    void refreshDailyWellnessScoreAfterSave({ userId, apiBaseUrl });
+    return refreshDailyWellnessScoreAfterSave({ userId, apiBaseUrl });
   }, [nutritionRefresh, userId, apiBaseUrl]);
 
   const creditsEnabled = isFlagEnabled('ff.ai-credits');
@@ -290,10 +289,6 @@ export default function ManualEntryPage({
   const [pendingLogAsId, setPendingLogAsId] = useState(null);
   /** True while waiting for captureId after user tapped Food (AI path). */
   const [pendingFoodAi, setPendingFoodAi] = useState(false);
-  /** Task by Coach coach-OTP gate (apps ≥ 3.5.7). */
-  const [habitOtp, setHabitOtp] = useState(null);
-  const [habitOtpResending, setHabitOtpResending] = useState(false);
-
   // New capture while this screen stays mounted — close any open sub-form.
   // Do not clear pendingLogAsId / pendingFoodAi here: captureId often flips null → id
   // on the same mount, and those pending taps must flush once ready.
@@ -481,28 +476,33 @@ export default function ManualEntryPage({
     }
   };
 
-  const saveFoodAnalysis = (analysisResult, toastMsg, activityCaption = null) => {
-    // Close classify immediately — promote runs in background (same as Food).
+  const saveFoodAnalysis = async (analysisResult, toastMsg, activityCaption = null) => {
+    // Await diary promote + today's score before share so WhatsApp shows the
+    // increased Wellness Score (not the pre-save total still in cache).
     onToast?.(toastMsg);
-    void promoteUnknownToFood({
-      captureId,
-      viewerUserId: userId,
-      analysisResult,
-      originalCapturedAt: originalCapturedAt || null,
-    })
-      .then((result) => {
-        seedMealAfterPromotion({
-          ownerUserId: userId,
-          result,
-          analysisResult,
-          capturedAt: originalCapturedAt || null,
-        });
-        refreshAfterPersist('manual-log-persisted');
-      })
-      .catch((err) => {
-        onToast?.(err?.message || "Couldn't save — check Diary.");
+    let wellnessScore = null;
+    try {
+      const result = await promoteUnknownToFood({
+        captureId,
+        viewerUserId: userId,
+        analysisResult,
+        originalCapturedAt: originalCapturedAt || null,
       });
-    exit(activityCaption ? { activityCaption } : null);
+      seedMealAfterPromotion({
+        ownerUserId: userId,
+        result,
+        analysisResult,
+        capturedAt: originalCapturedAt || null,
+      });
+      wellnessScore = await refreshAfterPersist('manual-log-persisted');
+    } catch (err) {
+      onToast?.(err?.message || "Couldn't save — check Diary.");
+      return;
+    }
+    await exit({
+      ...(activityCaption ? { activityCaption } : {}),
+      wellnessScore,
+    });
   };
 
   const openCategory = useCallback((id) => {
@@ -735,7 +735,7 @@ export default function ManualEntryPage({
         analysisResult: analysisToSave,
         capturedAt: originalCapturedAt || null,
       });
-      refreshAfterPersist('manual-ai-food-saved');
+      const wellnessScore = await refreshAfterPersist('manual-ai-food-saved');
 
       const cardData = analysisResultToNutritionCardData(analysisToSave);
       const mealId = extractMealIdFromPromotionResult(result);
@@ -756,9 +756,10 @@ export default function ManualEntryPage({
       setAiModalOpen(false);
       setAiSaving(false);
       onToast?.('Food saved');
-      exit({
+      await exit({
         activityCaption,
         shareImage: imageBase64,
+        wellnessScore,
         aiHomeResult: cardData
           ? {
               cardData,
@@ -967,35 +968,37 @@ export default function ManualEntryPage({
           glycemicIndex: n.glycemic_index ?? n.glycemicIndex ?? null,
         });
 
-    // Close search UI immediately — promote runs in background (same as Cancel discard).
     setFoodEntryMeta(null);
     setActiveForm(null);
     onToast?.('Food saved to Diary');
 
-    void promoteUnknownToFood({
-      captureId,
-      viewerUserId: userId,
-      analysisResult: analysis,
-      originalCapturedAt: originalCapturedAt || null,
-    })
-      .then((result) => {
-        seedMealAfterPromotion({
-          ownerUserId: userId,
-          result,
-          analysisResult: analysis,
-          capturedAt: originalCapturedAt || null,
-        });
-        refreshAfterPersist('manual-food-persisted');
-      })
-      .catch((err) => {
-        onToast?.(err?.message || "Couldn't save food — check Diary.");
+    let wellnessScore = null;
+    try {
+      const result = await promoteUnknownToFood({
+        captureId,
+        viewerUserId: userId,
+        analysisResult: analysis,
+        originalCapturedAt: originalCapturedAt || null,
       });
+      seedMealAfterPromotion({
+        ownerUserId: userId,
+        result,
+        analysisResult: analysis,
+        capturedAt: originalCapturedAt || null,
+      });
+      wellnessScore = await refreshAfterPersist('manual-food-persisted');
+    } catch (err) {
+      onToast?.(err?.message || "Couldn't save food — check Diary.");
+      return;
+    }
 
-    exit(activityCaption ? { activityCaption } : null);
+    await exit({
+      ...(activityCaption ? { activityCaption } : {}),
+      wellnessScore,
+    });
   };
 
-  const handleWeightSave = ({ weightValue, unit, bmr }) => {
-    // Share caption uses cache only — do not block Save on a network round-trip.
+  const handleWeightSave = async ({ weightValue, unit, bmr }) => {
     const previousWeight = getCachedLatestWeight(userId)?.value ?? null;
     const idealRange = idealWeightRangeRef.current
       || computeIdealWeightRange(getCachedProfile(userEmail)?.data?.height);
@@ -1005,7 +1008,24 @@ export default function ManualEntryPage({
 
     setActiveForm(null);
     onToast?.('Weight saved to Diary');
-    exit({
+
+    let wellnessScore = null;
+    try {
+      await saveWeight({
+        userId: uid,
+        weightValue,
+        unit: unit || 'kg',
+        bmr,
+        captureId: capId,
+        imageBase64ToSave: img,
+      });
+      wellnessScore = await refreshAfterPersist('manual-weight-persisted');
+    } catch (err) {
+      onToast?.(err?.message || "Couldn't save weight — check Diary.");
+      return;
+    }
+
+    await exit({
       activityCaption: buildDiaryShareSuffix('weight', {
         previousWeight,
         currentWeight: weightValue,
@@ -1013,46 +1033,39 @@ export default function ManualEntryPage({
       }),
       currentMarathonDay0Weight: weightValue,
       shareImage: img,
-    });
-
-    void saveWeight({
-      userId: uid,
-      weightValue,
-      unit: unit || 'kg',
-      bmr,
-      captureId: capId,
-      imageBase64ToSave: img,
-    }).then(() => {
-      refreshAfterPersist('manual-weight-persisted');
-    }).catch((err) => {
-      onToast?.(err?.message || "Couldn't save weight — check Diary.");
+      wellnessScore,
     });
   };
 
-  const handleWatchSave = ({ caloriesBurned, source }) => {
+  const handleWatchSave = async ({ caloriesBurned, source }) => {
     const capId = captureId;
     const uid = userId;
     const img = imageBase64;
 
     setActiveForm(null);
     onToast?.('Activity saved to Diary');
-    exit({
+
+    let wellnessScore = null;
+    try {
+      await saveLog({
+        userId: uid,
+        platform: source || 'Smartwatch',
+        topic: `Calories Burned: ${caloriesBurned} kcal`,
+        captureId: capId,
+        imageBase64: img,
+      });
+      wellnessScore = await refreshAfterPersist('manual-workout-persisted');
+    } catch (err) {
+      onToast?.(err?.message || "Couldn't save activity — check Diary.");
+      return;
+    }
+
+    await exit({
       activityCaption: buildDiaryShareSuffix('workout', {
         caloriesBurned,
       }),
       shareImage: img,
-    });
-
-    void saveLog({
-      userId: uid,
-      platform: source || 'Smartwatch',
-      topic: `Calories Burned: ${caloriesBurned} kcal`,
-      captureId: capId,
-      imageBase64: img,
-    }).then(() => {
-      refreshAfterPersist('manual-workout-persisted');
-    }).catch((err) => {
-      onToast?.(err?.message || "Couldn't save activity — check Diary.");
+      wellnessScore,
     });
   };
 
@@ -1109,31 +1122,36 @@ export default function ManualEntryPage({
     );
   };
 
-  const handleEducationSave = ({ platform, topic }) => {
+  const handleEducationSave = async ({ platform, topic }) => {
     const capId = captureId;
     const uid = userId;
     const img = imageBase64;
 
     setActiveForm(null);
     onToast?.('Education saved to Diary');
-    exit({
+
+    let wellnessScore = null;
+    try {
+      await saveLog({
+        userId: uid,
+        platform,
+        topic,
+        captureId: capId,
+        imageBase64: img,
+      });
+      wellnessScore = await refreshAfterPersist('manual-education-persisted');
+    } catch (err) {
+      onToast?.(err?.message || "Couldn't save education — check Diary.");
+      return;
+    }
+
+    await exit({
       activityCaption: buildDiaryShareSuffix('education', {
         platform,
         session: topic,
       }),
       shareImage: img,
-    });
-
-    void saveLog({
-      userId: uid,
-      platform,
-      topic,
-      captureId: capId,
-      imageBase64: img,
-    }).then(() => {
-      refreshAfterPersist('manual-education-persisted');
-    }).catch((err) => {
-      onToast?.(err?.message || "Couldn't save education — check Diary.");
+      wellnessScore,
     });
   };
 
@@ -1142,60 +1160,23 @@ export default function ManualEntryPage({
     imageBase64: habitImage,
     shareImage,
   }) => {
-    // Coach OTP first — habit row + score only after verify (CreatedAt = verify IST day).
-    // Keep Task by Coach sheet open; OTP modal stacks on top (closing the sheet
-    // first dropped the verify UI on mobile before the modal could mount).
-    const payload = {
+    // Save + score immediately; coach gets email with Reject (no OTP).
+    await saveGoodHabit({
       userId,
       captureId,
       habitType,
       notes: '',
       imageBase64: habitImage,
       clientTimestamp: null,
-    };
-    const data = await requestGoodHabitOtp(payload);
-    setHabitOtp({
-      otpKey: String(data.otpKey),
-      maskedEmail: data.maskedEmail || '',
-      coachName: data.coachName || '',
-      habitType,
-      shareImage: shareImage || habitImage || imageBase64,
-      requestPayload: payload,
     });
-  };
-
-  const finishGoodHabitAfterOtp = (habitType, shareImage) => {
-    setHabitOtp(null);
     setActiveForm(null);
-    refreshAfterPersist('manual-good-habit-persisted');
-    onToast?.('Task by Coach saved to Diary');
-    exit({
+    const wellnessScore = await refreshAfterPersist('manual-good-habit-persisted');
+    onToast?.('Sent to coach — score updated');
+    await exit({
       activityCaption: buildDiaryShareSuffix('good-habit', { habitType }),
-      shareImage: shareImage || imageBase64,
+      shareImage: shareImage || habitImage || imageBase64,
+      wellnessScore,
     });
-  };
-
-  const handleHabitOtpResend = async () => {
-    if (!habitOtp?.requestPayload || habitOtpResending) return;
-    setHabitOtpResending(true);
-    try {
-      const data = await requestGoodHabitOtp(habitOtp.requestPayload);
-      const otpKey = data?.otpKey ?? data?.data?.otpKey;
-      if (!otpKey) {
-        throw new Error('Could not resend code. Try again.');
-      }
-      setHabitOtp((prev) => (prev ? {
-        ...prev,
-        otpKey: String(otpKey),
-        maskedEmail: data?.maskedEmail || data?.data?.maskedEmail || prev.maskedEmail,
-        coachName: data?.coachName || data?.data?.coachName || prev.coachName,
-      } : prev));
-      onToast?.('New code sent to your coach');
-    } catch (err) {
-      onToast?.(err?.message || "Couldn't resend code");
-    } finally {
-      setHabitOtpResending(false);
-    }
   };
 
   const logAsDisabled = closingWithoutLog || ((aiStarting || awaitingAutoAi) && !pendingFoodAi);
@@ -1336,18 +1317,6 @@ export default function ManualEntryPage({
         capturedPreview={previewSrc}
         onSave={handleGoodHabitSave}
       />
-      {habitOtp?.otpKey ? (
-        <GoodHabitOtpModal
-          userId={userId}
-          otpKey={habitOtp.otpKey}
-          maskedEmail={habitOtp.maskedEmail}
-          coachName={habitOtp.coachName}
-          resending={habitOtpResending}
-          onResend={handleHabitOtpResend}
-          onClose={() => setHabitOtp(null)}
-          onVerified={() => finishGoodHabitAfterOtp(habitOtp.habitType, habitOtp.shareImage)}
-        />
-      ) : null}
       <ManualWeightEntryModal
         isOpen={activeForm === MANUAL_LOG_CATEGORY.WEIGHT}
         onClose={() => setActiveForm(null)}

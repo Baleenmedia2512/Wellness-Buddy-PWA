@@ -1,6 +1,6 @@
 /**
  * Profile: title, social links, community date, about, qualification, languages you speak.
- * Links are optional until an admin makes the field required.
+ * Professional title is always required. Social links stay optional unless highlighted.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { LANGUAGE_BY_CODE, WORLD_LANGUAGES } from '../../domain/worldLanguages';
@@ -12,20 +12,30 @@ import {
   herbalifeDateToIso,
   isoToHerbalifeDate,
 } from '../../domain/profileIntro';
+import { profileIntroFieldDomId } from '../../domain/profileIntroFocus';
 
 const inputClass =
   'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none bg-white text-gray-900';
 
-function FieldLabel({ children, hint }) {
+const highlightInputClass =
+  'w-full px-3 py-2 border-2 border-rose-500 rounded-lg ring-2 ring-rose-200 focus:ring-2 focus:ring-rose-500 focus:border-rose-600 outline-none bg-rose-50/40 text-gray-900';
+
+function FieldLabel({ children, hint, requiredMark = false, required = false }) {
+  const showStar = requiredMark || required;
   return (
     <div className="mb-1">
-      <span className="block text-sm font-medium text-gray-700">{children}</span>
-      {hint ? <span className="block text-xs text-gray-400">{hint}</span> : null}
+      <span className={`block text-sm font-medium ${requiredMark ? 'text-rose-700' : 'text-gray-700'}`}>
+        {children}
+        {showStar ? <span className="ml-1 font-semibold text-rose-600">*</span> : null}
+      </span>
+      {hint ? (
+        <span className={`block text-xs ${requiredMark ? 'text-rose-500' : 'text-gray-400'}`}>{hint}</span>
+      ) : null}
     </div>
   );
 }
 
-function LanguagePicker({ value, onChange }) {
+function LanguagePicker({ value, onChange, highlighted = false }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const rootRef = useRef(null);
@@ -55,9 +65,20 @@ function LanguagePicker({ value, onChange }) {
     onChange([...selected, code]);
   };
 
+  const fieldClass = highlighted ? highlightInputClass : inputClass;
+
   return (
-    <div ref={rootRef}>
-      <FieldLabel hint="Select every language you use.">Languages you speak</FieldLabel>
+    <div
+      ref={rootRef}
+      id={profileIntroFieldDomId('languages')}
+      className={highlighted ? 'rounded-xl border-2 border-rose-400 bg-rose-50/50 p-3' : undefined}
+    >
+      <FieldLabel
+        requiredMark={highlighted}
+        hint={highlighted ? 'Required — select at least one language.' : 'Select every language you use.'}
+      >
+        Languages you speak
+      </FieldLabel>
       {selected.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {selected.map((code) => (
@@ -75,7 +96,7 @@ function LanguagePicker({ value, onChange }) {
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className={`${inputClass} text-left`}
+        className={`${fieldClass} text-left`}
         style={{ fontSize: '16px' }}
       >
         {open ? 'Close languages' : 'Select languages'}
@@ -108,13 +129,22 @@ function LanguagePicker({ value, onChange }) {
   );
 }
 
-function HerbalifeDateFields({ value, onChange }) {
+function HerbalifeDateFields({ value, onChange, highlighted = false }) {
   const isoValue = herbalifeDateToIso(value);
   const maxIso = herbalifeDateMaxIso();
+  const fieldClass = highlighted ? highlightInputClass : inputClass;
 
   return (
-    <div>
-      <FieldLabel hint="Open the calendar and pick the day you joined.">
+    <div
+      id={profileIntroFieldDomId('herbalifeJoinedOn')}
+      className={highlighted ? 'rounded-xl border-2 border-rose-400 bg-rose-50/50 p-3' : undefined}
+    >
+      <FieldLabel
+        requiredMark={highlighted}
+        hint={highlighted
+          ? 'Required — open the calendar and pick the day you joined.'
+          : 'Open the calendar and pick the day you joined.'}
+      >
         Date of joining community
       </FieldLabel>
       <input
@@ -127,7 +157,7 @@ function HerbalifeDateFields({ value, onChange }) {
           const next = event.target.value;
           onChange(next ? isoToHerbalifeDate(next) : '');
         }}
-        className={inputClass}
+        className={fieldClass}
         style={{ fontSize: '16px' }}
       />
       {isoValue ? (
@@ -137,26 +167,50 @@ function HerbalifeDateFields({ value, onChange }) {
   );
 }
 
-export default function ProfileIntroFields({ values = {}, onChange, keys = null }) {
+/**
+ * @param {{
+ *   values?: object,
+ *   onChange: (key: string, value: unknown) => void,
+ *   keys?: string[]|null,
+ *   highlightKeys?: string[]|null,
+ * }} props
+ */
+export default function ProfileIntroFields({
+  values = {},
+  onChange,
+  keys = null,
+  highlightKeys = null,
+}) {
   const show = (key) => !keys || keys.includes(key);
+  const marked = (key) => Array.isArray(highlightKeys) && highlightKeys.includes(key);
   const set = (key) => (event) => onChange(key, event.target.value);
+  const fieldClass = (key) => (marked(key) ? highlightInputClass : inputClass);
+  const wrapClass = (key) => (
+    marked(key) ? 'rounded-xl border-2 border-rose-400 bg-rose-50/50 p-3' : undefined
+  );
 
   return (
     <div className="space-y-4 rounded-xl border border-gray-200 bg-white p-4">
       <p className="text-sm font-semibold text-gray-800">About you</p>
       {show('professionalTitle') && (
-        <div>
-          <FieldLabel hint={`Up to ${PROFESSIONAL_TITLE_MAX} characters. Example: Wellness coach`}>
+        <div id={profileIntroFieldDomId('professionalTitle')} className={wrapClass('professionalTitle')}>
+          <FieldLabel
+            required
+            requiredMark={marked('professionalTitle')}
+            hint={`Required — up to ${PROFESSIONAL_TITLE_MAX} characters. Example: Wellness coach`}
+          >
             Professional title
           </FieldLabel>
           <input
             type="text"
+            required
             maxLength={PROFESSIONAL_TITLE_MAX}
             value={values.professionalTitle || ''}
             onChange={set('professionalTitle')}
             placeholder=""
-            className={inputClass}
+            className={fieldClass('professionalTitle')}
             style={{ fontSize: '16px' }}
+            aria-required="true"
           />
         </div>
       )}
@@ -203,11 +257,17 @@ export default function ProfileIntroFields({ values = {}, onChange, keys = null 
         <HerbalifeDateFields
           value={values.herbalifeJoinedOn || ''}
           onChange={(next) => onChange('herbalifeJoinedOn', next)}
+          highlighted={marked('herbalifeJoinedOn')}
         />
       )}
       {show('aboutMe') && (
-        <div>
-          <FieldLabel hint={`${String(values.aboutMe || '').length}/${ABOUT_ME_MAX} characters`}>
+        <div id={profileIntroFieldDomId('aboutMe')} className={wrapClass('aboutMe')}>
+          <FieldLabel
+            requiredMark={marked('aboutMe')}
+            hint={marked('aboutMe')
+              ? `Required — ${String(values.aboutMe || '').length}/${ABOUT_ME_MAX} characters`
+              : `${String(values.aboutMe || '').length}/${ABOUT_ME_MAX} characters`}
+          >
             About me
           </FieldLabel>
           <textarea
@@ -215,7 +275,7 @@ export default function ProfileIntroFields({ values = {}, onChange, keys = null 
             maxLength={ABOUT_ME_MAX}
             value={values.aboutMe || ''}
             onChange={set('aboutMe')}
-            className={inputClass}
+            className={fieldClass('aboutMe')}
             style={{ fontSize: '16px' }}
           />
         </div>
@@ -239,6 +299,7 @@ export default function ProfileIntroFields({ values = {}, onChange, keys = null 
         <LanguagePicker
           value={values.languages}
           onChange={(next) => onChange('languages', next)}
+          highlighted={marked('languages')}
         />
       )}
     </div>

@@ -10,6 +10,7 @@ const UPLOAD_FOLDERS = new Set([
   'food',
   'gbp-requests',
   'good-habits',
+  'nutrition-centres',
   'transformation',
   'weight',
 ]);
