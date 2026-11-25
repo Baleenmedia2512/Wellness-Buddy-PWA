@@ -85,7 +85,7 @@ export const APP_VERSION = {
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
   // Must be > last App Store submitted build (3.5.6 build 87 rejected for 5.1.1(iv)).
-  IOS_BUILD_NUMBER: 90,
+  IOS_BUILD_NUMBER: 91,
   
   // Release name (for Play Store / App Store)
   RELEASE_NAME: 'Version  3.5.8',
@@ -96,12 +96,15 @@ export const APP_VERSION = {
   // Platform release notes..
   PLATFORMS: {
     ANDROID: { versionCode: 89, versionName: '3.5.8' },
-    IOS: { buildNumber: 90, versionName: '3.5.6' },
+    IOS: { buildNumber: 91, versionName: '3.5.6' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
+ *
+ * Version 3.5.6 (iOS build 91) - 2026-11-25 [iOS App Store 5.1.1(iv)]
+ *   🔒 Location soft like Camera — no Allow Again / Exit / GPS app block after Deny
  *
  * Version 3.5.6 (iOS build 89) - 2026-11-25 [iOS App Store 5.1.1(iv)]
  *   🔒 Camera denial respected — Settings only at Take Photo; AppSettingsPlugin for Open Settings

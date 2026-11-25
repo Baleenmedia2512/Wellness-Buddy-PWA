@@ -216,7 +216,7 @@ export default function PermissionPrimerModal({ onContinue }) {
             padding: '0 8px',
           }}
         >
-          Location is required. Camera is used when you take a meal photo.
+          Location and Camera help with check-in and meal photos. You can deny and still use the app.
           Notifications are optional and can be changed in device Settings.
         </p>
       </div>

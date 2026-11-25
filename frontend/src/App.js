@@ -3244,17 +3244,14 @@ function WellnessValleyApp() {
   }, [navigateTo]);
   // -- Permission flow ------------------------------------------------------
   //
-  // Design: zero custom screens before OS dialogs. Location is requested at
-  // startup and may gate the app. Camera is NOT in this gate (App Store
-  // 5.1.1(iv)): after Camera denial we must not show "Allow Again" / Exit or
-  // block the app — Settings is offered only when the user taps Take Photo.
-  // Notifications are optional. Contacts is NOT requested here — only when a
-  // coach saves a Body Parameters member to device contacts (App Store 5.1.2).
+  // App Store 5.1.1(iv): Camera, Photos, and Location never gate the whole app
+  // with "Allow Again" / Exit after Deny. Location + Notifications are
+  // requested once at startup (system dialog only). Denial → continue to Home.
+  // Settings notices appear only when the user uses a feature that needs them.
+  // Contacts is NOT requested here — only at Body Parameters save (5.1.2).
   //
   // States
-  //   activePermission = null           → no gate, home accessible
-  //   activePermission.canRequest=true  → [Allow Again] [Exit App] (location)
-  //   activePermission.canRequest=false → Settings / Exit (location)
+  //   activePermission = null  → no gate (legacy UI kept but unused for soft perms)
 
   // Guard: prevents advancePermissionFlow from running concurrently.
   // Without this, the appStateChange listener could kick off a second run
@@ -3263,12 +3260,10 @@ function WellnessValleyApp() {
   const _permissionFlowRunningRef = useRef(false);
 
   /**
-   * Walk [location → notifications] in order.
+   * Walk [location → notifications] once (soft). Denial never blocks Home.
    *
-   * Camera is intentionally omitted here (App Store 5.1.1(iv)).
-   * Contacts is intentionally omitted: request only at Body Parameters card
-   * save time (local device write; never uploaded). Asking at login caused
-   * App Store Guideline 5.1.2 review flags.
+   * Camera/Photos omitted here (requested at Take Photo / Gallery).
+   * Contacts omitted: Body Parameters save only (App Store 5.1.2).
    *
    * For every non-granted permission, requestPermission() is called
    * IMMEDIATELY — no pre-dialog, no canRequest gate on the first check.
@@ -3293,9 +3288,8 @@ function WellnessValleyApp() {
     _permissionFlowRunningRef.current = true;
 
     try {
-      // Camera is intentionally omitted (App Store 5.1.1(iv)).
-      // Request it only when the user opens a camera feature; never gate the app
-      // or show "Allow Again" / Exit after a Camera denial.
+      // Soft ask only — never set activePermission / GpsRequired / Exit gates
+      // after Deny (App Store 5.1.1(iv)).
       const PERMISSIONS = ['location', 'notifications'];
 
       for (const type of PERMISSIONS) {
@@ -3305,42 +3299,22 @@ function WellnessValleyApp() {
         const { granted: alreadyGranted, canRequest } = await PermissionManager.checkPermission(type);
         if (alreadyGranted) continue;
 
-        // Optional permissions the user already declined — do not re-prompt on every resume.
-        if (!config.required && !canRequest) continue;
+        // Already declined (iOS permanent / Android don't-ask-again) — respect it.
+        if (!canRequest) continue;
 
-        if (type === 'location') {
-          const gpsOn = await nativeLifecycle.checkGpsEnabled();
-          if (!gpsOn) {
-            setShowGpsRequired(true);
-            return;
-          }
+        // Optional + still promptable: ask the OS once; denial → continue.
+        if (!config.required) {
+          await PermissionManager.requestPermission(type);
+          continue;
         }
 
-        // Not granted — request directly. The OS either shows a dialog
-        // (first-time or 'prompt') or silently returns denied (permanent).
-        // We never show a custom screen before this call.
+        // (No required types remain in this loop — kept for safety.)
         const { granted: nowGranted } = await PermissionManager.requestPermission(type);
-        if (nowGranted) continue;
-
-        // Request returned denied.
-        if (!config.required) continue; // Notifications optional — skip.
-
-        // Required permission denied. Re-check canRequest NOW — this
-        // post-request value is accurate: Capacitor correctly maps 'prompt'
-        // (Android first-denial, can ask again) vs 'denied' (permanent).
-        const { canRequest: canRequestNow } = await PermissionManager.checkPermission(type);
-        setActivePermission({ type, canRequest: canRequestNow });
-        return; // Hold here; user action (Allow Again / Exit) resumes flow.
-      }
-
-      // All permissions satisfied � verify GPS is enabled.
-      const gpsOn = await nativeLifecycle.checkGpsEnabled();
-      if (!gpsOn) {
-        setShowGpsRequired(true);
-        return;
+        if (!nowGranted) continue;
       }
 
       setActivePermission(null);
+      setShowGpsRequired(false);
       localStorage.setItem('wv.permissionsGranted', '1');
       setPermissionsReady(true);
     } finally {
@@ -3378,34 +3352,14 @@ function WellnessValleyApp() {
    *                         switches from PermissionDeniedModal to
    *                         PermissionBlockedPage (no explicit navigation needed).
    */
+  // Legacy "Allow Again" handler — soft permissions no longer use this gate
+  // (App Store 5.1.1(iv)). Kept so PermissionDeniedModal wiring stays safe.
   const handlePermissionAllow = useCallback(async (type) => {
     setPermissionDialogLoading(true);
     try {
-      if (type === 'location') {
-        const gpsOn = await nativeLifecycle.checkGpsEnabled();
-        if (!gpsOn) {
-          setActivePermission(null);
-          setShowGpsRequired(true);
-          return;
-        }
-      }
-
-      const { granted } = await PermissionManager.requestPermission(type);
-      if (granted) {
-        setActivePermission(null);
-        // Reset the concurrent-run guard before resuming the flow so
-        // advancePermissionFlow can proceed to check the remaining permissions.
-        _permissionFlowRunningRef.current = false;
-        await advancePermissionFlow();
-      } else {
-        // Re-check canRequest after denial. If it flipped to false (permanent)
-        // React will switch the rendered component to PermissionBlockedPage.
-        const { canRequest } = await PermissionManager.checkPermission(type);
-        setActivePermission({ type, canRequest });
-      }
-    } catch {
-      const { canRequest } = await PermissionManager.checkPermission(type).catch(() => ({ canRequest: false }));
-      setActivePermission({ type, canRequest });
+      setActivePermission(null);
+      _permissionFlowRunningRef.current = false;
+      await advancePermissionFlow();
     } finally {
       setPermissionDialogLoading(false);
     }
@@ -4558,27 +4512,10 @@ function WellnessValleyApp() {
           return;
         }
 
-        // Case C: no dialog � full re-validation in case a permission was revoked.
-        if (!cancelled) {
-          if (!permissionsReady) {
-            await advancePermissionFlow();
-            return;
-          }
-          // Location only — camera denial must not re-open an app-wide gate
-          // (App Store Guideline 5.1.1(iv)).
-          const requiredTypes = ['location'];
-          let requiredRevoked = false;
-          for (const type of requiredTypes) {
-            const { granted } = await PermissionManager.checkPermission(type);
-            if (!granted) {
-              requiredRevoked = true;
-              break;
-            }
-          }
-          if (requiredRevoked) {
-            _permissionFlowRunningRef.current = false;
-            await advancePermissionFlow();
-          }
+        // Case C: finish soft permission flow if not ready. Never re-gate the
+        // app when Location/Camera were denied (App Store 5.1.1(iv)).
+        if (!cancelled && !permissionsReady) {
+          await advancePermissionFlow();
         }
       }),
     )
@@ -5093,6 +5030,7 @@ function WellnessValleyApp() {
     user, apiBaseUrl, foodCaptureIdRef, captureLocationByIdRef,
     setAlertModal, setSaveLoading, setLoadingState,
     setBmrUpdateKey, handleLeaderboardRefresh, setError, refreshIdealWeight,
+    onLocationPermissionNeeded: () => setMediaPermissionNeeded('location'),
   });
 
   // Ref-sync: keep weightResultRef current so mount-only resume listener can
@@ -5952,13 +5890,8 @@ function WellnessValleyApp() {
         });
       }
       if (gpsDenied) {
-        setAlertModal({
-          isOpen: true,
-          title: "Location Permission Required",
-          message:
-            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
-          type: "warning",
-        });
+        // Soft notice only — never Allow Again / Exit (App Store 5.1.1(iv)).
+        setMediaPermissionNeeded('location');
       }
 
       // selectedClub (from club-selection modal) overrides the auto-detected club.
@@ -6354,13 +6287,7 @@ function WellnessValleyApp() {
         usedCaptureTimeLocation: !!(stashedLocation?.latitude && stashedLocation?.longitude),
       });
       if (!silent && gpsDenied) {
-        setAlertModal({
-          isOpen: true,
-          title: "Location Permission Required",
-          message:
-            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
-          type: "warning",
-        });
+        setMediaPermissionNeeded('location');
       }
 
       const saveRes = await saveNutritionAnalysis({
@@ -6930,13 +6857,7 @@ function WellnessValleyApp() {
       // Soft hint only when cache never got a fix (watcher still warming / denied).
       // Do not block the photo save.
       if (captureGpsDenied && !hasCoords) {
-        setAlertModal({
-          isOpen: true,
-          title: "Location Permission Required",
-          message:
-            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
-          type: "warning",
-        });
+        setMediaPermissionNeeded('location');
       }
 
       let resolvedUserIdForOrchestrate = user?.id;
@@ -9125,7 +9046,9 @@ function WellnessValleyApp() {
           Small overlay card: "<Perm> permission is required to continue."
           [ Allow Again ] immediately re-invokes the native OS dialog.
           [ Exit ] closes the app. */}
-        {activePermission?.canRequest === true && activePermission.type !== 'camera' && (
+        {/* Legacy hard gates disabled for Camera/Photos/Location (5.1.1(iv)).
+          Soft Settings notices use CameraPermissionNeededModal below. */}
+        {false && activePermission?.canRequest === true && (
           <PermissionDeniedModal
             type={activePermission.type}
             config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
@@ -9134,21 +9057,11 @@ function WellnessValleyApp() {
             loading={permissionDialogLoading}
           />
         )}
-
-        {/* -- Permission blocked page (canRequest: false) ----------------------
-          Location only. Camera denial uses CameraPermissionNeededModal at
-          feature-use time instead (App Store 5.1.1(iv)). */}
-        {activePermission?.canRequest === false && activePermission.type !== 'camera' && (
+        {false && activePermission?.canRequest === false && (
           <PermissionBlockedPage
             type={activePermission.type}
             config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
-            onOpenSettings={() => {
-              if (activePermission.type === 'location') {
-                nativeLifecycle.openLocationPermissionSettings();
-              } else {
-                PermissionManager.openAppSettings();
-              }
-            }}
+            onOpenSettings={() => PermissionManager.openAppSettings()}
             onExit={() => { import('@capacitor/app').then(({ App: CApp }) => CApp.exitApp()); }}
           />
         )}
@@ -9161,7 +9074,11 @@ function WellnessValleyApp() {
             kind={mediaPermissionNeeded}
             onOpenSettings={async () => {
               try {
-                await PermissionManager.openAppSettings();
+                if (mediaPermissionNeeded === 'location') {
+                  await nativeLifecycle.openLocationPermissionSettings();
+                } else {
+                  await PermissionManager.openAppSettings();
+                }
               } catch (err) {
                 console.warn('[App] openAppSettings failed:', err);
               } finally {
@@ -9172,11 +9089,9 @@ function WellnessValleyApp() {
           />
         )}
 
-        {/* GPS required � shown when location permission is granted but Location
-          Services (GPS) are off. Blocks all app usage until GPS is enabled.
-          App.js permission resume listener re-checks GPS on every app-foreground
-          event and auto-dismisses this modal when GPS is confirmed on. */}
-        {showGpsRequired && (
+        {/* GPS hard-block disabled (App Store 5.1.1(iv) — do not trap the app).
+          Location Services issues are handled at feature use with a soft notice. */}
+        {false && showGpsRequired && (
           <GpsRequiredModal
             platform={Capacitor.getPlatform()}
             onOpenSettings={() => nativeLifecycle.openLocationSettings()}
@@ -9629,7 +9544,11 @@ function WellnessValleyApp() {
               onHelpClick={() => setShowHowToUse(!showHowToUse)}
               educationWindow={educationWindow}
               onCameraStateChange={handleCameraStateChange}
-              onCameraPermissionNeeded={(kind = 'camera') => setMediaPermissionNeeded(kind === 'photos' ? 'photos' : 'camera')}
+              onCameraPermissionNeeded={(kind = 'camera') => {
+                if (kind === 'photos') setMediaPermissionNeeded('photos');
+                else if (kind === 'location') setMediaPermissionNeeded('location');
+                else setMediaPermissionNeeded('camera');
+              }}
             />
 
             {/* Share Image + Link button removed: auto-share fires directly

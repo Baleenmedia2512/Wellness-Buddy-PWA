@@ -5,7 +5,7 @@
  * Show dismissible Settings notice only when the user taps Take Photo / Gallery.
  */
 import React from 'react';
-import { Camera, Image as ImageIcon } from 'lucide-react';
+import { Camera, Image as ImageIcon, MapPin } from 'lucide-react';
 
 const COPY = {
   camera: {
@@ -19,6 +19,12 @@ const COPY = {
     body:
       'Gallery needs Photos access. iOS will not ask again after Don’t Allow — enable Photos in Settings to continue.',
     Icon: ImageIcon,
+  },
+  location: {
+    title: 'Location access needed',
+    body:
+      'Club check-in and attendance need Location. You can enable it in Settings. Without it, attendance may be marked Remote — the rest of the app still works.',
+    Icon: MapPin,
   },
 };
 

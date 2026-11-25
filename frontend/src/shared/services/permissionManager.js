@@ -75,7 +75,9 @@ export const PERMISSION_CONFIG = {
     label: 'Location',
     icon: '📍',
     reason: 'Auto-check in at your nearest wellness center and track your attendance.',
-    required: true,
+    // App Store 5.1.1(iv): do not block the whole app after Deny / no Allow Again.
+    // Request once at startup; Settings only when a location feature needs it.
+    required: false,
   },
   notifications: {
     label: 'Notifications',
