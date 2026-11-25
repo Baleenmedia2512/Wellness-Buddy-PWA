@@ -23,6 +23,27 @@ export async function findUserById(userId) {
   return { data, error };
 }
 
+export async function findUserForCentreApproval(userId) {
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from('team_table')
+    .select('"UserId", "UserName", "Email", "PhoneNumber", "CoachId"')
+    .eq('"UserId"', userId)
+    .maybeSingle();
+  return { data, error };
+}
+
+export async function clearVerifiedCentreApproval(recipient, contactType) {
+  const db = getMysqlClient();
+  const { error } = await db
+    .from('otp_tokens_table')
+    .update({ Verified: false })
+    .eq('"Recipient"', recipient)
+    .eq('"ContactType"', contactType)
+    .eq('"Verified"', true);
+  if (error) throw error;
+}
+
 export async function findUserRole(userId) {
   const db = getMysqlClient();
   const { data, error } = await db
@@ -59,10 +80,20 @@ export async function findCenterById(centerId) {
   const db = getMysqlClient();
   const { data, error } = await db
     .from('nutrition_centers_table')
-    .select('id, center_name, latitude, longitude, education_hour, owner_user_id, owner_phone')
+    .select('id, center_name, center_code, latitude, longitude, education_hour, owner_user_id, owner_phone, opening_hours_json, facilities_json, features_json, seating_count, area, city')
     .eq('id', centerId)
     .eq('is_deleted', false)
     .single();
+  return { data, error };
+}
+
+export async function findByCode(code) {
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from('nutrition_centers_table')
+    .select('id, center_code')
+    .eq('center_code', code)
+    .maybeSingle();
   return { data, error };
 }
 
@@ -83,7 +114,7 @@ export async function softDeleteCenter(centerId) {
   const db = getMysqlClient();
   const { error } = await db
     .from('nutrition_centers_table')
-    .update({ status: 'inactive', is_deleted: true })
+    .update({ status: 'inactive', is_deleted: true, center_code: null })
     .eq('id', centerId);
   if (error) throw error;
 }
@@ -134,8 +165,9 @@ export async function listCenters({ teamUserIds, scope }) {
   let q = db
     .from('nutrition_centers_table')
     .select(`
-      id, center_name, latitude, longitude, education_hour,
-      owner_user_id, owner_phone, registered_at, status
+      id, center_name, center_code, latitude, longitude, education_hour,
+      owner_user_id, owner_phone, registered_at, status,
+      opening_hours_json, facilities_json, features_json, seating_count, area, city
     `)
     .eq('status', 'active')
     .eq('is_deleted', false);
@@ -145,6 +177,38 @@ export async function listCenters({ teamUserIds, scope }) {
   const { data, error } = await q.order('registered_at', { ascending: false });
   if (error) throw new Error(error.message);
   return data || [];
+}
+
+export async function replaceCenterPhotos(centerId, rows) {
+  const db = getMysqlClient();
+  const deleted = await db
+    .from('nutrition_center_photos_table')
+    .delete()
+    .eq('center_id', centerId);
+  if (deleted.error) throw new Error(deleted.error.message);
+  if (!rows.length) return;
+  const inserted = await db.from('nutrition_center_photos_table').insert(rows);
+  if (inserted.error) throw new Error(inserted.error.message);
+}
+
+export async function listCenterPhotos(centerId) {
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from('nutrition_center_photos_table')
+    .select('category, image_key, sort_order')
+    .eq('center_id', centerId)
+    .order('sort_order', { ascending: true });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function deleteCenterPhotos(centerId) {
+  const db = getMysqlClient();
+  const { error } = await db
+    .from('nutrition_center_photos_table')
+    .delete()
+    .eq('center_id', centerId);
+  if (error) throw new Error(error.message);
 }
 
 export async function getOwnerNames(ownerIds) {

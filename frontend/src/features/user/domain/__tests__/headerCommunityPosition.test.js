@@ -61,8 +61,8 @@ describe('Header Community Position display rule', () => {
         if (k === 'wv.communityPosition.saved.42') return 'MILL TEAM';
         return null;
       },
-      setItem() {},
-      removeItem() {},
+      setItem() { },
+      removeItem() { },
     };
     assert.equal(
       resolveHeaderCommunityPosition({
@@ -73,3 +73,4 @@ describe('Header Community Position display rule', () => {
     );
   });
 });
+

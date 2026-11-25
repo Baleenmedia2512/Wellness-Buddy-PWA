@@ -7,7 +7,17 @@ import {
   buildActivityReportShareText,
   formatActivityReportLevel,
   formatActivityReportMemberType,
+  formatActivityReportTime,
 } from '../activityReportShareText.js';
+
+describe('formatActivityReportTime', () => {
+  it('formats 24h Reg. Time as 12h like Diary', () => {
+    assert.equal(formatActivityReportTime('16:33:19'), '4:33 PM');
+    assert.equal(formatActivityReportTime('07:00:00'), '7:00 AM');
+    assert.equal(formatActivityReportTime('00:05:00'), '12:05 AM');
+    assert.equal(formatActivityReportTime('12:00:00'), '12:00 PM');
+  });
+});
 
 describe('activity report level / member type display', () => {
   it('formats level 0 as 0, not a dash', () => {
@@ -22,7 +32,7 @@ describe('activity report level / member type display', () => {
     assert.equal(formatActivityReportMemberType('coach'), 'Customer');
   });
 
-  it('includes member type, club, then sponsor in share lines', () => {
+  it('share lines only include name, club, date and time', () => {
     const text = buildActivityReportShareText({
       activityLabel: 'Weight',
       activityId: 'weight',
@@ -36,9 +46,11 @@ describe('activity report level / member type display', () => {
         date: '2026-09-05',
         time: '07:00:00',
         weight: 62,
+        phone: '9999999999',
       }],
     });
-    assert.match(text, /Ana \| Sponsor \| Level: 1 \| Club: Remote \| Sponsor: Kiran/);
+    assert.match(text, /1\. Ana \| Club: Remote \| 2026-09-05 7:00 AM/);
+    assert.doesNotMatch(text, /Sponsor:|Level:|Weight:|Phone:|Customer|Sponsor \|/);
   });
 
   it('includes attendance in the share header', () => {

@@ -12,6 +12,7 @@ import {
   buildWeightObjectKey,
   buildEducationObjectKey,
   buildGoodHabitObjectKey,
+  buildNutritionCentreObjectKey,
   isKeyInFolder,
   orphanedAvatarKeys,
 } from '../objectKeys.js';
@@ -57,6 +58,12 @@ describe('R2 folder isolation', () => {
     const key = buildEducationObjectKey(42, 99, 'abc123', 'jpg');
     assert.equal(key, 'education/42/99/abc123.jpg');
     assert.equal(isKeyInFolder(key, R2_FOLDERS.education), true);
+  });
+
+  it('puts centre photos under nutrition-centres/{centerId}/{slot}/', () => {
+    const key = buildNutritionCentreObjectKey(15, 'entrance', 'abc123', 'jpg');
+    assert.equal(key, 'nutrition-centres/15/entrance/abc123.jpg');
+    assert.equal(isKeyInFolder(key, R2_FOLDERS.nutritionCentre), true);
   });
 
   it('puts good-habit slots under good-habits/{userId}/{id}/{slot}/', () => {

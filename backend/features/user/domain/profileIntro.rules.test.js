@@ -20,6 +20,12 @@ describe('profile introduction', () => {
     assert.equal(result.value.instagram, '');
   });
 
+  it('requires professional title when the key is sent', () => {
+    const blank = normalizeProfileIntroPatch({ professionalTitle: '   ' });
+    assert.equal(blank.ok, false);
+    assert.equal(blank.message, 'Professional title is required.');
+  });
+
   it('accepts instagram, youtube, and linkedin links', () => {
     assert.equal(
       normalizeSocialUrl('instagram.com/wellness.coach', 'instagram'),

@@ -149,17 +149,33 @@ export async function setMemberVisible(hiddenUserId) {
   }
 
   const db = getMysqlClient();
-  const { data, error } = await db
+  const stamp = nowUtc();
+
+  // Find existing rows for this member
+  const { data: existingRows, error: lookupError } = await db
     .from('activity_report_hidden_users_table')
-    .update({ IsHidden: false, UpdatedAt: nowUtc() })
-    .eq('HiddenUserId', targetId)
-    .eq('IsHidden', true)
-    .select('"Id"');
+    .select('"Id"')
+    .eq('HiddenUserId', targetId);
+
+  if (lookupError) {
+    console.error('[activity-report-hidden] setMemberVisible lookup failed:', lookupError.message);
+    throw lookupError;
+  }
+
+  if (!Array.isArray(existingRows) || existingRows.length === 0) {
+    return false;
+  }
+
+  // Flip IsHidden to false for this member
+  const { error } = await db
+    .from('activity_report_hidden_users_table')
+    .update({ IsHidden: false, UpdatedAt: stamp })
+    .eq('HiddenUserId', targetId);
 
   if (error) {
-    console.error('[activity-report-hidden] setMemberVisible failed:', error.message);
+    console.error('[activity-report-hidden] setMemberVisible update failed:', error.message);
     throw error;
   }
 
-  return Array.isArray(data) && data.length > 0;
+  return true;
 }

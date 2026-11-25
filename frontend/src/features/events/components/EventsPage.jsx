@@ -191,7 +191,7 @@ function getMissingProfileGaps(source) {
     { key: 'eventTranslation', label: 'Translation', value: source?.eventTranslation, type: 'select', options: EVENT_TRANSLATION_OPTIONS, placeholder: 'Choose translation' },
     { key: 'eventYourCity', label: 'Living city', value: source?.eventYourCity, type: 'select', options: EVENT_YOUR_CITY_OPTIONS, placeholder: 'Choose living city' },
     { key: 'eventLevel', label: 'Community Position', value: source?.eventLevel, type: 'select', options: EVENT_LEVEL_OPTIONS, placeholder: 'Choose community position' },
-    { key: 'clubNo', label: 'Working Physical Centre', value: source?.clubNo, type: 'centre', placeholder: 'Choose physical centre' },
+    { key: 'clubNo', label: 'Working Club', value: source?.clubNo, type: 'centre', placeholder: 'Choose club' },
   ];
   return list.filter((item) => !text(item.value));
 }
@@ -292,7 +292,7 @@ function buildRegistrationDefaults(profileData, user, userId) {
       user?.communityId,
       user?.CommunityId,
     ),
-    // Club No — from Profile Working Physical Centre (name, then id).
+    // Club No — from Profile Working Club (name, then id).
     clubNo: pickProfileText(
       data?.workingPhysicalCentre?.name,
       data?.workingPhysicalCentre?.Name,
@@ -755,7 +755,7 @@ function EventsPage({ user, initialTab = 'events', allowedPages = null }) {
     if (teamIncharge?.name && !daicyTeamIncharge?.name) {
       nextErrors.daicyTeamIncharge = required;
     }
-    if (!trimmedClubNo) nextErrors.clubNo = forFriend ? required : 'Set Working Physical Centre in Profile';
+    if (!trimmedClubNo) nextErrors.clubNo = forFriend ? required : 'Set Working Club in Profile';
     if (!trimmedZoomEmail) nextErrors.zoomEmail = forFriend ? required : 'Set Email in Profile';
     else if (!trimmedZoomEmail.includes('@')) nextErrors.zoomEmail = 'Enter an email address';
     if (!trimmedName) nextErrors.name = forFriend ? required : 'Set Name in Profile';

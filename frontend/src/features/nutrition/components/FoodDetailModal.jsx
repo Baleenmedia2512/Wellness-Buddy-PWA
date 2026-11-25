@@ -9,13 +9,12 @@
  * Water / Afresh / shake display mirrors `diary/domain/*` (kept local to
  * avoid a nutrition ↔ diary circular import via the diary barrel).
  */
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { X, Flame, Trash2, Share2, Droplets, ChevronRight } from 'lucide-react';
-import { captureAndShare, composeBrandedShareCaption } from '../../../shared/utils/shareUtils';
-import { withMarathonWhatsAppNotice } from '../../marathon';
 import { parseAnalysisData, getMealCategory } from '../services/nutritionDashboard/analysisHelpers';
 import { buildDiaryShareSuffix } from '../../diary/domain/share/suffixes';
 import { extractFoodShareItems } from '../../diary/domain/activityType';
+import { shareDiaryMealPhoto } from '../../diary/utils/shareDiaryMealPhoto';
 import FoodItemNutritionModal from './FoodItemNutritionModal';
 import { buildItemNutritionFallback } from '../domain/foodItemNutritionFacts';
 import { resolveMealImageSrc } from '../services/nutritionDashboard/mealImageSrc';
@@ -168,8 +167,7 @@ function buildShareText({
   });
 }
 
-const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete, ownerUserId = null }) => {
-  const cardRef = useRef(null);
+const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete, ownerUserId = null, shareUser = null }) => {
   const [isSharing, setIsSharing] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
 
@@ -240,14 +238,23 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete, ownerUserId =
     }
   };
 
-  const handleShare = async () => {
-    if (isSharing || !cardRef.current) return;
+  const handleShare = async (e) => {
+    e?.stopPropagation?.();
+    if (isSharing || isWater || isAfresh) return;
     setIsSharing(true);
     try {
-      await captureAndShare(cardRef.current, {
+      await shareDiaryMealPhoto({
+        thumb: {
+          kind: 'food',
+          imageUrl: src,
+          imageUrlFormat: 'raw',
+          imagePath: payload.imagePath || null,
+        },
         title: foodName,
-        text: withMarathonWhatsAppNotice(composeBrandedShareCaption(shareText)),
-        fileName: `wellness-${activityType}-${Date.now()}.png`,
+        shareText,
+        shareUser,
+        fallbackImageSrc: src,
+        fileName: `wellness-${activityType}-${Date.now()}.jpg`,
       });
     } catch (err) {
       if (!err?.message?.toLowerCase().includes('cancel')) {
@@ -272,7 +279,6 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete, ownerUserId =
       onClick={onClose}
     >
       <div
-        ref={cardRef}
         className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
         style={{ animation: 'slideUp 0.3s ease-out' }}
         onClick={(e) => e.stopPropagation()}
@@ -290,13 +296,29 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete, ownerUserId =
               {isWater ? '💧' : isAfresh ? '🥤' : '🍽️'}
             </div>
           )}
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="absolute top-3 right-3 bg-white/90 rounded-full p-1.5 shadow"
-          >
-            <X className="w-5 h-5 text-gray-700" />
-          </button>
+          <div className="absolute top-3 right-3 flex items-center gap-2">
+            {!isWater && !isAfresh && (
+              <button
+                type="button"
+                onClick={handleShare}
+                disabled={isSharing}
+                aria-label="Share meal photo"
+                className="bg-white/90 rounded-full p-1.5 shadow disabled:opacity-50"
+              >
+                {isSharing
+                  ? <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+                  : <Share2 className="w-5 h-5 text-gray-700" aria-hidden="true" />}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="bg-white/90 rounded-full p-1.5 shadow"
+            >
+              <X className="w-5 h-5 text-gray-700" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
@@ -373,29 +395,18 @@ const FoodDetailModal = ({ payload, capturedAt, onClose, onDelete, ownerUserId =
           )}
         </div>
 
-        <div className="p-4 border-t border-gray-100 flex gap-3">
-          <button
-            onClick={handleShare}
-            disabled={isSharing}
-            className="flex-1 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors"
-          >
-            {isSharing ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <Share2 className="w-5 h-5" />
-            )}
-            {isSharing ? 'Sharing…' : 'Share'}
-          </button>
-          {onDelete && (
+        {onDelete && (
+          <div className="p-4 border-t border-gray-100 flex gap-3">
             <button
+              type="button"
               onClick={handleDelete}
               className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors"
             >
               <Trash2 className="w-5 h-5" />
               Delete
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
       {selectedItem && (
         <FoodItemNutritionModal

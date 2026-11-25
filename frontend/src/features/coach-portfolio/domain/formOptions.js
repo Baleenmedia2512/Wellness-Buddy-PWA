@@ -102,17 +102,20 @@ export const PREFERRED_ACTIONS = [
  * Step order for the CMS form.
  * Profile photo, club, contact, professional title, about me, joining date → years,
  * languages, qualifications, and social links come from Profile — not asked here.
- * Hours live under City & Area when a center is linked (no separate step).
+ * Linked centre: skip City & Area — go straight to publish overview (hours from centre).
  */
 export const FORM_STEPS = [
-  { id: 'hero', title: 'Hero', description: 'City & area' },
-  { id: 'photos', title: 'Photos', description: 'Albums + intro video' },
+  { id: 'hero', title: 'Hero', description: '' },
   { id: 'review', title: 'Publish', description: 'Publish live — edit anytime after' },
 ];
 
-/** Form steps for this coach. `hasClub` kept for callers; hours are inline on Hero. */
-export function getFormSteps({ hasClub: _hasClub = false } = {}) {
-  return FORM_STEPS;
+export const FORM_STEPS_LINKED_CENTRE = [
+  { id: 'review', title: 'Publish', description: 'Publish live — edit anytime after' },
+];
+
+/** Freestyle → City & Area then Publish. Linked centre → Publish overview only. */
+export function getFormSteps({ hasClub = false } = {}) {
+  return hasClub ? FORM_STEPS_LINKED_CENTRE : FORM_STEPS;
 }
 
 export const ADMIN_STATUS_OPTIONS = [

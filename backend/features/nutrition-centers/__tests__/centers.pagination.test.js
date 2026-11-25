@@ -66,6 +66,19 @@ describe('paginateCentersListRecords', () => {
     );
   });
 
+  it('filters by centre code', () => {
+    const rows = [{
+      id: 1,
+      center_name: 'Alpha Club',
+      ownerName: 'Coach A',
+      center_code: 'RS1024',
+      todayAttendance: 0,
+    }];
+    const { records, pagination } = paginateCentersListRecords(rows, { search: 'rs1024', limit: 10 });
+    assert.equal(pagination.totalRecords, 1);
+    assert.equal(records[0].center_code, 'RS1024');
+  });
+
   it('filters by centre or owner name', () => {
     const { pagination } = paginateCentersListRecords(centers, { search: 'alpha', limit: 100 });
     assert.equal(
@@ -88,9 +101,11 @@ describe('toCentersListSummary', () => {
       owner_phone: '1',
       owner_user_id: 9,
       education_hour: null,
+      center_code: 'RS1',
       extra: 'drop-me',
     });
     assert.equal(summary.extra, undefined);
     assert.equal(summary.id, 1);
+    assert.equal(summary.center_code, 'RS1');
   });
 });

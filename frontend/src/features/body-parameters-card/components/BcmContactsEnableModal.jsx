@@ -72,7 +72,8 @@ export default function BcmContactsEnableModal({
           }}
         >
           Contacts access is off. Enable it to save this Body Parameters member
-          to your phone contacts.
+          to your phone contacts only. We do not upload your contacts to our
+          servers.
         </p>
 
         <label

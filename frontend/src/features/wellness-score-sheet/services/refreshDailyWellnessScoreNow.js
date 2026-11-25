@@ -7,8 +7,14 @@ import {
   DEFAULT_BUSINESS_TIMEZONE,
   resolveBusinessTimezone,
 } from '../../../shared/utils/datetimeUtils';
+import { getDeviceTimezoneIana } from '../../../shared/utils/deviceTimezone';
+import { isFlagEnabled } from '../../../config/featureFlags';
+import { readNumericDbUserId } from '../../../shared/services/numericDbUserId';
 import { fetchDailyWellnessScore } from './wellnessScore.api';
-import { seedDailyWellnessScoreCache } from './dailyWellnessScoreCache';
+import {
+  getDailyWellnessScoreCached,
+  seedDailyWellnessScoreCache,
+} from './dailyWellnessScoreCache';
 
 export { shouldSkipWellnessScoreRefresh } from '../domain/skipWellnessScoreRefresh';
 
@@ -36,4 +42,44 @@ export function refreshDailyWellnessScoreAfterSave({ user, userId, apiBaseUrl })
     date: todayBusinessDate(timezoneIana),
     apiBaseUrl,
   });
+}
+
+/**
+ * Fresh today's score for WhatsApp captions (avoids stale Home cache).
+ * Falls back to cache when the network fetch fails.
+ *
+ * @param {object} [options]
+ * @param {object|null} [options.user]
+ * @param {string|number|null} [options.userId]
+ * @param {string} [options.apiBaseUrl]
+ * @param {unknown} [options.timezoneSource]
+ * @returns {Promise<object|null>}
+ */
+export async function ensureDailyWellnessScoreForShare({
+  user = null,
+  userId = null,
+  apiBaseUrl = process.env.REACT_APP_API_BASE_URL,
+  timezoneSource = null,
+} = {}) {
+  if (!isFlagEnabled('ff.wellness-score-sheet')) return null;
+
+  const id = readNumericDbUserId(
+    userId != null && userId !== '' ? { id: userId } : user,
+  );
+  const tzSource = timezoneSource ?? user;
+  const timezoneIana = typeof tzSource === 'string' && tzSource.trim()
+    ? tzSource.trim()
+    : (resolveBusinessTimezone(tzSource) || getDeviceTimezoneIana() || DEFAULT_BUSINESS_TIMEZONE);
+  const date = todayBusinessDate(timezoneIana);
+
+  if (id == null) {
+    return getDailyWellnessScoreCached(null, date);
+  }
+
+  const fresh = await refreshDailyWellnessScoreNow({
+    userId: id,
+    date,
+    apiBaseUrl,
+  });
+  return fresh || getDailyWellnessScoreCached(id, date);
 }

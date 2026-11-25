@@ -20,6 +20,7 @@ import {
 } from "../../diary/domain/activityType";
 import { buildDiaryShareSuffix } from "../../diary/domain/share/suffixes";
 import { withMarathonWhatsAppNotice } from "../../marathon";
+import { ensureDailyWellnessScoreForShare } from "../../wellness-score-sheet/services/refreshDailyWellnessScoreNow";
 import { pickShareAvatarSrc } from "../../user/services/avatarDisplayVersion";
 const NutritionCard = ({
   data,
@@ -729,11 +730,12 @@ const NutritionCard = ({
       }
 
       // Capture and share the complete nutrition card (food image + all nutrition details)
+      const wellnessScore = await ensureDailyWellnessScoreForShare({ user });
       const shareOpts = {
         title: `${mealName} - Wellness Valley`,
         text: withMarathonWhatsAppNotice(
           composeBrandedShareCaption(activityCaption, { savedUserName, user }),
-          { user },
+          { user, wellnessScore },
         ),
         fileName: `wellness-valley-${mealName
           .toLowerCase()

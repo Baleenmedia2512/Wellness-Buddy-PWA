@@ -170,6 +170,35 @@ export const verifyHeightChangeOtp = async ({ userId, email, height, otp }) => {
   return data;
 };
 
+export const requestProfileChangeOtp = async ({ userId, email, pendingProfile }) => {
+  const apiBase = getApiBaseUrl();
+  const res = await apiFetch(`${apiBase}/api/user/profile-change/request-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, email, pendingProfile }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || 'Could not send the profile approval code.');
+  }
+  return data;
+};
+
+export const verifyProfileChangeOtp = async ({ userId, email, otp }) => {
+  const apiBase = getApiBaseUrl();
+  const res = await apiFetch(`${apiBase}/api/user/profile-change/verify-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, email, otp }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || 'That approval code did not match.');
+  }
+  clearProfileCaches({ email, userId });
+  return data;
+};
+
 export const snoozeProfilePicture = async (userId) => {
   const res = await fetch(`${getApiBaseUrl()}/api/user/snooze-pic`, {
     method: 'POST',

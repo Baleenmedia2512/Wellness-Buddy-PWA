@@ -14,8 +14,9 @@ import { findByUserId } from '../../user/user.repository.js';
 import { maskEmailForDisplay } from '../../user/domain/heightChange.rules.js';
 import {
   GOOD_HABIT_OTP_CONTACT_TYPE,
-  GOOD_HABIT_OTP_TTL_MINUTES,
   goodHabitOtpExpiryIst,
+  goodHabitOtpExpiryLabelIst,
+  goodHabitOtpExpiryUtcIso,
   goodHabitOtpRecipientKey,
 } from '../domain/otp.rules.js';
 import {
@@ -25,6 +26,7 @@ import {
 import * as pendingRepo from '../data/pending.repo.js';
 import { validateSaveHabit } from '../validation/save.schema.js';
 import { saveHabit } from './save.handler.js';
+import { emailCoachRejectOption } from './coach-reject.service.js';
 import { deleteById as deleteCaptureById } from '../../captures/captures.service.js';
 
 function featureDisabled() {
@@ -62,14 +64,14 @@ async function verifyCoachOtpCode(userId, otpKey, otp) {
   const recipient = goodHabitOtpRecipientKey(userId, otpKey);
   const otpData = await authRepo.fetchActiveOtp(recipient, GOOD_HABIT_OTP_CONTACT_TYPE);
   if (!otpData) {
-    return { ok: false, message: 'No active code found. Tap Save again to email your coach.' };
+    return { ok: false, message: 'No active code found. Tap Send to Coach again to email your coach.' };
   }
   const now = new Date();
   const istOffset = 5.5 * 60 * 60 * 1000;
   const currentIST = new Date(now.getTime() + istOffset);
   const expiresAt = new Date(`${otpData.ExpiresAt}Z`);
   if (currentIST > expiresAt) {
-    return { ok: false, message: 'OTP expired. Tap Save again to email your coach.' };
+    return { ok: false, message: 'OTP expired. Tap Send to Coach again to email your coach.' };
   }
   const valid = await bcrypt.compare(code, otpData.OTPHash);
   if (!valid) {
@@ -95,7 +97,9 @@ export async function requestGoodHabitOtp(rawBody) {
   const coach = await resolveMemberCoachApprover(member);
 
   const otpKey = crypto.randomBytes(12).toString('hex');
-  const expiresAtUtc = new Date(Date.now() + GOOD_HABIT_OTP_TTL_MINUTES * 60 * 1000);
+  const expiresAtUtcIso = goodHabitOtpExpiryUtcIso();
+  const expiresAtIst = goodHabitOtpExpiryIst();
+  const expiresLabel = goodHabitOtpExpiryLabelIst();
   await pendingRepo.upsertPending({
     otpKey,
     userId: input.userId,
@@ -110,7 +114,7 @@ export async function requestGoodHabitOtp(rawBody) {
       // Business day = verify time (IST), not gallery capture time.
       clientTimestamp: null,
     },
-    expiresAtUtcIso: expiresAtUtc.toISOString(),
+    expiresAtUtcIso,
   });
 
   const recipient = goodHabitOtpRecipientKey(input.userId, otpKey);
@@ -120,7 +124,7 @@ export async function requestGoodHabitOtp(rawBody) {
   await authRepo.insertOtpToken({
     Recipient: recipient,
     OTPHash: otpHash,
-    ExpiresAt: goodHabitOtpExpiryIst(GOOD_HABIT_OTP_TTL_MINUTES),
+    ExpiresAt: expiresAtIst,
     ContactType: GOOD_HABIT_OTP_CONTACT_TYPE,
     IsActive: true,
     CreatedAt: nowUtc(),
@@ -129,8 +133,9 @@ export async function requestGoodHabitOtp(rawBody) {
   const mail = buildGoodHabitOtpEmail({
     otp,
     memberName: member.UserName,
+    memberPhone: member.PhoneNumber,
     coachName: coach.name,
-    expiresMinutes: GOOD_HABIT_OTP_TTL_MINUTES,
+    expiresLabel,
   });
   const photo = buildGoodHabitPhotoAttachment(
     input.imageBase64 || input.afterImageBase64 || input.beforeImageBase64,
@@ -147,6 +152,7 @@ export async function requestGoodHabitOtp(rawBody) {
     userId: String(input.userId),
     coachUserId: coach.userId,
     otpKey,
+    expiresAtIst,
   });
 
   return {
@@ -159,7 +165,9 @@ export async function requestGoodHabitOtp(rawBody) {
         otpKey,
         maskedEmail: maskEmailForDisplay(coach.email),
         coachName: coach.name,
-        otpExpiresAtMinutes: GOOD_HABIT_OTP_TTL_MINUTES,
+        // End of IST day (not a fixed minute TTL). Kept for older clients that ignore unknown fields.
+        otpExpiresAtIst: expiresAtIst,
+        otpExpiresLabel: expiresLabel,
       },
     },
   };
@@ -188,9 +196,17 @@ export async function verifyGoodHabitOtp({ userId: rawUserId, otp, otpKey }) {
   if (!payload) {
     throw new ValidationError(
       400,
-      'This verification expired. Tap Save again to email your coach a new code.',
+      'This verification expired. Tap Send to Coach again to email your coach a new code.',
     );
   }
+
+  const member = await findByUserId(
+    userId,
+    '"UserId", "UserName", "CoachId"',
+  );
+  const coach = member
+    ? await resolveMemberCoachApprover(member).catch(() => null)
+    : null;
 
   const result = await saveHabit({
     ...payload,
@@ -198,6 +214,27 @@ export async function verifyGoodHabitOtp({ userId: rawUserId, otp, otpKey }) {
     clientTimestamp: null,
     useServerNow: true,
   });
+
+  // Score is now included for today — email coach a Reject link to reverse it.
+  const habitId = result?.body?.data?.id;
+  if (habitId != null) {
+    try {
+      await emailCoachRejectOption({
+        habitId,
+        userId,
+        memberName: member?.UserName,
+        coachUserId: coach?.userId,
+        coachEmail: coach?.email,
+        coachName: coach?.name,
+      });
+    } catch (err) {
+      logger.warn('good-habits.verify: reject-option email failed', {
+        habitId,
+        userId: String(userId),
+        err: err?.message || String(err),
+      });
+    }
+  }
 
   if (payload.captureId) {
     try {

@@ -14,6 +14,7 @@ import {
   buildActivityReportShareText,
   formatActivityReportLevel,
   formatActivityReportMemberType,
+  formatActivityReportTime,
 } from '../utils/activityReportShareText';
 import { enrichActivityReportWeightDeltas } from '../utils/activityReportWeightDelta';
 import {
@@ -892,7 +893,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
         `"${displayClub}"`,
         `"${record.sponsorName || record.coachName || 'N/A'}"`,
         record.date || 'N/A',
-        record.time || 'N/A',
+        formatActivityReportTime(record.time) || record.time || 'N/A',
         `"${record.idealCoachName || ''}"`,
         `"${record.phone || 'N/A'}"`,
         `"${record.city || 'N/A'}"`,
@@ -1311,7 +1312,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
 
                       {/* --- COMMON DATA --- */}
                       <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{display(record.date)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{display(record.time)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{display(formatActivityReportTime(record.time) || record.time)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{record.idealCoachName ? display(record.idealCoachName) : '—'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         <PhoneContactActions phone={record.phone} size="sm" />

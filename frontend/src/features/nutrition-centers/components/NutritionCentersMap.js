@@ -20,6 +20,8 @@ import {
   savedCenterTotalRecords,
   toClubListRow,
 } from '../domain/centerListRefresh.js';
+import { cardAreaCity, formatAreaCity } from '../domain/placeAreaCity.js';
+import { geocodeAreaCity } from '../services/geocodeAreaCity.js';
 
 // --- Single Day Picker ---
 const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
@@ -111,6 +113,7 @@ const NutritionCentersMap = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [resolvedPlaces, setResolvedPlaces] = useState({});
   const [showStreetView, setShowStreetView] = useState(false);
   const [streetViewLoading, setStreetViewLoading] = useState(false);
   const [selectedCenter, setSelectedCenter] = useState(null);
@@ -167,6 +170,19 @@ const NutritionCentersMap = ({
     const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
     return () => clearTimeout(t);
   }, [searchQuery]);
+
+  useEffect(() => {
+    if (!mapLoaded) return undefined;
+    let cancelled = false;
+    centers.forEach((center) => {
+      if (formatAreaCity(center.area, center.city)) return;
+      geocodeAreaCity(center.latitude, center.longitude).then((place) => {
+        if (cancelled || !formatAreaCity(place.area, place.city)) return;
+        setResolvedPlaces((prev) => (prev[center.id] ? prev : { ...prev, [center.id]: place }));
+      });
+    });
+    return () => { cancelled = true; };
+  }, [centers, mapLoaded]);
 
   // Load Google Maps script
   useEffect(() => {
@@ -1092,6 +1108,12 @@ const NutritionCentersMap = ({
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <h3 className="font-semibold text-gray-900 truncate text-[15px]">{center.center_name}</h3>
+                          {center.center_code ? (
+                            <p className="text-xs font-medium text-green-700 mt-0.5">{center.center_code}</p>
+                          ) : null}
+                          {cardAreaCity(center, resolvedPlaces) ? (
+                            <p className="text-xs text-gray-500 mt-0.5">{cardAreaCity(center, resolvedPlaces)}</p>
+                          ) : null}
                           {center.owner_user_id != null ? (
                             <button
                               type="button"

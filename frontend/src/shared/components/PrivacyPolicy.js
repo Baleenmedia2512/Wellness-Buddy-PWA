@@ -58,6 +58,14 @@ const PrivacyPolicy = ({ onClose }) => {
                 <li><strong>Location Data:</strong> General location (if permitted) for relevant features</li>
                 <li><strong>Camera Access:</strong> Food photos for nutritional analysis</li>
               </ul>
+
+              <h4 className="font-semibold text-gray-700 mb-2">1.4 Device Contacts (optional)</h4>
+              <p className="mb-3">
+                With your permission, coaches may save a member&apos;s name and phone number to the
+                device address book when creating a Body Parameters card. We do not read your full
+                contact list, and we do not upload contact-book data to our servers. You can deny
+                Contacts access and continue using the app.
+              </p>
             </div>
 
             <div>
@@ -141,7 +149,7 @@ const PrivacyPolicy = ({ onClose }) => {
 
               <h4 className="font-semibold text-gray-700 mb-2">5.2 App Permissions</h4>
               <ul className="list-disc list-inside ml-4 space-y-1 mb-3">
-                <li><strong>Camera:</strong> Required for food photo analysis (can be revoked)</li>
+                <li><strong>Camera:</strong> Used for food photo analysis when you choose Take Photo (you can deny or revoke access anytime; other app features still work)</li>
                 <li><strong>Storage:</strong> For saving photos and app data locally</li>
                 <li><strong>Internet:</strong> For syncing data and AI analysis</li>
                 <li><strong>Notifications:</strong> For wellness reminders (optional)</li>

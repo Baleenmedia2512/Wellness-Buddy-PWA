@@ -64,6 +64,7 @@ import { isInlineImageReference } from './domain/profileTransformationPhotos.see
 import {
   bufferFromOptionalBase64,
   composeTransformationShareCardJpeg,
+  isShareAsCollagePair,
 } from './domain/composeTransformationShareCard.js';
 import { scheduleDeferredCoachDelivery } from './deferredCoachDelivery.js';
 import { nowUtc } from '../../shared/lib/datetime/index.js';
@@ -242,11 +243,18 @@ async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPho
     && !(afterPath && repo.isVideoOnlyPlaceholder?.(afterPath)),
   );
 
-  // Prefer path/base64 compose so tap-preview matches NEW Before|After thumbs.
+  // Prefer path/base64 compose so tap-preview matches NEW collage / Before|After card.
   if (canCompose) {
     try {
       const { beforeBuffer, afterBuffer } = await resolveShareCardPhotoBuffers(composeFromPhotos);
       if (beforeBuffer && afterBuffer) {
+        const shareAsCollage = isShareAsCollagePair({
+          beforeBuffer,
+          afterBuffer,
+          beforePath,
+          afterPath,
+          shareAsCollage: composeFromPhotos?.shareAsCollage,
+        });
         newJpeg = await composeTransformationShareCardJpeg({
           beforeBuffer,
           afterBuffer,
@@ -256,6 +264,7 @@ async function uploadShareCardImage(userId, shareCardImageBase64, composeFromPho
           goalType: composeFromPhotos.goalType,
           durationText: composeFromPhotos.durationText,
           recoveredHealthIssues: composeFromPhotos.recoveredHealthIssues,
+          shareAsCollage,
         });
       }
     } catch (err) {
@@ -327,6 +336,13 @@ async function restoreShareCardAfterCancel(userId, composeFromPhotos = null) {
       afterWeightKg: composeFromPhotos.afterWeightKg,
       goalType: composeFromPhotos.goalType,
       durationText: composeFromPhotos.durationText,
+      shareAsCollage: isShareAsCollagePair({
+        beforeBuffer,
+        afterBuffer,
+        beforePath: composeFromPhotos.beforeImagePath,
+        afterPath: composeFromPhotos.afterImagePath,
+        shareAsCollage: composeFromPhotos.shareAsCollage,
+      }),
       recoveredHealthIssues: composeFromPhotos.recoveredHealthIssues,
     });
     if (!jpeg?.length) return false;
@@ -1657,6 +1673,8 @@ async function sendUnifiedCoachEmail({
   userId = null,
   /** When false, do not link tap-preview to a possibly stale share_card.jpg. */
   shareCardReady = false,
+  /** Submit already knew Before+After bytes are the same collage. */
+  shareAsCollageHint = false,
 }) {
   const slots = new Set(changedSlots);
   void userId;
@@ -1746,6 +1764,10 @@ async function sendUnifiedCoachEmail({
   // Previous full card: always compose from the same previous Before|After paths used
   // for the Previous column — never link a stale archive that can disagree with thumbs.
   let previousPreviewHref = null;
+  let previousShareAsCollage = isShareAsCollagePair({
+    beforePath: previousCardBeforePath,
+    afterPath: previousCardAfterPath,
+  });
   if (userId && previousPairDistinct && previousCardBeforePath && previousCardAfterPath) {
     const prevSharePath = repo.previousShareCardStoragePath(userId);
     try {
@@ -1754,6 +1776,12 @@ async function sendUnifiedCoachEmail({
         repo.downloadBuffer(previousCardAfterPath, { retries: 2 }),
       ]);
       if (prevBeforeBuf?.length && prevAfterBuf?.length) {
+        previousShareAsCollage = isShareAsCollagePair({
+          beforeBuffer: prevBeforeBuf,
+          afterBuffer: prevAfterBuf,
+          beforePath: previousCardBeforePath,
+          afterPath: previousCardAfterPath,
+        });
         const prevJpeg = await composeTransformationShareCardJpeg({
           beforeBuffer: prevBeforeBuf,
           afterBuffer: prevAfterBuf,
@@ -1763,6 +1791,7 @@ async function sendUnifiedCoachEmail({
           goalType: previousGoalType ?? goalType,
           durationText: previousDurationText ?? durationText,
           recoveredHealthIssues: previousRecoveredHealthIssues ?? recoveredHealthIssues,
+          shareAsCollage: previousShareAsCollage,
         });
         if (prevJpeg?.length > 2000) {
           await repo.uploadBuffer(prevSharePath, prevJpeg, 'image/jpeg');
@@ -1791,10 +1820,36 @@ async function sendUnifiedCoachEmail({
     }
   }
 
+  let shareAsCollage = Boolean(shareAsCollageHint)
+    || isShareAsCollagePair({
+      beforePath: beforeImagePath,
+      afterPath: afterImagePath,
+    });
+  if (!shareAsCollage && isComplete && beforeImagePath && afterImagePath
+    && beforeImagePath !== afterImagePath) {
+    try {
+      const [curBeforeBuf, curAfterBuf] = await Promise.all([
+        repo.downloadBuffer(beforeImagePath, { retries: 1 }),
+        repo.downloadBuffer(afterImagePath, { retries: 1 }),
+      ]);
+      shareAsCollage = isShareAsCollagePair({
+        beforeBuffer: curBeforeBuf,
+        afterBuffer: curAfterBuf,
+        beforePath: beforeImagePath,
+        afterPath: afterImagePath,
+      });
+    } catch {
+      // Keep path-based detection.
+    }
+  }
+
   const hasPhotoCompare = Boolean(
     previousPairDistinct
-    && (previousPreviewHref || (previousBeforeHref && previousAfterHref))
-    && (currentPreviewHref || (currentBeforeHref && currentAfterHref)),
+    && (previousPreviewHref || (previousBeforeHref && previousAfterHref)
+      || (shareAsCollage && previousBeforeHref)
+      || (previousShareAsCollage && previousBeforeHref))
+    && (currentPreviewHref || (currentBeforeHref && currentAfterHref)
+      || (shareAsCollage && currentBeforeHref)),
   );
 
   // No CID photo attachments — HTTPS only (no "4 Attachments" strip in Gmail).
@@ -1828,6 +1883,8 @@ async function sendUnifiedCoachEmail({
     recoveredHealthIssues: recoveredHealthIssues ?? [],
     isComplete,
     shareCardSrc: null,
+    shareAsCollage,
+    previousShareAsCollage: hasPhotoCompare ? previousShareAsCollage : false,
   };
 
   await sendTransactionalMail({
@@ -2282,6 +2339,15 @@ export async function submitAllEdits(rawBody) {
     }
 
     scheduleDeferredCoachDelivery('unified share-card + coach email', async () => {
+      const collageFromPayload = Boolean(
+        payload.beforeImageBase64
+        && payload.afterImageBase64
+        && payload.beforeImageBase64 === payload.afterImageBase64,
+      );
+      const shareAsCollageHint = collageFromPayload || isShareAsCollagePair({
+        beforePath: finalBeforePath,
+        afterPath: finalAfterPath,
+      });
       const shareCardExtras = {
         beforeImagePath: finalBeforePath,
         afterImagePath: finalAfterPath,
@@ -2293,6 +2359,7 @@ export async function submitAllEdits(rawBody) {
         goalType: photoUpdates.goalType ?? existing.goal_type,
         durationText: resolvedDuration,
         recoveredHealthIssues: resolvedHealthIssues,
+        shareAsCollage: shareAsCollageHint,
       };
       // Never let share-card compose/upload block the OTP email.
       let shareCardPath = null;
@@ -2314,6 +2381,7 @@ export async function submitAllEdits(rawBody) {
         memberPhone:            userInfo.phoneNumber,
         otp,
         changedSlots:           emailChangedSlots,
+        shareAsCollageHint,
         goalType:               photoUpdates.goalType    ?? existing.goal_type,
         beforeWeight:           photoUpdates.beforeWeightKg ?? existing.before_weight_kg,
         afterWeight:            photoUpdates.afterWeightKg  ?? existing.after_weight_kg,
