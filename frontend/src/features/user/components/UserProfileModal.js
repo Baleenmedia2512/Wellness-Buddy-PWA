@@ -5,6 +5,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { getUserContext } from '../../../shared/services/userIdentity';
 import useProfileForm from '../hooks/useProfileForm';
 import { fetchProfile, saveProfile } from '../services/profileService';
+import { communityPositionFromProfile } from '../domain/communityPosition';
+import { overlayProfileOtpConfirmation } from '../domain/profileOtpHold';
 import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import { loadProfileMarathonWeightComparison } from '../../marathon';
 import UserProfileHeader from './profile/UserProfileHeader';
@@ -23,11 +25,22 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [hasSaved, setHasSaved] = useState(false);
+  const [communityPositionRequest, setCommunityPositionRequest] = useState(null);
 
-  const loadProfile = useCallback(async () => {
-    setIsLoading(true); setError('');
+  const loadProfile = useCallback(async (options = {}) => {
+    const cacheBust = options?.cacheBust === true;
+    if (!cacheBust) setIsLoading(true);
+    setError('');
     try {
-      const { data } = await fetchProfile(user.email);
+      const { data: loaded } = await fetchProfile({
+        email: user?.email,
+        userId: user?.id || user?.UserId || user?.userId,
+        cacheBust,
+      });
+      const data = overlayProfileOtpConfirmation(
+        loaded,
+        user?.id || user?.UserId || user?.userId,
+      );
       if (data) {
         form.reload({
           name: data.userName || user.name || '',
@@ -44,8 +57,26 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           latestWeightBodyFat: data.latestWeightBodyFat ?? null,
           email: data.email || user?.email || '',
           communityId: data.communityId != null ? String(data.communityId) : '',
+          workingPhysicalCentreId: data?.workingPhysicalCentre?.id != null
+            ? String(data.workingPhysicalCentre.id)
+            : '',
+          eventTranslation: data.eventTranslation || '',
+          eventYourCity: data.eventYourCity || '',
+          eventLevel: communityPositionFromProfile(
+            data,
+            user?.id || user?.UserId || user?.userId,
+          ),
+          professionalTitle: data.professionalTitle || '',
+          instagram: data.instagram || '',
+          youtube: data.youtube || '',
+          linkedin: data.linkedin || '',
+          herbalifeJoinedOn: data.herbalifeJoinedOn || '',
+          aboutMe: data.aboutMe || '',
+          qualification: data.qualification || '',
+          languages: Array.isArray(data.languages) ? data.languages : [],
           bodyMetrics: data.bodyMetrics || null,
         });
+        setCommunityPositionRequest(data.communityPositionRequest || null);
         setLatestWeight(data.latestWeight ? parseFloat(data.latestWeight) : null);
         setInitialWeight(data.initialWeight != null ? parseFloat(data.initialWeight) : null);
         setInitialWeightDate(data.initialWeightDate || null);
@@ -90,7 +121,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
   const handleSave = useCallback(async () => {
     setError(''); setSuccessMessage(''); setIsSaving(true);
     try {
-      const err = form.validate({ requireDiet: false, maxHeight: 198 });
+      const err = form.validate({ requireDiet: false, requireFat: false, maxHeight: 198 });
       if (err) { setError(err); return; }
       const data = await saveProfile(form.payload(user.email, {}));
       onProfileUpdate?.({
@@ -114,9 +145,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
 
   if (!isOpen) return null;
 
-  const saveDisabled = isSaving || !form.nameValid ||
-    !form.height || form.height.trim() === '' || !form.phone || form.phone.trim() === '' ||
-    !form.fatPercentValid;
+  const saveDisabled = isSaving || !form.isDirty;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
@@ -129,11 +158,16 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           onClose={handleCancel}
           isSaving={isSaving}
         />
-        <UserProfileBody isLoading={isLoading} form={form} email={form.email}
+        <UserProfileBody isLoading={isLoading} form={form} email={user?.email || form.email}
           latestWeight={latestWeight} initialWeight={initialWeight}
           initialWeightDate={initialWeightDate}
           marathonWeightComparison={marathonWeightComparison}
           userId={user?.id || user?.UserId || user?.userId || null}
+          communityPositionRequest={communityPositionRequest}
+          onCommunityPositionSettled={() => {
+            setCommunityPositionRequest(null);
+            loadProfile({ cacheBust: true });
+          }}
           error={error} successMessage={successMessage}
         />
         {!isLoading && (

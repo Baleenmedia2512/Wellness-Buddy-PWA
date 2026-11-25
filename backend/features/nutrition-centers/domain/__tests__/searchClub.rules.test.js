@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   primaryClubNameByOwner,
   resolveSearchClubName,
+  applyPreferredWorkingPhysicalCentre,
   resolveWorkingPhysicalCentre,
   coachIdByUser,
 } from '../searchClub.rules.js';
@@ -108,6 +109,42 @@ describe('resolveWorkingPhysicalCentre', () => {
   it('stops if the coach chain loops', () => {
     const result = resolveWorkingPhysicalCentre(7, centers, coaches);
     assert.equal(result.name, null);
+  });
+});
+
+describe('applyPreferredWorkingPhysicalCentre', () => {
+  it('keeps a preferred club that is already in options', () => {
+    const resolved = {
+      id: 2,
+      name: 'New Club',
+      options: [
+        { id: 2, name: 'New Club' },
+        { id: 1, name: 'Old Club' },
+      ],
+    };
+    const result = applyPreferredWorkingPhysicalCentre(resolved, 1);
+    assert.equal(result.id, 1);
+    assert.equal(result.name, 'Old Club');
+    assert.deepEqual(result.options.map((opt) => opt.id), [2, 1]);
+  });
+
+  it('adds a preferred club outside the chain options when a row is provided', () => {
+    const resolved = { id: null, name: null, options: [] };
+    const result = applyPreferredWorkingPhysicalCentre(
+      resolved,
+      99,
+      { id: 99, center_name: 'Adayar' },
+    );
+    assert.equal(result.id, 99);
+    assert.equal(result.name, 'Adayar');
+    assert.deepEqual(result.options, [{ id: 99, name: 'Adayar' }]);
+  });
+
+  it('falls back to resolved when preferred id has no row', () => {
+    const resolved = { id: 3, name: 'Coach Club', options: [{ id: 3, name: 'Coach Club' }] };
+    const result = applyPreferredWorkingPhysicalCentre(resolved, 99, null);
+    assert.equal(result.id, 3);
+    assert.equal(result.name, 'Coach Club');
   });
 });
 

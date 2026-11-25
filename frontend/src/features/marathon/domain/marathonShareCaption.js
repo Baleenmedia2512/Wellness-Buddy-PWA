@@ -11,8 +11,11 @@ import {
   DETOX_MARATHON_DAYS,
   getMarathonCalendarState,
 } from './marathonCalendar.js';
-import { formatMarathonWeightWhatsAppNoticeLines } from './marathonWeightComparison.js';
-import { formatTransformationCaption } from '../../../shared/utils/shareCaption.js';
+import {
+  formatMarathonWeightWhatsAppNoticeLines,
+  formatOverallWeightWhatsAppNoticeLines,
+  isValidMarathonWeightKg,
+} from './marathonWeightComparison.js';
 
 export const MARATHON_START_WHATSAPP_LABEL = 'Marathon Starts';
 export const MARATHON_DAY_0_WHATSAPP_LABEL = 'Today Marathon';
@@ -129,36 +132,92 @@ export function getMarathonWhatsAppAdvanceNotice(ymd) {
  * @param {unknown} caption
  * @param {unknown} ymd YYYY-MM-DD
  * @param {object|null} [marathonWeightComparison]
- * @param {{ includeWeightComparison?: boolean }} [options]
+ * @param {{
+ *   includeWeightComparison?: boolean,
+ *   initialWeight?: unknown,
+ *   currentWeight?: unknown,
+ *   wellnessScoreLines?: string[],
+ * }} [options]
  * @returns {string}
  */
 export function appendMarathonWhatsAppNotice(
   caption,
   ymd,
   marathonWeightComparison = null,
-  { includeWeightComparison = false } = {},
+  {
+    includeWeightComparison = false,
+    initialWeight = null,
+    currentWeight = null,
+    wellnessScoreLines = null,
+  } = {},
 ) {
   const notice = getMarathonWhatsAppAdvanceNotice(ymd);
   const currentDay = notice ? null : getMarathonWhatsAppCurrentDayNotice(ymd);
   const base = String(caption || '').trim();
   const additions = [];
   const state = getMarathonCalendarState(ymd);
+  const scoreLines = Array.isArray(wellnessScoreLines) ? wellnessScoreLines.filter(Boolean) : [];
 
-  if (currentDay && !base.includes(currentDay)) additions.push(currentDay);
-  if (notice && !base.includes(notice)) additions.push(notice);
+  // Order: Lap → Overall → Wellness Score → Marathon/Tomorrow (last)
+  // Blank lines: multi-line weight posts, or any share that includes Wellness Score.
+  const blankBetweenSections = scoreLines.length > 0
+    || (includeWeightComparison && (!base || base.includes('\n')));
+  const pushSection = (lines) => {
+    if (!lines || lines.length === 0) return;
+    if (blankBetweenSections && additions.length > 0) additions.push('');
+    additions.push(...lines);
+  };
 
   if (includeWeightComparison && marathonWeightComparison) {
     const weightLines = formatMarathonWeightWhatsAppNoticeLines(marathonWeightComparison, state);
     const hasWeightLine = weightLines.some((line) => base.includes(line));
     if (weightLines.length > 0 && !hasWeightLine) {
-      additions.push(...weightLines);
+      pushSection(weightLines);
     }
+  }
+
+  if (includeWeightComparison) {
+    const overallCurrent = isValidMarathonWeightKg(currentWeight)
+      ? currentWeight
+      : (marathonWeightComparison?.currentWeight
+        ?? marathonWeightComparison?.currentDay?.dayWeight
+        ?? null);
+    const overallLines = formatOverallWeightWhatsAppNoticeLines(initialWeight, overallCurrent);
+    const hasOverall = overallLines.some((line) => base.includes(line));
+    if (overallLines.length > 0 && !hasOverall) {
+      pushSection(overallLines);
+    }
+  }
+
+  if (
+    scoreLines.length > 0
+    && !base.includes('*Wellness Score*')
+    && !scoreLines.some((line) => base.includes(line))
+  ) {
+    pushSection(scoreLines);
+  }
+
+  if (currentDay && !base.includes(currentDay)) {
+    pushSection([currentDay]);
+  }
+  if (notice && !base.includes(notice)) {
+    pushSection([notice]);
   }
 
   if (additions.length === 0) return base;
   if (!base) return additions.join('\n');
 
-  const separator = base.includes('\n') ? '\n' : ', ';
-  const blockSeparator = base.includes('\n\n') ? '\n\n' : separator;
+  // Single-line captions with only the Marathon/Tomorrow line get a blank
+  // line before it (full WhatsApp view). Lap/Overall still comma-join on
+  // one-line bases.
+  const onlyMarathonNotice = additions.every(
+    (line) => line === currentDay || line === notice,
+  );
+  const separator = base.includes('\n') || onlyMarathonNotice || scoreLines.length > 0
+    ? '\n'
+    : ', ';
+  const blockSeparator = (base.includes('\n\n') || onlyMarathonNotice || scoreLines.length > 0)
+    ? '\n\n'
+    : separator;
   return `${base}${blockSeparator}${additions.join(separator)}`;
 }

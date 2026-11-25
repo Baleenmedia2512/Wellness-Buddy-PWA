@@ -429,17 +429,17 @@ describe('buildDiaryShareSuffix', () => {
     })).toBe('Academy');
   });
 
-  test('good-habit suffix is Good Habit, with notes when present', () => {
+  test('good-habit suffix is Task by Coach, with notes when present', () => {
     expect(buildDiaryShareSuffix('good-habit', {
       habitType: 'image_notes',
       notes: 'Morning walk',
-    })).toBe('Good Habit — Morning walk');
+    })).toBe('Task by Coach — Morning walk');
     expect(buildDiaryShareSuffix('good-habit', {
       habitType: 'image_notes',
-    })).toBe('Good Habit');
+    })).toBe('Task by Coach');
     expect(buildDiaryShareSuffix('good-habit', {
       habitType: 'before_after',
-    })).toBe('Good Habit');
+    })).toBe('Task by Coach');
   });
 
   test('shake suffix includes Formula 1, Shakemate, and Protein scoops', () => {

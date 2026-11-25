@@ -51,7 +51,7 @@ describe('computeUploadCompletenessFromRow', () => {
     assert.equal(computeUploadCompletenessFromRow(null).level, 'not_uploaded');
   });
 
-  it('counts five slots for a full row', () => {
+  it('counts four slots for a full row (collage photo = one)', () => {
     const c = computeUploadCompletenessFromRow({
       before_image_path: '1/before.jpg',
       after_image_path: '1/after.jpg',
@@ -60,7 +60,8 @@ describe('computeUploadCompletenessFromRow', () => {
       business_video_path: '1/b.mp4',
       recovered_health_issues: ['Diabetes'],
     });
-    assert.equal(c.filledCount, 5);
+    assert.equal(c.filledCount, 4);
+    assert.equal(c.totalSlots, 4);
     assert.equal(c.level, 'fully_uploaded');
   });
 });

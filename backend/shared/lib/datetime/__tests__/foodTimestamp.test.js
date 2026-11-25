@@ -6,10 +6,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { IANA_IST } from '../datetime.js';
 import {
+  normalizeActivityCreatedAt,
   normalizeFoodCreatedAt,
   resolveFoodTimestamp,
   filterFoodRowsByCalendarDay,
 } from '../foodTimestamp.js';
+import { timeOfDayInTimezone } from '../datetime.js';
 
 describe('resolveFoodTimestamp — calendar day contract', () => {
   it('A: naive IST wall 2026-07-24 19:45:00 belongs to 2026-07-24', () => {
@@ -96,6 +98,16 @@ describe('filterFoodRowsByCalendarDay', () => {
       IANA_IST,
     );
     assert.equal(today.length, 0);
+  });
+});
+
+describe('normalizeActivityCreatedAt — weight clock stays IST', () => {
+  it('does not add 5h30 when the weight clock is before 05:30', () => {
+    assert.equal(timeOfDayInTimezone(normalizeActivityCreatedAt('2026-11-02T05:05:00.000Z'), IANA_IST), '05:05:00');
+    assert.equal(timeOfDayInTimezone(normalizeActivityCreatedAt('2026-11-02T05:27:00.000Z'), IANA_IST), '05:27:00');
+    assert.equal(timeOfDayInTimezone(normalizeActivityCreatedAt('2026-11-02 03:10:00'), IANA_IST), '03:10:00');
+    const moved = resolveFoodTimestamp('2026-11-02T05:05:00.000Z', IANA_IST);
+    assert.equal(moved.timeOfDay, '10:35:00');
   });
 });
 

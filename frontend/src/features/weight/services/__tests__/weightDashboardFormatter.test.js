@@ -123,14 +123,29 @@ describe('buildRecordedTrendSeries', () => {
     assert.deepEqual(series.map((p) => p.value), [22, 21.5]);
   });
 
-  it('adds compact day-only labels when all points are in the same month', () => {
+  it('keeps month on the first point, then day-only labels in the same month', () => {
     const compactHistory = [
       entry(1, 90, addDaysYmd(today, -5)),
       entry(2, 91, addDaysYmd(today, -3)),
     ];
     const series = buildRecordedTrendSeries(compactHistory, 10);
-    assert.equal(series[0].compactLabel, String(Number(addDaysYmd(today, -5).split('-')[2])));
+    assert.match(series[0].compactLabel, /^[A-Za-z]{3} \d+$/);
+    assert.equal(series[1].compactLabel, String(Number(addDaysYmd(today, -3).split('-')[2])));
     assert.match(series[0].label, /^[A-Za-z]{3} \d+$/);
+  });
+
+  it('restarts month+day when custom range crosses months', () => {
+    const series = buildRecordedTrendSeries([
+      entry(1, 100, '2026-10-05'),
+      entry(2, 90, '2026-11-15'),
+      entry(3, 88, '2026-11-16'),
+    ], WEIGHT_TREND_RANGE_CUSTOM, {
+      startDate: '2026-10-01',
+      endDate: '2026-11-18',
+    });
+    assert.equal(series[0].compactLabel, 'Oct 5');
+    assert.equal(series[1].compactLabel, 'Nov 15');
+    assert.equal(series[2].compactLabel, '16');
   });
 });
 
@@ -150,13 +165,16 @@ describe('getTrendRangeBounds', () => {
 
 describe('getRecordedSeriesAxisBounds', () => {
   it('spans first to last recorded point only', () => {
+    const today = todayBusinessDate();
+    const startYmd = addDaysYmd(today, -20);
+    const midYmd = addDaysYmd(today, -10);
     const series = buildRecordedTrendSeries([
-      entry(1, 90, '2026-08-10'),
-      entry(2, 91, '2026-08-15'),
-      entry(3, 92, '2026-08-29'),
+      entry(1, 90, startYmd),
+      entry(2, 91, midYmd),
+      entry(3, 92, today),
     ], 30);
     const bounds = getRecordedSeriesAxisBounds(series);
-    assert.equal(formatCalendarPickerDate(bounds.start), '2026-08-10');
-    assert.equal(formatCalendarPickerDate(bounds.end), '2026-08-29');
+    assert.equal(formatCalendarPickerDate(bounds.start), startYmd);
+    assert.equal(formatCalendarPickerDate(bounds.end), today);
   });
 });

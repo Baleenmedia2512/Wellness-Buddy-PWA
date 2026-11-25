@@ -61,5 +61,14 @@ describe('normalizeNavAccessMatrix', () => {
     expect(m.coach.home).toBe(false);
     expect(m.admin).toBeDefined();
     expect(m.developer).toBeDefined();
+    expect(m.system_admin).toBeDefined();
+    expect(m.system_admin.home).toBe(false);
+  });
+
+  it('includes Events in the page key list', () => {
+    expect(NAV_PAGE_KEYS).toContain('events');
+    const m = normalizeNavAccessMatrix({ user: { events: true } });
+    expect(m.user.events).toBe(true);
+    expect(m.coach.events).toBe(false);
   });
 });

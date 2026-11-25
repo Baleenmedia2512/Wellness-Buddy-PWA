@@ -577,7 +577,7 @@ const BodyParamsForm = ({
           {/* BMI - Full Width */}
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-indigo-800 uppercase tracking-wide">
-              BMI (19–23)
+              Indian BMI (19–23)
             </label>
             {(() => {
               const bmiVal = parseFloat(vm.form.bmi);

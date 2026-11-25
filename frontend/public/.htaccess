@@ -1,0 +1,27 @@
+# Wellness Valley SPA (CRA) — MilesWeb / LiteSpeed
+# Keep /api, /coach, /_next, /share, and coach-sitemap on Node (wellness-api).
+# Do NOT rewrite those paths to index.html.
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Pretty sitemap URL → under /coach (same path that already hits Next).
+  RewriteRule ^coach-sitemap\.xml$ /coach/sitemap.xml [L]
+
+  # Brand assets live in Node `public/` (MilesWeb). SPA root often lacks the PNG,
+  # which would otherwise fall through to index.html and break coach-page logos.
+  RewriteRule ^wellness-valley-logo\.png$ /api/wellness-valley-logo.png [L]
+  RewriteRule ^wellness-valley-icon\.png$ /api/wellness-valley-icon.png [L]
+
+  # Leave Node / Passenger paths alone (no SPA fallback).
+  RewriteRule ^(api|coach|_next|share)(/|$) - [L]
+
+  # Do not SPA-fallback Google Search Console verification files.
+  RewriteRule ^google[0-9a-f]+\.html$ - [L]
+
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
+</IfModule>

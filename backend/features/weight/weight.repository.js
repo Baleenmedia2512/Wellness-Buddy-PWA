@@ -62,7 +62,8 @@ export async function findEntryById(entryId) {
   const db = getMysqlClient();
   const { data } = await db
     .from(TABLE)
-    .select('ID, Weight, BodyFat, CreatedAt')
+    // UserId is required — save/delete ownership checks compare existing.UserId.
+    .select('ID, UserId, Weight, BodyFat, CreatedAt')
     .eq('ID', entryId)
     .maybeSingle();
   return data || null;

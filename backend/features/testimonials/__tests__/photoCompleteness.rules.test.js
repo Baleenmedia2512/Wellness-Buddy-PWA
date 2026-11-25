@@ -13,6 +13,7 @@ import {
   resolveHealthIssueOtpChannel,
   shouldSendPhotoApprovalOtp,
   shouldHydratePhotosFromProfile,
+  displayedPairNeedsAfterCopy,
 } from '../domain/photoCompleteness.rules.js';
 
 const seeded = {
@@ -98,6 +99,23 @@ describe('shouldHydratePhotosFromProfile', () => {
 
   it('is false when a real before photo is already stored', () => {
     assert.equal(shouldHydratePhotosFromProfile(seeded), false);
+  });
+});
+
+describe('displayedPairNeedsAfterCopy', () => {
+  it('copies After when the card is showing Before and After is still empty or the same file', () => {
+    assert.equal(displayedPairNeedsAfterCopy({
+      before_image_path: '42/before_1700000000000.jpg',
+      after_image_path: '42/42_video_only_placeholder.jpg',
+    }), true);
+    assert.equal(displayedPairNeedsAfterCopy({
+      before_image_path: '42/before_1700000000000.jpg',
+      after_image_path: '42/before_1700000000000.jpg',
+    }), true);
+    assert.equal(displayedPairNeedsAfterCopy({
+      before_image_path: '42/before_1700000000000.jpg',
+      after_image_path: '42/after_1700000001000.jpg',
+    }), false);
   });
 });
 

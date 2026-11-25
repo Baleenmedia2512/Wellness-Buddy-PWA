@@ -35,7 +35,6 @@ const API = process.env.REACT_APP_API_BASE_URL;
 const EMPTY_OPTIONAL_METRICS = {
   age: '',
   fatPercent: '',
-  visceralFat: '',
   bmi: '',
   bodyAge: '',
   chestCm: '',
@@ -187,7 +186,6 @@ const CompleteProfilePage = ({
         setOptionalMetrics({
           age: bm.age != null ? String(bm.age) : '',
           fatPercent: fatFallback != null && fatFallback !== '' ? String(fatFallback) : '',
-          visceralFat: bm.visceralFat != null ? String(bm.visceralFat) : '',
           bmi: bm.bmi != null ? String(bm.bmi) : '',
           bodyAge: bm.bodyAge != null ? String(bm.bodyAge) : '',
           chestCm: bm.chestCm != null ? String(bm.chestCm) : '',
@@ -354,8 +352,10 @@ const CompleteProfilePage = ({
         height: heightNum,
         dietType,
       };
+      // Prefer userId only — sending email alongside can resolve a different
+      // account on older backends and make Fat % look like it never saved.
       if (uid) payload.userId = uid;
-      if (accountEmail) payload.email = accountEmail;
+      else if (accountEmail) payload.email = accountEmail;
       if (showGender && gender) payload.gender = gender;
       if (showPictureSection && profileImage) payload.profileImage = profileImage;
       if (showCurrentWeight && isValidCurrentWeight(currentWeight)) {
@@ -366,13 +366,11 @@ const CompleteProfilePage = ({
       }
 
       const age = parseOptionalNumber(optionalMetrics.age, { integer: true });
-      const visceralFat = parseOptionalNumber(optionalMetrics.visceralFat);
       const bodyAge = parseOptionalNumber(optionalMetrics.bodyAge);
       const chestCm = parseOptionalNumber(optionalMetrics.chestCm);
       const waistCm = parseOptionalNumber(optionalMetrics.waistCm);
       const hipCm = parseOptionalNumber(optionalMetrics.hipCm);
       if (age !== undefined) payload.age = age;
-      if (visceralFat !== undefined) payload.visceralFat = visceralFat;
       if (bodyAge !== undefined) payload.bodyAge = bodyAge;
       if (chestCm !== undefined) payload.chestCm = chestCm;
       if (waistCm !== undefined) payload.waistCm = waistCm;
@@ -383,7 +381,18 @@ const CompleteProfilePage = ({
       // Persist BCM/BPC review on the server (survives APK reinstall).
       payload.bcmProfileReviewed = true;
 
-      await saveProfile(payload);
+      const saved = await saveProfile(payload);
+      if (fatPercentValid) {
+        const persisted = saved?.data?.bodyFat;
+        const okFat = persisted != null && Number.isFinite(Number(persisted));
+        if (!okFat) {
+          setError(
+            saved?.data?.bodyFatError
+            || 'Could not save Fat %. Please try again.',
+          );
+          return;
+        }
+      }
 
       onComplete({
         email: accountEmail || undefined,

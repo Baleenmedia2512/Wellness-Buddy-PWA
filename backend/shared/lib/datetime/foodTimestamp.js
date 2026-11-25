@@ -116,6 +116,32 @@ export function normalizeFoodCreatedAt(raw, _ignoredTimezoneIana = IANA_IST) {
 }
 
 /**
+ * Weight and education CreatedAt are IST wall-clock digits, including
+ * 3:00–5:29 AM. A driver-added `Z` must not add 5h30 and push them out of
+ * the weight window. Food rows keep {@link normalizeFoodCreatedAt}.
+ *
+ * @param {string|Date} raw
+ * @returns {string} UTC ISO with Z
+ */
+export function normalizeActivityCreatedAt(raw) {
+  const storageTz = LEGACY_STORAGE_TIMEZONE;
+  assertIanaTimezone(storageTz);
+
+  if (raw == null || (!(raw instanceof Date) && String(raw).trim() === '')) {
+    throw new RangeError('Invalid activity CreatedAt: empty');
+  }
+
+  const s = raw instanceof Date ? raw.toISOString() : String(raw).trim();
+
+  if (hasNonUtcExplicitOffset(s)) {
+    return normalizeStoredTimestampToUtcIso(s, storageTz);
+  }
+
+  const stripped = s.replace(UTC_OR_ZERO_OFFSET_RE, '');
+  return normalizeStoredTimestampToUtcIso(stripped, storageTz);
+}
+
+/**
  * Resolve food CreatedAt into one UTC instant + derived calendar day / local time
  * in the owner's display timezone.
  *

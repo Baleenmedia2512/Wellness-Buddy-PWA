@@ -71,6 +71,27 @@ describe('filterWatchCalorieRowsForDate', () => {
     assert.equal(filtered.length, 1);
     assert.equal(filtered[0].Topic, 'Calories Burned: 200 kcal');
   });
+
+  it('keeps an evening smartwatch on that calendar day when the driver adds Z', () => {
+    const rows = [
+      { Topic: 'Calories Burned: 295 kcal', CreatedAt: '2026-10-29T22:44:54.776Z' },
+    ];
+    const loggedDay = filterWatchCalorieRowsForDate(rows, '2026-10-29', IANA_IST);
+    const nextMorning = filterWatchCalorieRowsForDate(rows, '2026-10-30', IANA_IST);
+    assert.equal(loggedDay.length, 1);
+    assert.equal(loggedDay[0].Topic, 'Calories Burned: 295 kcal');
+    assert.equal(nextMorning.length, 0);
+  });
+
+  it('still treats a clock before 05:30 as a real UTC instant', () => {
+    const rows = [
+      { Topic: 'Calories Burned: 80 kcal', CreatedAt: '2026-10-29T02:16:00.000Z' },
+    ];
+    const sameMorning = filterWatchCalorieRowsForDate(rows, '2026-10-29', IANA_IST);
+    const previousEvening = filterWatchCalorieRowsForDate(rows, '2026-10-28', IANA_IST);
+    assert.equal(sameMorning.length, 1);
+    assert.equal(previousEvening.length, 0);
+  });
 });
 
 describe('groupWatchCaloriesByDate', () => {
@@ -85,6 +106,15 @@ describe('groupWatchCaloriesByDate', () => {
     assert.equal(byDate['2026-07-23'], 300);
     assert.equal(byDate['2026-07-22'], 100);
     assert.equal(byDate['2026-07-21'], undefined);
+  });
+
+  it('puts an evening smartwatch kcal on the logged day, not the next morning', () => {
+    const rows = [
+      { Topic: 'Calories Burned: 295 kcal', CreatedAt: '2026-10-29T22:44:54.776Z' },
+    ];
+    const byDate = groupWatchCaloriesByDate(rows, '2026-10-29', '2026-10-30', IANA_IST);
+    assert.equal(byDate['2026-10-29'], 295);
+    assert.equal(byDate['2026-10-30'], undefined);
   });
 });
 

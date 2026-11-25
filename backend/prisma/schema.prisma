@@ -228,6 +228,54 @@ model community_id_requests_table {
   ProcessedAt     DateTime?
 }
 
+/// Catalog of community roles. New roles are rows, not hard-coded lists.
+model community_positions_table {
+  Id         BigInt   @id @default(autoincrement())
+  Code       String   @unique(map: "uq_community_positions_code") @db.VarChar(40)
+  Label      String   @db.VarChar(40)
+  FeatureKey String   @unique(map: "uq_community_positions_feature_key") @db.VarChar(40)
+  UsageNote  String   @db.VarChar(240)
+  SortOrder  Int      @default(0)
+  IsActive   Boolean  @default(true)
+  CreatedAt  DateTime @default(now())
+
+  @@index([IsActive, SortOrder], map: "idx_community_positions_active_sort")
+}
+
+/// Pending coach OTP before a community position is saved on the profile.
+model community_position_requests_table {
+  Id           BigInt    @id @default(autoincrement())
+  RequesterId  BigInt
+  ApproverId   BigInt
+  PositionCode String    @db.VarChar(40)
+  OtpHash      String    @db.VarChar(255)
+  OtpExpiresAt DateTime
+  OtpSentAt    DateTime?
+  OtpAttempts  Int       @default(0)
+  Status       String    @default("pending") @db.VarChar(16)
+  RequestedAt  DateTime
+  ProcessedAt  DateTime?
+
+  @@index([RequesterId, Status], map: "idx_community_position_requests_requester_status")
+}
+
+model profile_change_requests_table {
+  Id             BigInt    @id @default(autoincrement())
+  RequesterId    BigInt
+  ApproverId     BigInt
+  PendingPayload Json
+  ChangedKeys    Json
+  OtpHash        String    @db.VarChar(255)
+  OtpExpiresAt   DateTime
+  OtpSentAt      DateTime?
+  OtpAttempts    Int       @default(0)
+  Status         String    @default("pending") @db.VarChar(16)
+  RequestedAt    DateTime
+  ProcessedAt    DateTime?
+
+  @@index([RequesterId, Status], map: "idx_profile_change_requests_requester_status")
+}
+
 model daily_step_activity {
   Id             BigInt          @id @default(autoincrement())
   UserId         BigInt
@@ -310,6 +358,26 @@ model education_logs_table {
   @@index([nutrition_center_id, CreatedAt], map: "idx_education_logs_center_created_active")
   @@index([UserId, IsDeleted, CreatedAt], map: "idx_education_logs_user_created")
   @@index([UserId], map: "idx_education_user_id")
+}
+
+model field_collection_policy_table {
+  id                 BigInt   @id @default(autoincrement())
+  fields             Json
+  updated_at         DateTime @default(now())
+  updated_by_user_id BigInt?
+}
+
+model field_collection_prompt_state_table {
+  id               BigInt    @id @default(autoincrement())
+  user_id          BigInt
+  field_key        String    @db.VarChar(64)
+  skip_count       Int       @default(0)
+  cycle_started_at DateTime?
+  last_filled_at   DateTime?
+  last_skipped_at  DateTime?
+
+  @@unique([user_id, field_key], map: "uq_field_collection_user_field")
+  @@index([user_id], map: "idx_field_collection_prompt_state_user")
 }
 
 model food_corrections_table {
@@ -562,13 +630,33 @@ model nutrition_centers_table {
   status               String?                @default("active") @db.VarChar(20)
   is_deleted           Boolean?               @default(false)
   active_center_name   String?                @unique(map: "nutrition_centers_name_unique") @db.VarChar(255)
+  center_code          String?                @unique(map: "uq_nutrition_centers_center_code") @db.VarChar(32)
+  opening_hours_json   String?                @db.Text
+  facilities_json      String?                @db.Text
+  features_json        String?                @db.Text
+  seating_count        Int?
+  area                 String?                @db.VarChar(120)
+  city                 String?                @db.VarChar(120)
   education_logs_table education_logs_table[]
+  nutrition_center_photos_table nutrition_center_photos_table[]
   team_table           team_table?            @relation(fields: [owner_user_id], references: [UserId], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([latitude, longitude], map: "idx_nutrition_centers_location")
   @@index([owner_user_id], map: "idx_nutrition_centers_owner")
   @@index([owner_user_id, registered_at], map: "idx_nutrition_centers_owner_active_registered")
   @@index([status, is_deleted], map: "idx_nutrition_centers_status")
+}
+
+model nutrition_center_photos_table {
+  id                      Int                     @id @default(autoincrement())
+  center_id               Int
+  category                String                  @db.VarChar(32)
+  image_key               String                  @db.VarChar(240)
+  sort_order              Int                     @default(0)
+  created_at              DateTime                @default(now())
+  nutrition_centers_table nutrition_centers_table @relation(fields: [center_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([center_id, category], map: "idx_nutrition_center_photos_center_category")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -701,12 +789,24 @@ model team_table {
   ChestCm                                                                                     Decimal?                                @db.Decimal(20, 6)
   WaistCm                                                                                     Decimal?                                @db.Decimal(20, 6)
   HipCm                                                                                       Decimal?                                @db.Decimal(20, 6)
+  ProfessionalTitle                                                                           String?                                 @db.VarChar(80)
+  InstagramUrl                                                                                String?                                 @db.VarChar(255)
+  YoutubeUrl                                                                                  String?                                 @db.VarChar(255)
+  LinkedinUrl                                                                                 String?                                 @db.VarChar(255)
+  HerbalifeJoinedOn                                                                           DateTime?                               @db.Date
+  AboutMe                                                                                     String?                                 @db.VarChar(500)
+  Qualification                                                                               String?                                 @db.VarChar(250)
+  Languages                                                                                   Json?
   recovered_health_issues                                                                     Json                                    @default(dbgenerated("(cast(_utf8mb4\\'[]\\' as json))"))
   transformation_photos                                                                       Json?
   ProfileImageKey                                                                             String?                                 @db.LongText
   IdealWeightReachedAt                                                                        DateTime?
   IdealWeightReachedNotifiedAt                                                                DateTime?
   BcmProfileReviewedAt                                                                        DateTime?
+  WorkingPhysicalCentreId                                                                     Int?
+  EventTranslation                                                                            String?                                 @db.VarChar(40)
+  EventYourCity                                                                               String?                                 @db.VarChar(40)
+  EventLevel                                                                                  String?                                 @db.VarChar(40)
   ai_analysis_jobs_table                                                                      ai_analysis_jobs_table[]
   nutrition_centers_table                                                                     nutrition_centers_table[]
   team_table_team_table_CoachIdToteam_table                                                   team_table?                             @relation("team_table_CoachIdToteam_table", fields: [CoachId], references: [UserId], onUpdate: NoAction, map: "fk_coach_id")
@@ -905,4 +1005,68 @@ model wellness_university_enrollments_table {
   team_table       team_table @relation(fields: [UserId], references: [UserId], onDelete: Cascade, onUpdate: NoAction, map: "fk_wellness_user_id")
 
   @@index([UserId], map: "fk_wellness_user_id")
+}
+
+model events_table {
+  Id                  Int      @id @default(autoincrement())
+  CreatedByUserId     Int
+  EventName           String   @db.VarChar(200)
+  HostName            String   @db.VarChar(200)
+  Place               String   @db.VarChar(300)
+  Venue               String?  @db.VarChar(300)
+  /// Venue is additive in DB (raw SQL). Not on Prisma model so stale clients keep working.
+  EventDate           DateTime @db.Date
+  TicketPrice         Decimal  @db.Decimal(10, 2)
+  SeatCount           Int
+  DesignatedPersons   Json
+  Status              String   @default("scheduled") @db.VarChar(20)
+  IsDeleted           Int      @default(0) @db.SmallInt
+  CreatedAt           DateTime @default(now())
+  UpdatedAt           DateTime @default(now()) @updatedAt
+
+  @@index([CreatedByUserId, IsDeleted], map: "idx_events_owner_deleted")
+}
+
+/// Event interest / registration form submissions (PD registration).
+/// Payment/QR fields are additive. Legacy rows keep PaymentStatus=saved with no EntryCode.
+/// Remove EntryCode/payment dual-path only after no supported client needs legacy save-only POST
+/// (confirmPayment absent) and MIN_REQUIRED no longer needs that behaviour.
+model event_registrations_table {
+  Id                       Int       @id @default(autoincrement())
+  EventId                  Int
+  RegistrantUserId         Int
+  Translation              String    @db.VarChar(40)
+  PdAttendCity             String    @db.VarChar(300)
+  FoodType                 String    @db.VarChar(40)
+  UplinePresidentUserId    Int
+  UplinePresidentName      String    @db.VarChar(200)
+  UplineMillUserId         Int
+  UplineMillName           String    @db.VarChar(200)
+  ClubNo                   String    @db.VarChar(80)
+  ZoomEmail                String    @db.VarChar(120)
+  RegistrantName           String    @db.VarChar(200)
+  IdNo                     String    @db.VarChar(80)
+  LevelName                String    @db.VarChar(80)
+  PhoneNumber              String    @db.VarChar(20)
+  ParticipantCount         Int       @default(1)
+  TicketNo                 String    @db.VarChar(80)
+  EntryCode                String?   @db.VarChar(80)
+  PaymentStatus            String    @default("saved") @db.VarChar(20)
+  AmountCharged            Decimal   @default(0.00) @db.Decimal(12, 2)
+  WalletLedgerId           BigInt?
+  CheckedInAt              DateTime?
+  CheckedInByUserId        Int?
+  YourCity                 String    @db.VarChar(120)
+  TeamInchargeUserId       Int
+  TeamInchargeName         String    @db.VarChar(200)
+  DaicyTeamInchargeUserId  Int
+  DaicyTeamInchargeName    String    @db.VarChar(200)
+  DaicyTeamInchargeUpline  String?   @db.VarChar(400)
+  CreatedAt                DateTime  @default(now())
+  UpdatedAt                DateTime  @default(now()) @updatedAt
+
+  @@index([EventId], map: "idx_event_reg_event")
+  @@index([RegistrantUserId], map: "idx_event_reg_user")
+  @@index([EventId, RegistrantUserId], map: "idx_event_reg_event_user")
+  @@index([EventId, EntryCode], map: "idx_event_reg_event_entry")
 }

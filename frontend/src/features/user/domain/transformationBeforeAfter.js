@@ -169,8 +169,8 @@ function isIncompleteProfileMappedAfter(testimonial, afterValue) {
 
 /**
  * Transformation Before/After from Profile slots:
- * Left → Before only, as a display fallback when Transformation has no Before.
- * Profile never fills After and never replaces a saved Transformation photo.
+ * Left → Before, and After shows the same Left until a real After is uploaded
+ * (new users get Left in both frames). Profile never replaces a saved pair.
  */
 export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, weightKg } = {}) {
   // Existing user: keep Transformation photos as stored — do not overlay Profile.
@@ -200,19 +200,18 @@ export function seedMineTestimonialFromProfileSlots(testimonial, { leftUrl, weig
     && !isIncompleteProfileMappedAfter(testimonial, testimonial?.afterImageUrl);
 
   if (hasLeft) {
-    next.beforeImageUrl = String(leftUrl).trim();
-    // Profile Left is display-only. It is not a Transformation Before upload,
-    // and it is never copied into After.
+    const left = String(leftUrl).trim();
+    next.beforeImageUrl = left;
+    // Display-only: same Left in After until the member uploads a real After.
+    if (!realAfter && !storedAfter) {
+      next.afterImageUrl = left;
+    }
     if (!hadStoredBefore) {
       next.photosFromProfileSeed = true;
     }
   }
   const beforeW = firstPositiveKg(next.beforeWeightKg, weight);
   if (beforeW != null) next.beforeWeightKg = beforeW;
-
-  if (!realAfter && !storedAfter && next.afterImageUrl && next.afterImageUrl === next.beforeImageUrl) {
-    next.afterImageUrl = null;
-  }
 
   if (!realAfter) {
     const afterW = firstPositiveKg(next.afterWeightKg, beforeW, weight);

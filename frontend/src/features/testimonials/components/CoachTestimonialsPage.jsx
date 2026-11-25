@@ -7,18 +7,21 @@
  *   • Direct/Full: header → divider → branded card → Share Image → videos → Share Video
  *     (no duplicate video block above the branded card)
  *
- * With downline: Mine | Direct | Full + search + upload filters.
- * Without downline: own card only (no Direct/Full/search/filters).
+ * With downline: own card by default + search (no Mine/Direct/Full tabs).
+ * Without downline: own card only.
  */
 import React, { useEffect, useCallback, useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertCircle, ArrowLeft, Camera, CheckCircle, CircleDot, Clock, Crop,
-  Images, Mail, Pencil, Plus, RefreshCw, Save, ShieldCheck, Upload, Users, Video,
-  X, TrendingDown, TrendingUp,
+  Images, Mail, Pencil, Plus, RefreshCw, Save, Share2, ShieldCheck, Trash2,
+  Upload, Users, Video, X, TrendingDown, TrendingUp,
 } from 'lucide-react';
 import CustomAlertModal from '../../../shared/components/CustomAlertModal';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import ProfilePhotoThumbnail from '../../../shared/components/ProfilePhotoThumbnail.jsx';
+import FullscreenProfilePhotoViewer from '../../../shared/components/FullscreenProfilePhotoViewer.jsx';
+import { TeamMemberProfileModal } from '../../../shared/components/TeamMemberProfileModal';
 import NativeInput from '../../../shared/components/NativeInput.jsx';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import {
@@ -82,6 +85,7 @@ import {
   hasDistinctTransformationAfter,
   hasStoredTransformationBefore,
   hasStoredTransformationPhotoCard,
+  isProfileSeededTransformation,
 } from '../services/testimonialFormUtils.js';
 import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
 import { uniqueConditions, isSameIssueList, withoutHealthIssue } from '../utils/uniqueConditions.js';
@@ -92,6 +96,17 @@ import {
   subscribeAvatarDisplayVersion,
 } from '../../user/services/avatarDisplayVersion.js';
 import { seedMineTestimonialFromProfileSlots } from '../../user/domain/transformationBeforeAfter';
+import WebsiteDisplayConsentCard from './WebsiteDisplayConsentCard.jsx';
+import { isFlagEnabled } from '../../../config/featureFlags.js';
+import { compressImage } from '../utils/compressTestimonialImage.js';
+import {
+  copyTransformCollagePrompt,
+  copyAndOpenChatGptCollagePrompt,
+} from '../utils/transformationCollagePrompt.js';
+import { shareImageDirectly } from '../../../shared/utils/shareUtils.js';
+
+const COLLAGE_IMAGE_CLASS =
+  'w-full aspect-[16/9] object-contain object-center overflow-hidden rounded-xl border border-gray-200 bg-white';
 
 // â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -256,16 +271,25 @@ function CompletenessBadge({ level, filledCount, totalSlots }) {
 
 // â”€â”€ Team compliance â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function TeamComplianceInline({ userName, teamStats, onComplianceClick }) {
+function TeamComplianceInline({ userName, teamStats, onComplianceClick, onProfileClick }) {
+  const memberName = onProfileClick ? (
+      <button
+        type="button"
+        onClick={onProfileClick}
+        className="font-semibold text-gray-900 truncate text-left hover:underline"
+      >
+        {userName}
+      </button>
+    ) : <span className="font-semibold text-gray-900 truncate">{userName}</span>;
   if (!teamStats?.totalMembers) {
-    return <p className="font-semibold text-gray-900 text-sm truncate">{userName}</p>;
+    return <p className="text-sm">{memberName}</p>;
   }
   const scoreNum   = Number(teamStats.uploadPercentage ?? 0);
   const colorClass = teamComplianceColorClass(scoreNum);
   const uploaded   = teamStats.uploaded ?? teamStats.uploadedMembers?.length ?? 0;
   return (
     <p className="text-sm font-medium flex items-baseline gap-2 min-w-0 flex-wrap">
-      <span className="font-semibold text-gray-900 truncate">{userName}</span>
+      {memberName}
       <button
         type="button"
         onClick={onComplianceClick}
@@ -277,7 +301,7 @@ function TeamComplianceInline({ userName, teamStats, onComplianceClick }) {
   );
 }
 
-function TeamComplianceModal({ userName, teamStats, onClose }) {
+function TeamComplianceModal({ userName, teamStats, onClose, onMemberProfile }) {
   const scoreColor  = teamComplianceColorClass(Number(teamStats.uploadPercentage ?? 0));
   const uploaded    = teamStats.uploaded    ?? teamStats.uploadedMembers?.length ?? 0;
   const total       = teamStats.totalMembers ?? 0;
@@ -317,7 +341,17 @@ function TeamComplianceModal({ userName, teamStats, onClose }) {
             <p className="text-xs font-bold text-green-800 mb-2">Uploaded ({uploaded})</p>
             <ul className="space-y-0.5">
               {teamStats.uploadedMembers.map((m) => (
-                <li key={m.userId} className="text-xs text-green-700 font-medium truncate">{m.userName}</li>
+                <li key={m.userId} className="text-xs text-green-700 font-medium truncate">
+                  {m.userId != null ? (
+                    <button
+                      type="button"
+                      onClick={() => onMemberProfile(m.userId)}
+                      className="text-left hover:underline"
+                    >
+                      {m.userName}
+                    </button>
+                  ) : m.userName}
+                </li>
               ))}
             </ul>
           </div>
@@ -327,7 +361,17 @@ function TeamComplianceModal({ userName, teamStats, onClose }) {
             <p className="text-xs font-bold text-red-800 mb-2">Not Uploaded ({notUploaded})</p>
             <ul className="space-y-0.5">
               {teamStats.notUploadedMembers.map((m) => (
-                <li key={m.userId} className="text-xs text-red-700 font-medium truncate">{m.userName}</li>
+                <li key={m.userId} className="text-xs text-red-700 font-medium truncate">
+                  {m.userId != null ? (
+                    <button
+                      type="button"
+                      onClick={() => onMemberProfile(m.userId)}
+                      className="text-left hover:underline"
+                    >
+                      {m.userName}
+                    </button>
+                  ) : m.userName}
+                </li>
               ))}
             </ul>
           </div>
@@ -338,47 +382,65 @@ function TeamComplianceModal({ userName, teamStats, onClose }) {
   );
 }
 
-function TeamComplianceSection({ userName, teamStats }) {
+function TeamComplianceSection({ userName, teamStats, onProfileClick }) {
   const [open, setOpen] = useState(false);
+  const [profileUserId, setProfileUserId] = useState(null);
   return (
     <>
-      <TeamComplianceInline userName={userName} teamStats={teamStats} onComplianceClick={() => setOpen(true)} />
-      {open && teamStats?.totalMembers && (
-        <TeamComplianceModal userName={userName} teamStats={teamStats} onClose={() => setOpen(false)} />
+      <TeamComplianceInline
+        userName={userName}
+        teamStats={teamStats}
+        onComplianceClick={() => setOpen(true)}
+        onProfileClick={onProfileClick}
+      />
+      {open && !profileUserId && teamStats?.totalMembers && (
+        <TeamComplianceModal
+          userName={userName}
+          teamStats={teamStats}
+          onClose={() => setOpen(false)}
+          onMemberProfile={(userId) => {
+            setOpen(false);
+            setProfileUserId(userId);
+          }}
+        />
       )}
+      <TeamMemberProfileModal
+        isOpen={Boolean(profileUserId)}
+        onClose={() => setProfileUserId(null)}
+        memberUserId={profileUserId}
+        apiBaseUrl={getApiBaseUrl()}
+      />
     </>
   );
 }
 
 /** Avatar via dedicated endpoint — keeps list-for-coach JSON tiny. */
-function MemberAvatar({ user }) {
-  const [failed, setFailed] = useState(false);
+function MemberAvatar({ user, onViewProfile }) {
   const [avatarVersion, setAvatarVersion] = useState(getAvatarDisplayVersion);
   useEffect(() => subscribeAvatarDisplayVersion(setAvatarVersion), []);
-  useEffect(() => { setFailed(false); }, [avatarVersion, user?.userId, user?.profileImage]);
 
   const userId = user?.userId;
   const inline = user?.profileImage;
   let remote = null;
   try {
-    if (userId != null && !failed && !inline) {
+    if (userId != null && !inline) {
       remote = buildUserAvatarUrl(getApiBaseUrl(), userId, avatarVersion, { profileOnly: true });
     }
   } catch {
     remote = null;
   }
-  const src = !failed ? (inline || remote) : null;
+  const src = inline || remote;
 
   if (src) {
     return (
-      <img
+      <ProfilePhotoThumbnail
         src={src}
         alt={user?.userName || 'User'}
-        className="h-11 w-11 rounded-full object-cover border-2 border-white shadow flex-shrink-0"
-        loading="lazy"
-        decoding="async"
-        referrerPolicy="no-referrer"
-        onError={() => setFailed(true)}
+        onViewProfile={onViewProfile}
+        className="h-11 w-11 rounded-full flex-shrink-0"
+        imageClassName="h-11 w-11 rounded-full object-cover border-2 border-white shadow"
+        fallbackClassName="h-11 w-11 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white font-bold text-base shadow flex-shrink-0"
+        fallback={(user?.userName || '?').charAt(0).toUpperCase()}
       />
     );
   }
@@ -391,34 +453,6 @@ function MemberAvatar({ user }) {
 }
 
 // â”€â”€ Photo viewer modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-function PhotoModal({ url, label, onClose }) {
-  useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
-
-  return (
-    <div
-      className="fixed inset-0 z-[80] bg-black/90 flex flex-col items-center justify-center"
-      onClick={onClose}
-    >
-      <div className="relative" onClick={(e) => e.stopPropagation()}>
-        <img src={url} alt={label} className="max-h-[85vh] max-w-[95vw] object-contain rounded-xl" />
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-2 right-2 p-1.5 rounded-full bg-black/50 text-white hover:bg-black/70"
-          aria-label="Close"
-        >
-          <X className="h-4 w-4" />
-        </button>
-        <p className="text-center text-white text-xs font-semibold mt-2 px-2">{label}</p>
-      </div>
-    </div>
-  );
-}
 
 // â”€â”€ Upload completeness filter chip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -779,6 +813,7 @@ function MemberCard({
   }, [testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
   const [expandedPhoto, setExpandedPhoto] = useState(null);
+  const [profileOpen, setProfileOpen] = useState(false);
   // After is shown only when it is a different file from Before.
   const hasAfterImage = hasDistinctTransformationAfter(testimonial);
   const hasAfter = hasAfterImage
@@ -861,7 +896,16 @@ function MemberCard({
   const [durationUnitDraft, setDurationUnitDraft] = useState('months');
   const [uploadingHealth,   setUploadingHealth]   = useState(false);
   const [uploadingBusiness, setUploadingBusiness] = useState(false);
-  const [pickerSlot,        setPickerSlot]         = useState(null); // 'before' | 'after' | null
+  const [pickerSlot,        setPickerSlot]         = useState(null); // 'collage' | 'before' | 'after' | null
+  const [promptCopied,      setPromptCopied]       = useState(false);
+  const [collageMetaOpen,   setCollageMetaOpen]    = useState(false);
+  const [collageMetaError,  setCollageMetaError]   = useState(null);
+  const [collageImageBroken, setCollageImageBroken] = useState(false);
+  const [collageGuideOpen,  setCollageGuideOpen]   = useState(false);
+  /** True only after user Saves the Transformation details form this session. */
+  const [collageMetaSaved,  setCollageMetaSaved]   = useState(false);
+  const collageCamRef = useRef(null);
+  const collageGalRef = useRef(null);
   const [isSubmitting,    setIsSubmitting]    = useState(false);
   const [submitError,     setSubmitError]     = useState(null);
   const [videoUploadError,setVideoUploadError]= useState(null);
@@ -913,10 +957,6 @@ function MemberCard({
     onError: (msg) => setSubmitError(msg || 'Could not read that photo. Please try another.'),
   });
 
-  const beforeCamRef   = useRef(null);
-  const beforeGalRef   = useRef(null);
-  const afterCamRef    = useRef(null);
-  const afterGalRef    = useRef(null);
   const healthVidRef   = useRef(null);
   const businessVidRef = useRef(null);
 
@@ -931,7 +971,14 @@ function MemberCard({
     Array.isArray(draftIssues) && 'issues',
   ].filter(Boolean);
   // hasDirtySlots: true for ANY pending change including weight-only edits or video drafts
-  const hasDirtySlots = dirtySlots.length > 0 || !!draftBefore || !!draftAfter || !!draftHealthPreview || !!draftBusinessPreview || !!draftHealthPath || !!draftBusinessPath || Array.isArray(draftIssues);
+  const hasDirtySlots = dirtySlots.length > 0
+    || (draftBefore != null && draftBefore.cleared !== true)
+    || (draftAfter != null && draftAfter.cleared !== true)
+    || !!draftHealthPreview
+    || !!draftBusinessPreview
+    || !!draftHealthPath
+    || !!draftBusinessPath
+    || Array.isArray(draftIssues);
   const changedCount = Math.max(dirtySlots.length, hasDirtySlots ? 1 : 0);
   const anyVideoUploading = uploadingHealth || uploadingBusiness;
 
@@ -950,12 +997,32 @@ function MemberCard({
   const liveDiff = liveWeightDiffKg(displayBeforeKg, displayAfterKg);
   const diff = liveDiff;
   const weightIsLoss = isTransformationWeightLoss(displayBeforeKg, displayAfterKg);
+  const collageClearedLocally = draftBefore?.cleared === true || draftAfter?.cleared === true;
+  const hasAfterWeightKg = Number(draftAfter?.weightKg ?? testimonial?.afterWeightKg) > 0;
+  const hasCollageMeta = !collageClearedLocally
+    && displayBeforeKg > 0
+    && hasAfterWeightKg
+    && usableDuration;
+  // Collage slot must not treat profile-seed Left photo as a ChatGPT collage.
+  const hasUploadedCollageDraft = Boolean(
+    draftBefore?.previewUrl
+    || draftBefore?.imageBase64
+    || draftAfter?.previewUrl
+    || draftAfter?.imageBase64,
+  );
+  const hasStoredCollagePhoto = (
+    (!isProfileSeededTransformation(testimonial) && hasStoredTransformationBefore(testimonial))
+    || hasDistinctTransformationAfter(testimonial)
+  );
+  const hasCollageImage = !collageClearedLocally
+    && !collageImageBroken
+    && (hasUploadedCollageDraft || hasStoredCollagePhoto);
 
   const mediaVersion = `${testimonial?.updatedAt ?? testimonial?.id ?? ''}-${mediaEpoch}`;
   const beforeRaw = draftBefore?.previewUrl
     || withTestimonialMediaCacheBust(testimonial?.beforeImageUrl, mediaVersion);
-  // No separate After file yet: show the Before photo in that column.
-  // This is display only. It is not saved as After and does not start coach approval.
+  // New users: Profile Left fills Before, and After shows the same Left until
+  // they upload a real After (product: Left in both frames by default).
   const afterRaw = draftAfter?.previewUrl
     || (hasAfterImage
       ? withTestimonialMediaCacheBust(testimonial?.afterImageUrl, mediaVersion)
@@ -1071,6 +1138,142 @@ function MemberCard({
     closeDurationEdit();
   }, [closeDurationEdit, durationUnitDraft, durationValueText, testimonial?.beforeWeightKg, testimonial?.goalType]);
 
+  const openCollageMetaForm = useCallback(() => {
+    setCollageMetaError(null);
+    setBeforeWeightText(String(
+      draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? user?.latestWeightKg ?? '',
+    ));
+    setAfterWeightText(String(
+      draftAfter?.weightKg ?? testimonial?.afterWeightKg ?? '',
+    ));
+    const parsed = parseDurationText(draftBefore?.durationText ?? testimonial?.durationText);
+    setDurationValueText(parsed.durationValue);
+    setDurationUnitDraft(parsed.durationUnit);
+    setCollageMetaOpen(true);
+    setPickerSlot(null);
+  }, [
+    draftAfter?.weightKg,
+    draftBefore?.durationText,
+    draftBefore?.weightKg,
+    testimonial?.afterWeightKg,
+    testimonial?.beforeWeightKg,
+    testimonial?.durationText,
+    user?.latestWeightKg,
+  ]);
+
+  const closeCollageMetaForm = useCallback(() => {
+    setCollageMetaOpen(false);
+    setCollageMetaError(null);
+  }, []);
+
+  const submitCollageMetaForm = useCallback(async () => {
+    const beforeKg = parseWeightInput(beforeWeightText);
+    const afterKg = parseWeightInput(afterWeightText);
+    if (beforeKg == null) {
+      setCollageMetaError('Enter a valid before weight.');
+      return;
+    }
+    if (afterKg == null) {
+      setCollageMetaError('Enter a valid after weight.');
+      return;
+    }
+    const durationErr = validateDurationFields(durationUnitDraft, durationValueText);
+    if (durationErr) {
+      setCollageMetaError(durationErr);
+      return;
+    }
+    const durationText = formatDurationText(durationUnitDraft, durationValueText);
+    const goalType = beforeKg >= afterKg ? 'loss' : 'gain';
+    setDraftBefore((prev) => {
+      const { cleared: _cleared, ...rest } = prev || {};
+      return {
+        ...rest,
+        weightKg: beforeKg,
+        durationText,
+        goalType,
+      };
+    });
+    setDraftAfter((prev) => {
+      const { cleared: _cleared, ...rest } = prev || {};
+      return {
+        ...rest,
+        weightKg: afterKg,
+      };
+    });
+    setSubmitError(null);
+    setCollageMetaError(null);
+    setCollageMetaOpen(false);
+    setCollageImageBroken(false);
+    setCollageMetaSaved(true);
+    setPromptCopied(false);
+    setCollageGuideOpen(true);
+    setPickerSlot(null);
+  }, [
+    afterWeightText,
+    beforeWeightText,
+    durationUnitDraft,
+    durationValueText,
+    parseWeightInput,
+  ]);
+
+  const clearCollageSlot = useCallback(() => {
+    setDraftBefore((prev) => {
+      revokeBlobUrl(prev?.previewUrl);
+      return { cleared: true };
+    });
+    setDraftAfter((prev) => {
+      revokeBlobUrl(prev?.previewUrl);
+      return { cleared: true };
+    });
+    setPickerSlot(null);
+    setCollageMetaOpen(false);
+    setCollageGuideOpen(false);
+    setCollageImageBroken(false);
+    setCollageMetaSaved(false);
+    setPromptCopied(false);
+    setSubmitError(null);
+  }, []);
+
+  const handleCollageShare = useCallback(async () => {
+    const src = draftBefore?.previewUrl
+      || (draftBefore?.imageBase64 ? `data:image/jpeg;base64,${draftBefore.imageBase64}` : null)
+      || beforeImageSrc
+      || afterImageSrc;
+    if (!src || collageImageBroken) {
+      setSubmitError('Upload the ChatGPT collage photo first, then share.');
+      return;
+    }
+    try {
+      await shareImageDirectly(src, {
+        title: 'Transformation',
+        text: [
+          user?.userName || 'Transformation',
+          shownBeforeKg != null && shownAfterKg != null
+            ? `Before ${shownBeforeKg} kg → After ${shownAfterKg} kg`
+            : null,
+          usableDuration ? `in ${displayDuration}` : null,
+        ].filter(Boolean).join(' · '),
+        fileName: `transformation-collage-${Date.now()}.jpg`,
+      });
+    } catch (err) {
+      if (!err?.message?.toLowerCase().includes('cancel')) {
+        console.error('[Transformation] Collage share failed:', err);
+        setSubmitError('Could not share collage. Please try again.');
+      }
+    }
+  }, [
+    afterImageSrc,
+    beforeImageSrc,
+    collageImageBroken,
+    displayDuration,
+    draftBefore?.imageBase64,
+    draftBefore?.previewUrl,
+    shownAfterKg,
+    shownBeforeKg,
+    usableDuration,
+    user?.userName,
+  ]);
+
   const openPhotoPicker = useCallback((inputRef) => {
     setCaptureFlowBusy(true);
     setPickerSlot(null);
@@ -1091,6 +1294,56 @@ function MemberCard({
     setSubmitError(null);
     void coverCrop.pickFile(file, slot);
   }, [coverCrop]);
+
+  /** ChatGPT Before|After|Now collage → one slot; stored as before+after for existing save/OTP. */
+  const handleCollageFile = useCallback(async (file) => {
+    if (!file) return;
+    setPickerSlot(null);
+    setSubmitError(null);
+    setCollageImageBroken(false);
+    setCollageGuideOpen(false);
+    setCaptureFlowBusy(true);
+    const beforeBase = {
+      weightKg: testimonial?.beforeWeightKg,
+      goalType: testimonial?.goalType,
+      durationText: testimonial?.durationText,
+    };
+    const afterBase = { weightKg: testimonial?.afterWeightKg };
+    setDraftBefore((prev) => ({ ...(prev || beforeBase), compressing: true }));
+    setDraftAfter((prev) => ({ ...(prev || afterBase), compressing: true }));
+    try {
+      const { base64, preview } = await compressImage(file, {
+        allowLandscape: true,
+        maxDim: 1920,
+      });
+      const previewBefore = jpegDataUrlToObjectUrl(preview) || preview;
+      const previewAfter = jpegDataUrlToObjectUrl(preview) || preview;
+      setDraftBefore((prev) => {
+        revokeBlobUrl(prev?.previewUrl);
+        return {
+          ...(prev || beforeBase),
+          previewUrl: previewBefore,
+          imageBase64: base64,
+          compressing: false,
+        };
+      });
+      setDraftAfter((prev) => {
+        revokeBlobUrl(prev?.previewUrl);
+        return {
+          ...(prev || afterBase),
+          previewUrl: previewAfter,
+          imageBase64: base64,
+          compressing: false,
+        };
+      });
+    } catch (err) {
+      setSubmitError(err?.message || 'Could not read that collage. Please try another image.');
+      setDraftBefore((prev) => (prev ? { ...prev, compressing: false } : null));
+      setDraftAfter((prev) => (prev ? { ...prev, compressing: false } : null));
+    } finally {
+      setCaptureFlowBusy(false);
+    }
+  }, [testimonial?.afterWeightKg, testimonial?.beforeWeightKg, testimonial?.durationText, testimonial?.goalType]);
 
   const handleAdjustExisting = useCallback((slot) => {
     const src = slot === 'after'
@@ -1274,6 +1527,19 @@ function MemberCard({
         : {}),
       ...(!draftBefore && usableDurationForSubmit ? { durationText: usableDurationForSubmit } : {}),
     };
+    const visibleBeforeUrl = draftBefore?.previewUrl && /^https?:\/\//i.test(draftBefore.previewUrl)
+      ? draftBefore.previewUrl
+      : testimonial?.beforeImageUrl;
+    // Default Left-in-both: After display may reuse Before until a real After upload.
+    const visibleAfterUrl = draftAfter?.previewUrl && /^https?:\/\//i.test(draftAfter.previewUrl)
+      ? draftAfter.previewUrl
+      : (hasAfterImage ? testimonial?.afterImageUrl : visibleBeforeUrl);
+    if (!draftBefore?.imageBase64 && typeof visibleBeforeUrl === 'string') {
+      payload.displayedBeforeUrl = visibleBeforeUrl;
+    }
+    if (!draftAfter?.imageBase64 && typeof visibleAfterUrl === 'string') {
+      payload.displayedAfterUrl = visibleAfterUrl;
+    }
     if (
       payload.beforeWeightKg === undefined
       && (payload.afterWeightKg !== undefined || payload.durationText)
@@ -1353,12 +1619,15 @@ function MemberCard({
             : patched;
           clearDrafts();
           void reloadMine(cleared);
+          setSubmitError(
+            'Add a different After photo (change the right photo), then tap Submit for Approval again.',
+          );
           return;
         }
         const hasDuration = Boolean(usableDurationForSubmit);
         setSubmitError(
           hasDuration
-            ? 'Coach approval did not start. Please tap Submit again — if it still fails, add the Before/After photos once more.'
+            ? 'Coach approval did not start. Change the After photo (right side), then tap Submit again.'
             : 'Coach approval did not start. Add a duration in days or months, then submit again.',
         );
         return;
@@ -1569,6 +1838,8 @@ function MemberCard({
         : testimonial.durationText
     ),
     recoveredHealthIssues: draftIssues ?? testimonial.recoveredHealthIssues,
+    // Mine collage slot: one ChatGPT Before|After|Now image in share card.
+    shareAsCollage: true,
   } : null;
   const shareCardUserName = user?.userName || user?.displayName || user?.name || null;
   const showBrandedCard = Boolean(shareCardTestimonial && (beforeImageSrc || afterImageSrc));
@@ -1586,9 +1857,16 @@ function MemberCard({
       {coverCrop.overlay}
       {/* Header strip — Direct/Full photo share top-right (Mine uses Transformation card row) */}
       <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-        <MemberAvatar user={user} />
+        <MemberAvatar
+          user={user}
+          onViewProfile={user?.userId != null ? () => setProfileOpen(true) : undefined}
+        />
         <div className="flex-1 min-w-0">
-          <TeamComplianceSection userName={user.userName} teamStats={teamStats} />
+          <TeamComplianceSection
+            userName={user.userName}
+            teamStats={teamStats}
+            onProfileClick={user?.userId != null ? () => setProfileOpen(true) : undefined}
+          />
           <div className="mt-0.5">
             <CompletenessBadge level={level} filledCount={filledCount} totalSlots={totalSlots} />
           </div>
@@ -1606,332 +1884,300 @@ function MemberCard({
       </div>
       <div className="px-4 pb-4 space-y-3">
 
-      {/* Photos — Mine always editable; team uses branded card when photos exist */}
+      {/* Transformation collage — + → weight form → ChatGPT prompt → upload */}
       {(editable || (!showBrandedCard && testimonial && (testimonial.beforeImageUrl || testimonial.afterImageUrl))) && (
-        <div className="flex gap-2">
-          <div className="flex-1 text-center">
-            <div className="relative">
-              {beforeImageSrc ? (
-                <button
-                  type="button"
-                  onClick={() => setExpandedPhoto({ url: beforeImageSrc, label: `${user.userName} — Before` })}
-                  className="w-full overflow-hidden rounded-xl"
-                >
-                  <img
-                    key={`before-${beforeImageSrc}`}
-                    src={beforeImageSrc}
-                    alt="Before"
-                    className={`${PORTRAIT_IMAGE_CLASS_SM} w-full cursor-zoom-in`}
-                  />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={editable ? () => setPickerSlot('before') : undefined}
-                  className={`${PORTRAIT_IMAGE_CLASS_SM} w-full flex items-center justify-center bg-gray-50 border-2 border-dashed ${editable ? 'border-green-300 hover:bg-green-50' : 'border-gray-200'} transition-colors`}
-                >
-                  {editable ? <Plus className="h-7 w-7 text-green-400" /> : <AlertCircle className="h-5 w-5 text-gray-300" />}
-                </button>
-              )}
-              {editable && beforeImageSrc && (
-                <button
-                  type="button"
-                  onClick={() => setPickerSlot(pickerSlot === 'before' ? null : 'before')}
-                  className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
-                  aria-label="Edit before photo"
-                >
-                  <Pencil className="h-3 w-3" />
-                </button>
-              )}
-              {isVerified && beforeImageSrc && (
+        <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+          <div className="flex items-center px-3 pt-3 pb-2 gap-2">
+            <div className="flex-1 min-w-0 flex items-center justify-start">
+              {isVerified && hasCollageImage ? (
                 <span
-                  className="absolute top-1.5 left-1.5 h-6 w-6 rounded-full bg-green-500 text-white shadow flex items-center justify-center"
+                  className="h-7 w-7 rounded-full bg-green-500 text-white shadow flex items-center justify-center"
                   aria-label="Verified"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </span>
-              )}
-              {draftBefore?.compressing && (
-                <div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center z-10">
-                  <div className="flex flex-col items-center gap-1">
-                    <div className="h-5 w-5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                    <span className="text-white text-[10px] font-bold">Preparing…</span>
-                  </div>
-                </div>
-              )}
+              ) : null}
             </div>
-            {editable && pickerSlot === 'before' && (
-              <div className="flex flex-wrap gap-1.5 mt-1.5 justify-center">
-                <button type="button" onClick={() => handleAdjustExisting('before')}
-                  disabled={coverCrop.isPreparing}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold disabled:opacity-50">
-                  <Crop className="h-3 w-3" /> Adjust
-                </button>
-                <button type="button" onClick={() => openPhotoPicker(beforeCamRef)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-green-600 text-white text-[10px] font-bold">
-                  <Camera className="h-3 w-3" /> Camera
-                </button>
-                <button type="button" onClick={() => openPhotoPicker(beforeGalRef)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold">
-                  <Images className="h-3 w-3" /> Gallery
-                </button>
-                <button type="button" onClick={() => setPickerSlot(null)}
-                  className="px-2 py-1.5 rounded-xl border border-gray-200 text-gray-500 text-[10px] font-bold">
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            )}
-            <input ref={beforeCamRef} type="file" accept="image/*" capture="environment" className="hidden" aria-label="Before camera upload"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) { handleImageFile('before', file); setPickerSlot(null); }
-              }} />
-            <input ref={beforeGalRef} type="file" accept="image/*" className="hidden" aria-label="Before gallery upload"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) { handleImageFile('before', file); setPickerSlot(null); }
-              }} />
-            <div className="mt-1 space-y-0.5">
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">BEFORE</p>
-              {editable && expandedSlots.has('beforeWeight') ? (
-                <div className="flex items-center justify-center gap-1 mt-1">
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    enterKeyHint="done"
-                    autoComplete="off"
-                    autoFocus
-                    value={beforeWeightText ?? ''}
-                    onChange={(e) => {
-                      const raw = sanitizeWeightTyping(e.target.value);
-                      setBeforeWeightText(raw);
-                      commitBeforeWeight(raw);
-                    }}
-                    onBlur={(e) => closeBeforeWeightEdit(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') e.currentTarget.blur();
-                      if (e.key === 'Escape') closeBeforeWeightEdit(null);
-                    }}
-                    className="w-20 border border-gray-300 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-400"
-                  />
-                  <span className="text-xs text-gray-400">kg</span>
+            <p className="shrink-0 text-sm font-bold text-gray-900 text-center">
+              Transformation
+            </p>
+            <div className="flex-1 min-w-0 flex items-center justify-end gap-1.5">
+              {editable && (hasCollageMeta || hasCollageImage) ? (
+                <>
                   <button
                     type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => closeBeforeWeightEdit(beforeWeightText)}
-                    className="text-gray-400 hover:text-gray-600"
+                    onClick={openCollageMetaForm}
+                    className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full bg-gray-800 text-white"
+                    aria-label="Edit transformation details"
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <Pencil className="h-3.5 w-3.5" />
                   </button>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center gap-1">
-                  <p className="text-sm font-bold text-gray-800">
-                    {shownBeforeKg ?? '—'}
-                    {shownBeforeKg != null && shownBeforeKg !== '' && <span className="text-xs font-normal text-gray-400"> kg</span>}
-                  </p>
-                  {editable && (
-                    <button type="button" onClick={openBeforeWeightEdit}
-                      className="p-0.5 rounded-full text-gray-300 hover:text-green-600 transition-colors" aria-label="Edit before weight">
-                      <Pencil className="h-2.5 w-2.5" />
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="flex-1 text-center">
-            <div className="relative">
-              {afterImageSrc ? (
-                <button
-                  type="button"
-                  onClick={() => setExpandedPhoto({ url: afterImageSrc, label: `${user.userName} — After` })}
-                  className="w-full overflow-hidden rounded-xl"
-                >
-                  <img
-                    key={`after-${afterImageSrc}`}
-                    src={afterImageSrc}
-                    alt="After"
-                    className={`${PORTRAIT_IMAGE_CLASS_SM} w-full cursor-zoom-in`}
-                  />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={editable ? () => setPickerSlot('after') : undefined}
-                  className={`${PORTRAIT_IMAGE_CLASS_SM} w-full flex items-center justify-center bg-gray-50 border-2 border-dashed ${editable ? 'border-purple-300 hover:bg-purple-50' : 'border-gray-200'} transition-colors`}
-                >
-                  {editable ? <Plus className="h-7 w-7 text-purple-400" /> : <AlertCircle className="h-5 w-5 text-gray-300" />}
-                </button>
-              )}
-              {editable && afterImageSrc && (
-                <button
-                  type="button"
-                  onClick={() => setPickerSlot(pickerSlot === 'after' ? null : 'after')}
-                  className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors"
-                  aria-label="Edit after photo"
-                >
-                  <Pencil className="h-3 w-3" />
-                </button>
-              )}
-              {isVerified && afterImageSrc && (
-                <span
-                  className="absolute top-1.5 left-1.5 h-6 w-6 rounded-full bg-green-500 text-white shadow flex items-center justify-center"
-                  aria-label="Verified"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </span>
-              )}
-              {draftAfter?.compressing && (
-                <div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center z-10">
-                  <div className="flex flex-col items-center gap-1">
-                    <div className="h-5 w-5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                    <span className="text-white text-[10px] font-bold">Preparing…</span>
-                  </div>
-                </div>
-              )}
-            </div>
-            {editable && pickerSlot === 'after' && (
-              <div className="flex flex-wrap gap-1.5 mt-1.5 justify-center">
-                <button type="button" onClick={() => handleAdjustExisting('after')}
-                  disabled={coverCrop.isPreparing || !(draftAfter?.previewUrl || testimonial?.afterImageUrl)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold disabled:opacity-50">
-                  <Crop className="h-3 w-3" /> Adjust
-                </button>
-                <button type="button" onClick={() => openPhotoPicker(afterCamRef)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-purple-600 text-white text-[10px] font-bold">
-                  <Camera className="h-3 w-3" /> Camera
-                </button>
-                <button type="button" onClick={() => openPhotoPicker(afterGalRef)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold">
-                  <Images className="h-3 w-3" /> Gallery
-                </button>
-                <button type="button" onClick={() => setPickerSlot(null)}
-                  className="px-2 py-1.5 rounded-xl border border-gray-200 text-gray-500 text-[10px] font-bold">
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            )}
-            <input ref={afterCamRef} type="file" accept="image/*" capture="environment" className="hidden" aria-label="After camera upload"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) { handleImageFile('after', file); setPickerSlot(null); }
-              }} />
-            <input ref={afterGalRef} type="file" accept="image/*" className="hidden" aria-label="After gallery upload"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) { handleImageFile('after', file); setPickerSlot(null); }
-              }} />
-            <div className="mt-1 space-y-0.5">
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">AFTER</p>
-              {editable && expandedSlots.has('afterWeight') ? (
-                <div className="flex items-center justify-center gap-1 mt-1">
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    enterKeyHint="done"
-                    autoComplete="off"
-                    autoFocus
-                    value={afterWeightText ?? ''}
-                    onChange={(e) => {
-                      const raw = sanitizeWeightTyping(e.target.value);
-                      setAfterWeightText(raw);
-                      commitAfterWeight(raw);
-                    }}
-                    onBlur={(e) => closeAfterWeightEdit(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') e.currentTarget.blur();
-                      if (e.key === 'Escape') closeAfterWeightEdit(null);
-                    }}
-                    className="w-20 border border-purple-300 rounded-xl px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-purple-400"
-                  />
-                  <span className="text-xs text-gray-400">kg</span>
                   <button
                     type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => closeAfterWeightEdit(afterWeightText)}
-                    className="text-gray-400 hover:text-gray-600"
+                    onClick={() => { void handleCollageShare(); }}
+                    className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-600 text-white"
+                    aria-label="Share transformation"
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <Share2 className="h-3.5 w-3.5" />
                   </button>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center gap-1">
-                  <p className="text-sm font-bold text-gray-800">
-                    {shownAfterKg ?? '—'}
-                    {shownAfterKg != null && shownAfterKg !== '' && <span className="text-xs font-normal text-gray-400"> kg</span>}
-                  </p>
-                  {editable && (
-                    <button type="button" onClick={openAfterWeightEdit}
-                      className="p-0.5 rounded-full text-gray-300 hover:text-purple-600 transition-colors" aria-label="Edit after weight">
-                      <Pencil className="h-2.5 w-2.5" />
-                    </button>
-                  )}
-                </div>
-              )}
+                  <button
+                    type="button"
+                    onClick={clearCollageSlot}
+                    className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full bg-red-50 text-red-600 border border-red-100"
+                    aria-label="Delete transformation"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </>
+              ) : null}
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Compact metadata strip — only when a new photo is being edited (not weight-only) */}
-      {editable && hasPhotoDraft && (
-        <div className="grid grid-cols-2 gap-2 px-1">
-          {draftBefore && (
-            <>
-              <div>
-                <label className="block text-[10px] font-medium text-gray-400 mb-1">Before weight (kg)</label>
-                <input type="text" inputMode="decimal" autoComplete="off" step="0.1" min="1" max="500"
-                  placeholder={String(testimonial?.beforeWeightKg ?? '')}
-                  value={draftBefore?.weightText ?? (draftBefore?.weightKg != null ? String(draftBefore.weightKg) : '')}
-                  onChange={(e) => {
-                    const text = sanitizeWeightTyping(e.target.value);
-                    const v = parseWeightKg(text);
-                    setDraftBefore((prev) => ({
-                      ...prev,
-                      weightText: text,
-                      weightKg: v != null ? v : undefined,
-                    }));
-                  }}
-                  className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+          <div className="relative px-3 pb-3">
+            {hasCollageImage ? (
+              <button
+                type="button"
+                onClick={() => setExpandedPhoto({
+                  url: beforeImageSrc || afterImageSrc,
+                  label: `${user.userName} — Transformation`,
+                })}
+                className="w-full overflow-hidden rounded-xl"
+              >
+                <img
+                  key={`collage-${beforeImageSrc || afterImageSrc}`}
+                  src={beforeImageSrc || afterImageSrc}
+                  alt=""
+                  className={`${COLLAGE_IMAGE_CLASS} w-full cursor-zoom-in`}
+                  onError={() => setCollageImageBroken(true)}
+                  onLoad={() => setCollageImageBroken(false)}
+                />
+              </button>
+            ) : editable && !collageMetaSaved ? (
+              <button
+                type="button"
+                onClick={openCollageMetaForm}
+                className="w-full min-h-[11rem] rounded-xl border-2 border-dashed border-green-300 bg-white flex flex-col items-center justify-center gap-1 hover:bg-green-50 transition-colors"
+                aria-label="Add transformation details"
+              >
+                <Plus className="h-10 w-10 text-green-500" strokeWidth={2} />
+                <span className="text-[10px] font-bold text-green-700 px-2">Tap to add details</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={editable ? () => setPickerSlot(pickerSlot === 'collage' ? null : 'collage') : undefined}
+                className={`${COLLAGE_IMAGE_CLASS} w-full min-h-[9rem] flex flex-col items-center justify-center gap-1 border-2 border-dashed ${editable ? 'border-green-300 hover:bg-green-50' : 'border-gray-200'} transition-colors`}
+              >
+                {editable ? (
+                  <>
+                    <Plus className="h-7 w-7 text-green-400" />
+                    <span className="text-[10px] font-bold text-green-700 px-2">
+                      {promptCopied ? 'Prompt copied — upload collage' : 'Upload ChatGPT collage'}
+                    </span>
+                  </>
+                ) : (
+                  <AlertCircle className="h-5 w-5 text-gray-300" />
+                )}
+              </button>
+            )}
+
+            {(draftBefore?.compressing || draftAfter?.compressing) && (
+              <div className="absolute inset-3 bg-black/50 rounded-xl flex items-center justify-center z-10">
+                <div className="flex flex-col items-center gap-1">
+                  <div className="h-5 w-5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                  <span className="text-white text-[10px] font-bold">Preparing…</span>
+                </div>
               </div>
+            )}
+          </div>
+
+          {hasCollageMeta && (
+            <div className="px-3 pb-3 flex items-center justify-center gap-4 text-center">
               <div>
-                <label className="block text-[10px] font-medium text-gray-400 mb-1">Goal</label>
-                <select value={draftBefore?.goalType || testimonial?.goalType || 'loss'}
-                  onChange={(e) => setDraftBefore(prev => ({ ...prev, goalType: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
-                  <option value="loss">Weight Loss</option>
-                  <option value="gain">Weight Gain</option>
-                </select>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Before</p>
+                <p className="text-base font-bold text-gray-900">
+                  {Number(draftBefore?.weightKg ?? testimonial?.beforeWeightKg).toFixed(1)}
+                  <span className="text-xs font-normal text-gray-400"> kg</span>
+                </p>
               </div>
-            </>
-          )}
-          {draftAfter && (
-            <div className={draftBefore ? '' : 'col-span-2'}>
-              <label className="block text-[10px] font-medium text-gray-400 mb-1">After weight (kg)</label>
-              <input type="text" inputMode="decimal" autoComplete="off" step="0.1" min="1" max="500"
-                placeholder={String(hasAfter ? (testimonial?.afterWeightKg ?? '') : '')}
-                value={draftAfter?.weightText ?? (draftAfter?.weightKg != null ? String(draftAfter.weightKg) : '')}
-                onChange={(e) => {
-                  const text = sanitizeWeightTyping(e.target.value);
-                  const v = parseWeightKg(text);
-                  setDraftAfter((prev) => ({
-                    ...(prev || {}),
-                    weightText: text,
-                    weightKg: v != null ? v : undefined,
-                  }));
-                }}
-                className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+              <div className="text-gray-300 text-lg font-light" aria-hidden="true">→</div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">After</p>
+                <p className="text-base font-bold text-gray-900">
+                  {Number(draftAfter?.weightKg ?? testimonial?.afterWeightKg).toFixed(1)}
+                  <span className="text-xs font-normal text-gray-400"> kg</span>
+                </p>
+              </div>
+              {usableDuration && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">In</p>
+                  <p className="text-sm font-bold text-gray-700">{displayDuration}</p>
+                </div>
+              )}
             </div>
           )}
+
+          {editable && collageMetaOpen && (
+            <div className="mx-3 mb-3 rounded-2xl border border-green-200 bg-green-50/70 p-3 space-y-2.5 text-left">
+              <p className="text-xs font-bold text-green-900">Transformation details</p>
+              <label className="block">
+                <span className="text-[10px] font-semibold text-gray-500 uppercase">Before weight (kg)</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  value={beforeWeightText ?? ''}
+                  onChange={(e) => setBeforeWeightText(sanitizeWeightTyping(e.target.value))}
+                  className="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                  placeholder="e.g. 82"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[10px] font-semibold text-gray-500 uppercase">After weight (kg)</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  value={afterWeightText ?? ''}
+                  onChange={(e) => setAfterWeightText(sanitizeWeightTyping(e.target.value))}
+                  className="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                  placeholder="e.g. 74"
+                />
+              </label>
+              <div>
+                <span className="text-[10px] font-semibold text-gray-500 uppercase">Time to achieve</span>
+                <div className="mt-1 flex gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoComplete="off"
+                    value={durationValueText ?? ''}
+                    onChange={(e) => setDurationValueText(sanitizeDurationDigits(e.target.value))}
+                    className="w-24 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                    placeholder="e.g. 3"
+                  />
+                  <select
+                    value={durationUnitDraft}
+                    onChange={(e) => setDurationUnitDraft(e.target.value)}
+                    className="flex-1 border border-gray-300 rounded-xl px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-400"
+                  >
+                    <option value="days">days</option>
+                    <option value="months">months</option>
+                  </select>
+                </div>
+              </div>
+              {collageMetaError && (
+                <p className="text-[11px] text-red-600 font-medium">{collageMetaError}</p>
+              )}
+              <div className="flex gap-2 pt-0.5">
+                <button
+                  type="button"
+                  onClick={closeCollageMetaForm}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void submitCollageMetaForm(); }}
+                  className="flex-1 py-2.5 rounded-xl bg-green-600 text-white text-xs font-bold"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          )}
+
+          {editable && collageGuideOpen && !collageMetaOpen && (
+            <div className="mx-3 mb-3 rounded-2xl border-2 border-red-400 bg-red-50 p-3 space-y-2.5 text-left">
+              <p className="text-xs font-bold text-red-700 leading-snug">
+                Copy the ChatGPT prompt and open ChatGPT. Paste the prompt, add Before → After → Now photos, then upload the collage here.
+              </p>
+              <button
+                type="button"
+                onClick={async () => {
+                  const { copied } = await copyAndOpenChatGptCollagePrompt();
+                  setPromptCopied(Boolean(copied));
+                  setCollageGuideOpen(false);
+                  setPickerSlot('collage');
+                }}
+                className="w-full py-2.5 rounded-xl bg-green-600 text-white text-xs font-bold"
+              >
+                Copy and open
+              </button>
+            </div>
+          )}
+
+          {editable && pickerSlot === 'collage' && (
+            <div className="px-3 pb-3 flex flex-wrap gap-1.5 justify-center">
+              <button
+                type="button"
+                onClick={() => openPhotoPicker(collageCamRef)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-green-600 text-white text-[10px] font-bold"
+              >
+                <Camera className="h-3 w-3" /> Camera
+              </button>
+              <button
+                type="button"
+                onClick={() => openPhotoPicker(collageGalRef)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-gray-300 text-gray-700 text-[10px] font-bold"
+              >
+                <Images className="h-3 w-3" /> Gallery / Paste
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const ok = await copyTransformCollagePrompt();
+                    if (!ok) throw new Error('Clipboard unavailable');
+                    setPromptCopied(true);
+                    window.setTimeout(() => setPromptCopied(false), 2500);
+                  } catch {
+                    setSubmitError('Could not copy prompt.');
+                  }
+                }}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-green-300 text-green-800 text-[10px] font-bold"
+              >
+                <Share2 className="h-3 w-3" /> {promptCopied ? 'Copied' : 'Copy prompt'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPickerSlot(null)}
+                className="px-2 py-1.5 rounded-xl border border-gray-200 text-gray-500 text-[10px] font-bold"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )}
+
+          <input
+            ref={collageCamRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            aria-label="Collage camera upload"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) { void handleCollageFile(file); setPickerSlot(null); }
+            }}
+          />
+          <input
+            ref={collageGalRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            aria-label="Collage gallery upload"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (file) { void handleCollageFile(file); setPickerSlot(null); }
+            }}
+          />
         </div>
       )}
 
@@ -2097,9 +2343,9 @@ function MemberCard({
               <p className="text-xs text-amber-800 leading-relaxed">{videoUploadError}</p>
             </div>
           )}
-          <div className="flex gap-3">
-            <div className="flex-1 space-y-1">
-              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Health</p>
+          <div className="flex flex-col gap-3">
+            <div className="space-y-1">
+              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Health Result</p>
               {editable ? (
                 <div className="relative">
                   {draftHealthPreview || testimonial?.healthVideoUrl ? (
@@ -2121,9 +2367,9 @@ function MemberCard({
                     </>
                   ) : (
                     <button type="button" onClick={() => healthVidRef.current?.click()}
-                      className="w-full flex flex-col items-center justify-center gap-1.5 bg-gray-50 border-2 border-dashed border-green-300 rounded-xl py-5 hover:bg-green-50 transition-colors">
-                      <Plus className="h-6 w-6 text-green-400" />
-                      <span className="text-[10px] font-semibold text-green-600">Add video</span>
+                      className="w-full flex items-center justify-center bg-gray-50 border-2 border-dashed border-green-300 rounded-xl py-8 hover:bg-green-50 transition-colors"
+                      aria-label="Add health result video">
+                      <Plus className="h-7 w-7 text-green-400" />
                     </button>
                   )}
                   {uploadingHealth && (
@@ -2150,8 +2396,8 @@ function MemberCard({
                 />
               )}
             </div>
-            <div className="flex-1 space-y-1">
-              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Business</p>
+            <div className="space-y-1">
+              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Business Result</p>
               {editable ? (
                 <div className="relative">
                   {draftBusinessPreview || testimonial?.businessVideoUrl ? (
@@ -2173,9 +2419,9 @@ function MemberCard({
                     </>
                   ) : (
                     <button type="button" onClick={() => businessVidRef.current?.click()}
-                      className="w-full flex flex-col items-center justify-center gap-1.5 bg-gray-50 border-2 border-dashed border-blue-300 rounded-xl py-5 hover:bg-blue-50 transition-colors">
-                      <Plus className="h-6 w-6 text-blue-400" />
-                      <span className="text-[10px] font-semibold text-blue-600">Add video</span>
+                      className="w-full flex items-center justify-center bg-gray-50 border-2 border-dashed border-blue-300 rounded-xl py-8 hover:bg-blue-50 transition-colors"
+                      aria-label="Add business result video">
+                      <Plus className="h-7 w-7 text-blue-400" />
                     </button>
                   )}
                   {uploadingBusiness && (
@@ -2208,6 +2454,21 @@ function MemberCard({
               <CheckCircle className="h-3 w-3 shrink-0" /> Videos verified
             </p>
           )}
+
+          {/* Upline website consent — directly under Result Video / Videos verified */}
+          {editable
+            && isFlagEnabled('ff.testimonial-upline-display-consent')
+            && testimonial
+            && (testimonial.status === 'verified' || testimonial.videoStatus === 'verified') ? (
+            <WebsiteDisplayConsentCard
+              userId={userId}
+              testimonial={testimonial}
+              onChanged={() => {
+                if (typeof onMineRefresh === 'function') void onMineRefresh();
+                else if (typeof onOtpVerified === 'function') onOtpVerified();
+              }}
+            />
+          ) : null}
 
           {editable && !showUnifiedOtp && !unifiedOtpDismissed && testimonial?.videoStatus === 'pending' && testimonial?.id && (
             <div className="bg-white rounded-2xl border border-amber-200 shadow-sm px-4 py-4 space-y-1 mt-1">
@@ -2357,8 +2618,25 @@ function MemberCard({
       )}
 
       {expandedPhoto && (
-        <PhotoModal url={expandedPhoto.url} label={expandedPhoto.label} onClose={() => setExpandedPhoto(null)} />
+        <FullscreenProfilePhotoViewer
+          isOpen
+          src={expandedPhoto.url}
+          alt={expandedPhoto.label}
+          title={expandedPhoto.label}
+          onClose={() => setExpandedPhoto(null)}
+          onViewProfile={user?.userId != null ? () => {
+            setExpandedPhoto(null);
+            setProfileOpen(true);
+          } : undefined}
+        />
       )}
+      <TeamMemberProfileModal
+        isOpen={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        memberEmail={user?.email || user?.Email}
+        memberUserId={user?.userId}
+        apiBaseUrl={getApiBaseUrl()}
+      />
       <CustomAlertModal
         isOpen={Boolean(videoSizeAlert)}
         onClose={() => setVideoSizeAlert(null)}
@@ -2374,11 +2652,11 @@ function MemberCard({
           aria-hidden="true"
           style={{
             position: 'fixed',
-            left: 0,
+            left: -10000,
             top: 0,
             width: CARD_W,
             height: CARD_H,
-            opacity: 0.02,
+            opacity: 0,
             pointerEvents: 'none',
             zIndex: -1,
             overflow: 'hidden',
@@ -2462,7 +2740,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       if (Number.isFinite(latestWeightKg) && latestWeightKg > 0) {
         userPayload.latestWeightKg = latestWeightKg;
       }
-      // New users with Left/Centre/Right: Left defaults into Transformation Before (After mirrors until real After).
+      // New users with Left/Centre/Right: Left defaults into Before and After until a real After upload.
       const leftUrl = profileResult?.success
         ? profileResult?.data?.transformationPhotos?.left
         : null;
@@ -2534,23 +2812,39 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setListReloadKey((key) => key + 1);
     try {
       // First page only (limit 10) — never hydrate the full team on open.
-      const [directResult, mine] = await Promise.all([
+      // Mine must still load if team list fails (e.g. pending DB migration).
+      const [directOutcome, mineOutcome] = await Promise.allSettled([
         listForCoach(coachId, { scope: 'direct', page: 1, limit: 10 }),
         buildMineRow(),
       ]);
       if (generation !== loadGenerationRef.current) return;
 
-      const direct = Array.isArray(directResult?.data) ? directResult.data : [];
-      setDirectRows(direct);
-      setDirectPagination(directResult?.pagination || { page: 1, hasMore: false, total: direct.length });
-      setDirectUploadCounts(directResult?.uploadCounts || {
-        fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
-      });
-      setMineRow(mine);
-      const total = directResult?.pagination?.total ?? direct.length;
-      setDirectTeamMemberCount(total);
-      setHasDownline(total > 0);
-      if (total === 0) setTeamScope(TEAM_SCOPES.MINE);
+      if (mineOutcome.status === 'fulfilled') {
+        setMineRow(mineOutcome.value);
+      }
+
+      if (directOutcome.status === 'fulfilled') {
+        const directResult = directOutcome.value;
+        const direct = Array.isArray(directResult?.data) ? directResult.data : [];
+        setDirectRows(direct);
+        setDirectPagination(directResult?.pagination || { page: 1, hasMore: false, total: direct.length });
+        setDirectUploadCounts(directResult?.uploadCounts || {
+          fully_uploaded: 0, partial_upload: 0, not_uploaded: 0,
+        });
+        const total = directResult?.pagination?.total ?? direct.length;
+        setDirectTeamMemberCount(total);
+        setHasDownline(total > 0);
+        if (total === 0) setTeamScope(TEAM_SCOPES.MINE);
+      } else {
+        setDirectRows([]);
+        setDirectPagination({ page: 1, hasMore: false, total: 0 });
+        setDirectTeamMemberCount(0);
+        setHasDownline(false);
+        setTeamScope(TEAM_SCOPES.MINE);
+        if (isFirstLoad && mineOutcome.status !== 'fulfilled') {
+          setError(directOutcome.reason?.message || 'Failed to load testimonials');
+        }
+      }
     } catch (err) {
       if (generation !== loadGenerationRef.current) return;
       if (isFirstLoad) setError(err.message || 'Failed to load testimonials');
@@ -2618,14 +2912,26 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setHighlightedSuggestion(-1);
     setHighlightedIssue(-1);
     setUploadFilter(UPLOAD_FILTERS.ALL);
+    setTeamScope(TEAM_SCOPES.MINE);
   }, []);
 
-  const handleTeamScopeChange = useCallback((value) => {
-    if (value === teamScope) return;
-    resetTeamSearch();
-    if (value === TEAM_SCOPES.FULL) setFullLoaded(false);
-    setTeamScope(value);
-  }, [teamScope, resetTeamSearch]);
+  // No Mine/Direct/Full tabs: own card by default; search uses Full-team API.
+  const syncScopeForSearch = useCallback((nextSearchQuery, nextIssueQuery) => {
+    if (!hasDownline) {
+      setTeamScope(TEAM_SCOPES.MINE);
+      return;
+    }
+    const searching = normalizeSearchQuery(nextSearchQuery).length > 0
+      || normalizeSearchQuery(nextIssueQuery).length > 0;
+    if (searching) {
+      setTeamScope((prev) => {
+        if (prev !== TEAM_SCOPES.FULL) setFullLoaded(false);
+        return TEAM_SCOPES.FULL;
+      });
+    } else {
+      setTeamScope(TEAM_SCOPES.MINE);
+    }
+  }, [hasDownline]);
 
   // ── Derived state ──────────────────────────────────────────────────────────
 
@@ -2834,24 +3140,31 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setSearchQuery(value);
     setIsSearchOpen(true);
     setHighlightedSuggestion(-1);
-  }, []);
+    syncScopeForSearch(value, committedHealthIssue);
+  }, [committedHealthIssue, syncScopeForSearch]);
 
   const handleIssueSearchChange = useCallback((value) => {
     setHealthIssueQuery(value);
     setIsIssueSearchOpen(true);
     setHighlightedIssue(-1);
+    let nextCommitted = committedHealthIssue;
     if (!value.trim()) {
+      nextCommitted = '';
       setCommittedHealthIssue('');
     } else if (normalizeSearchQuery(value) !== normalizeSearchQuery(committedHealthIssue)) {
+      nextCommitted = '';
       setCommittedHealthIssue('');
     }
-  }, [committedHealthIssue]);
+    syncScopeForSearch(searchQuery, nextCommitted || value);
+  }, [committedHealthIssue, searchQuery, syncScopeForSearch]);
 
   const handleSelectNameSuggestion = useCallback((row) => {
-    setSearchQuery(row?.user?.userName || '');
+    const name = row?.user?.userName || '';
+    setSearchQuery(name);
     setIsSearchOpen(false);
     setHighlightedSuggestion(-1);
-  }, []);
+    syncScopeForSearch(name, committedHealthIssue);
+  }, [committedHealthIssue, syncScopeForSearch]);
 
   const handleSelectIssueSuggestion = useCallback((issue) => {
     const label = typeof issue === 'string' ? issue : (issue?.label || '');
@@ -2859,7 +3172,8 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setCommittedHealthIssue(label);
     setIsIssueSearchOpen(false);
     setHighlightedIssue(-1);
-  }, []);
+    syncScopeForSearch(searchQuery, label);
+  }, [searchQuery, syncScopeForSearch]);
 
   const handleSearchKeyDown = useCallback((event) => {
     const hasQuery = normalizeSearchQuery(searchQuery).length > 0;
@@ -2918,9 +3232,11 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       if (highlightedIssue >= 0 && issueSuggestions[highlightedIssue]) {
         handleSelectIssueSuggestion(issueSuggestions[highlightedIssue]);
       } else {
-        setCommittedHealthIssue(healthIssueQuery.trim());
+        const label = healthIssueQuery.trim();
+        setCommittedHealthIssue(label);
         setIsIssueSearchOpen(false);
         setHighlightedIssue(-1);
+        syncScopeForSearch(searchQuery, label);
       }
       return;
     }
@@ -2928,13 +3244,14 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       setIsIssueSearchOpen(false);
       setHighlightedIssue(-1);
     }
-  }, [healthIssueQuery, issueSuggestions, highlightedIssue, handleSelectIssueSuggestion]);
+  }, [healthIssueQuery, issueSuggestions, highlightedIssue, handleSelectIssueSuggestion, searchQuery, syncScopeForSearch]);
 
   const hasActiveSearch = normalizeSearchQuery(searchQuery).length > 0
     || normalizeSearchQuery(committedHealthIssue).length > 0;
   const hasActiveUploadFilter = uploadFilter && uploadFilter !== UPLOAD_FILTERS.ALL;
   const showTeamChrome  = hasDownline;
   const showPageSkeleton = shouldShowTestimonialsPageSkeleton(loading, mineRow);
+  const showSearchLoading = fullLoading && !isMineScope && hasActiveSearch;
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-4 pb-24 space-y-4">
@@ -2944,7 +3261,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         <div className="flex items-center gap-2">
           <Users className="h-5 w-5 text-green-700" />
           <h1 className="text-lg font-bold text-gray-900">
-            {showTeamChrome ? 'Team Transformation' : 'My Transformation'}
+            {hasActiveSearch && showTeamChrome ? 'Team Transformation' : 'My Transformation'}
           </h1>
         </div>
         <TouchFeedbackButton
@@ -2957,100 +3274,65 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         </TouchFeedbackButton>
       </div>
 
-      {/* Team scope — only when user has a downline */}
+      {/* Search downlines — no Mine/Direct/Full tabs; empty search = own card only */}
       {!loading && showTeamChrome && (
-        <div className="bg-white rounded-xl border border-gray-200 px-1 py-1 flex gap-1" role="group" aria-label="Team scope">
-          {TEAM_SCOPE_OPTIONS.map(({ value, label, short }) => {
-            const isActive  = teamScope === value;
-            const count     = teamScopeCounts[value] ?? 0;
-            const showCount = value !== TEAM_SCOPES.MINE;
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => handleTeamScopeChange(value)}
-                aria-pressed={isActive}
-                className={`flex-1 py-2 rounded-lg text-[11px] sm:text-xs font-semibold transition-all duration-150 cursor-pointer min-w-0 px-1 ${
-                  isActive ? 'bg-green-600 text-white shadow-sm' : 'text-green-800 hover:bg-green-50'
-                }`}
-              >
-                <span className="hidden sm:inline">{showCount ? `${label} (${count})` : label}</span>
-                <span className="sm:hidden">{showCount ? `${short} (${count})` : short}</span>
-              </button>
-            );
-          })}
+        <div className="space-y-3">
+          <div className="relative">
+            <p className="text-xs font-semibold text-gray-600 mb-1.5">Search user name</p>
+            <TestimonialSearchBar
+              variant="name"
+              value={searchQuery}
+              onChange={handleSearchChange}
+              suggestions={nameSuggestions}
+              isOpen={isSearchOpen}
+              onOpenChange={(open) => {
+                setIsSearchOpen(open);
+                if (open) {
+                  setIsIssueSearchOpen(false);
+                  setHighlightedIssue(-1);
+                }
+              }}
+              highlightedIndex={highlightedSuggestion}
+              onHighlightChange={setHighlightedSuggestion}
+              onSelectSuggestion={handleSelectNameSuggestion}
+              onKeyDown={handleSearchKeyDown}
+            />
+          </div>
+          <div className="relative">
+            <p className="text-xs font-semibold text-gray-600 mb-1.5">Search health issue</p>
+            <TestimonialSearchBar
+              variant="issue"
+              value={healthIssueQuery}
+              onChange={handleIssueSearchChange}
+              suggestions={issueSuggestions}
+              isOpen={isIssueSearchOpen}
+              onOpenChange={(open) => {
+                setIsIssueSearchOpen(open);
+                if (open) {
+                  setIsSearchOpen(false);
+                  setHighlightedSuggestion(-1);
+                }
+              }}
+              highlightedIndex={highlightedIssue}
+              onHighlightChange={setHighlightedIssue}
+              onSelectSuggestion={handleSelectIssueSuggestion}
+              onKeyDown={handleIssueSearchKeyDown}
+            />
+          </div>
+          {hasActiveSearch ? (
+            <button
+              type="button"
+              onClick={resetTeamSearch}
+              className="text-xs font-semibold text-green-700 hover:text-green-800"
+            >
+              Clear search · show my transformation
+            </button>
+          ) : (
+            <p className="text-[11px] text-gray-400 leading-snug">
+              Your transformation is below. Search a downline name to view theirs.
+            </p>
+          )}
         </div>
-      )}
-
-      {/* Search + upload filters — team scopes only (not Mine / not leaf members) */}
-      {!loading && showTeamChrome && !isMineScope && (
-        <>
-          <div className="space-y-3">
-            <div className="relative">
-              <p className="text-xs font-semibold text-gray-600 mb-1.5">Search health issue</p>
-              <TestimonialSearchBar
-                variant="issue"
-                value={healthIssueQuery}
-                onChange={handleIssueSearchChange}
-                suggestions={issueSuggestions}
-                isOpen={isIssueSearchOpen}
-                onOpenChange={(open) => {
-                  setIsIssueSearchOpen(open);
-                  if (open) {
-                    setIsSearchOpen(false);
-                    setHighlightedSuggestion(-1);
-                  }
-                }}
-                highlightedIndex={highlightedIssue}
-                onHighlightChange={setHighlightedIssue}
-                onSelectSuggestion={handleSelectIssueSuggestion}
-                onKeyDown={handleIssueSearchKeyDown}
-              />
-            </div>
-            <div className="relative">
-              <p className="text-xs font-semibold text-gray-600 mb-1.5">Search user name</p>
-              <TestimonialSearchBar
-                variant="name"
-                value={searchQuery}
-                onChange={handleSearchChange}
-                suggestions={nameSuggestions}
-                isOpen={isSearchOpen}
-                onOpenChange={(open) => {
-                  setIsSearchOpen(open);
-                  if (open) {
-                    setIsIssueSearchOpen(false);
-                    setHighlightedIssue(-1);
-                  }
-                }}
-                highlightedIndex={highlightedSuggestion}
-                onHighlightChange={setHighlightedSuggestion}
-                onSelectSuggestion={handleSelectNameSuggestion}
-                onKeyDown={handleSearchKeyDown}
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide sm:flex-wrap sm:gap-2 sm:overflow-visible" role="group" aria-label="Upload completeness filter">
-            <UploadFilterChip
-              filterKey={UPLOAD_FILTERS.FULLY_UPLOADED}
-              count={uploadCounts.fully_uploaded}
-              activeFilter={uploadFilter}
-              onToggle={handleUploadToggle}
-            />
-            <UploadFilterChip
-              filterKey={UPLOAD_FILTERS.PARTIAL}
-              count={uploadCounts.partial_upload}
-              activeFilter={uploadFilter}
-              onToggle={handleUploadToggle}
-            />
-            <UploadFilterChip
-              filterKey={UPLOAD_FILTERS.NOT_UPLOADED}
-              count={uploadCounts.not_uploaded}
-              activeFilter={uploadFilter}
-              onToggle={handleUploadToggle}
-            />
-          </div>
-        </>
       )}
 
       {/* States */}
@@ -3066,14 +3348,14 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{error}</div>
       )}
 
-      {fullLoading && teamScope === TEAM_SCOPES.FULL && (
+      {showSearchLoading && (
         <div className="py-6">
           <LoadingSpinner context="normal" />
-          <p className="text-center text-sm text-gray-500 mt-2">Loading full team…</p>
+          <p className="text-center text-sm text-gray-500 mt-2">Searching team…</p>
         </div>
       )}
 
-      {!showPageSkeleton && !fullLoading && !error && filteredRows.length === 0 && (
+      {!showPageSkeleton && !showSearchLoading && !error && filteredRows.length === 0 && (
         <div className="text-center py-12 text-gray-400">
           <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
           <p className="font-medium">
@@ -3081,9 +3363,9 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
               ? 'No matching members found.'
               : hasActiveUploadFilter
                 ? 'No records match the selected filter.'
-                : (showTeamChrome ? 'No team members found' : 'Unable to load your transformation')}
+                : 'Unable to load your transformation'}
           </p>
-          {(hasActiveSearch || hasActiveUploadFilter) ? (
+          {hasActiveSearch ? (
             <button
               type="button"
               onClick={resetTeamSearch}
@@ -3095,8 +3377,8 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         </div>
       )}
 
-      {/* Member cards */}
-      {!showPageSkeleton && !fullLoading && filteredRows.map((row) => (
+      {/* Member cards — own transformation, or search matches only */}
+      {!showPageSkeleton && !showSearchLoading && filteredRows.map((row) => (
         <MemberCard
           key={row.user.userId}
           row={row}
@@ -3116,7 +3398,7 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         />
       ))}
 
-      {!showPageSkeleton && !fullLoading && !isMineScope && activePagination.hasMore && (
+      {!showPageSkeleton && !showSearchLoading && !isMineScope && activePagination.hasMore && (
         <div ref={loadMoreSentinelRef} className="py-4 flex justify-center">
           {loadingMore ? (
             <LoadingSpinner context="normal" />
@@ -3128,6 +3410,3 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     </div>
   );
 }
-
-
-

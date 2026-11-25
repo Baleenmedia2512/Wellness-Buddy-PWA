@@ -91,6 +91,20 @@ describe('resolveActivityReportTableUserIds', () => {
       [1, 3],
     );
   });
+
+  it('filters out hidden users from not_posted table rows', () => {
+    assert.deepEqual(
+      resolveActivityReportTableUserIds('not_posted', [1, 2, 3, 4], [2], [4]),
+      [1, 3],
+    );
+  });
+
+  it('includes users in posted table even if they are in the hidden list when they posted', () => {
+    assert.deepEqual(
+      resolveActivityReportTableUserIds('posted', [1, 2, 3, 4], [2, 4], [4]),
+      [2, 4],
+    );
+  });
 });
 
 describe('buildNotPostedSummaryCounts', () => {

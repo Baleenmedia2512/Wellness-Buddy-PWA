@@ -69,20 +69,30 @@ export function applyNativeKeyboardAttrs(el, opts = {}) {
 
   const resolved = resolveNativeKeyboardAttrs(opts);
 
-  el.type = resolved.type;
-  el.setAttribute('type', resolved.type);
+  // Only write when values change. Re-assigning `type` while focused dismisses
+  // the Android/iOS soft keyboard on every keystroke (Login mobile number page).
+  if (el.getAttribute('type') !== resolved.type || el.type !== resolved.type) {
+    el.type = resolved.type;
+    el.setAttribute('type', resolved.type);
+  }
 
   if (resolved.inputMode) {
-    el.inputMode = resolved.inputMode;
-    el.setAttribute('inputmode', resolved.inputMode);
+    if (el.getAttribute('inputmode') !== resolved.inputMode || el.inputMode !== resolved.inputMode) {
+      el.inputMode = resolved.inputMode;
+      el.setAttribute('inputmode', resolved.inputMode);
+    }
   }
   if (resolved.pattern) {
-    el.pattern = resolved.pattern;
-    el.setAttribute('pattern', resolved.pattern);
+    if (el.getAttribute('pattern') !== resolved.pattern) {
+      el.pattern = resolved.pattern;
+      el.setAttribute('pattern', resolved.pattern);
+    }
   }
   if (resolved.autoComplete != null) {
-    el.autocomplete = resolved.autoComplete;
-    el.setAttribute('autocomplete', resolved.autoComplete);
+    if (el.getAttribute('autocomplete') !== resolved.autoComplete) {
+      el.autocomplete = resolved.autoComplete;
+      el.setAttribute('autocomplete', resolved.autoComplete);
+    }
   }
 }
 

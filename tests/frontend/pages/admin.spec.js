@@ -24,7 +24,7 @@ test.describe('Admin Page - Wellness Score & Activity Time Settings (ADMIN_001)'
     { key: 'breakfast_post', label: 'Breakfast Post', section: 'logging', scoringMode: 'binary', maxPoints: 100, enabled: true },
     { key: 'lunch_post', label: 'Lunch Post', section: 'logging', scoringMode: 'binary', maxPoints: 100, enabled: true },
     { key: 'dinner_post', label: 'Dinner Post', section: 'logging', scoringMode: 'binary', maxPoints: 100, enabled: true },
-    { key: 'good_habit_post', label: 'Today Task Given by Coach', section: 'logging', scoringMode: 'binary', maxPoints: 100, enabled: true },
+    { key: 'good_habit_post', label: 'Task by Coach', section: 'logging', scoringMode: 'binary', maxPoints: 100, enabled: true },
     { key: 'calories', label: 'Calories', section: 'nutrition', scoringMode: 'limit', maxPoints: 100, enabled: true },
     { key: 'carbohydrates', label: 'Carbohydrates', section: 'nutrition', scoringMode: 'limit', maxPoints: 100, enabled: true },
     { key: 'fat', label: 'Fat', section: 'nutrition', scoringMode: 'limit', maxPoints: 100, enabled: true },

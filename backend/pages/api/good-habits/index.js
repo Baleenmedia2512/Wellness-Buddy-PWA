@@ -10,6 +10,14 @@ import {
   deleteHabit,
   undoDeleteHabit,
 } from '../../../features/good-habits/api/save.handler.js';
+import {
+  requestGoodHabitOtp,
+  verifyGoodHabitOtp,
+} from '../../../features/good-habits/api/otp.handler.js';
+import {
+  emailCoachRejectOption,
+  resolveTaskByCoachApprover,
+} from '../../../features/good-habits/api/coach-reject.service.js';
 import { deleteById as deleteCaptureById } from '../../../features/captures/captures.service.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import logger from '../../../shared/lib/logger.js';
@@ -25,7 +33,7 @@ export const config = {
 function flagOff() {
   return {
     httpStatus: 404,
-    body: { ok: false, error: { code: 'FLAG_OFF', message: 'Good Habit is not enabled' } },
+    body: { ok: false, error: { code: 'FLAG_OFF', message: 'Task by Coach is not enabled' } },
   };
 }
 
@@ -37,13 +45,53 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
+    const action = String(req.body?.action || '').trim().toLowerCase();
+    if (action === 'request-otp') {
+      return runService(res, () => requestGoodHabitOtp(req.body));
+    }
+    if (action === 'verify-otp') {
+      return runService(res, () => verifyGoodHabitOtp({
+        userId: req.body?.userId,
+        otp: req.body?.otp,
+        otpKey: req.body?.otpKey,
+      }));
+    }
+
     const undo = req.body?.undo === true || req.query?.undo === '1';
     if (undo) {
       return runService(res, () => undoDeleteHabit(validateDeleteHabit(req.body)));
     }
+
+    // Immediate save + score; coach gets photo email with Reject (no OTP).
     return runService(res, async () => {
       const input = validateSaveHabit(req.body);
-      const result = await saveHabit(input);
+      const coach = await resolveTaskByCoachApprover(input.userId);
+      const result = await saveHabit({
+        ...input,
+        useServerNow: true,
+      });
+      const habitId = result?.body?.data?.id;
+      if (habitId != null) {
+        try {
+          await emailCoachRejectOption({
+            habitId,
+            userId: input.userId,
+            memberName: coach.memberName,
+            coachUserId: coach.userId,
+            coachEmail: coach.email,
+            coachName: coach.name,
+            imageBase64: input.imageBase64
+              || input.afterImageBase64
+              || input.beforeImageBase64,
+          });
+        } catch (err) {
+          logger.warn('good-habits: reject-option email failed', {
+            habitId,
+            userId: String(input.userId),
+            err: err?.message || String(err),
+          });
+        }
+      }
       if (input.captureId) {
         try {
           await deleteCaptureById({

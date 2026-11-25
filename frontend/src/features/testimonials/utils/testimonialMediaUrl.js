@@ -2,16 +2,56 @@
  * Cache-bust signed testimonial media URLs so Android WebView shows fresh images
  * after replacement (same storage key pattern can otherwise reuse a cached bitmap).
  *
+ * Also rewrite /api/testimonials/file links onto REACT_APP_API_BASE_URL so a
+ * mis-set TESTIMONIAL_FILE_BASE_URL (e.g. live host while using test) does not
+ * 404 Before/After photos.
+ */
+import { getApiBaseUrl } from '../../../config/api.config.js';
+
+/**
+ * Point testimonial file URLs at the configured API host.
+ * @param {string|null|undefined} url
+ * @param {string} [apiBase]
+ * @returns {string|null|undefined}
+ */
+export function resolveTestimonialMediaUrl(url, apiBase) {
+  if (!url || typeof url !== 'string') return url;
+  if (url.startsWith('blob:') || url.startsWith('data:')) return url;
+
+  let base = '';
+  try {
+    base = String(apiBase || getApiBaseUrl() || '').replace(/\/+$/, '');
+  } catch {
+    base = String(apiBase || '').replace(/\/+$/, '');
+  }
+  if (!base) return url;
+
+  try {
+    if (url.startsWith('/api/testimonials/file')) {
+      return `${base}${url}`;
+    }
+    const parsed = new URL(url);
+    if (parsed.pathname.includes('/api/testimonials/file')) {
+      return `${base}${parsed.pathname}${parsed.search}`;
+    }
+  } catch {
+    return url;
+  }
+  return url;
+}
+
+/**
  * @param {string|null|undefined} url
  * @param {string|number|null|undefined} version — typically testimonial.updatedAt
  * @returns {string|null|undefined}
  */
 export function withTestimonialMediaCacheBust(url, version) {
-  if (!url || typeof url !== 'string') return url;
-  if (url.startsWith('blob:') || url.startsWith('data:')) return url;
-  if (version == null || version === '') return url;
-  const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}t=${encodeURIComponent(String(version))}`;
+  const resolved = resolveTestimonialMediaUrl(url);
+  if (!resolved || typeof resolved !== 'string') return resolved;
+  if (resolved.startsWith('blob:') || resolved.startsWith('data:')) return resolved;
+  if (version == null || version === '') return resolved;
+  const sep = resolved.includes('?') ? '&' : '?';
+  return `${resolved}${sep}t=${encodeURIComponent(String(version))}`;
 }
 
 /**

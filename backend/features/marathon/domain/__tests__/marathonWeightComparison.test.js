@@ -86,6 +86,17 @@ describe('backend marathon day formatting', () => {
     assert.equal(day2.displayLine, 'Day 0 : 75.00 kg → Curr: 74.00 kg ⬇️ 1.00 kg');
   });
 
+  it('Lap progress Day 0 uses prior posted weight (not dash) when available', () => {
+    assert.equal(
+      formatMarathonDayComparisonLine(64.75, 64.75),
+      'Day 0 : 64.75 kg → Curr: 64.75 kg',
+    );
+    assert.match(
+      formatMarathonDayComparisonLine(null, 64.75),
+      /Day 0 : — → Curr: 64\.75 kg/,
+    );
+  });
+
   it('builds running progress for Day 0 with previous marathon end comparison', () => {
     const dayYmds = Array.from({ length: 11 }, (_, day) => `2026-09-${String(day + 1).padStart(2, '0')}`);
     const result = buildMarathonRunningProgress({

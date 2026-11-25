@@ -237,13 +237,13 @@ export const LoadingSkeleton = () => {
   return (
     <div
       className="fixed inset-0 z-50 overflow-auto pb-20"
-      style={{ backgroundColor: "#e8f5e9" }}
+      style={{ backgroundColor: "var(--wv-page)" }}
     >
       <div
         className="sticky top-0 z-40 backdrop-blur-sm shadow-md"
         style={{
-          backgroundColor: "#a8dbb5",
-          borderBottom: "1px solid #93c9a1",
+          backgroundColor: "var(--wv-page-bar)",
+          borderBottom: "1px solid var(--wv-page-line)",
         }}
       >
         <div className="max-w-sm sm:max-w-xl md:max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-2 sm:py-3">
@@ -432,14 +432,14 @@ const HierarchicalReportLayout = ({
   return (
     <div
       className="fixed inset-0 z-50 overflow-auto pb-20"
-      style={{ backgroundColor: "#e8f5e9" }}
+      style={{ backgroundColor: "var(--wv-page)" }}
     >
       {/* Header */}
       <div
         className="sticky top-0 z-40 backdrop-blur-sm shadow-md"
         style={{
-          backgroundColor: "#a8dbb5",
-          borderBottom: "1px solid #93c9a1",
+          backgroundColor: "var(--wv-page-bar)",
+          borderBottom: "1px solid var(--wv-page-line)",
         }}
       >
         <div className="max-w-sm sm:max-w-xl md:max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-2 sm:py-3">
@@ -662,7 +662,7 @@ const HierarchicalReportLayout = ({
                 className="sticky z-30 rounded-2xl p-3 shadow-sm"
                 style={{
                   top: onDateRangeChange ? '104px' : '62px',
-                  backgroundColor: '#e8f5e9',
+                  backgroundColor: 'var(--wv-page)',
                   paddingBottom: '8px',
                 }}
               >

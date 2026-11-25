@@ -29,8 +29,11 @@ const SELECTABLE_TYPES = new Set([
 export function isSelectAllTextField(target) {
   if (!target || !(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
+  const optedOut =
+    target.dataset.noSelectAll === 'true'
+    || target.getAttribute?.('data-no-select-all') === 'true';
   if (tag === 'TEXTAREA') {
-    if (target.dataset.noSelectAll === 'true' || target.readOnly || target.disabled) {
+    if (optedOut || target.readOnly || target.disabled) {
       return false;
     }
     return true;
@@ -38,7 +41,7 @@ export function isSelectAllTextField(target) {
   if (tag !== 'INPUT') return false;
   /** @type {HTMLInputElement} */
   const input = /** @type {HTMLInputElement} */ (target);
-  if (input.dataset.noSelectAll === 'true' || input.readOnly || input.disabled) {
+  if (optedOut || input.readOnly || input.disabled) {
     return false;
   }
   const type = (input.type || 'text').toLowerCase();
@@ -149,6 +152,9 @@ export function installSelectAllOnTextFocus() {
   };
 
   const onClick = (e) => {
+    // Ignore programmatic el.click() (e.g. focusInputForKeyboard) — those have
+    // no prior mousedown mark and would re-select mid-typing on web.
+    if (e.isTrusted === false) return;
     if (!shouldSelectAllOnClick(e.target)) return;
     selectAllTextInField(e.target);
   };

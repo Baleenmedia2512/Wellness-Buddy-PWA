@@ -21,6 +21,7 @@ export default function FloatingMealTray({
   onSave,
   onClear,
   className = '',
+  mealDropRef = null,
 }) {
   const count = items.length;
   if (count === 0) return null;
@@ -41,7 +42,11 @@ export default function FloatingMealTray({
           className="flex items-center gap-2.5 w-full min-w-0 rounded-xl bg-green-50 border border-green-100 px-2.5 py-2 text-left active:bg-green-100"
           aria-label={`Review meal, ${count} items. Edit quantities`}
         >
-          <div className="flex items-center -space-x-2 flex-shrink-0">
+          <div
+            ref={mealDropRef}
+            className="flex items-center -space-x-2 flex-shrink-0"
+            data-meal-drop-target="true"
+          >
             {preview.map((item) => (
               <FoodThumb key={item.name} name={item.name} size="sm" className="!ring-white" />
             ))}

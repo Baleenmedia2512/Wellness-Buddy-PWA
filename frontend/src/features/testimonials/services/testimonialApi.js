@@ -330,6 +330,45 @@ export async function cancelUnifiedOtp(payload) {
 }
 
 /**
+ * Member: request email OTP to allow Transformation on all upline coach websites.
+ * @param {{ userId: number, websiteDisplayAgreed?: boolean }} payload
+ */
+export async function requestDisplayConsentOtp(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/request-display-consent-otp`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  return parseApiResponse(res, 'Failed to send website display consent OTP');
+}
+
+/**
+ * Member: verify display-consent OTP.
+ * @param {{ userId: number, otp: string }} payload
+ */
+export async function verifyDisplayConsentOtp(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/verify-display-consent-otp`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  return parseApiResponse(res, 'Website display consent verification failed');
+}
+
+/**
+ * Member: revoke website display consent (hide from all upline sites).
+ * @param {{ userId: number }} payload
+ */
+export async function revokeDisplayConsent(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/revoke-display-consent`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  return parseApiResponse(res, 'Failed to remove from websites');
+}
+
+/**
  * Legacy coach health-issue update (API always rejects — members edit on Mine).
  * @param {{ coachId: number, userId: number, recoveredHealthIssues: string[] }} payload
  */

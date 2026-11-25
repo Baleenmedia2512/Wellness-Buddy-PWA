@@ -3,7 +3,12 @@ import React from 'react';
 import { CheckCircle, Mail } from 'lucide-react';
 import UserProfileFields from './UserProfileFields';
 import CommunityIdField from './CommunityIdField';
+import CommunityPositionField from './CommunityPositionField';
 import WorkingPhysicalCentreField from './WorkingPhysicalCentreField';
+import { COMMUNITY_POSITION_OTP_FLAG } from '../../domain/communityPosition';
+import { isFlagEnabled } from '../../../../config/featureFlags';
+import EventProfilePrefsFields from './EventProfilePrefsFields';
+import ProfileIntroFields from './ProfileIntroFields';
 import UserProfileBodyMetrics from './UserProfileBodyMetrics';
 import IdealWeightCards from './IdealWeightCards';
 import DietDropdown from './DietDropdown';
@@ -14,6 +19,8 @@ const UserProfileBody = ({
   marathonWeightComparison = null,
   error, successMessage,
   userId = null,
+  communityPositionRequest = null,
+  onCommunityPositionSettled,
 }) => (
   <div className="p-6 space-y-5">
     {isLoading ? (
@@ -72,10 +79,38 @@ const UserProfileBody = ({
           communityId={form.communityId}
           setCommunityId={form.setCommunityId}
         />
+        <CommunityPositionField
+          userId={userId}
+          email={email}
+          confirmedCode={form.eventLevel}
+          pendingRequest={communityPositionRequest}
+          otpEnabled={isFlagEnabled(COMMUNITY_POSITION_OTP_FLAG)}
+          onChange={form.setEventLevel}
+          onSettled={onCommunityPositionSettled}
+        />
         <WorkingPhysicalCentreField
           userId={userId}
           value={form.workingPhysicalCentreId}
           onChange={form.setWorkingPhysicalCentreId}
+        />
+        <EventProfilePrefsFields
+          eventTranslation={form.eventTranslation}
+          setEventTranslation={form.setEventTranslation}
+          eventYourCity={form.eventYourCity}
+          setEventYourCity={form.setEventYourCity}
+        />
+        <ProfileIntroFields
+          values={{
+            professionalTitle: form.professionalTitle,
+            instagram: form.instagram,
+            youtube: form.youtube,
+            linkedin: form.linkedin,
+            herbalifeJoinedOn: form.herbalifeJoinedOn,
+            aboutMe: form.aboutMe,
+            qualification: form.qualification,
+            languages: form.languages,
+          }}
+          onChange={form.setIntroField}
         />
         <IdealWeightCards
           height={form.height}

@@ -40,7 +40,7 @@ const CircularProgress = ({
   const pctStr = `${percentage}%`;
   const fontSize  = targetLabel ? 15 : (pctStr.length > 3 ? Math.round(size * 0.13) : Math.round(size * 0.155));
   // Text transitions from green to red as you go from 100% to 200%
-  const textColor = percentage <= 100 ? '#065f46' : '#dc2626';
+  const textColor = percentage <= 100 ? 'var(--wv-ink)' : '#dc2626';
 
   return (
     <div
@@ -60,8 +60,8 @@ const CircularProgress = ({
         <defs>
           {/* Green gradient */}
           <linearGradient id={greenGradId} x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#4ade80" />
-            <stop offset="100%" stopColor="#059669" />
+            <stop offset="0%" style={{ stopColor: 'var(--wv-ring-start)' }} />
+            <stop offset="100%" style={{ stopColor: 'var(--wv-ring-end)' }} />
           </linearGradient>
           {/* Red gradient */}
           <linearGradient id={redGradId} x1="0%" y1="0%" x2="100%" y2="100%">

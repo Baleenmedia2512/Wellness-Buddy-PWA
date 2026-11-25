@@ -187,7 +187,6 @@ describe('isProfileComplete', () => {
         bodyFat: 22,
         bodyMetrics: {
           age: null,
-          visceralFat: null,
           bodyAge: null,
           chestCm: null,
           waistCm: null,

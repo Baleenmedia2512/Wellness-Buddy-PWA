@@ -171,6 +171,7 @@ Copying files is not enough. The live app still runs the old build until you bui
 ```bash
 cd /home/yvyunomg/wellness-api
 ```
+cd /home/yvyunomg/test-wellness-api
 
 3. Paste. Enter.
 

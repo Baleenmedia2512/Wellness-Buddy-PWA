@@ -156,6 +156,8 @@ export const cacheKeys = {
   nutritionStats: (userId, date) => `nutrition:stats:${userId}:${date}`,
   nutritionMeals: (userId) => `nutrition:meals:${userId}`,
   educationSummary: (userId) => `education:summary:${userId}`,
+  /** Public coach website: What We Say / What We Do from Team Transformation */
+  portfolioTeamMedia: (coachUserId) => `portfolio:team-media:${coachUserId}`,
 };
 
 /** Drop Top-10 race scoreboard caches after weight / wellness score writes. */

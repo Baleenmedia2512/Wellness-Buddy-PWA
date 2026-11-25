@@ -1,18 +1,21 @@
-import React from 'react';
-import { Beef, Wheat, Droplet, Leaf } from 'lucide-react';
+import React, { useState } from 'react';
+import { Beef, Wheat, Droplet, Leaf, Share2 } from 'lucide-react';
 import TouchFeedbackButton from '../../../../shared/components/TouchFeedbackButton';
 import EditableFoodItem from '../EditableFoodItem';
 import MealAddItemForm from '../MealAddItemForm';
 import StatusOverlay from './StatusOverlay';
 import { parseAnalysisData, recalculateTotals } from '../../services/nutritionDashboard/analysisHelpers';
 import { computeMealGlycemicIndex } from '../../domain/mealGlycemicIndex';
-import { formatBusinessTime, resolveBusinessTimezone } from '../../../../shared/utils/datetimeUtils';
+import { formatBusinessTime, resolveBusinessTimezone, isBusinessToday } from '../../../../shared/utils/datetimeUtils';
 import {
   DIARY_FOOD_ACTIVITY,
   resolveFoodActivityType,
+  extractFoodShareItems,
   extractVolumeMl,
   extractScoops,
 } from '../../../diary/domain/activityType';
+import { buildDiaryShareSuffix } from '../../../diary/domain/share/suffixes';
+import { shareDiaryMealPhoto } from '../../../diary/utils/shareDiaryMealPhoto';
 import { formatWaterVolume } from '../../../diary/domain/formatVolume';
 import { resolveMealImageSrc } from '../../services/nutritionDashboard/mealImageSrc';
 import { activityPhotoTemplate, handleActivityPhotoError } from '../../../../shared/assets/activityPhotoTemplates';
@@ -92,6 +95,8 @@ const NutritionAnalysisPanel = ({
   setLocalDetailedItems,
   setLocalNutrition,
 }) => {
+  const [isSharing, setIsSharing] = useState(false);
+
   const editingIndex = (() => {
     const activeKey = Object.keys(editingStates || {}).find((key) => editingStates[key]);
     return activeKey != null ? parseInt(activeKey, 10) : null;
@@ -117,6 +122,10 @@ const NutritionAnalysisPanel = ({
   // the logged-in `user` object is missing timezone — that caused "Logged at"
   // to show Kolkata time for Qatar/US/UK members.
   const timezoneIana = timezoneIanaProp || resolveBusinessTimezone(user);
+  const isToday = isBusinessToday(
+    selectedMeal.CreatedAt || selectedMeal.created_at || selectedMeal.CapturedAt,
+    timezoneIana,
+  );
   const mealTime = formatBusinessTime(
     selectedMeal.CreatedAt,
     timezoneIana,
@@ -172,6 +181,67 @@ const NutritionAnalysisPanel = ({
     apiBaseUrl,
   }) || activityPhotoTemplate('food');
 
+  const shareText = (() => {
+    const items = localDetailedItems?.length ? localDetailedItems : foodData.detailedItems;
+    if (isWater) {
+      return buildDiaryShareSuffix('water', { volumeMl, soFarToday: false });
+    }
+    if (isAfresh) {
+      return buildDiaryShareSuffix('afresh', {
+        scoops: scoops ?? 1,
+        calories,
+        soFarToday: false,
+      });
+    }
+    if (activityType === DIARY_FOOD_ACTIVITY.SHAKE) {
+      return buildDiaryShareSuffix('shake', {
+        shakeName: displayTitle || 'Protein Shake',
+        servings: 1,
+      });
+    }
+    return buildDiaryShareSuffix('food', {
+      foodName: displayTitle,
+      foodItems: extractFoodShareItems(
+        { detailedItems: items, name: displayTitle },
+        selectedMeal.AnalysisData,
+      ),
+      calories,
+      protein,
+      carbs,
+      fat,
+      fiber,
+      glycemicIndex,
+    });
+  })();
+
+  const handleShare = async (e) => {
+    e?.stopPropagation?.();
+    if (isSharing || isWater || isAfresh) return;
+    setIsSharing(true);
+    try {
+      await shareDiaryMealPhoto({
+        thumb: {
+          kind: 'food',
+          imageUrl: imgSrc,
+          imageUrlFormat: 'raw',
+          imagePath: selectedMeal.ImagePath || null,
+        },
+        title: displayTitle || 'My Meal',
+        shareText,
+        shareUser: user,
+        timezoneIana,
+        fallbackImageSrc: imgSrc,
+        fileName: `wellness-meal-${Date.now()}.jpg`,
+      });
+    } catch (err) {
+      if (!err?.message?.toLowerCase().includes('cancel')) {
+        console.error('[NutritionAnalysisPanel] Share failed:', err);
+      }
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4"
@@ -221,12 +291,32 @@ const NutritionAnalysisPanel = ({
               )}
             </div>
 
-            <button onClick={handleCloseModal} disabled={isSaving || saveStatus}
-              className={`absolute top-4 right-4 w-9 h-9 bg-black/40 backdrop-blur-sm text-white rounded-full flex items-center justify-center border border-white/20 ${isSaving || saveStatus ? 'opacity-50 cursor-not-allowed' : 'hover:bg-black/60'}`}>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            <div className="absolute top-4 right-4 flex items-center gap-2">
+              {!isWater && !isAfresh && (
+                <button
+                  type="button"
+                  onClick={handleShare}
+                  disabled={isSharing || isSaving || saveStatus}
+                  aria-label="Share meal photo"
+                  className={`w-9 h-9 bg-black/40 backdrop-blur-sm text-white rounded-full flex items-center justify-center border border-white/20 ${isSharing || isSaving || saveStatus ? 'opacity-50 cursor-not-allowed' : 'hover:bg-black/60'}`}
+                >
+                  {isSharing
+                    ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+                    : <Share2 className="w-4 h-4" aria-hidden="true" />}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleCloseModal}
+                disabled={isSaving || saveStatus}
+                aria-label="Close"
+                className={`w-9 h-9 bg-black/40 backdrop-blur-sm text-white rounded-full flex items-center justify-center border border-white/20 ${isSaving || saveStatus ? 'opacity-50 cursor-not-allowed' : 'hover:bg-black/60'}`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           <div className="p-4 overflow-y-auto flex-1 min-h-0" style={{ maxHeight: isEditing ? '60vh' : '40vh' }}>
@@ -263,7 +353,8 @@ const NutritionAnalysisPanel = ({
                           foodItem={item} index={originalIndex}
                           onUpdate={handleFoodUpdate} onDelete={handleDeleteFoodItem}
                           onRestore={handleRestoreFoodItem} onEditingChange={handleEditingChange}
-                          disabled={isEditing && !editingStates[originalIndex]} hideButtons={false} user={user}
+                          disabled={isEditing && !editingStates[originalIndex]} hideButtons={!isToday}
+                          canEdit={isToday} canDelete={isToday} user={user}
                           mealRow={selectedMeal}
                           mealDetailStatus={mealDetailStatus} />
                       </div>
@@ -290,7 +381,7 @@ const NutritionAnalysisPanel = ({
             )}
           </div>
 
-          {!isEditing && (
+          {!isEditing && isToday && (
             isWater || isAfresh ? (
               <div className="p-4 border-t border-gray-100 shrink-0 bg-white">
                 <TouchFeedbackButton

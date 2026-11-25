@@ -5,12 +5,11 @@
  *
  *
  * Requirements Covered:
- * - RPT-001: Enter into the report module and able to click ideal weight, wellness score, nutrition and trend
+ * - RPT-001: Enter into the report module and able to click ideal weight, wellness score, and trend
  * - RPT-002: Mine, Direct Team, and Full Team selection updates bracket numbering
  * - RPT-003: Filter Ideal Weight report by status chips
  * - RPT-004: Search member by name in Ideal Weight report
  * - RPT-005: Mine, Direct Team, and Full Team scope filtering in Wellness Score report tab
- * - RPT-006: Nutrition section components, date range presets, and parameter cards are clickable
  * - RPT-007: Trend section allows selecting all metric cards, date range buttons, and custom date picker
  * - RPT-008: Date filter pills (Today, Yesterday, Custom Date) and date picker popover in Wellness Score report tab
  * - RPT-009: Member search and interactive column sorting in Wellness Score report tab
@@ -120,7 +119,7 @@ test.describe('Reports Module', () => {
   });
 
   // ── RPT-001 ─────────────────────────────────────────────────────────────
-  test('RPT-001: Enter into the report module and able to click ideal weight, wellness score, nutrition and trend', async ({ page }) => {
+  test('RPT-001: Enter into the report module and able to click ideal weight, wellness score, and trend', async ({ page }) => {
     // Step 1: Navigate to app home page
     await page.goto('/');
 
@@ -147,19 +146,15 @@ test.describe('Reports Module', () => {
     await expect(wellnessScoreTab).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#reports-panel-wellness-score')).toBeVisible();
 
-    // Step 5: Click Nutrition tab and verify panel activation
-    const nutritionTab = page.locator('#reports-tab-nutrition');
-    await expect(nutritionTab).toBeVisible();
-    await nutritionTab.click();
-    await expect(nutritionTab).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator('#reports-panel-nutrition')).toBeVisible();
-
-    // Step 6: Click Trend tab and verify panel activation
+    // Step 5: Click Trend tab and verify panel activation
     const trendTab = page.locator('#reports-tab-trend');
     await expect(trendTab).toBeVisible();
     await trendTab.click();
     await expect(trendTab).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#reports-panel-trend')).toBeVisible();
+
+    // Nutrition tab removed — downline nutrition lives on Wellness Score sheet
+    await expect(page.locator('#reports-tab-nutrition')).toHaveCount(0);
   });
 
   // ── RPT-002 ─────────────────────────────────────────────────────────────
@@ -370,125 +365,6 @@ test.describe('Reports Module', () => {
     // 9. Verify table populated mock data rows are rendered
     await expect(wellnessPanel.getByText('Jane', { exact: false })).toBeVisible({ timeout: 10000 });
     await expect(wellnessPanel.getByText('Robert', { exact: false })).toBeVisible({ timeout: 10000 });
-  });
-
-  // ── RPT-006 ─────────────────────────────────────────────────────────────
-  test('RPT-006: Nutrition section components, date range presets, and parameter cards are clickable', async ({ page }) => {
-    // Intercept wellness score history API for Nutrition tab rendering
-    await page.route('**/api/wellness-score/history*', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          userId: 1,
-          date: '2026-09-17',
-          parameters: [
-            {
-              key: 'protein',
-              earnedPoints: 20,
-              maxPoints: 20,
-              scoringMode: 'proportional',
-              calculationReason: 'Goal achieved (65g / 60g)',
-            },
-            {
-              key: 'calories',
-              earnedPoints: 15,
-              maxPoints: 15,
-              scoringMode: 'limit',
-              calculationReason: 'Within limit (1800 / 2000 kcal)',
-            },
-            {
-              key: 'water_qty',
-              earnedPoints: 10,
-              maxPoints: 10,
-              scoringMode: 'proportional',
-              calculationReason: 'Goal achieved (3.0L / 3.0L)',
-            },
-            {
-              key: 'weight_improvement',
-              earnedPoints: 15,
-              maxPoints: 15,
-              scoringMode: 'progress',
-              calculationReason: 'Weight progress logged',
-            },
-          ],
-          totalEarned: 60,
-          totalMax: 60,
-          goalMode: 'weight_loss',
-        }),
-      });
-    });
-
-    // 1. Navigate to home page
-    await page.goto('/');
-
-    // 2. Open Reports Module
-    const reportsNavBtn = page.locator('button[aria-label="Reports Dashboard"], button:has-text("Reports")').first();
-    await expect(reportsNavBtn).toBeVisible({ timeout: 15000 });
-    await reportsNavBtn.click();
-
-    // 3. Switch to Nutrition Tab
-    const nutritionTab = page.locator('#reports-tab-nutrition');
-    await expect(nutritionTab).toBeVisible({ timeout: 10000 });
-    await nutritionTab.click();
-    await expect(nutritionTab).toHaveAttribute('aria-selected', 'true');
-
-    // 4. Locate Nutrition panel
-    const nutritionPanel = page.locator('#reports-panel-nutrition');
-    await expect(nutritionPanel).toBeVisible({ timeout: 10000 });
-
-    // 5. Test Date Range Presets Clickability (Today, Yesterday, Last 7 Days, Custom)
-    const todayPill = nutritionPanel.locator('button').filter({ hasText: /^Today$/i });
-    const yesterdayPill = nutritionPanel.locator('button').filter({ hasText: /^Yesterday$/i });
-    const last7DaysPill = nutritionPanel.locator('button').filter({ hasText: /Last 7 Days/i });
-    const customPill = nutritionPanel.locator('button').filter({ hasText: /Custom/i });
-
-    await expect(todayPill).toBeVisible();
-    await expect(yesterdayPill).toBeVisible();
-    await expect(last7DaysPill).toBeVisible();
-    await expect(customPill).toBeVisible();
-
-    // Click Yesterday preset pill & verify active styling
-    await yesterdayPill.click();
-    await expect(yesterdayPill).toHaveClass(/bg-green-600/);
-
-    // Click Last 7 Days preset pill & verify active styling
-    await last7DaysPill.click();
-    await expect(last7DaysPill).toHaveClass(/bg-green-600/);
-
-    // Click Today preset pill to switch back
-    await todayPill.click();
-    await expect(todayPill).toHaveClass(/bg-green-600/);
-
-    // 6. Test Parameter Cards Clickability (Protein, Calories, Water Quantity, Weight Improvement)
-    const proteinCard = nutritionPanel.locator('[data-testid="score-category-protein"]');
-    const caloriesCard = nutritionPanel.locator('[data-testid="score-category-calories"]');
-    const waterCard = nutritionPanel.locator('[data-testid="score-category-water_qty"]');
-    const weightCard = nutritionPanel.locator('[data-testid="score-category-weight_improvement"]');
-
-    await expect(proteinCard).toBeVisible({ timeout: 10000 });
-    await expect(caloriesCard).toBeVisible();
-    await expect(waterCard).toBeVisible();
-    await expect(weightCard).toBeVisible();
-
-    // Click Protein card and verify Details bottom sheet modal opens
-    await proteinCard.click();
-    const contributionModal = page.locator('[role="dialog"][aria-modal="true"]');
-    await expect(contributionModal).toBeVisible({ timeout: 10000 });
-
-    // Close the contribution modal
-    const closeBtn = contributionModal.locator('button[aria-label="Close"], button:has-text("Close")').first();
-    if (await closeBtn.isVisible()) {
-      await closeBtn.click();
-    } else {
-      await page.keyboard.press('Escape');
-    }
-    await expect(contributionModal).toBeHidden();
-
-    // Click Water Quantity card and verify modal opens
-    await waterCard.click();
-    await expect(contributionModal).toBeVisible({ timeout: 10000 });
   });
 
   // ── RPT-007 ─────────────────────────────────────────────────────────────

@@ -44,6 +44,7 @@ import {
   formatPickerDayButtonLabel,
   isPickerDateToday,
   isPickerDateFuture,
+  isBusinessToday,
 } from '../../shared/utils/datetimeUtils';
 
 // âœ… LAZY LOADING: Load tab components on-demand (only one visible at a time)
@@ -557,6 +558,20 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
     // Guard: prevent double-tap opening two modals.
     if (captureId && analyzingRef.current.has(captureId)) return;
 
+    const isToday = isBusinessToday(entry.capturedAt, diaryOwnerTimezoneIana);
+    if (!isToday) {
+      setUnknownFlow({
+        captureId,
+        imageBase64: p.imageBase64,
+        diaryDate: selectedDate,
+        originalCapturedAt: entry.capturedAt ?? null,
+        initialAiResult: null,
+        deleteOnly: false,
+        canMutate: false,
+      });
+      return;
+    }
+
     // Coach viewing member diary — read-only / legacy delete flow only.
     if (!viewingSelf) {
       setUnknownFlow({
@@ -603,7 +618,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
       case 'unknown':
         return 'Capture';
       case 'good-habit':
-        return 'Good Habit';
+        return 'Task by Coach';
       default:
         return 'Entry';
     }
@@ -795,6 +810,11 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   // NutritionDashboard meal deletes — APIs receive ownerId = diary subject).
   const handleEntryDelete = async (entry) => {
     if (!entry || !ownerId) return;
+    const isToday = isBusinessToday(entry.capturedAt, diaryOwnerTimezoneIana);
+    if (!isToday) {
+      alert('Diary posts from previous days cannot be deleted.');
+      return;
+    }
     const entryId = entry.payload?.id;
     if (!entryId) return;
 
@@ -881,7 +901,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
 
   return (
     <>
-    <div className="min-h-screen" style={{ backgroundColor: '#e8f5e9' }}>
+    <div className="min-h-screen" style={{ backgroundColor: 'var(--wv-page)' }}>
       {/* Background decorations */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-20 -right-20 w-40 h-40 md:w-80 md:h-80 bg-gradient-to-br from-orange-200/20 to-pink-200/20 rounded-full blur-3xl"></div>
@@ -1438,6 +1458,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         isOpen={showMemberProfile}
         onClose={() => setShowMemberProfile(false)}
         memberEmail={selectedMember.email}
+        memberUserId={selectedMember.userId || selectedMember.id}
         apiBaseUrl={apiBaseUrl}
       />
     )}
@@ -1447,6 +1468,10 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         entry={goodHabitDetail}
         ownerUserId={ownerId}
         timezoneIana={diaryOwnerTimezoneIana}
+        canReject={!viewingSelf}
+        onRejected={() => {
+          reloadDiary();
+        }}
         onClose={() => setGoodHabitDetail(null)}
       />
     )}
@@ -1500,7 +1525,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         diaryDate={unknownFlow.diaryDate ?? null}
         originalCapturedAt={unknownFlow.originalCapturedAt ?? null}
         deleteOnly={unknownFlow.deleteOnly ?? false}
-        canMutate={viewingSelf}
+        canMutate={viewingSelf && (unknownFlow.canMutate !== false)}
         userId={ownerId}
         userName={user?.userName || user?.username || user?.name || null}
         userEmail={user?.email || user?.Email || null}

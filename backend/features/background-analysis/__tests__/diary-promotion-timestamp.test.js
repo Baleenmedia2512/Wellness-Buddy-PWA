@@ -137,7 +137,7 @@ describe('toDiaryEntry spurious driver Z stays on the IST calendar day', () => {
     assertIstWall('good-habit', { ID: 5, HabitType: 'walk', Notes: '' });
   });
 
-  it('early-morning UTC digits show India time on food, weight, and education', () => {
+  it('early-morning food stays UTC; weight and education keep the written clock', () => {
     const food = toDiaryEntry('food', {
       ID: 22416,
       CreatedAt: '2026-10-26T02:16:34.000Z',
@@ -150,7 +150,7 @@ describe('toDiaryEntry spurious driver Z stays on the IST calendar day', () => {
     }, { timezoneIana: IANA_IST });
     const weight = toDiaryEntry('weight', {
       ID: 5684,
-      CreatedAt: '2026-10-26T00:12:00.000Z',
+      CreatedAt: '2026-11-02T05:00:00.000Z',
       Weight: 59.6,
     }, { timezoneIana: IANA_IST });
     const education = toDiaryEntry('education', {
@@ -158,14 +158,21 @@ describe('toDiaryEntry spurious driver Z stays on the IST calendar day', () => {
       Platform: 'zoom',
       Topic: 'Daily Education',
       Confidence: 1,
-      CreatedAt: '2026-10-26T02:17:00.000Z',
+      CreatedAt: '2026-11-02T05:05:00.000Z',
     }, { timezoneIana: IANA_IST });
 
     assert.equal(food.capturedAt, '2026-10-26T02:16:34.000Z');
-    assert.equal(weight.capturedAt, '2026-10-26T00:12:00.000Z');
-    assert.equal(education.capturedAt, '2026-10-26T02:17:00.000Z');
+    assert.equal(weight.capturedAt, '2026-11-01T23:30:00.000Z');
+    assert.equal(education.capturedAt, '2026-11-01T23:35:00.000Z');
     assert.equal(timestampToCalendarYmd(food.capturedAt, IANA_IST), '2026-10-26');
-    assert.equal(timestampToCalendarYmd(weight.capturedAt, IANA_IST), '2026-10-26');
+    assert.equal(timestampToCalendarYmd(weight.capturedAt, IANA_IST), '2026-11-02');
+    const weightTime = new Date(weight.capturedAt).toLocaleString('en-US', {
+      timeZone: IANA_IST,
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+    assert.match(weightTime, /5:00\s*AM/i);
   });
 
   it('morning driver Z stays 10:46 AM IST on the same day', () => {

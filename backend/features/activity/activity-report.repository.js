@@ -9,11 +9,11 @@ import { applyDateRangeFilterWidened } from '../../shared/lib/datetime/applyDayF
 import {
   IANA_IST,
   filterRowsByCalendarDateRange,
-  normalizeStoredTimestampToUtcIso,
   timestampToCalendarYmd,
 } from '../../shared/lib/datetime/index.js';
 import {
   filterFoodRowsByCalendarDateRange,
+  normalizeActivityCreatedAt,
   resolveFoodTimestamp,
 } from '../../shared/lib/datetime/foodTimestamp.js';
 import { resolveTimezoneFromMap } from '../user/domain/userTimezone.js';
@@ -187,6 +187,66 @@ export async function fetchWeightRecords(userIds, startDate, endDate, timezoneIa
   });
 
   return filterRowsByCalendarDateRange(data, startDate, endDate, timezoneIana, 'CreatedAt');
+}
+
+/**
+ * Latest weight log per user strictly before `beforeDateYmd` (IST wall-clock CreatedAt).
+ * Used so Activity Report weight arrows work on single-day ranges.
+ *
+ * @param {Array<string|number>} userIds
+ * @param {string} beforeDateYmd YYYY-MM-DD
+ * @returns {Promise<Array<{ UserId: number, Weight: number|null, CreatedAt: string }>>}
+ */
+export async function fetchLatestWeightsBeforeDate(userIds, beforeDateYmd) {
+  if (!userIds || userIds.length === 0) return [];
+  if (typeof beforeDateYmd !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(beforeDateYmd)) {
+    return [];
+  }
+
+  const uniqueIds = [...new Set(
+    userIds.map((id) => Number(id)).filter((id) => Number.isFinite(id)),
+  )];
+  if (uniqueIds.length === 0) return [];
+
+  // Legacy weight CreatedAt is IST wall-clock — exclusive lower bound as local midnight.
+  const beforeExclusive = `${beforeDateYmd} 00:00:00`;
+  const db = getMysqlClient();
+
+  // Page-sized: one query per user keeps the result to a single prior row.
+  if (uniqueIds.length <= 40) {
+    const results = await Promise.all(
+      uniqueIds.map(async (uid) => {
+        const { data, error } = await db
+          .from('weight_records_table')
+          .select('UserId, Weight, CreatedAt')
+          .eq('UserId', uid)
+          .or('IsDeleted.is.null,IsDeleted.eq.0')
+          .lt('CreatedAt', beforeExclusive)
+          .order('CreatedAt', { ascending: false })
+          .limit(1);
+        if (error) throw error;
+        return data?.[0] || null;
+      }),
+    );
+    return results.filter(Boolean);
+  }
+
+  const data = await fetchRowsInChunks(uniqueIds, (chunk) => db
+    .from('weight_records_table')
+    .select('UserId, Weight, CreatedAt')
+    .in('UserId', chunk)
+    .or('IsDeleted.is.null,IsDeleted.eq.0')
+    .lt('CreatedAt', beforeExclusive)
+    .order('CreatedAt', { ascending: false }));
+
+  /** @type {Map<number, { UserId: number, Weight: number|null, CreatedAt: string }>} */
+  const latestByUser = new Map();
+  for (const row of data || []) {
+    const uid = Number(row.UserId);
+    if (!Number.isFinite(uid)) continue;
+    if (!latestByUser.has(uid)) latestByUser.set(uid, row);
+  }
+  return [...latestByUser.values()];
 }
 
 /**
@@ -382,8 +442,8 @@ function recordCalendarYmd(record, timezoneIana, {
     if (foodTimestamp) {
       return resolveFoodTimestamp(raw, tz).calendarYmd;
     }
-    // Legacy IST wall storage → UTC, then owner calendar day.
-    return timestampToCalendarYmd(normalizeStoredTimestampToUtcIso(raw, IANA_IST), tz);
+    // Weight/education IST wall storage (strip driver Z) → UTC, then owner calendar day.
+    return timestampToCalendarYmd(normalizeActivityCreatedAt(raw), tz);
   } catch {
     return 'unknown';
   }

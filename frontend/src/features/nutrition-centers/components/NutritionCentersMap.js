@@ -9,6 +9,7 @@ import { telHref } from '../../../shared/domain/phoneContact.js';
 import { debugLog } from '../../../shared/utils/logger.js';
 import { loadGoogleMaps } from '../services/googleMapsLoader';
 import AttendeeListModal from './AttendeeListModal';
+import { TeamMemberProfileModal } from '../../../shared/components/TeamMemberProfileModal';
 import { resolveDiaryTimezone } from '../../diary/utils/diaryTimezone';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import { lookup as lookupUser } from '../../user/services/user.api.js';
@@ -19,6 +20,8 @@ import {
   savedCenterTotalRecords,
   toClubListRow,
 } from '../domain/centerListRefresh.js';
+import { cardAreaCity, formatAreaCity } from '../domain/placeAreaCity.js';
+import { geocodeAreaCity } from '../services/geocodeAreaCity.js';
 
 // --- Single Day Picker ---
 const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
@@ -110,11 +113,13 @@ const NutritionCentersMap = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [resolvedPlaces, setResolvedPlaces] = useState({});
   const [showStreetView, setShowStreetView] = useState(false);
   const [streetViewLoading, setStreetViewLoading] = useState(false);
   const [selectedCenter, setSelectedCenter] = useState(null);
   const [mapFullscreen, setMapFullscreen] = useState(false);
   const [attendeeModal, setAttendeeModal] = useState({ isOpen: false, center: null });
+  const [profileUserId, setProfileUserId] = useState(null);
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, center: null });
   const [deletingCenterId, setDeletingCenterId] = useState(null);
   const [pagination, setPagination] = useState({
@@ -165,6 +170,19 @@ const NutritionCentersMap = ({
     const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 300);
     return () => clearTimeout(t);
   }, [searchQuery]);
+
+  useEffect(() => {
+    if (!mapLoaded) return undefined;
+    let cancelled = false;
+    centers.forEach((center) => {
+      if (formatAreaCity(center.area, center.city)) return;
+      geocodeAreaCity(center.latitude, center.longitude).then((place) => {
+        if (cancelled || !formatAreaCity(place.area, place.city)) return;
+        setResolvedPlaces((prev) => (prev[center.id] ? prev : { ...prev, [center.id]: place }));
+      });
+    });
+    return () => { cancelled = true; };
+  }, [centers, mapLoaded]);
 
   // Load Google Maps script
   useEffect(() => {
@@ -852,12 +870,12 @@ const NutritionCentersMap = ({
   return (
     <div
       className={embedded ? 'min-h-full pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]' : 'fixed inset-0 z-50 overflow-auto pb-20'}
-      style={{ backgroundColor: '#e8f5e9' }}
+      style={{ backgroundColor: 'var(--wv-page)' }}
     >
       {/* Header */}
       <div
         className="sticky top-0 z-40 shadow-md safe-top"
-        style={{ backgroundColor: '#a8dbb5', borderBottom: '1px solid #93c9a1' }}
+        style={{ backgroundColor: 'var(--wv-page-bar)', borderBottom: '1px solid var(--wv-page-line)' }}
       >
         {/* Row 1: Back + Title + Refresh */}
         <div className="max-w-4xl mx-auto px-3 xs:px-4 pt-2 xs:pt-3 pb-2 flex items-center justify-between gap-2">
@@ -1090,7 +1108,26 @@ const NutritionCentersMap = ({
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <h3 className="font-semibold text-gray-900 truncate text-[15px]">{center.center_name}</h3>
-                          <p className="text-xs text-gray-500 mt-0.5">{center.ownerName}</p>
+                          {center.center_code ? (
+                            <p className="text-xs font-medium text-green-700 mt-0.5">{center.center_code}</p>
+                          ) : null}
+                          {cardAreaCity(center, resolvedPlaces) ? (
+                            <p className="text-xs text-gray-500 mt-0.5">{cardAreaCity(center, resolvedPlaces)}</p>
+                          ) : null}
+                          {center.owner_user_id != null ? (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setProfileUserId(center.owner_user_id);
+                              }}
+                              className="text-xs text-gray-500 mt-0.5 text-left hover:underline"
+                            >
+                              {center.ownerName}
+                            </button>
+                          ) : (
+                            <p className="text-xs text-gray-500 mt-0.5">{center.ownerName}</p>
+                          )}
                           {center.owner_phone ? (
                             <p className="text-xs text-gray-500 mt-0.5">{center.owner_phone}</p>
                           ) : null}
@@ -1206,7 +1243,7 @@ const NutritionCentersMap = ({
             width: '3.5rem',
             height: '3.5rem',
             borderRadius: '50%',
-            backgroundColor: '#16a34a',
+            backgroundColor: 'var(--wv-ring-end)',
             boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
             border: 'none',
             cursor: 'pointer',
@@ -1255,6 +1292,12 @@ const NutritionCentersMap = ({
         apiBaseUrl={apiBaseUrl}
         timezoneIana={resolveDiaryTimezone(user)}
         userId={currentUserId}
+      />
+      <TeamMemberProfileModal
+        isOpen={Boolean(profileUserId)}
+        onClose={() => setProfileUserId(null)}
+        memberUserId={profileUserId}
+        apiBaseUrl={apiBaseUrl}
       />
 
       <CustomAlertModal

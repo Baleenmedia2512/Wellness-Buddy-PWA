@@ -147,14 +147,14 @@ export default function NavPageAccessSetup({
             )}
 
             <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-              <table className="w-full min-w-[28rem] border-collapse text-left text-xs">
+              <table className="w-full min-w-[40rem] border-collapse text-left text-xs">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
                     <th className="px-3 py-2.5 font-semibold text-gray-700">Page</th>
                     {MATRIX_ROLES.map((role) => (
                       <th
                         key={role}
-                        className="px-2 py-2.5 text-center font-semibold text-gray-700"
+                        className="whitespace-nowrap px-2 py-2.5 text-center font-semibold text-gray-700"
                       >
                         {MATRIX_ROLE_LABELS[role]}
                       </th>
@@ -188,8 +188,11 @@ export default function NavPageAccessSetup({
               Sponsor uses the coach role. Upline accounts share Sponsor access.
               A customer gets Sponsor pages only after they have downline members
               (CoachId = them) — Community ID / joint coaching seat alone does not.
-              Their account role may still be Customer. Reports also needs the
-              Reports feature flag.
+              Their account role may still be Customer. Events controls access to
+              the Events tab; Create Event controls the (+) button within Events.
+              Events also needs the Events feature flag. Reports also needs the Reports feature flag.
+              Go Premium also needs the Go Premium feature flag (profile chip /
+              recharge — not a main nav tab).
             </p>
 
             <div className="mt-4 flex items-center gap-3">

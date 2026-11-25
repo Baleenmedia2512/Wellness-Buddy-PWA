@@ -1,7 +1,7 @@
 import { applyCors, methodNotAllowed, runService } from '../../../shared/lib/handler.js';
 import { isEnabled } from '../../../shared/lib/feature-flags.js';
 import { ValidationError } from '../../../shared/lib/ValidationError.js';
-import { findByUserId } from '../../../features/user/user.repository.js';
+import { findByUserId, getEventProfilePreferences } from '../../../features/user/user.repository.js';
 import { createPremiumOrder } from '../../../features/payments/api/create-order.handler.js';
 
 export default async function handler(req, res) {
@@ -21,11 +21,13 @@ export default async function handler(req, res) {
     if (!row) {
       throw new ValidationError(404, 'Account not found');
     }
+    const prefs = await getEventProfilePreferences(row.UserId);
     return createPremiumOrder({
       userId: row.UserId,
       phone: row.PhoneNumber,
       customerName: row.UserName,
       returnUrl: req.body?.returnUrl,
+      eventLevel: prefs?.eventLevel,
     });
   });
 }

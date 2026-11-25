@@ -15,7 +15,6 @@ import { deriveWeightGoalMode } from '../../weight/services/weightFormService';
 import {
   DEFAULT_POSE_SLOT,
   POSE_SLOT_KEYS,
-  allTransformationSlotsFilled,
 } from '../domain/transformationPoseGuide';
 
 /**
@@ -23,11 +22,15 @@ import {
  *   user: object,
  *   onComplete: () => void | Promise<void>,
  *   onSkip?: () => void | Promise<void>,
+ *   requiredSlots?: string[] | null,
+ *   preferUserId?: boolean,
  * }} props
  */
 export default function OnboardingTransformationPhotosPage({
   user,
   onComplete,
+  requiredSlots = null,
+  preferUserId = false,
 }) {
   const transformationPhotos = useTransformationPhotos();
   const [loading, setLoading] = useState(true);
@@ -40,17 +43,19 @@ export default function OnboardingTransformationPhotosPage({
   const email = user?.email || user?.Email || '';
   const userId = user?.id || user?.userId || user?.UserId;
 
+  const slots = useMemo(
+    () => (Array.isArray(requiredSlots) && requiredSlots.length > 0 ? requiredSlots : POSE_SLOT_KEYS),
+    [requiredSlots],
+  );
+
   const allDone = useMemo(
-    () => allTransformationSlotsFilled(transformationPhotos.previews),
-    [transformationPhotos.previews],
+    () => slots.every((key) => Boolean(transformationPhotos.previews?.[key])),
+    [slots, transformationPhotos.previews],
   );
 
   const doneCount = useMemo(
-    () => POSE_SLOT_KEYS.filter((key) => {
-      const value = transformationPhotos.previews?.[key];
-      return Boolean(value);
-    }).length,
-    [transformationPhotos.previews],
+    () => slots.filter((key) => Boolean(transformationPhotos.previews?.[key])).length,
+    [slots, transformationPhotos.previews],
   );
 
   useEffect(() => {
@@ -91,8 +96,9 @@ export default function OnboardingTransformationPhotosPage({
   }, [email, userId]);
 
   const finish = useCallback(async () => {
-    if (!allTransformationSlotsFilled(transformationPhotos.previews)) {
-      setError('Add Left, Centre, and Right photos to continue.');
+    const missingSlot = slots.some((key) => !transformationPhotos.previews?.[key]);
+    if (missingSlot) {
+      setError('Add every required photo to continue.');
       return;
     }
     setError('');
@@ -107,8 +113,12 @@ export default function OnboardingTransformationPhotosPage({
       const hasPhotoUpdates = Boolean(extras.transformationPhotos);
       if (hasPhotoUpdates) {
         await saveProfile({
-          ...(email ? { email } : {}),
-          ...(userId ? { userId } : {}),
+          ...(preferUserId && userId
+            ? { userId }
+            : {
+              ...(email ? { email } : {}),
+              ...(userId ? { userId } : {}),
+            }),
           ...extras,
         });
         transformationPhotos.clearPending();
@@ -141,6 +151,7 @@ export default function OnboardingTransformationPhotosPage({
     healthIssues,
     transformationPhotos,
     onComplete,
+    slots,
   ]);
 
   return (
@@ -159,7 +170,7 @@ export default function OnboardingTransformationPhotosPage({
           <div className="min-w-0">
             <h1 className="text-lg font-bold text-white leading-tight">Transformation Photos</h1>
             <p className="text-[11px] text-emerald-100 font-medium">
-              {doneCount}/3 required
+              {doneCount}/{slots.length} required
             </p>
           </div>
         </div>
@@ -208,7 +219,7 @@ export default function OnboardingTransformationPhotosPage({
             </button>
           ) : (
             <p className="text-center text-xs text-gray-500 font-medium py-2">
-              Add all three photos to continue
+              Add every required photo to continue
             </p>
           )}
         </div>

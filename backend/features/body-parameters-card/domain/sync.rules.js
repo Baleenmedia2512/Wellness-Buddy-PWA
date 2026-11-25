@@ -378,7 +378,7 @@ export function buildCardPatchFromProfile(card, profile = {}) {
 export function buildProfileCardSyncPayload(profileInput = {}, { savedBmr = null, latestWeight = null } = {}) {
   const {
     name, height, bmr, gender,
-    age, visceralFat, bodyAge, chestCm, waistCm, hipCm,
+    age, fatPercent, visceralFat, bodyAge, chestCm, waistCm, hipCm,
     recoveredHealthIssues,
   } = profileInput;
   const cardSync = {};
@@ -424,6 +424,8 @@ export function buildProfileCardSyncPayload(profileInput = {}, { savedBmr = null
   if (latestWeight?.BodyFat != null) {
     const f = parseFloat(latestWeight.BodyFat);
     if (!Number.isNaN(f)) cardSync.fatPercent = f;
+  } else {
+    copyNum(fatPercent, 'fatPercent');
   }
 
   const computedBmi = computeBmiFromHeightWeight(cardSync.height, cardSync.weightKg);

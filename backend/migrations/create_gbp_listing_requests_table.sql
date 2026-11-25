@@ -1,0 +1,40 @@
+-- Migration: create_gbp_listing_requests_table
+-- Google Maps Listing (GBP) request intake — one row per (UserId, CenterId).
+-- Media lives on MilesWeb FTP; DB stores folder key + file list JSON only.
+
+CREATE TABLE IF NOT EXISTS gbp_listing_requests_table (
+  Id               BIGINT       NOT NULL AUTO_INCREMENT,
+  UserId           BIGINT       NOT NULL,
+  CenterId         BIGINT       NOT NULL,
+  Status           VARCHAR(32)  NOT NULL DEFAULT 'draft',
+  BusinessName     VARCHAR(160) NOT NULL DEFAULT '',
+  PrimaryCategory  VARCHAR(80)  NOT NULL DEFAULT '',
+  StreetAddress    VARCHAR(255) NOT NULL DEFAULT '',
+  Landmark         VARCHAR(160) NOT NULL DEFAULT '',
+  Area             VARCHAR(120) NOT NULL DEFAULT '',
+  City             VARCHAR(120) NOT NULL DEFAULT '',
+  State            VARCHAR(80)  NOT NULL DEFAULT 'Tamil Nadu',
+  Pincode          VARCHAR(12)  NOT NULL DEFAULT '',
+  ShowAddress      TINYINT(1)   NOT NULL DEFAULT 1,
+  Phone            VARCHAR(32)  NOT NULL DEFAULT '',
+  Whatsapp         VARCHAR(32)  NOT NULL DEFAULT '',
+  WebsiteUrl       VARCHAR(320) NOT NULL DEFAULT '',
+  WorkingDaysJson  TEXT         NULL,
+  OpeningTime      VARCHAR(16)  NOT NULL DEFAULT '',
+  ClosingTime      VARCHAR(16)  NOT NULL DEFAULT '',
+  WeeklyHoliday    VARCHAR(40)  NOT NULL DEFAULT '',
+  Description      VARCHAR(500) NOT NULL DEFAULT '',
+  MediaFolderKey   VARCHAR(240) NOT NULL DEFAULT '',
+  MediaFilesJson   LONGTEXT     NULL,
+  MapsUrl          VARCHAR(500) NULL,
+  OpsNote          TEXT         NULL,
+  SubmittedAt      DATETIME     NULL,
+  CompletedAt      DATETIME     NULL,
+  CreatedAt        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UpdatedAt        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (Id),
+  UNIQUE KEY uq_gbp_listing_user_center (UserId, CenterId),
+  KEY idx_gbp_listing_status (Status),
+  KEY idx_gbp_listing_updated (UpdatedAt),
+  KEY idx_gbp_listing_center (CenterId)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -143,7 +143,7 @@ const BodyParamsCardTile = memo(function BodyParamsCardTile({
             <p className="text-sm font-semibold text-green-900">{card.weightKg} kg</p>
           </div>
           <div className="bg-purple-50 rounded-lg p-2">
-            <p className="text-xs text-purple-600 font-medium">BMI</p>
+            <p className="text-xs text-purple-600 font-medium">Indian BMI</p>
             <p className="text-sm font-semibold text-purple-900">{card.bmi}</p>
           </div>
           <div className="bg-orange-50 rounded-lg p-2">
@@ -258,12 +258,14 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
           id: card.id,
           name: card.name,
           phoneNumber: card.phoneNumber,
+          locationName: card.locationName,
         };
         const existing = map.get(card.id);
         if (
           existing
           && existing.name === next.name
           && existing.phoneNumber === next.phoneNumber
+          && existing.locationName === next.locationName
         ) {
           continue;
         }
@@ -656,34 +658,18 @@ const WellnessCounsellingCards = ({ user, onBack, refreshKey = 0, onCardSaved = 
         <div className="px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <h1 className="text-lg font-bold text-gray-900 min-w-0">Body Composition Metrics</h1>
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
-            >
-              <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
-            </button>
-          </div>
-          <div className="mt-1 flex w-full min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto py-0.5 sm:gap-2">
-            <label
-              className="whitespace-nowrap text-[11px] text-gray-500 sm:text-xs"
-              htmlFor="bpc-header-venue"
-            >
-              Checked At:
-            </label>
-            <input
-              id="bpc-header-venue"
-              type="text"
-              value={headerVenue}
-              onChange={(e) => {
-                headerVenueInitializedRef.current = true;
-                setHeaderVenue(e.target.value);
-              }}
-              className="h-7 w-20 min-w-[4.5rem] flex-shrink-0 rounded-md border border-gray-200 bg-white px-2 text-xs text-gray-800 outline-none focus:border-green-500 focus:ring-1 focus:ring-inset focus:ring-green-500 sm:w-28 md:w-36"
-            />
-            <p className="ml-auto flex-shrink-0 whitespace-nowrap text-[11px] text-gray-500 sm:text-xs">
-              {pagination.totalRecords || bodyParamsCards.length} Cards
-            </p>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className="text-xs text-gray-500 whitespace-nowrap">
+                {pagination.totalRecords || bodyParamsCards.length} Cards
+              </span>
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
+              >
+                <RefreshCw size={20} className={refreshing ? 'animate-spin' : ''} />
+              </button>
+            </div>
           </div>
         </div>
 

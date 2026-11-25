@@ -14,7 +14,9 @@ import {
   buildActivityReportShareText,
   formatActivityReportLevel,
   formatActivityReportMemberType,
+  formatActivityReportTime,
 } from '../utils/activityReportShareText';
+import { enrichActivityReportWeightDeltas } from '../utils/activityReportWeightDelta';
 import {
   ACTIVITY_REPORT_ATTENDANCE,
   activeActivityReportTableFilters,
@@ -37,6 +39,8 @@ import ActivityReportFiltersBar from './ActivityReportFiltersBar';
 import ActivityReportHiddenUsersModal from './ActivityReportHiddenUsersModal';
 import ActivityReportHideUserMenu from './ActivityReportHideUserMenu';
 import ActivityReportMemberNameCell from './ActivityReportMemberNameCell';
+import TeamMemberProfileModal from '../../../shared/components/TeamMemberProfileModal';
+import { computeWeightDiff } from '../../weight/services/weightFormService';
 
 const DEFAULT_PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -78,6 +82,27 @@ const ACTIVITY_TYPES = [
 /** Returns '—' for null, undefined, empty string, or the literal string "N/A" */
 const display = (val) => (!val || val === 'N/A') ? '—' : val;
 
+/** Green ↓ when weight dropped vs prior log; red ↑ when it rose. */
+function ActivityReportWeightCell({ weight, previousWeight }) {
+  const diff = computeWeightDiff(weight, previousWeight);
+  return (
+    <td className="px-4 py-3 text-sm font-semibold text-blue-600 whitespace-nowrap">
+      <span className="inline-flex items-center gap-1">
+        <span>{weight}</span>
+        {diff ? (
+          <span
+            className={diff.gained ? 'text-red-500' : 'text-green-500'}
+            title={`${diff.gained ? '+' : '−'}${diff.abs.toFixed(2)} kg`}
+            aria-label={diff.gained ? 'Weight increased' : 'Weight reduced'}
+          >
+            {diff.arrow}
+          </span>
+        ) : null}
+      </span>
+    </td>
+  );
+}
+
 // Main Component
 const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, teamSearchRefreshKey = 0 }) => {
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -117,6 +142,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
   const [showHiddenUsersModal, setShowHiddenUsersModal] = useState(false);
   const [hideMenu, setHideMenu] = useState(null);
   const [hideBusy, setHideBusy] = useState(false);
+  const [profileUserId, setProfileUserId] = useState(null);
   /** Unhide button only when at least one team member is currently hidden. */
   const [hiddenCount, setHiddenCount] = useState(0);
   const fetchAbortRef = useRef(null);
@@ -305,7 +331,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
     applyReportMeta(summaryData);
     setMemberSummaries(memberData.members || []);
     setMemberStats(memberData.stats || null);
-    const records = detailData.records || [];
+    const records = enrichActivityReportWeightDeltas(detailData.records || []);
     setDetailRecords(records);
     applyPaginationMeta(detailData, 1);
     detailCacheRef.current.set(
@@ -366,7 +392,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
         throw new Error(data.message || 'Failed to fetch activity details');
       }
 
-      const records = data.records || [];
+      const records = enrichActivityReportWeightDeltas(data.records || []);
       const pageMeta = data.pagination || emptyPagination(page);
       if (data.availableFilters && typeof data.availableFilters === 'object') {
         setAvailableFilters({
@@ -867,7 +893,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
         `"${displayClub}"`,
         `"${record.sponsorName || record.coachName || 'N/A'}"`,
         record.date || 'N/A',
-        record.time || 'N/A',
+        formatActivityReportTime(record.time) || record.time || 'N/A',
         `"${record.idealCoachName || ''}"`,
         `"${record.phone || 'N/A'}"`,
         `"${record.city || 'N/A'}"`,
@@ -1251,6 +1277,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
                         record={record}
                         canHide={canHideInactiveUsers}
                         onOpenHideMenu={setHideMenu}
+                        onOpenProfile={setProfileUserId}
                       />
                       <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{formatActivityReportMemberType(record.memberType)}</td>
                       <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{formatActivityReportLevel(record.level)}</td>
@@ -1264,7 +1291,10 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
 
                       {/* --- DYNAMIC ACTIVITY DATA --- */}
                       {selectedActivity === 'weight' && (
-                        <td className="px-4 py-3 text-sm font-semibold text-blue-600">{record.weight}</td>
+                        <ActivityReportWeightCell
+                          weight={record.weight}
+                          previousWeight={record.previousWeight}
+                        />
                       )}
                       {/* Education data (Topic/Type) removed */}
                       {['breakfast', 'lunch', 'dinner'].includes(selectedActivity) && (
@@ -1282,7 +1312,7 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
 
                       {/* --- COMMON DATA --- */}
                       <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{display(record.date)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{display(record.time)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{display(formatActivityReportTime(record.time) || record.time)}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{record.idealCoachName ? display(record.idealCoachName) : '—'}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         <PhoneContactActions phone={record.phone} size="sm" />
@@ -1344,6 +1374,12 @@ const ActivityReport = ({ user, userRole, apiBaseUrl, onBack, tabVisitKey = 0, t
           </div>
         )}
       </div>
+      <TeamMemberProfileModal
+        isOpen={profileUserId != null}
+        onClose={() => setProfileUserId(null)}
+        memberUserId={profileUserId}
+        apiBaseUrl={apiBaseUrl}
+      />
     </div>
   );
 };

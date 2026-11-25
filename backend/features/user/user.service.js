@@ -28,3 +28,7 @@ export {
   requestHeightChangeOtp,
   verifyHeightChangeOtp,
 } from './heightChange.service.js';
+export {
+  requestProfileChangeOtp,
+  verifyProfileChangeOtp,
+} from './profileChange.service.js';

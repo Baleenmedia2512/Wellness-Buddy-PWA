@@ -3,7 +3,6 @@
  * Matches BodyParamsCardPreview / card.rules business ranges.
  */
 
-export const VISCERAL_FAT_MAX = 9;
 export const WAIST_CM_MAX_MALE = 90;
 export const WAIST_CM_MAX_FEMALE = 80;
 export const CHEST_CM_MIN_MALE = 90;
@@ -35,10 +34,6 @@ export function getFatPercentReference(gender) {
   if (g === 'male') return '10 to 20%';
   if (g === 'female') return '20 to 30%';
   return null;
-}
-
-export function getVisceralFatReference() {
-  return '≤ 9';
 }
 
 /**
@@ -96,17 +91,6 @@ function parseMetricNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-/**
- * @returns {{ isOutOfRange: boolean, direction: 'high'|'low'|null } | null}
- * null when value/gender cannot be evaluated.
- */
-export function evaluateVisceralFat(value) {
-  const n = parseMetricNumber(value);
-  if (n == null) return null;
-  if (n > VISCERAL_FAT_MAX) return { isOutOfRange: true, direction: 'high' };
-  return { isOutOfRange: false, direction: null };
-}
-
 export function evaluateWaistCm(value, gender) {
   const g = normalizeBodyMetricGender(gender);
   const n = parseMetricNumber(value);
@@ -142,7 +126,6 @@ export function evaluateHipCm(value, gender) {
 
 const REFERENCE_GETTERS = {
   fatPercent: (m) => getFatPercentReference(m.gender),
-  visceralFat: () => getVisceralFatReference(),
   bmi: () => getBmiReference(),
   bodyAge: (m) => getBodyAgeReference(m.age),
   waistCm: (m) => getWaistCmReference(m.gender),

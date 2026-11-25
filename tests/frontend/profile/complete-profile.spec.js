@@ -1,4 +1,4 @@
-﻿/**
+/**
  * tests/frontend/profile/complete-profile.spec.js
  * E2E test suite for Complete Profile Module.
  * 
@@ -4646,7 +4646,7 @@ test.describe('Complete Profile', () => {
       const heightInput = page.getByPlaceholder('e.g. 170');
       await expect(heightInput).toBeVisible({ timeout: 15000 });
 
-      const bmiValueDisplay = page.locator('label').filter({ hasText: /^BMI$/ }).locator('..').locator('div[aria-readonly="true"]');
+      const bmiValueDisplay = page.locator('label').filter({ hasText: /^Indian BMI$|^BMI$/ }).locator('..').locator('div[aria-readonly="true"]');
       await expect(bmiValueDisplay).toBeVisible({ timeout: 15000 });
 
       // ============================================================
@@ -5125,8 +5125,8 @@ test.describe('Complete Profile', () => {
     }
   );
 
-  test(
-    'CP-023 Visceral Fat (V-Fat) field validation for minimum and maximum boundaries (0, 1, 59, 60) in profile page',
+  test.skip(
+    'CP-023 Visceral Fat (V-Fat) field validation (Skipped: Visceral Fat field removed from app)',
     async ({ page }) => {
       // ============================================================
       // TEST DATA

@@ -1,5 +1,6 @@
 /**
  * Diary tap target for Good Habit — single photo.
+ * Coach viewing a member: Reject stays on this sheet and disables after success (no page redirect).
  */
 import React, { useEffect, useState } from 'react';
 import { Loader2, Star, X } from 'lucide-react';
@@ -9,6 +10,7 @@ import {
 } from '../../../shared/utils/datetimeUtils';
 import { useGoodHabitDetailImages } from '../hooks/useGoodHabitDetailImages';
 import { activityPhotoTemplate, handleActivityPhotoError } from '../../../shared/assets/activityPhotoTemplates';
+import { deleteGoodHabit } from '../services/goodHabitApi';
 
 function PhotoSlot({ src, loading, onOpen }) {
   const displaySrc = src || activityPhotoTemplate('good-habit');
@@ -17,14 +19,14 @@ function PhotoSlot({ src, loading, onOpen }) {
     <button
       type="button"
       disabled={!canOpen}
-      onClick={() => onOpen({ src: displaySrc, label: 'Good Habit' })}
+      onClick={() => onOpen({ src: displaySrc, label: 'Task by Coach' })}
       className="flex h-56 w-full items-center justify-center overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/60 disabled:cursor-default"
-      aria-label={canOpen ? 'View Good Habit photo full size' : 'Good Habit photo'}
+      aria-label={canOpen ? 'View Task by Coach photo full size' : 'Task by Coach photo'}
     >
       {displaySrc ? (
         <img
           src={displaySrc}
-          alt="Good Habit photo"
+          alt="Task by Coach photo"
           className="h-full w-full object-cover"
           onError={(e) => handleActivityPhotoError(e, 'good-habit')}
         />
@@ -84,6 +86,9 @@ export default function GoodHabitDetailModal({
   entry,
   ownerUserId,
   timezoneIana = DEFAULT_BUSINESS_TIMEZONE,
+  /** Coach reviewing a member diary — show Reject (disable after success, stay on sheet). */
+  canReject = false,
+  onRejected,
   onClose,
 }) {
   const p = entry?.payload || {};
@@ -93,9 +98,27 @@ export default function GoodHabitDetailModal({
     habitId,
   });
   const [expanded, setExpanded] = useState(null);
+  const [rejecting, setRejecting] = useState(false);
+  const [rejected, setRejected] = useState(false);
+  const [rejectError, setRejectError] = useState(null);
   const timeLabel = entry?.capturedAt
     ? formatBusinessTime(entry.capturedAt, timezoneIana)
     : null;
+
+  const handleReject = async () => {
+    if (!canReject || !habitId || !ownerUserId || rejecting || rejected) return;
+    setRejecting(true);
+    setRejectError(null);
+    try {
+      await deleteGoodHabit({ userId: ownerUserId, id: habitId });
+      setRejected(true);
+      onRejected?.({ id: habitId, userId: ownerUserId });
+    } catch (err) {
+      setRejectError(err?.message || "Couldn't reject this task");
+    } finally {
+      setRejecting(false);
+    }
+  };
 
   if (!entry) return null;
 
@@ -115,7 +138,7 @@ export default function GoodHabitDetailModal({
         <div className="flex items-start justify-between px-4 pb-2 pt-4">
           <div>
             <p id="good-habit-detail-title" className="text-sm font-bold text-emerald-900">
-              Good Habit
+              Task by Coach
             </p>
             {timeLabel && (
               <p className="mt-0.5 text-[11px] text-emerald-700/70">{timeLabel}</p>
@@ -132,12 +155,28 @@ export default function GoodHabitDetailModal({
         </div>
 
         <div className="flex flex-col gap-3 px-4 pb-5">
-          {error && (
+          {(error || rejectError) && (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              {error}
+              {rejectError || error}
             </p>
           )}
           <PhotoSlot src={src} loading={loading} onOpen={setExpanded} />
+          {canReject ? (
+            <button
+              type="button"
+              disabled={rejecting || rejected}
+              onClick={handleReject}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-rose-700 py-3 text-sm font-bold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {rejecting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+              {rejected ? 'Rejected' : rejecting ? 'Rejecting…' : 'Reject'}
+            </button>
+          ) : null}
+          {rejected ? (
+            <p className="text-center text-[11px] text-slate-500">
+              Task removed — member score for today no longer includes it.
+            </p>
+          ) : null}
         </div>
       </div>
       {expanded?.src && (

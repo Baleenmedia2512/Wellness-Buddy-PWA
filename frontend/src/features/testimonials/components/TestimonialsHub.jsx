@@ -9,7 +9,7 @@
  *   4. Business Results Video  (max 2 min)
  *   5. Health Issues  (filter-style multi-select, same as BCM)
  *
- * Overall status bar classifies the member's upload completeness across all 5 slots:
+ * Overall status bar classifies the member's upload completeness across collage + videos + issues:
  *   Not Uploaded → Partial Upload → Awaiting Approval → Fully Uploaded / Verified
  *
  * Users may upload any slot independently or fill multiple slots then submit each section.
@@ -48,6 +48,8 @@ import {
   sanitizeWeightTyping,
 } from '../services/testimonialFormUtils.js';
 import DiseaseMultiSelect from './DiseaseMultiSelect.jsx';
+import WebsiteDisplayConsentCard from './WebsiteDisplayConsentCard.jsx';
+import { isFlagEnabled } from '../../../config/featureFlags.js';
 import OtpInline from './OtpInline.jsx';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -116,14 +118,14 @@ function OverallStatusBar({ slots, photoSuccess, videoSuccess }) {
   const uploaded  = values.filter((s) => s !== 'none' && s !== 'locked').length;
   const pending   = values.filter((s) => s === 'pending').length;
   const verified  = values.filter((s) => s === 'verified').length;
-  const total     = 5;
+  const total     = values.length;
 
   let label, barPct;
   if (uploaded === 0) {
     label  = 'Upload any item below to start your transformation';
     barPct = 0;
   } else if (verified === total) {
-    label  = 'Fully Verified — all 5 items approved by your sponsor';
+    label  = 'Fully Verified — all items approved by your sponsor';
     barPct = 100;
   } else if (uploaded === total && pending > 0) {
     label  = `All ${total} items uploaded · ${pending} awaiting sponsor approval`;
@@ -1246,6 +1248,24 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
       
       )}
 
+      {/* ── Upline website consent — checkbox only, below Result Videos ───── */}
+      {!isFocused
+        && isFlagEnabled('ff.testimonial-upline-display-consent')
+        && existing
+        && (existing.status === 'verified' || existingVideo?.videoStatus === 'verified' || existing?.videoStatus === 'verified') ? (
+        <WebsiteDisplayConsentCard
+          userId={userId}
+          testimonial={{
+            ...existing,
+            videoStatus: existing?.videoStatus || existingVideo?.videoStatus,
+          }}
+          onChanged={() => {
+            reload?.();
+            reloadVideo?.();
+          }}
+        />
+      ) : null}
+
       {/* ── How it works (first-time hint) ─────────────────────────────────── */}
       {!isFocused && !existing && !existingVideo && (
         <div className="bg-blue-50 border border-blue-200 rounded-2xl px-4 py-4 space-y-2">
@@ -1257,6 +1277,7 @@ export default function TestimonialsHub({ userId, focusOnly = null, onFocusClose
             <li>Ask your sponsor for the OTP and enter it here to get officially verified.</li>
             <li>Optionally upload <strong>Health</strong> or <strong>Business</strong> result videos — same OTP flow.</li>
             <li>You can upload any item independently, in any order, at any time.</li>
+            <li>After verify, agree + email OTP to show on all Upline coach websites.</li>
           </ol>
         </div>
       )}

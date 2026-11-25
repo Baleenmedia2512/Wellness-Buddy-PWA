@@ -49,6 +49,8 @@ function buildCarouselSections(historyDays = []) {
  */
 export default function WellnessScoreSheet({
   onBack,
+  title = 'Wellness Score',
+  headerSearch = null,
   scoreData,
   loading = false,
   error = null,
@@ -69,6 +71,7 @@ export default function WellnessScoreSheet({
   nutritionRefreshKey = 0,
   canManageTimeWindows = false,
   userEmail = null,
+  viewerUserId = null,
 }) {
   const [showTimeWindowSettings, setShowTimeWindowSettings] = useState(false);
   const nutritionRefresh = useNutritionRefreshOptional();
@@ -122,6 +125,7 @@ export default function WellnessScoreSheet({
     apiBaseUrl,
     nutritionRefreshKey,
     timeWindows,
+    viewerUserId,
   });
 
   const hasContent = showMultiDayCarousel || activeScore;
@@ -143,7 +147,7 @@ export default function WellnessScoreSheet({
           <div className="min-w-0 flex-1">
             <h1 className="flex items-center gap-2 text-base font-bold text-gray-900">
               <ClipboardList className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
-              Wellness Score
+              <span className="truncate">{title}</span>
             </h1>
             <p className="text-xs text-gray-500">{summaryLabel}</p>
           </div>
@@ -171,6 +175,7 @@ export default function WellnessScoreSheet({
             />
           </div>
         )}
+        {headerSearch}
       </header>
 
       <main className="mx-auto max-w-lg space-y-4 px-4 py-4 pb-28">

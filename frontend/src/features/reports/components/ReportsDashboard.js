@@ -4,12 +4,11 @@
  * Tabs:
  *   1. Ideal Weight (default) — existing DownlineWeightReport
  *   2. Wellness Score Report — existing WellnessScoreReport (ff.wellness-score-sheet)
- *   3. Nutrition — selected member's nutrition (existing dashboard cards/APIs)
- *   4. Trend — selected member's body-metric history (weight + BPC fields)
+ *   3. Trend — selected member's body-metric history (weight + BPC fields)
  *
- * Ideal Weight and Wellness Score stay mounted after first visit so filters
- * survive tab switches. Nutrition and Trend each have their own search bar
- * and selected member — picking someone on one tab does not change the other.
+ * Downline nutrition / full wellness score detail lives on the Wellness Score
+ * sheet (Home), not here. Ideal Weight and Wellness Score stay mounted after
+ * first visit so filters survive tab switches. Trend has its own member search.
  * The page title follows the active tab. Refresh lives in this header and
  * reloads whichever tab is showing.
  */
@@ -17,10 +16,11 @@ import React, { useCallback, useEffect, useRef, useState, startTransition } from
 import { RefreshCw } from 'lucide-react';
 import { isFlagEnabled } from '../../../config/featureFlags';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import useReportAccess from '../hooks/useReportAccess';
+import ReportAccessBanner from './ReportAccessBanner';
 import DownlineWeightReport from './DownlineWeightReport';
 import WellnessScoreReport from './WellnessScoreReport';
 import ReportsMemberSearch from './ReportsMemberSearch';
-import ReportsNutritionTab from './ReportsNutritionTab';
 import ReportsTrendTab from './ReportsTrendTab';
 import {
   REPORT_DASHBOARD_TABS,
@@ -53,8 +53,14 @@ export default function ReportsDashboard({
   tabVisitKey = 0,
   teamSearchRefreshKey = 0,
   initialTab = REPORT_DASHBOARD_TABS.IDEAL_WEIGHT,
+  onLeave,
 }) {
   const wellnessScoreEnabled = isFlagEnabled('ff.wellness-score-sheet');
+  const trialEnabled = isFlagEnabled('ff.report-trial');
+  const reportUserId = user?.id || user?.UserId || user?.userId || null;
+  const reportAccess = useReportAccess(trialEnabled ? reportUserId : null);
+  const detailsLocked = trialEnabled && !reportAccess.canSeeDetails;
+  const couldSeeDetailsRef = useRef(false);
   const [activeTab, setActiveTab] = useState(() =>
     resolveReportsDashboardTab(initialTab, wellnessScoreEnabled),
   );
@@ -62,18 +68,12 @@ export default function ReportsDashboard({
     () => resolveReportsDashboardTab(initialTab, wellnessScoreEnabled)
       === REPORT_DASHBOARD_TABS.WELLNESS_SCORE,
   );
-  const [nutritionMounted, setNutritionMounted] = useState(
-    () => resolveReportsDashboardTab(initialTab, wellnessScoreEnabled)
-      === REPORT_DASHBOARD_TABS.NUTRITION,
-  );
   const [trendMounted, setTrendMounted] = useState(
     () => resolveReportsDashboardTab(initialTab, wellnessScoreEnabled)
       === REPORT_DASHBOARD_TABS.TREND,
   );
-  const [nutritionMember, setNutritionMember] = useState(null);
   const [trendMember, setTrendMember] = useState(null);
   const [trendDisplayTitle, setTrendDisplayTitle] = useState(null);
-  const nutritionMemberKey = nutritionMember?.id || nutritionMember?.userId || 'self';
   const refreshFnsRef = useRef({});
   const [refreshingByTab, setRefreshingByTab] = useState({});
 
@@ -93,20 +93,23 @@ export default function ReportsDashboard({
     (api) => bindTabRefresh(REPORT_DASHBOARD_TABS.WELLNESS_SCORE, api),
     [bindTabRefresh],
   );
-  const bindNutritionRefresh = useCallback(
-    (api) => bindTabRefresh(REPORT_DASHBOARD_TABS.NUTRITION, api),
-    [bindTabRefresh],
-  );
   const bindTrendRefresh = useCallback(
     (api) => bindTabRefresh(REPORT_DASHBOARD_TABS.TREND, api),
     [bindTabRefresh],
   );
 
   useEffect(() => {
+    const canSee = reportAccess.canSeeDetails;
+    if (trialEnabled && canSee && !couldSeeDetailsRef.current) {
+      Object.values(refreshFnsRef.current).forEach((refresh) => refresh?.());
+    }
+    couldSeeDetailsRef.current = canSee;
+  }, [reportAccess.canSeeDetails, trialEnabled]);
+
+  useEffect(() => {
     const next = resolveReportsDashboardTab(initialTab, wellnessScoreEnabled);
     setActiveTab(next);
     if (next === REPORT_DASHBOARD_TABS.WELLNESS_SCORE) setWellnessScoreMounted(true);
-    if (next === REPORT_DASHBOARD_TABS.NUTRITION) setNutritionMounted(true);
     if (next === REPORT_DASHBOARD_TABS.TREND) setTrendMounted(true);
   }, [initialTab, wellnessScoreEnabled]);
 
@@ -118,7 +121,6 @@ export default function ReportsDashboard({
     startTransition(() => {
       setActiveTab(tab);
       if (tab === REPORT_DASHBOARD_TABS.WELLNESS_SCORE) setWellnessScoreMounted(true);
-      if (tab === REPORT_DASHBOARD_TABS.NUTRITION) setNutritionMounted(true);
       if (tab === REPORT_DASHBOARD_TABS.TREND) setTrendMounted(true);
       scrollReportsViewportToTop();
     });
@@ -126,9 +128,8 @@ export default function ReportsDashboard({
 
   const idealActive = activeTab === REPORT_DASHBOARD_TABS.IDEAL_WEIGHT;
   const wellnessActive = activeTab === REPORT_DASHBOARD_TABS.WELLNESS_SCORE;
-  const nutritionActive = activeTab === REPORT_DASHBOARD_TABS.NUTRITION;
   const trendActive = activeTab === REPORT_DASHBOARD_TABS.TREND;
-  const memberSearchVisible = nutritionActive || trendActive;
+  const memberSearchVisible = trendActive;
   const embeddedStickyClass = memberSearchVisible
     ? 'sticky top-[9.75rem] z-20'
     : 'sticky top-[6.5rem] z-20';
@@ -145,8 +146,10 @@ export default function ReportsDashboard({
 
   return (
     <div className="min-h-full bg-gray-50 flex flex-col">
+      {detailsLocked ? null : (
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200">
         <div className="max-w-6xl mx-auto w-full px-3 sm:px-4 pt-3 pb-3">
+          {detailsLocked ? null : (
           <div className="flex items-center gap-2">
             <h1 className="flex-1 min-w-0 text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
               {pageTitle}
@@ -160,7 +163,9 @@ export default function ReportsDashboard({
               <RefreshCw className={`h-4 w-4 text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} />
             </TouchFeedbackButton>
           </div>
+          )}
 
+          {detailsLocked ? null : (
           <div
             className="mt-3 bg-white rounded-xl border border-gray-200 shadow-sm p-1 flex gap-1 w-full"
             role="tablist"
@@ -195,18 +200,6 @@ export default function ReportsDashboard({
             <button
               type="button"
               role="tab"
-              id="reports-tab-nutrition"
-              aria-controls="reports-panel-nutrition"
-              aria-selected={nutritionActive}
-              tabIndex={nutritionActive ? 0 : -1}
-              onClick={() => selectTab(REPORT_DASHBOARD_TABS.NUTRITION)}
-              className={TAB_BTN(nutritionActive)}
-            >
-              <span className="truncate">Nutrition</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
               id="reports-tab-trend"
               aria-controls="reports-panel-trend"
               aria-selected={trendActive}
@@ -217,19 +210,25 @@ export default function ReportsDashboard({
               <span className="truncate">Trend</span>
             </button>
           </div>
-
-          {nutritionMounted && (
-            <div className={`mt-3 ${nutritionActive ? '' : 'hidden'}`}>
-              <ReportsMemberSearch
-                user={user}
-                userRole={userRole}
-                selectedMember={nutritionMember}
-                onMemberSelect={setNutritionMember}
-                refreshKey={teamSearchRefreshKey}
-              />
-            </div>
           )}
-          {trendMounted && (
+
+          {trialEnabled && reportAccess.loaded && !detailsLocked ? (
+            <ReportAccessBanner
+              access={reportAccess.access}
+              daysLeft={reportAccess.daysLeft}
+              error={reportAccess.error}
+              starting={reportAccess.starting}
+              onStartTrial={reportAccess.startTrial}
+              onRetry={reportAccess.refresh}
+              userId={reportUserId}
+              onPremiumCheck={async () => {
+                const next = await reportAccess.refresh();
+                return next?.access === 'premium';
+              }}
+            />
+          ) : null}
+
+          {!detailsLocked && trendMounted && (
             <div className={`mt-3 ${trendActive ? '' : 'hidden'}`}>
               <ReportsMemberSearch
                 user={user}
@@ -242,7 +241,30 @@ export default function ReportsDashboard({
           )}
         </div>
       </div>
+      )}
 
+      {detailsLocked && trialEnabled && reportAccess.loaded ? (
+        <div className="flex flex-1 items-center justify-center bg-gradient-to-b from-emerald-50 via-white to-white px-6 min-h-[70vh]">
+          <ReportAccessBanner
+            centered
+            featureName="Reports"
+            access={reportAccess.access}
+            daysLeft={reportAccess.daysLeft}
+            error={reportAccess.error}
+            starting={reportAccess.starting}
+            onStartTrial={reportAccess.startTrial}
+            onRetry={reportAccess.refresh}
+            userId={reportUserId}
+            onPremiumCheck={async () => {
+              const next = await reportAccess.refresh();
+              return next?.access === 'premium';
+            }}
+            onLeave={onLeave}
+          />
+        </div>
+      ) : null}
+
+      {!detailsLocked && (
       <div
         id="reports-panel-ideal-weight"
         role="tabpanel"
@@ -254,11 +276,13 @@ export default function ReportsDashboard({
           user={user}
           tabVisitKey={tabVisitKey}
           hidePageTitle
+          hideDetails={detailsLocked}
           onRefreshRegister={bindIdealRefresh}
         />
       </div>
+      )}
 
-      {wellnessScoreEnabled && wellnessScoreMounted && (
+      {!detailsLocked && wellnessScoreEnabled && wellnessScoreMounted && (
         <div
           id="reports-panel-wellness-score"
           role="tabpanel"
@@ -270,30 +294,14 @@ export default function ReportsDashboard({
             user={user}
             tabVisitKey={tabVisitKey}
             hidePageTitle
+            hideDetails={detailsLocked}
             embeddedStickyClass={embeddedStickyClass}
             onRefreshRegister={bindWellnessRefresh}
           />
         </div>
       )}
 
-      {nutritionMounted && (
-        <div
-          id="reports-panel-nutrition"
-          role="tabpanel"
-          aria-labelledby="reports-tab-nutrition"
-          hidden={!nutritionActive}
-          className={nutritionActive ? undefined : 'hidden'}
-        >
-          <ReportsNutritionTab
-            key={`nutrition-${nutritionMemberKey}`}
-            user={user}
-            selectedMember={nutritionMember}
-            onRefreshRegister={bindNutritionRefresh}
-          />
-        </div>
-      )}
-
-      {trendMounted && (
+      {!detailsLocked && trendMounted && (
         <div
           id="reports-panel-trend"
           role="tabpanel"
@@ -301,12 +309,14 @@ export default function ReportsDashboard({
           hidden={!trendActive}
           className={trendActive ? undefined : 'hidden'}
         >
-          <ReportsTrendTab
-            user={user}
-            selectedMember={trendMember}
-            onRefreshRegister={bindTrendRefresh}
-            onDisplayTitleChange={setTrendDisplayTitle}
-          />
+          {detailsLocked ? null : (
+            <ReportsTrendTab
+              user={user}
+              selectedMember={trendMember}
+              onRefreshRegister={bindTrendRefresh}
+              onDisplayTitleChange={setTrendDisplayTitle}
+            />
+          )}
         </div>
       )}
     </div>

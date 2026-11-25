@@ -74,33 +74,50 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.5.5',
+  // iOS App Store resubmit stays on rejected marketing version 3.5.6 (build 87).
+  VERSION: '3.5.8',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
   // NOTE: versionCode must never decrease for Play Store compatibility.
-  VERSION_CODE: 84,
+  VERSION_CODE: 89,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
-  IOS_BUILD_NUMBER: 79,
+  // Must be > last App Store submitted build (3.5.6 was build 86).
+  IOS_BUILD_NUMBER: 87,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version  3.5.5',
+  RELEASE_NAME: 'Version  3.5.8',
   
   // Build date
-  BUILD_DATE: '2026-10-31',
+  BUILD_DATE: '2026-11-24',
   
   // Platform release notes..
   PLATFORMS: {
-    ANDROID: { versionCode: 84, versionName: '3.5.5' },
-    IOS: { buildNumber: 79, versionName: '3.5.5' },
+    ANDROID: { versionCode: 89, versionName: '3.5.8' },
+    IOS: { buildNumber: 87, versionName: '3.5.8' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
  * 
- * Version 3.5.5 (Code 84 / iOS build 79) - 2026-10-31 [ANDROID + iOS — not yet released]
+ * Version 3.5.7 (Code 88 / iOS build 87) - 2026-11-23 [iOS App Store resubmit]
+ *   🔒 App Store 5.1.2 — Contacts asked only at BCM save; usage string says not uploaded
+ *
+ * Version 3.5.7 (Code 88 / iOS build 86) - 2026-11-20 [ANDROID + iOS — not yet released]
+ *   ✨ Digital Portfolio — ₹399/yr per website slot (Cashfree); hub open without Premium
+ *   ✨ Public coach page live-syncs profile about/title/photo + club media/location
+ *
+ * Version 3.5.6 (Code 87 / iOS build 85) - 2026-11-18 [ANDROID + iOS — not yet released]
+ *   ✨ Task by Coach — save + score now; coach email with Reject (no OTP)
+ *   ✨ Home Top 10 date filter (Today / Yesterday / Last 10 / Custom up to 30 days)
+ *   ✨ Profile role badge — Customer / Sponsor / Admin / Developer
+ *
+ * Version 3.5.6 (Code 85 / iOS build 80) - 2026-11-12 [ANDROID + iOS — not yet released]
+ *   🐛 Patch release — bug fixes and stability improvements
+ *
+ * Version 3.5.5 (Code 84 / iOS build 84) - 2026-10-31 [ANDROID + iOS RELEASE]
  *   🐛 Patch release — bug fixes and stability improvements
  *
  * Version 3.5.4 (Code 83 / iOS build 78) - 2026-10-29 [ANDROID + iOS — not yet released]

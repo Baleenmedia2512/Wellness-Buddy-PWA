@@ -2,24 +2,27 @@ import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, Check, Crown } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import { requestCommunityPositionFill } from '../../user/domain/communityPositionFocus';
 import {
-  PREMIUM_PLAN_AMOUNT,
   PREMIUM_PLAN_NAME,
   formatPremiumPlanAmount,
 } from '../domain/premiumPlan';
 
 const PLAN_POINTS = [
-  'Premium access for your Wellness Valley account',
+  '30-day Premium access for report and plan analysis',
   'Pay with UPI, card, or net banking',
-  'Secure checkout',
+  'Secure checkout — recharge anytime before expiry',
 ];
 
 /**
  * Plan page shown after Go Premium. Pay Now opens existing Cashfree checkout.
+ * The payable total comes from the server. The level used to calculate it stays off this screen.
  */
 export default function PremiumPlanPage({
   busy,
   message,
+  quote = null,
+  quoteLoading = false,
   onClose,
   onPayNow,
 }) {
@@ -31,7 +34,11 @@ export default function PremiumPlanPage({
     return () => window.removeEventListener('keydown', onKey);
   }, [busy, onClose]);
 
-  const amountLabel = formatPremiumPlanAmount(PREMIUM_PLAN_AMOUNT);
+  const baseAmountLabel = quote ? formatPremiumPlanAmount(quote.baseAmount) : '';
+  const totalAmountLabel = quote ? formatPremiumPlanAmount(quote.amount) : '';
+  const canPay = Boolean(quote) && !quoteLoading && !busy;
+  const needsPosition = !quoteLoading && !quote;
+
   const page = (
     <div
       className="fixed inset-0 z-[70] bg-gray-50 flex flex-col"
@@ -54,7 +61,7 @@ export default function PremiumPlanPage({
           </h1>
         </div>
         <p className="mt-3 ml-1 text-green-50 text-sm">
-          Choose Premium and continue to payment.
+          30-day Premium plan.
         </p>
       </div>
 
@@ -69,11 +76,20 @@ export default function PremiumPlanPage({
                 Best value
               </span>
             </div>
-            <p className="mt-4 text-sm font-semibold text-gray-500">{PREMIUM_PLAN_NAME}</p>
-            <p className="mt-1 flex items-baseline gap-1">
-              <span className="text-4xl font-bold text-gray-900">₹{amountLabel}</span>
-              <span className="text-sm text-gray-400">one-time</span>
-            </p>
+            <p className="mt-4 text-sm font-semibold text-gray-500">{PREMIUM_PLAN_NAME} · 30 days</p>
+            {quoteLoading ? (
+              <p className="mt-1 text-sm text-gray-500">Loading your plan…</p>
+            ) : quote ? (
+              <p className="mt-1 flex items-baseline gap-1.5 flex-wrap">
+                <span className="text-4xl font-bold text-gray-900">₹{baseAmountLabel}</span>
+                <span className="text-sm text-gray-400">/ 30 days</span>
+                <span className="text-sm font-semibold text-gray-500">+18% GST</span>
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-gray-700">
+                Fill Community Position on your profile.
+              </p>
+            )}
           </div>
 
           <ul className="px-5 py-4 space-y-3">
@@ -88,23 +104,29 @@ export default function PremiumPlanPage({
           </ul>
         </div>
 
-        {message ? (
+        {message && !needsPosition ? (
           <p className="text-xs text-red-600 mt-4 px-1" role="alert">{message}</p>
-        ) : (
+        ) : quote ? (
           <p className="text-xs text-gray-400 mt-4 px-1">
             Pay Now opens a secure payment page.
           </p>
-        )}
+        ) : null}
       </div>
 
       <div className="p-4 bg-white border-t border-gray-100">
         <TouchFeedbackButton
-          onClick={onPayNow}
-          disabled={busy}
-          ariaLabel="Pay Now"
+          onClick={needsPosition ? () => { requestCommunityPositionFill(); onClose?.(); } : onPayNow}
+          disabled={busy || quoteLoading || (!canPay && !needsPosition)}
+          ariaLabel={needsPosition ? 'Fill Community Position' : 'Pay Now'}
           className="w-full rounded-xl bg-gradient-to-r from-green-600 to-green-700 text-white py-3.5 text-sm font-semibold shadow-md disabled:opacity-60"
         >
-          {busy ? 'Opening payment...' : `Pay Now · ₹${amountLabel}`}
+          {busy
+            ? 'Opening payment...'
+            : quoteLoading
+              ? 'Loading price...'
+              : totalAmountLabel
+                ? `Pay Now - ₹${totalAmountLabel}`
+                : 'Fill Community Position'}
         </TouchFeedbackButton>
       </div>
     </div>

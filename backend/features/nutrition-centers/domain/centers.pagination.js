@@ -63,7 +63,8 @@ export function filterCentersListRecords(records, searchNormalized) {
   return list.filter((center) => {
     const name = String(center?.center_name || '').toLowerCase();
     const owner = String(center?.ownerName || '').toLowerCase();
-    return name.includes(q) || owner.includes(q);
+    const code = String(center?.center_code || '').toLowerCase();
+    return name.includes(q) || owner.includes(q) || code.includes(q);
   });
 }
 
@@ -100,6 +101,13 @@ export function toCentersListSummary(center) {
     // Required for existing Call / WhatsApp / Edit UI actions
     owner_phone: center.owner_phone || null,
     owner_user_id: center.owner_user_id,
+    center_code: center.center_code || null,
+    openingHours: center.openingHours || null,
+    facilities: center.facilities || [],
+    features: center.features || [],
+    seatingCount: center.seatingCount ?? null,
+    area: center.area || null,
+    city: center.city || null,
     education_hour: center.education_hour || null,
   };
 }

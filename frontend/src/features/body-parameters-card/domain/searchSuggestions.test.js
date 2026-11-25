@@ -22,12 +22,12 @@ describe('normalizeBpcSearchQuery', () => {
 
 describe('buildBpcSearchSuggestions', () => {
   const cards = [
-    { id: 1, name: 'YASHEER', phoneNumber: '9000000001' },
-    { id: 2, name: 'Yogesh', phoneNumber: '9000000002' },
-    { id: 3, name: 'KABLIAN', phoneNumber: '9632587415' },
-    { id: 4, name: 'RAMESH', phoneNumber: '1234567897' },
-    { id: 5, name: 'Bobby', phoneNumber: '9888777666' },
-    { id: 6, name: 'Abbey', phoneNumber: '9111222333' },
+    { id: 1, name: 'YASHEER', phoneNumber: '9000000001', locationName: 'Madurai' },
+    { id: 2, name: 'Yogesh', phoneNumber: '9000000002', locationName: 'Chennai' },
+    { id: 3, name: 'KABLIAN', phoneNumber: '9632587415', locationName: 'Tirunelveli' },
+    { id: 4, name: 'RAMESH', phoneNumber: '1234567897', locationName: 'Coimbatore' },
+    { id: 5, name: 'Bobby', phoneNumber: '9888777666', locationName: null },
+    { id: 6, name: 'Abbey', phoneNumber: '9111222333', locationName: 'Salem' },
   ];
 
   it('returns empty when query is blank', () => {
@@ -60,6 +60,11 @@ describe('buildBpcSearchSuggestions', () => {
   it('matches phone prefix', () => {
     const terms = buildBpcSearchSuggestions(cards, '963').map((s) => s.term);
     assert.deepEqual(terms, ['9632587415']);
+  });
+
+  it('matches venue prefix', () => {
+    const terms = buildBpcSearchSuggestions(cards, 'Mad').map((s) => s.term);
+    assert.ok(terms.includes('Madurai'));
   });
 
   it('respects limit', () => {

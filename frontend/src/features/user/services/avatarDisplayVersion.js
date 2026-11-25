@@ -42,6 +42,25 @@ export function buildUserAvatarUrl(apiBaseUrl, userId, version = generation, opt
 }
 
 /**
+ * Home / My Profile img src — never put raw Google/R2 URLs in the browser.
+ * Prefer optimistic data: URIs; otherwise same-origin /api/user/avatar?inline=1
+ * (streams bytes so iOS Safari + global no-referrer cannot break Google/R2 302s).
+ */
+export function resolveClientAvatarSrc({
+  apiBaseUrl,
+  userId,
+  version = generation,
+  optimisticSrc = null,
+  failed = false,
+  options = {},
+} = {}) {
+  if (failed) return null;
+  const optimistic = typeof optimisticSrc === 'string' ? optimisticSrc.trim() : '';
+  if (optimistic.startsWith('data:image/')) return optimistic;
+  return buildUserAvatarUrl(apiBaseUrl, userId, version, { inline: true, ...options });
+}
+
+/**
  * Avatar for html2canvas share cards.
  * Prefer data: URIs — R2/Google https URLs fail browser CORS on canvas capture.
  * Order: legacy base64 ProfileImage → CORS-safe sharePhotoBase64 → other https.

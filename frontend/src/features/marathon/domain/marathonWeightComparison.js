@@ -55,26 +55,61 @@ export function formatMarathonDayChangeSuffix(direction, weightDifference) {
 }
 
 /**
+ * Shared Day 0 / Overall line: "{label} : X kg → Curr: Y kg ⬆️/⬇️ …"
+ * @param {string} baselineLabel
+ * @param {unknown} baselineWeight
+ * @param {unknown} currentWeight
+ * @returns {string}
+ */
+export function formatWeightBaselineComparisonLine(baselineLabel, baselineWeight, currentWeight) {
+  const label = String(baselineLabel || 'Day 0').trim() || 'Day 0';
+  const baselineText = formatMarathonKgValue(baselineWeight);
+  const currentText = formatMarathonKgValue(currentWeight);
+  const hasBaseline = isValidMarathonWeightKg(baselineWeight);
+  const hasCurrent = isValidMarathonWeightKg(currentWeight);
+  const baseLine = `${label} : ${baselineText} → Curr: ${currentText}`;
+
+  if (!hasBaseline && !hasCurrent) {
+    return `${label} : ${MARATHON_WEIGHT_MISSING_LABEL} → Curr: ${MARATHON_WEIGHT_MISSING_LABEL}`;
+  }
+  if (!hasBaseline || !hasCurrent) return baseLine;
+
+  const baseline = roundMarathonWeightKg(Number(baselineWeight));
+  const current = roundMarathonWeightKg(Number(currentWeight));
+  const weightDifference = roundMarathonWeightKg(current - baseline);
+  const direction = resolveMarathonWeightDirection(baseline, current);
+  if (direction === 'unchanged') return baseLine;
+  return `${baseLine}${formatMarathonDayChangeSuffix(direction, weightDifference)}`;
+}
+
+/**
  * @param {unknown} day0Weight
  * @param {unknown} dayWeight
  * @returns {string}
  */
 export function formatMarathonDayComparisonLine(day0Weight, dayWeight) {
-  const day0Label = formatMarathonKgValue(day0Weight);
-  const dayLabel = formatMarathonKgValue(dayWeight);
-  const hasDay0 = isValidMarathonWeightKg(day0Weight);
-  const hasDay = isValidMarathonWeightKg(dayWeight);
-  const baseLine = `Day 0 : ${day0Label} → Curr: ${dayLabel}`;
+  return formatWeightBaselineComparisonLine('Day 0', day0Weight, dayWeight);
+}
 
-  if (!hasDay0 && !hasDay) return `Day 0 : ${MARATHON_WEIGHT_MISSING_LABEL} → Curr: ${MARATHON_WEIGHT_MISSING_LABEL}`;
-  if (!hasDay0 || !hasDay) return baseLine;
+/**
+ * App-start initial weight vs current (same arrow format as Day 0).
+ * @param {unknown} initialWeight
+ * @param {unknown} currentWeight
+ * @returns {string}
+ */
+export function formatOverallWeightComparisonLine(initialWeight, currentWeight) {
+  return formatWeightBaselineComparisonLine('Initial', initialWeight, currentWeight);
+}
 
-  const baseline = roundMarathonWeightKg(Number(day0Weight));
-  const current = roundMarathonWeightKg(Number(dayWeight));
-  const weightDifference = roundMarathonWeightKg(current - baseline);
-  const direction = resolveMarathonWeightDirection(baseline, current);
-  if (direction === 'unchanged') return baseLine;
-  return `${baseLine}${formatMarathonDayChangeSuffix(direction, weightDifference)}`;
+/**
+ * @param {unknown} initialWeight
+ * @param {unknown} currentWeight
+ * @returns {string[]}
+ */
+export function formatOverallWeightWhatsAppNoticeLines(initialWeight, currentWeight) {
+  // Only show when the member has an app-start initial weight logged.
+  if (!isValidMarathonWeightKg(initialWeight)) return [];
+  return ['*Overall*', formatOverallWeightComparisonLine(initialWeight, currentWeight)];
 }
 
 /**
