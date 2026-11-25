@@ -11,6 +11,7 @@ import {
   buildGoogleMapsSearchUrl,
   canShowPublicPortfolio,
   mapsEmbedSrcFromLink,
+  summarizeTestimonialRatings,
   toPublicPortfolioPage,
 } from '../domain/public-page.rules.js';
 import { DEFAULT_PORTFOLIO_OFFERINGS } from '../domain/default-offerings.rules.js';
@@ -58,11 +59,15 @@ describe('coach-portfolio public-page.rules', () => {
         city: 'Madurai',
         locality: 'Avaniyapuram',
       }),
-      'Coach Avinash',
+      'Avinash Kumar',
     );
     assert.equal(
       buildCoachVisibleHeading({ displayName: 'Coach Priya', city: 'Madurai' }),
-      'Coach Priya',
+      'Priya',
+    );
+    assert.equal(
+      buildCoachVisibleHeading({ displayName: 'System' }),
+      'System',
     );
     assert.equal(buildCoachVisibleHeading({}), 'Coach');
     const faqs = buildCoachPageFaqs({
@@ -71,8 +76,15 @@ describe('coach-portfolio public-page.rules', () => {
       locality: 'Avaniyapuram',
       onlineConsultation: true,
     }, { heroName: 'Avinash', basedIn: 'Avaniyapuram, Madurai' });
-    assert.ok(faqs.length >= 4);
-    assert.match(faqs[0].a, /Avinash/);
+    assert.equal(faqs.length, 4);
+    assert.equal(faqs[0].waCta, true);
+    assert.match(faqs[0].a, /Click here to say hi/i);
+    assert.equal(faqs[1].a, 'Coaching is both in person and remote.');
+    assert.equal(faqs[2].a, 'No.');
+    assert.equal(faqs[3].q, 'Where is my centre?');
+    assert.match(faqs[3].a, /Our centre is at Avaniyapuram, Madurai/i);
+    assert.match(faqs[3].a, /Use Map for Exact Location/i);
+    assert.ok(!faqs.some((f) => /check in/i.test(f.q)));
     const ld = buildCoachPageJsonLd({
       fullName: 'Avinash',
       title: 'Wellness Coach',
@@ -231,6 +243,19 @@ describe('coach-portfolio public-page.rules', () => {
     assert.equal(page.testimonials[0].name, 'Riya');
     assert.match(page.testimonials[0].quote, /Great coaching/);
     assert.equal(page.testimonials[0].rating, 4);
+  });
+
+  it('summarizes testimonial star averages without inventing empty scores', () => {
+    assert.equal(summarizeTestimonialRatings([]), null);
+    assert.equal(summarizeTestimonialRatings(null), null);
+    const summary = summarizeTestimonialRatings([
+      { rating: 5 },
+      { rating: 4 },
+      { rating: 5 },
+    ]);
+    assert.equal(summary.count, 3);
+    assert.equal(summary.average, 4.7);
+    assert.equal(summary.label, '4.7');
   });
 
   it('uses Other professional title text when selected', () => {

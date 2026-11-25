@@ -29,8 +29,8 @@ async function compressPayload(payload) {
 }
 
 /**
- * Legacy immediate save (apps &lt; 3.5.7 / no version header on server).
- * New apps should use requestGoodHabitOtp → verifyGoodHabitOtp.
+ * Legacy immediate save (apps &lt; 3.5.6 / no version header on server).
+ * Saves immediately and emails the coach a Reject link (no OTP).
  */
 export async function saveGoodHabit(payload) {
   const next = await compressPayload(payload);
@@ -69,7 +69,7 @@ export async function requestGoodHabitOtp(payload) {
   // runService returns { ok, data }; tolerate a nested data wrapper.
   const data = body?.data?.otpKey ? body.data : (body?.data?.data || body?.data || body);
   if (!data?.otpKey) {
-    throw new Error('Could not start coach verification. Try Save again.');
+    throw new Error('Could not start coach verification. Tap Send to Coach again.');
   }
   return data;
 }

@@ -33,6 +33,7 @@ export default function LeaderboardAvatar({
   profileImage: _profileImage,
   onViewProfile,
   interactive = true,
+  sizeClass = 'w-8 h-8 sm:w-10 sm:h-10',
 }) {
   const [failed, setFailed] = useState(false);
   const [avatarVersion, setAvatarVersion] = useState(getAvatarDisplayVersion);
@@ -56,7 +57,7 @@ export default function LeaderboardAvatar({
           key={src}
           src={src}
           alt={userName || 'User'}
-          className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover shadow-md border-2 border-white"
+          className={`${sizeClass} rounded-full object-cover shadow-md border-2 border-white`}
           loading="lazy"
           decoding="async"
           referrerPolicy="no-referrer"
@@ -70,8 +71,8 @@ export default function LeaderboardAvatar({
         alt={userName || 'User'}
         onViewProfile={onViewProfile}
         className="shrink-0 rounded-full"
-        imageClassName="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover shadow-md border-2 border-white"
-        fallbackClassName={`w-8 h-8 sm:w-10 sm:h-10 rounded-full ${COLORS[colorIndex]} flex items-center justify-center text-white font-bold text-sm sm:text-base shadow-md`}
+        imageClassName={`${sizeClass} rounded-full object-cover shadow-md border-2 border-white`}
+        fallbackClassName={`${sizeClass} rounded-full ${COLORS[colorIndex]} flex items-center justify-center text-white font-bold text-sm sm:text-base shadow-md`}
         fallback={initial}
       />
     );
@@ -80,7 +81,7 @@ export default function LeaderboardAvatar({
   if (!interactive) {
     return (
       <div
-        className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full ${COLORS[colorIndex]} flex items-center justify-center text-white font-bold text-sm sm:text-base shadow-md`}
+        className={`${sizeClass} rounded-full ${COLORS[colorIndex]} flex items-center justify-center text-white font-bold text-sm sm:text-base shadow-md`}
       >
         {initial}
       </div>

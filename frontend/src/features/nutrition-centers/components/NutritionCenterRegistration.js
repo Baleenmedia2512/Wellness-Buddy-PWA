@@ -507,8 +507,9 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     const account = splitOwnerPhone(accountPhone);
     if (!account.phone) return;
     phoneAutofilledRef.current = true;
-    setCountryCode(account.countryCode);
-    setOwnerPhone(account.phone);
+    // Club form shows +91 only; keep national digits from the app profile.
+    setCountryCode('+91');
+    setOwnerPhone(account.phone.replace(/\D/g, '').slice(-10));
   }, [accountPhone, initialCenter]);
 
   // Resolve DB UserId from session/user object (supports phone-login users without email)
@@ -577,9 +578,9 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     setLongitude(String(center.longitude));
     setArea(center.area || '');
     setCity(center.city || '');
-    const { countryCode: nextCode, phone: nextPhone } = splitOwnerPhone(center.owner_phone);
-    setCountryCode(nextCode);
-    setOwnerPhone(nextPhone);
+    const { phone: nextPhone } = splitOwnerPhone(center.owner_phone);
+    setCountryCode('+91');
+    setOwnerPhone(String(nextPhone || '').replace(/\D/g, '').slice(-10));
     setCentreCodeSuffix(centreCodeBody(center.center_code));
     setCentrePhotos(emptyCentrePhotos());
     if (center.openingHours) setOpeningHours(center.openingHours);
@@ -1130,50 +1131,24 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
                 Phone Number
               </label>
               <div className="flex gap-2">
-                {/* Country Code Selector */}
-                <select
-                  value={countryCode}
-                  onChange={(e) => {
-                    setCountryCode(e.target.value);
-                    setPhoneOtp('');
-                    setPhoneOtpSent(false);
-                    setPhoneOtpVerified(false);
-                    handlePhoneInput(ownerPhone);
-                  }}
-                  className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
-                >
-                  <option value="+91">🇮🇳 +91</option>
-                  <option value="+1">🇺🇸 +1</option>
-                  <option value="+44">🇬🇧 +44</option>
-                  <option value="+61">🇦🇺 +61</option>
-                  <option value="+81">🇯🇵 +81</option>
-                  <option value="+86">🇨🇳 +86</option>
-                  <option value="+971">🇦🇪 +971</option>
-                  <option value="+966">🇸🇦 +966</option>
-                  <option value="+65">🇸🇬 +65</option>
-                  <option value="+60">🇲🇾 +60</option>
-                </select>
-                
-                {/* Phone Number Input */}
+                <div className="flex w-20 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-gray-50 px-2 text-sm font-semibold text-gray-800">
+                  +91
+                </div>
                 <div className="flex-1">
                   <input
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
                     value={ownerPhone}
-                    onChange={(e) => handlePhoneInput(e.target.value)}
+                    onChange={(e) => {
+                      if (countryCode !== '+91') setCountryCode('+91');
+                      handlePhoneInput(e.target.value);
+                    }}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    placeholder={`Enter ${getPhoneMaxLength(countryCode)} digit number`}
-                    maxLength={getPhoneMaxLength(countryCode)}
+                    placeholder="10 digit number"
+                    maxLength={10}
+                    aria-label="Phone number"
                   />
-                  {ownerPhone && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      {countryCode} {ownerPhone} ({ownerPhone.length}/{getPhoneMaxLength(countryCode)} digits)
-                    </p>
-                  )}
-                  {ownerPhone && phonesMatch(enteredPhone, accountPhone) && (
-                    <p className="text-xs text-green-600 mt-1">Using your mobile number.</p>
-                  )}
                   {phoneNeedsOtp && !phoneOtpVerified && (
                     <div className="mt-2 space-y-2">
                       <p className="text-xs text-amber-700">This is a different number. Verify it with an OTP before using it.</p>
@@ -1200,7 +1175,7 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
                     </div>
                   )}
                   {phoneNeedsOtp && phoneOtpVerified && (
-                    <p className="text-xs text-green-600 mt-1">Mobile number verified. You can use it for this centre.</p>
+                    <p className="text-xs text-green-600 mt-1">Mobile number verified.</p>
                   )}
                 </div>
               </div>

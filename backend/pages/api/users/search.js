@@ -3,8 +3,7 @@
  * GET /api/users/search?q={query}
  *
  * Search for sponsors by name, email, phone, or Community ID (Herbalife ID).
- * Only users with both a verified account email and a Community ID are
- * returned. Email alone is not enough to appear as a sponsor.
+ * Only users with a verified account email are returned.
  * Used in upline / sponsor selection during onboarding.
  * Returns the full email so the member can confirm they picked the right coach.
  */
@@ -77,12 +76,13 @@ export default async function handler(req, res) {
     // Connect to MySQL
     const db = getMysqlClient();
 
-    // Search by name, email, phone, or Community ID (Herbalife ID), excluding current user.
-    // Email and Community ID are both required on the sponsor row.
+    // Search by name, email, phone, Community ID, or Team ID, excluding current user.
+    // Verified email is required on the sponsor row.
     const orParts = [
       `UserName.ilike.%${searchQuery}%`,
       `Email.ilike.%${searchQuery}%`,
       `CommunityId.ilike.%${searchQuery}%`,
+      `TeamId.ilike.%${searchQuery}%`,
     ];
     if (searchDigits.length >= 2) {
       orParts.push(`PhoneNumber.ilike.%${searchDigits}%`);
@@ -94,8 +94,6 @@ export default async function handler(req, res) {
       .eq('Status', 'Active')
       .not('Email', 'is', null)
       .neq('Email', '')
-      .not('CommunityId', 'is', null)
-      .neq('CommunityId', '')
       .neq('Email', currentUserEmail || '')
       .or(orParts.join(','))
       .order('UserName', { ascending: true })

@@ -1,6 +1,7 @@
 /**
  * Profile introduction fields. Pure.
- * Shown on Profile. The field-collection gate asks them only after an admin
+ * Shown on Profile. Professional title is required whenever it is sent.
+ * The field-collection gate asks other intro fields only after an admin
  * sets While entering or Ask later. Social links may stay blank.
  *
  * About me is 500 characters. Qualification is 250 characters.
@@ -167,6 +168,7 @@ export function profileIntroHasValue(key, values = {}) {
 
 const FIELD_MESSAGES = Object.freeze({
   professionalTitle: `Professional title can be up to ${PROFESSIONAL_TITLE_MAX} characters.`,
+  professionalTitleRequired: 'Professional title is required.',
   instagram: 'Enter an Instagram link, such as https://instagram.com/your-name.',
   youtube: 'Enter a YouTube link, such as https://youtube.com/@your-channel.',
   linkedin: 'Enter a LinkedIn link, such as https://linkedin.com/in/your-name.',
@@ -188,8 +190,10 @@ export function normalizeProfileIntroPatch(input = {}) {
     return '';
   };
   if (input.professionalTitle !== undefined) {
-    const message = take('professionalTitle', normalizeProfessionalTitle(input.professionalTitle));
-    if (message) return { ok: false, message };
+    const normalized = normalizeProfessionalTitle(input.professionalTitle);
+    if (normalized == null) return { ok: false, message: FIELD_MESSAGES.professionalTitle };
+    if (normalized === '') return { ok: false, message: FIELD_MESSAGES.professionalTitleRequired };
+    value.professionalTitle = normalized;
   }
   for (const kind of ['instagram', 'youtube', 'linkedin']) {
     if (input[kind] === undefined) continue;

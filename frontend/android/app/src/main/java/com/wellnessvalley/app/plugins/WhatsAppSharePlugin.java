@@ -1,6 +1,8 @@
 package com.wellnessvalley.app.plugins;
 
+import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import androidx.core.content.FileProvider;
 
@@ -12,6 +14,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import android.util.Base64;
 import android.util.Log;
 
@@ -23,6 +26,68 @@ import android.util.Log;
 @CapacitorPlugin(name = "WhatsAppShare")
 public class WhatsAppSharePlugin extends Plugin {
     private static final String TAG = "WhatsAppSharePlugin";
+    private static final String WHATSAPP_PACKAGE = "com.whatsapp";
+    private static final String WHATSAPP_BUSINESS_PACKAGE = "com.whatsapp.w4b";
+    private static final String[] WHATSAPP_PACKAGES = {
+        WHATSAPP_PACKAGE,
+        WHATSAPP_BUSINESS_PACKAGE
+    };
+
+    private Uri writeCacheImageUri(String base64Data, String fileName) throws IOException {
+        String cleanBase64 = base64Data.contains(",") ? base64Data.split(",")[1] : base64Data;
+        byte[] imageBytes = Base64.decode(cleanBase64, Base64.DEFAULT);
+        Log.d(TAG, "Image decoded: " + imageBytes.length + " bytes (" + (imageBytes.length / 1024) + " KB)");
+
+        File cacheDir = getContext().getCacheDir();
+        File imageFile = new File(cacheDir, fileName);
+
+        try (FileOutputStream fos = new FileOutputStream(imageFile)) {
+            fos.write(imageBytes);
+            fos.flush();
+        }
+
+        Log.d(TAG, "Image saved to: " + imageFile.getAbsolutePath() + " (" + imageFile.length() + " bytes)");
+
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            if (imageFile.exists()) {
+                imageFile.delete();
+            }
+        }, 120000);
+
+        String authority = getContext().getPackageName() + ".fileprovider";
+        return FileProvider.getUriForFile(getContext(), authority, imageFile);
+    }
+
+    private String resolveWhatsAppPackage(Intent baseIntent) {
+        PackageManager pm = getContext().getPackageManager();
+        for (String pkg : WHATSAPP_PACKAGES) {
+            Intent probe = new Intent(baseIntent);
+            probe.setPackage(pkg);
+            if (probe.resolveActivity(pm) != null) {
+                return pkg;
+            }
+        }
+        return null;
+    }
+
+    private String findInstalledWhatsAppPackage() {
+        for (String pkg : WHATSAPP_PACKAGES) {
+            if (isAppInstalled(pkg)) {
+                return pkg;
+            }
+        }
+        return null;
+    }
+
+    private void launchActivity(Intent intent) {
+        Activity activity = getActivity();
+        if (activity != null && !activity.isFinishing()) {
+            activity.startActivity(intent);
+        } else {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+        }
+    }
 
     /**
      * Share an image with full quality (no compression)
@@ -114,7 +179,7 @@ public class WhatsAppSharePlugin extends Plugin {
             Log.d(TAG, "Launching share intent...");
             
             // Start the share activity
-            getContext().startActivity(chooser);
+            launchActivity(chooser);
             
             Log.d(TAG, "Γ£à Share intent launched successfully");
             
@@ -158,36 +223,14 @@ public class WhatsAppSharePlugin extends Plugin {
                 return;
             }
             
-            // Remove data URL prefix if present
-            if (base64Data.contains(",")) {
-                base64Data = base64Data.split(",")[1];
-            }
-            
             Log.d(TAG, "Starting WhatsApp direct share...");
-            
-            // Decode base64 to bytes
-            byte[] imageBytes = Base64.decode(base64Data, Base64.DEFAULT);
-            
-            // Save to cache directory
-            File cacheDir = getContext().getCacheDir();
-            File imageFile = new File(cacheDir, fileName);
-            
-            FileOutputStream fos = new FileOutputStream(imageFile);
-            fos.write(imageBytes);
-            fos.flush();
-            fos.close();
-            
-            Log.d(TAG, "Image saved to: " + imageFile.getAbsolutePath());
-            
-            // Get URI using FileProvider
-            String authority = getContext().getPackageName() + ".fileprovider";
-            Uri imageUri = FileProvider.getUriForFile(getContext(), authority, imageFile);
-            
+
+            Uri imageUri = writeCacheImageUri(base64Data, fileName);
+
             // Create WhatsApp specific intent
             Intent whatsappIntent = new Intent(Intent.ACTION_SEND);
             whatsappIntent.setType(mimeType != null && !mimeType.isEmpty() ? mimeType : "image/jpeg");
-            whatsappIntent.setPackage("com.whatsapp");
-            
+
             whatsappIntent.putExtra(Intent.EXTRA_STREAM, imageUri);
             // Caption on the photo — safe for package-targeted single-image send.
             if (text != null && !text.isEmpty()) {
@@ -196,21 +239,17 @@ public class WhatsAppSharePlugin extends Plugin {
 
             whatsappIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             whatsappIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            
-            // Check if WhatsApp is installed
-            if (whatsappIntent.resolveActivity(getContext().getPackageManager()) != null) {
-                getContext().startActivity(whatsappIntent);
-                Log.d(TAG, "Γ£à WhatsApp share launched");
-                
-                // Schedule cleanup
-                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                    if (imageFile.exists()) {
-                        imageFile.delete();
-                    }
-                }, 120000);
-                
+
+            // Check if WhatsApp or WhatsApp Business is installed
+            String targetPackage = resolveWhatsAppPackage(whatsappIntent);
+            if (targetPackage != null) {
+                whatsappIntent.setPackage(targetPackage);
+                launchActivity(whatsappIntent);
+                Log.d(TAG, "WhatsApp share launched (" + targetPackage + ")");
+
                 JSObject result = new JSObject();
                 result.put("success", true);
+                result.put("packageName", targetPackage);
                 call.resolve(result);
             } else {
                 call.reject("WhatsApp is not installed");
@@ -244,11 +283,11 @@ public class WhatsAppSharePlugin extends Plugin {
             Log.d(TAG, "OPENING WHATSAPP FOR: " + cleanPhone);
             Log.d(TAG, "========================================");
             
-            // Check if WhatsApp is installed first
-            boolean isWhatsAppInstalled = isAppInstalled("com.whatsapp");
-            Log.d(TAG, "WhatsApp installed: " + isWhatsAppInstalled);
+            // Check if WhatsApp or WhatsApp Business is installed first
+            String whatsappPackage = findInstalledWhatsAppPackage();
+            Log.d(TAG, "WhatsApp package installed: " + whatsappPackage);
             
-            if (!isWhatsAppInstalled) {
+            if (whatsappPackage == null) {
                 call.reject("WhatsApp is not installed on this device");
                 return;
             }
@@ -257,11 +296,11 @@ public class WhatsAppSharePlugin extends Plugin {
             try {
                 Log.d(TAG, "Trying Strategy 1: Explicit component with phone data");
                 Intent intent = new Intent(Intent.ACTION_VIEW);
-                intent.setPackage("com.whatsapp");
+                intent.setPackage(whatsappPackage);
                 intent.setData(Uri.parse("https://api.whatsapp.com/send?phone=" + cleanPhone));
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
                 
-                getActivity().startActivity(intent);
+                launchActivity(intent);
                 
                 Log.d(TAG, "Γ£à SUCCESS: WhatsApp opened via Strategy 1");
                 JSObject result = new JSObject();
@@ -277,13 +316,13 @@ public class WhatsAppSharePlugin extends Plugin {
             // Strategy 2: Direct package launch with extras
             try {
                 Log.d(TAG, "Trying Strategy 2: Direct package launch");
-                Intent intent = getActivity().getPackageManager().getLaunchIntentForPackage("com.whatsapp");
+                Intent intent = getContext().getPackageManager().getLaunchIntentForPackage(whatsappPackage);
                 if (intent != null) {
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     intent.putExtra("jid", cleanPhone + "@s.whatsapp.net");
-                    getActivity().startActivity(intent);
+                    launchActivity(intent);
                     
-                    Log.d(TAG, "Γ£à SUCCESS: WhatsApp opened via Strategy 2");
+                    Log.d(TAG, "SUCCESS: WhatsApp opened via Strategy 2 (" + whatsappPackage + ")");
                     JSObject result = new JSObject();
                     result.put("success", true);
                     result.put("method", "direct_launch");
@@ -294,14 +333,14 @@ public class WhatsAppSharePlugin extends Plugin {
                 Log.e(TAG, "Strategy 2 failed: " + e2.getMessage());
             }
             
-            // Strategy 3: Open via Play Store link (user can then open WhatsApp)
+            // Strategy 3: Just open WhatsApp app
             try {
                 Log.d(TAG, "Trying Strategy 3: Just open WhatsApp app");
                 Intent intent = new Intent(Intent.ACTION_MAIN);
                 intent.addCategory(Intent.CATEGORY_LAUNCHER);
-                intent.setPackage("com.whatsapp");
+                intent.setPackage(whatsappPackage);
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                getActivity().startActivity(intent);
+                launchActivity(intent);
                 
                 Log.d(TAG, "Γ£à SUCCESS: WhatsApp opened via Strategy 3");
                 JSObject result = new JSObject();

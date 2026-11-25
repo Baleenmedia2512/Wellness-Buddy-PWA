@@ -381,6 +381,15 @@ registerFlag({
 });
 
 registerFlag({
+  name:           'ff.profile-change-sponsor-otp',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-24',
+  removeBy:       '2027-05-24',
+  description:    'ADR-0018 — One coach OTP on Profile Save for later changes to gated fields (phone, height, health issues, community ID/position, intro, photo, etc.). First fill free. Kill switch; version routing 3.5.8+. Legacy apps keep per-field OTP.',
+  defaultEnabled: true,
+});
+
+registerFlag({
   name:           'ff.broadcast',
   owner:          '@principal-eng',
   createdAt:      '2026-09-29',
@@ -421,8 +430,17 @@ registerFlag({
   owner:          '@principal-eng',
   createdAt:      '2026-11-03',
   removeBy:       '2027-05-03',
-  description:    'Coach Website portfolio: paid gate (admin mark paid for testing; Cashfree later) + form entry. Kill switch hides Profile rows and portfolio APIs.',
+  description:    'Coach Website portfolio form + public pages. Kill switch hides Paid Feature / portfolio APIs. Per-site ₹399/yr checkout is ff.portfolio-site-checkout.',
   defaultEnabled: true,
+});
+
+registerFlag({
+  name:           'ff.portfolio-site-checkout',
+  owner:          '@principal-eng',
+  createdAt:      '2026-11-20',
+  removeBy:       '2027-05-20',
+  description:    'Emergency kill switch for Digital Portfolio Cashfree website slots (₹399/yr). OFF hides create/confirm site-order APIs only. Default OFF until Cashfree go-live. Not the Play activation path — version routing uses PORTFOLIO_SITE_SLOTS_MIN.',
+  defaultEnabled: false,
 });
 
 registerFlag({
@@ -457,7 +475,7 @@ registerFlag({
   owner:          '@principal-eng',
   createdAt:      '2026-11-12',
   removeBy:       '2027-05-12',
-  description:    'Digital Portfolio gate. Shares Reports 14-day trial (report_trials_table); remaining days continue. Create Event and Check-in stay open. Kill switch. Version routing: app 3.5.7+ gated; older/missing versions keep Digital Portfolio open.',
+  description:    'Legacy Digital Portfolio gate for apps below PORTFOLIO_SITE_SLOTS_MIN. Shares Reports 14-day trial; Create Event/Check-in stay open. Apps at/above next-release site-slots min use per-site ₹399/yr credits instead. Kill switch.',
   defaultEnabled: true,
 });
 

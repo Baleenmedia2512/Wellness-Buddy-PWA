@@ -79,6 +79,14 @@ import {
   describeCommunityPosition,
   getPublicPendingCommunityPositionRequest,
 } from './communityPosition.service.js';
+import {
+  PROFILE_CHANGE_OTP_FLAG,
+  classifyProfileGatedChanges,
+  existingSnapshotFromUser,
+  extractGatedIncoming,
+  isUnifiedProfileChangeOtpActive,
+  stripGatedChangesFromInput,
+} from './domain/profileChange.rules.js';
 
 const notFound = () => ({ httpStatus: 404, body: { success: false, message: 'User not found' } });
 
@@ -527,7 +535,7 @@ function isPhotoOnlyProfileUpdate(input) {
 }
 
 export async function updateProfile(input) {
-  const {
+  let {
     email, userId: inputUserId, name, height, bmr, dietType, profileImage, phoneNumber, gender,
     weightGoalMode, physicalActivityLevel, communityId, timezoneIana, bodyFat,
     currentWeight, transformationPhotos, bcmProfileReviewed = undefined,
@@ -536,19 +544,27 @@ export async function updateProfile(input) {
     eventYourCity = undefined,
     eventLevel = undefined,
     profileIntro = undefined,
+    recoveredHealthIssues = undefined,
     appVersion = null,
     skipOtp = false,
   } = input;
-  const deferCommunityId = !skipOtp && shouldDeferCommunityIdToOtpFlow({
+
+  const unifiedProfileChange = isUnifiedProfileChangeOtpActive({
+    flagEnabled: isEnabled(PROFILE_CHANGE_OTP_FLAG),
+    appVersion,
+  });
+
+  // Legacy per-field OTP defer — skipped when unified Save OTP is active (3.5.8+).
+  const deferCommunityId = !skipOtp && !unifiedProfileChange && shouldDeferCommunityIdToOtpFlow({
     flagEnabled: isEnabled(COMMUNITY_ID_OTP_FLAG),
     appVersion,
   });
-  const appliedCommunityId = deferCommunityId ? undefined : communityId;
-  const deferCommunityPosition = !skipOtp && shouldDeferCommunityPositionToOtp({
+  let appliedCommunityId = deferCommunityId ? undefined : communityId;
+  const deferCommunityPosition = !skipOtp && !unifiedProfileChange && shouldDeferCommunityPositionToOtp({
     flagEnabled: isEnabled(COMMUNITY_POSITION_OTP_FLAG),
     appVersion,
   });
-  const appliedEventLevel = deferCommunityPosition ? undefined : eventLevel;
+  let appliedEventLevel = deferCommunityPosition ? undefined : eventLevel;
 
   logger.info('[profile/update] incoming request', {
     email: email || null,
@@ -556,6 +572,7 @@ export async function updateProfile(input) {
     receivedCommunityId: communityId !== undefined,
     deferredCommunityIdOtp: deferCommunityId,
     deferredCommunityPositionOtp: deferCommunityPosition,
+    unifiedProfileChange,
     receivedBodyFat: bodyFat !== undefined,
     receivedCurrentWeight: currentWeight !== undefined,
   });
@@ -569,8 +586,11 @@ export async function updateProfile(input) {
   }
 
   let user;
-  const photoCols = '"UserId", "Email", "Height", transformation_photos';
-  const idCols = '"UserId", "Email", "Height"';
+  // Do not SELECT AvatarKey here — many environments lack the R2 column.
+  // recovered_health_issues / event / transformation cols are additive with fallbacks.
+  const photoCols = '"UserId", "Email", "PhoneNumber", "Height", "CommunityId", "EventLevel", "EventTranslation", "ProfileImage", recovered_health_issues, transformation_photos';
+  const colsNoTransform = '"UserId", "Email", "PhoneNumber", "Height", "CommunityId", "EventLevel", "EventTranslation", "ProfileImage", recovered_health_issues';
+  const colsMinimal = '"UserId", "Email", "PhoneNumber", "Height", "CommunityId", "ProfileImage"';
   try {
     // Prefer userId when present (matches GET profile). Email alone is for
     // legacy clients; email+userId used to resolve the wrong account and drop Fat %.
@@ -581,18 +601,91 @@ export async function updateProfile(input) {
     }
   } catch (err) {
     const msg = String(err?.message || err || '');
-    if (!/transformation_photos/i.test(msg)) throw err;
-    if (inputUserId) {
-      user = await repo.findByUserId(inputUserId, idCols);
-    } else if (email) {
-      user = await repo.findByEmail(email, idCols);
+    if (!/transformation_photos|recovered_health_issues|EventLevel|EventTranslation/i.test(msg)) throw err;
+    try {
+      if (inputUserId) {
+        user = await repo.findByUserId(inputUserId, colsNoTransform);
+      } else if (email) {
+        user = await repo.findByEmail(email, colsNoTransform);
+      }
+    } catch (err2) {
+      const msg2 = String(err2?.message || err2 || '');
+      if (!/recovered_health_issues|EventLevel|EventTranslation/i.test(msg2)) throw err2;
+      if (inputUserId) {
+        user = await repo.findByUserId(inputUserId, colsMinimal);
+      } else if (email) {
+        user = await repo.findByEmail(email, colsMinimal);
+      }
     }
   }
   if (!user) return notFound();
   const userId = user.UserId;
   const accountEmail = email || user.Email || null;
 
-  const deferHeight = shouldDeferHeightChangeToOtp({
+  let deferredGatedChangeKeys = [];
+  if (unifiedProfileChange && !skipOtp) {
+    let existingIntro = {};
+    try {
+      existingIntro = await repo.getProfileIntro(userId);
+    } catch {
+      existingIntro = {};
+    }
+    const existing = existingSnapshotFromUser(user, {
+      profileIntro: existingIntro,
+      hasProfileImage: Boolean(user.ProfileImage),
+    });
+    const incoming = extractGatedIncoming({
+      phoneNumber,
+      height,
+      recoveredHealthIssues,
+      communityId,
+      eventLevel,
+      eventTranslation,
+      profileIntro,
+      profileImage,
+      professionalTitle: profileIntro?.professionalTitle,
+      herbalifeJoinedOn: profileIntro?.herbalifeJoinedOn,
+      aboutMe: profileIntro?.aboutMe,
+      qualification: profileIntro?.qualification,
+    });
+    const classified = classifyProfileGatedChanges({ existing, incoming });
+    deferredGatedChangeKeys = classified.changedKeys;
+    if (classified.needsOtp) {
+      const stripped = stripGatedChangesFromInput({
+        phoneNumber,
+        height,
+        recoveredHealthIssues,
+        communityId,
+        eventLevel,
+        eventTranslation,
+        profileIntro,
+        profileImage,
+        professionalTitle: profileIntro?.professionalTitle,
+        herbalifeJoinedOn: profileIntro?.herbalifeJoinedOn,
+        aboutMe: profileIntro?.aboutMe,
+        qualification: profileIntro?.qualification,
+      }, classified.changedKeys);
+      phoneNumber = stripped.phoneNumber;
+      height = stripped.height;
+      recoveredHealthIssues = stripped.recoveredHealthIssues;
+      communityId = stripped.communityId;
+      appliedCommunityId = stripped.communityId;
+      eventLevel = stripped.eventLevel;
+      appliedEventLevel = stripped.eventLevel;
+      eventTranslation = stripped.eventTranslation;
+      profileIntro = stripped.profileIntro;
+      profileImage = stripped.profileImage;
+      logger.info('[profile/update] deferred gated profile changes to unified OTP', {
+        userId,
+        changedKeys: classified.changedKeys,
+      });
+    } else {
+      appliedCommunityId = communityId;
+      appliedEventLevel = eventLevel;
+    }
+  }
+
+  const deferHeight = !unifiedProfileChange && shouldDeferHeightChangeToOtp({
     flagEnabled: isEnabled(HEIGHT_CHANGE_OTP_FLAG),
     appVersion,
     existingHeight: user.Height,
@@ -613,8 +706,11 @@ export async function updateProfile(input) {
   });
   const { updateData, cleanedPhoneNumber, avatarDataUri } = buildProfileUpdate({
     ...input,
+    phoneNumber,
     height: appliedHeight,
     communityId: appliedCommunityId,
+    recoveredHealthIssues,
+    profileImage,
     existingTransformationPhotos: user.transformation_photos,
     skipProfileImageBase64,
   });
@@ -1070,7 +1166,10 @@ export async function updateProfile(input) {
   }
 
   const responseBody = {
-    success: true, message: 'User profile updated successfully',
+    success: true,
+    message: deferredGatedChangeKeys.length > 0
+      ? 'Some profile fields need coach approval before they can change.'
+      : 'User profile updated successfully',
     data: {
       email,
       name: name || undefined,
@@ -1101,6 +1200,10 @@ export async function updateProfile(input) {
       teamSeat: teamCodeSync?.teamSeat || undefined,
       coachTeamId: teamCodeSync?.coachTeamId || undefined,
       teamCodeSynced: !!(teamCodeSync?.synced),
+      needsProfileChangeOtp: deferredGatedChangeKeys.length > 0,
+      deferredProfileChangeKeys: deferredGatedChangeKeys.length > 0
+        ? deferredGatedChangeKeys
+        : undefined,
     },
   };
 

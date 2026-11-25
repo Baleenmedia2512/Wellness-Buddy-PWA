@@ -22,8 +22,17 @@ import {
   isAutoCameraOnResumeEnabled,
   setAutoCameraOnResumeEnabled,
 } from '../../../shared/utils/autoCameraPreference';
-import useProfileForm from '../hooks/useProfileForm';
-import { fetchProfile, saveProfile, requestCommunityId, verifyCommunityIdOtp, requestHeightChangeOtp, verifyHeightChangeOtp } from '../services/profileService';
+import useProfileForm, { clearDraftHealthIssues, readDraftHealthIssues } from '../hooks/useProfileForm';
+import {
+  fetchProfile,
+  saveProfile,
+  requestCommunityId,
+  verifyCommunityIdOtp,
+  requestHeightChangeOtp,
+  verifyHeightChangeOtp,
+  requestProfileChangeOtp,
+  verifyProfileChangeOtp,
+} from '../services/profileService';
 import { syncMarathonWeightComparisonFromProfile } from '../../marathon/marathonWeightComparisonCache';
 import { loadProfileMarathonWeightComparison } from '../../marathon';
 import { fetchMyAssessment, fetchLeadByPhone } from '../../counselling/services/counsellingApi';
@@ -67,11 +76,27 @@ import {
 } from '../domain/communityPosition';
 import { consumeCommunityPositionFill } from '../domain/communityPositionFocus';
 import {
+  clearProfileIntroFill,
+  peekProfileIntroFill,
+  profileIntroFieldDomId,
+  scrollProfileFieldIntoView,
+} from '../domain/profileIntroFocus';
+import {
   overlayProfileOtpConfirmation,
   rememberProfileOtpConfirmation,
 } from '../domain/profileOtpHold';
 import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked, validateHeightCm } from '../domain/heightChange';
+import {
+  classifyProfileGatedChanges,
+  extractGatedFromPayload,
+  gatedSnapshotFromProfile,
+  labelsForChangedKeys,
+  usesUnifiedProfileChangeOtp,
+} from '../domain/profileChange';
 import { looksLikeEmail } from '../domain/onboardingEmail';
+import { EMAIL_OTP_LENGTH } from '../domain/otpLength';
+import useOtpInput from '../hooks/useOtpInput';
+import OtpInputCells from '../../../shared/components/OtpInputCells.jsx';
 import GoPremiumButton from '../../payments/components/GoPremiumButton';
 import { PremiumAvatarRing, PremiumCrownMark } from '../../payments/components/PremiumBadge';
 import usePremiumStatus from '../../payments/hooks/usePremiumStatus';
@@ -111,7 +136,10 @@ const UserProfilePage = ({
   /** null = fail-open; object = Admin Config page-access map */
   allowedPages = null,
 }) => {
-  const form = useProfileForm();
+  const form = useProfileForm({ userId: user?.id || Session.getDbUserId() || null });
+  const formRef = useRef(form);
+  formRef.current = form;
+  const loadedUserIdRef = useRef(null);
   const resolvedUserId = user?.id ?? user?._id ?? user?.UserId ?? user?.userId ?? form.userId ?? Session.getDbUserId() ?? null;
   const premiumUserId = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
   const {
@@ -153,6 +181,14 @@ const UserProfilePage = ({
   const [heightOtpPending, setHeightOtpPending] = useState(false);
   const [heightOtpDestination, setHeightOtpDestination] = useState('');
   const [pendingHeightCm, setPendingHeightCm] = useState(null);
+  const unifiedSaveOtp = usesUnifiedProfileChangeOtp();
+  const gatedBaselineRef = useRef({});
+  const profileChangeOtpCtl = useOtpInput(EMAIL_OTP_LENGTH);
+  const [profileChangeOtpOpen, setProfileChangeOtpOpen] = useState(false);
+  const [profileChangeOtpBusy, setProfileChangeOtpBusy] = useState(false);
+  const [profileChangeOtpError, setProfileChangeOtpError] = useState('');
+  const [profileChangeOtpMeta, setProfileChangeOtpMeta] = useState(null);
+  const [pendingProfileChange, setPendingProfileChange] = useState(null);
   // Start without spinner when Home/Header already warmed the shared profile cache.
   const [isLoading, setIsLoading] = useState(() => {
     const email = resolveAccountEmail(user, null);
@@ -160,6 +196,7 @@ const UserProfilePage = ({
     if (!email && !uid) return false;
     return !getCachedProfile({ email, userId: uid })?.data;
   });
+  const [introHighlightKeys, setIntroHighlightKeys] = useState([]);
   useEffect(() => {
     if (isLoading || !consumeCommunityPositionFill()) return undefined;
     let tries = 0;
@@ -175,6 +212,46 @@ const UserProfilePage = ({
       }
     }, 200);
     return () => clearInterval(timer);
+  }, [isLoading]);
+  useEffect(() => {
+    if (isLoading) return undefined;
+    const keys = peekProfileIntroFill();
+    if (!keys.length) return undefined;
+    setIntroHighlightKeys(keys);
+    let tries = 0;
+    let done = false;
+    const firstId = profileIntroFieldDomId(keys[0]);
+    const attemptScroll = () => {
+      if (done) return;
+      const field = document.getElementById(firstId);
+      tries += 1;
+      if (field) {
+        done = true;
+        // Wait one frame so red highlight layout is applied, then scroll the ios-scroll-body.
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => {
+            scrollProfileFieldIntoView(field);
+            const focusable = field.querySelector('input, textarea, button');
+            try {
+              focusable?.focus?.({ preventScroll: true });
+            } catch {
+              focusable?.focus?.();
+            }
+            clearProfileIntroFill();
+          });
+        });
+        return;
+      }
+      if (tries > 40) {
+        done = true;
+        clearProfileIntroFill();
+      }
+    };
+    const timer = setInterval(attemptScroll, 100);
+    attemptScroll();
+    return () => {
+      clearInterval(timer);
+    };
   }, [isLoading]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -213,6 +290,7 @@ const UserProfilePage = ({
   userId: forceUserId = null,
   email: forceEmail = null,
   cacheBust = false,
+  preserveDraft = false,
 } = {}) => {
     const emailKey = forceEmail || sessionEmail;
     const uid = forceUserId || sessionUserId;
@@ -225,21 +303,32 @@ const UserProfilePage = ({
 
     const applyProfileData = (incoming) => {
       const data = overlayProfileOtpConfirmation(incoming, uid);
+      const currentForm = formRef.current || form;
+      const draftIssues = (Array.isArray(currentForm?.recoveredHealthIssues) && currentForm.recoveredHealthIssues.length > 0)
+        ? currentForm.recoveredHealthIssues
+        : (readDraftHealthIssues(uid) || []);
+      const hasDraftIssues = Array.isArray(draftIssues) && draftIssues.length > 0;
+      const serverIssues = Array.isArray(data?.recoveredHealthIssues) ? data.recoveredHealthIssues : [];
+      const keepDraftIssues = preserveDraft || hasDraftIssues;
+
       const profileData = {
-        name: data?.userName || '',
-        height: data?.height ? String(data.height) : '',
-        phone: data?.phoneNumber || '',
-        dietType: data?.dietType || '',
-        gender: data?.gender || '',
-        bmr: data?.latestBmr ? String(Math.round(data.latestBmr)) : '',
-        physicalActivityLevel: data?.physicalActivityLevel || '',
-        weightGoalMode: data?.weightGoalMode || 'loss',
-        bodyFat: data?.latestWeightBodyFat != null
-          ? String(data.latestWeightBodyFat)
-          : (data?.bodyFat != null ? String(data.bodyFat) : ''),
+        name: (preserveDraft && currentForm?.name) ? currentForm.name : (data?.userName || ''),
+        height: (preserveDraft && currentForm?.height) ? currentForm.height : (data?.height ? String(data.height) : ''),
+        phone: (preserveDraft && currentForm?.phone) ? currentForm.phone : (data?.phoneNumber || ''),
+        dietType: (preserveDraft && currentForm?.dietType) ? currentForm.dietType : (data?.dietType || ''),
+        gender: (preserveDraft && currentForm?.gender) ? currentForm.gender : (data?.gender || ''),
+        bmr: (preserveDraft && currentForm?.bmr) ? currentForm.bmr : (data?.latestBmr ? String(Math.round(data.latestBmr)) : ''),
+        physicalActivityLevel: (preserveDraft && currentForm?.physicalActivityLevel) ? currentForm.physicalActivityLevel : (data?.physicalActivityLevel || ''),
+        weightGoalMode: (preserveDraft && currentForm?.weightGoalMode) ? currentForm.weightGoalMode : (data?.weightGoalMode || 'loss'),
+        bodyFat: (preserveDraft && currentForm?.bodyMetrics?.fatPercent)
+          ? currentForm.bodyMetrics.fatPercent
+          : (data?.latestWeightBodyFat != null
+            ? String(data.latestWeightBodyFat)
+            : (data?.bodyFat != null ? String(data.bodyFat) : '')),
         latestWeightBodyFat: data?.latestWeightBodyFat ?? null,
         email: data?.email || emailKey || '',
         communityId: (() => {
+          if (preserveDraft && currentForm?.communityId) return currentForm.communityId;
           const fromProfile = data?.communityId != null ? String(data.communityId).trim() : '';
           if (fromProfile) return fromProfile;
           const pendingCode = data?.communityIdRequest?.communityId;
@@ -247,27 +336,46 @@ const UserProfilePage = ({
           if (data?.teamId) return String(data.teamId).trim();
           return '';
         })(),
-        workingPhysicalCentreId: data?.workingPhysicalCentre?.id != null
-          ? String(data.workingPhysicalCentre.id)
-          : '',
-        eventTranslation: data?.eventTranslation || '',
-        eventYourCity: data?.eventYourCity || '',
-        eventLevel: communityPositionFromProfile(data, uid),
-        professionalTitle: data?.professionalTitle || '',
-        instagram: data?.instagram || '',
-        youtube: data?.youtube || '',
-        linkedin: data?.linkedin || '',
-        herbalifeJoinedOn: data?.herbalifeJoinedOn || '',
-        aboutMe: data?.aboutMe || '',
-        qualification: data?.qualification || '',
-        languages: Array.isArray(data?.languages) ? data.languages : [],
-        bodyMetrics: data?.bodyMetrics || null,
-        recoveredHealthIssues: Array.isArray(data?.recoveredHealthIssues)
-          ? data.recoveredHealthIssues
-          : [],
+        workingPhysicalCentreId: (preserveDraft && currentForm?.workingPhysicalCentreId)
+          ? currentForm.workingPhysicalCentreId
+          : (data?.workingPhysicalCentre?.id != null ? String(data.workingPhysicalCentre.id) : ''),
+        eventTranslation: (preserveDraft && currentForm?.eventTranslation)
+          ? currentForm.eventTranslation
+          : (data?.eventTranslation || ''),
+        eventYourCity: (preserveDraft && currentForm?.eventYourCity)
+          ? currentForm.eventYourCity
+          : (data?.eventYourCity || ''),
+        eventLevel: (preserveDraft && currentForm?.eventLevel)
+          ? currentForm.eventLevel
+          : communityPositionFromProfile(data, uid),
+        professionalTitle: (preserveDraft && currentForm?.professionalTitle)
+          ? currentForm.professionalTitle
+          : (data?.professionalTitle || ''),
+        instagram: (preserveDraft && currentForm?.instagram) ? currentForm.instagram : (data?.instagram || ''),
+        youtube: (preserveDraft && currentForm?.youtube) ? currentForm.youtube : (data?.youtube || ''),
+        linkedin: (preserveDraft && currentForm?.linkedin) ? currentForm.linkedin : (data?.linkedin || ''),
+        herbalifeJoinedOn: (preserveDraft && currentForm?.herbalifeJoinedOn) ? currentForm.herbalifeJoinedOn : (data?.herbalifeJoinedOn || ''),
+        aboutMe: (preserveDraft && currentForm?.aboutMe) ? currentForm.aboutMe : (data?.aboutMe || ''),
+        qualification: (preserveDraft && currentForm?.qualification) ? currentForm.qualification : (data?.qualification || ''),
+        languages: (preserveDraft && Array.isArray(currentForm?.languages) && currentForm.languages.length > 0)
+          ? currentForm.languages
+          : (Array.isArray(data?.languages) ? data.languages : []),
+        bodyMetrics: (preserveDraft && currentForm?.bodyMetrics) ? currentForm.bodyMetrics : (data?.bodyMetrics || null),
+        recoveredHealthIssues: keepDraftIssues ? draftIssues : serverIssues,
+        serverRecoveredHealthIssues: serverIssues,
       };
 
-      form.reload(profileData);
+      form.reload(profileData, { preserveDraft });
+      gatedBaselineRef.current = gatedSnapshotFromProfile({
+        ...profileData,
+        phoneNumber: profileData.phone,
+        hasProfileImage: Boolean(
+          data?.profileImage
+          || data?.avatarUrl
+          || data?.hasProfileImage
+          || data?.AvatarKey,
+        ),
+      });
       setLockedHeight(
         isHeightLocked(profileData.height) ? profileData.height : null,
       );
@@ -275,6 +383,11 @@ const UserProfilePage = ({
       setHeightOtpError('');
       setPendingHeightCm(null);
       setHeightOtpDestination('');
+      setProfileChangeOtpOpen(false);
+      setProfileChangeOtpError('');
+      setPendingProfileChange(null);
+      setProfileChangeOtpMeta(null);
+      profileChangeOtpCtl.reset();
       setLatestWeight(data?.latestWeight ? parseFloat(data.latestWeight) : null);
       setInitialWeight(data?.initialWeight != null ? parseFloat(data.initialWeight) : null);
       setInitialWeightDate(data?.initialWeightDate || null);
@@ -383,7 +496,7 @@ const UserProfilePage = ({
           }
           leadPreFilledRef.current = true;
           setLeadPreFilled(true);
-          form.reload(profileData);
+          form.reload(profileData, { preserveDraft: true });
         }
       } catch {
         // Non-fatal — profile fields already shown.
@@ -397,7 +510,13 @@ const UserProfilePage = ({
   }, [sessionEmail, sessionUserId]);
 
   useLayoutEffect(() => {
+    // If this user is already loaded, do not re-run loadProfile or clear success messages
+    // when sessionEmail changes (e.g. after in-page email verification)
+    if (sessionUserId && loadedUserIdRef.current === sessionUserId) {
+      return;
+    }
     if (sessionEmail || sessionUserId) {
+      loadedUserIdRef.current = sessionUserId;
       setSuccessMessage('');
       setHasSaved(false);
       setError('');
@@ -408,9 +527,66 @@ const UserProfilePage = ({
     setIsLoading(false);
   }, [sessionEmail, sessionUserId, loadProfile]);
 
+  const finishSaveSuccess = useCallback(async ({ data, payload, photoExtras }) => {
+    if (payload.bodyFat != null) {
+      const persisted = data?.data?.bodyFat;
+      if (persisted == null || !Number.isFinite(Number(persisted))) {
+        setError(
+          data?.data?.bodyFatError
+          || 'Could not save Fat %. Please try again.',
+        );
+        return false;
+      }
+    }
+    const leftPending = photoExtras?.transformationPhotos?.left || null;
+    if (user?.id && leftPending) {
+      try {
+        await persistOnboardingTestimonialPhotos({
+          userId: user.id,
+          weightKg: latestWeight,
+          leftImageBase64: leftPending,
+          goalType: deriveWeightGoalMode({
+            heightCm: form.height,
+            currentWeightKg: latestWeight,
+          }) || form.weightGoalMode || 'loss',
+          recoveredHealthIssues: form.recoveredHealthIssues || [],
+        });
+      } catch {
+        // Non-fatal — profile photos already saved.
+      }
+    }
+    if (user?.id) {
+      invalidateHasTeamMembersCache(user.id);
+    }
+    onProfileUpdate?.({
+      name: form.name,
+      height: form.height ? parseFloat(form.height) : null,
+      physicalActivityLevel: form.physicalActivityLevel || null,
+      dietType: form.dietType || null,
+      communityId: form.communityId || null,
+      teamSearchRefresh: true,
+    });
+    if (user?.id) getUserContext(user.id).catch(() => {});
+      clearDraftHealthIssues(user?.id || sessionUserId);
+    await loadProfile({ cacheBust: true });
+    transformationPhotos.clearPending();
+    setSuccessMessage(data.message || 'Profile saved successfully!');
+    setHasSaved(true);
+    loadProfile({ cacheBust: true }).catch(() => {});
+    return true;
+  }, [
+    form,
+    user,
+    latestWeight,
+    onProfileUpdate,
+    loadProfile,
+    transformationPhotos,
+  ]);
+
   const handleSave = useCallback(async () => {
     setError('');
     setSuccessMessage('');
+    setProfileChangeOtpError('');
     setIsSaving(true);
     try {
       const err = form.validate({ requireDiet: false, requireFat: false, maxHeight: 198 });
@@ -430,54 +606,43 @@ const UserProfilePage = ({
       if (user?.id && !payload.userId) {
         payload.userId = user.id;
       }
-      const data = await saveProfile(payload);
-      if (payload.bodyFat != null) {
-        const persisted = data?.data?.bodyFat;
-        if (persisted == null || !Number.isFinite(Number(persisted))) {
-          setError(
-            data?.data?.bodyFatError
-            || 'Could not save Fat %. Please try again.',
+
+      if (unifiedSaveOtp) {
+        const incoming = extractGatedFromPayload(payload);
+        const classified = classifyProfileGatedChanges({
+          existing: gatedBaselineRef.current,
+          incoming,
+        });
+        if (classified.needsOtp) {
+          // Save first fills + non-gated fields now; hold changes for one coach OTP.
+          const immediatePayload = { ...payload };
+          for (const key of classified.changedKeys) {
+            delete immediatePayload[key];
+          }
+          const data = await saveProfile(immediatePayload);
+          const otpRes = await requestProfileChangeOtp({
+            userId: user?.id || undefined,
+            email: emailForSave,
+            pendingProfile: classified.changes,
+          });
+          setPendingProfileChange(classified.changes);
+          setProfileChangeOtpMeta({
+            destination: otpRes.approverName || otpRes.destination || 'your coach',
+            changedFields: otpRes.changedFields || labelsForChangedKeys(classified.changedKeys),
+          });
+          profileChangeOtpCtl.reset();
+          setProfileChangeOtpOpen(true);
+          setSuccessMessage(
+            data?.data?.needsProfileChangeOtp
+              ? (data.message || 'Saved. Enter the coach approval code for the rest.')
+              : 'Saved. Enter the coach approval code for your locked field changes.',
           );
           return;
         }
       }
-      // Profile Left → Transformation Before (Centre/Right stay profile-only).
-      const leftPending = photoExtras.transformationPhotos?.left || null;
-      if (user?.id && leftPending) {
-        try {
-          await persistOnboardingTestimonialPhotos({
-            userId: user.id,
-            weightKg: latestWeight,
-            leftImageBase64: leftPending,
-            goalType: deriveWeightGoalMode({
-              heightCm: form.height,
-              currentWeightKg: latestWeight,
-            }) || form.weightGoalMode || 'loss',
-            recoveredHealthIssues: form.recoveredHealthIssues || [],
-          });
-        } catch {
-          // Non-fatal — profile photos already saved.
-        }
-      }
-      if (user?.id) {
-        invalidateHasTeamMembersCache(user.id);
-      }
-      onProfileUpdate?.({
-        name: form.name,
-        height: form.height ? parseFloat(form.height) : null,
-        physicalActivityLevel: form.physicalActivityLevel || null,
-        dietType: form.dietType || null,
-        communityId: form.communityId || null,
-        teamSearchRefresh: true,
-      });
-      if (user?.id) getUserContext(user.id).catch(() => {});
-      // Reload while pending uploads still exist so mergePreviewsPreservingPending
-      // keeps Left/Centre/Right if the server briefly returns a stale profile.
-      await loadProfile({ cacheBust: true });
-      transformationPhotos.clearPending();
-      setSuccessMessage(data.message || 'Profile saved successfully!');
-      setHasSaved(true);
-      loadProfile({ cacheBust: true }).catch(() => {});
+
+      const data = await saveProfile(payload);
+      await finishSaveSuccess({ data, payload, photoExtras });
     } catch (e) {
       setError(e.message || 'Failed to save profile');
     } finally {
@@ -487,11 +652,48 @@ const UserProfilePage = ({
     form,
     user,
     accountEmail,
-    loadProfile,
-    onProfileUpdate,
-    transformationPhotos,
-    latestWeight,
     lockedHeight,
+    transformationPhotos,
+    unifiedSaveOtp,
+    finishSaveSuccess,
+    profileChangeOtpCtl,
+  ]);
+
+  const handleProfileChangeVerifyOtp = useCallback(async (codeArg) => {
+    setProfileChangeOtpError('');
+    const code = String(codeArg || profileChangeOtpCtl.value || '').trim();
+    if (!/^\d{4}$/.test(code)) {
+      setProfileChangeOtpError('Enter the 4-digit approval code from your coach.');
+      return;
+    }
+    setProfileChangeOtpBusy(true);
+    try {
+      const data = await verifyProfileChangeOtp({
+        userId: user?.id || undefined,
+        email: accountEmail || undefined,
+        otp: code,
+      });
+      setProfileChangeOtpOpen(false);
+      setPendingProfileChange(null);
+      setProfileChangeOtpMeta(null);
+      profileChangeOtpCtl.reset();
+      await finishSaveSuccess({
+        data,
+        payload: { bodyFat: form.payload(accountEmail || undefined).bodyFat },
+        photoExtras: transformationPhotos.payloadExtras(),
+      });
+    } catch (e) {
+      setProfileChangeOtpError(e.message || 'That approval code did not match.');
+    } finally {
+      setProfileChangeOtpBusy(false);
+    }
+  }, [
+    profileChangeOtpCtl,
+    user,
+    accountEmail,
+    finishSaveSuccess,
+    form,
+    transformationPhotos,
   ]);
 
   const handleHeightRequestOtp = useCallback(async (nextHeight) => {
@@ -548,11 +750,10 @@ const UserProfilePage = ({
       setPendingHeightCm(null);
       setHeightOtpDestination('');
       setSuccessMessage(data.message || 'Height updated.');
-      setHasSaved(true);
       onProfileUpdate?.({
         height: parseFloat(saved),
       });
-      await loadProfile({ cacheBust: true });
+      await loadProfile({ cacheBust: true, preserveDraft: true });
     } catch (e) {
       setHeightOtpError(e.message || 'That verification code did not match.');
     } finally {
@@ -593,12 +794,11 @@ const UserProfilePage = ({
         setTeamSeat(seat);
         if (data.communityIdPair) setCommunityIdPair(data.communityIdPair);
         setSuccessMessage(data.message || 'Community ID confirmed.');
-        setHasSaved(true);
         onProfileUpdate?.({
           communityId: data.communityId || null,
           teamSearchRefresh: true,
         });
-        await loadProfile({ cacheBust: true });
+        await loadProfile({ cacheBust: true, preserveDraft: true });
         setTeamSeat(seat);
         return;
       }
@@ -645,8 +845,7 @@ const UserProfilePage = ({
         teamSearchRefresh: true,
       });
       setSuccessMessage(data.message || 'Community ID confirmed.');
-      setHasSaved(true);
-      await loadProfile({ cacheBust: true });
+      await loadProfile({ cacheBust: true, preserveDraft: true });
       // Profile reload can briefly miss the new coach_teams seat; keep confirmed UI.
       if (confirmedSeat) {
         setTeamSeat(confirmedSeat);
@@ -720,10 +919,21 @@ const UserProfilePage = ({
         ? 'Email updated and verified.'
         : 'Email verified. You can appear as a sponsor to new members.',
     );
-    setHasSaved(true);
+    const currentForm = formRef.current || form;
+    const activeDraftIssues = (Array.isArray(currentForm?.recoveredHealthIssues) && currentForm.recoveredHealthIssues.length > 0)
+      ? currentForm.recoveredHealthIssues
+      : (readDraftHealthIssues(sessionUserId) || []);
+    const hasUnsavedChanges = Boolean(
+      currentForm?.isDirty
+      || (Array.isArray(activeDraftIssues) && activeDraftIssues.length > 0)
+    );
+    if (!hasUnsavedChanges) {
+      setHasSaved(true);
+    }
     await loadProfile({
       cacheBust: true,
       email: nextEmail || undefined,
+      preserveDraft: true,
     });
   }, [form, onProfileUpdate, loadProfile, accountEmail, sessionUserId, onBack]);
 
@@ -986,7 +1196,7 @@ const UserProfilePage = ({
                   setBmr={form.setBmr}
                   physicalActivityLevel={form.physicalActivityLevel}
                   setPhysicalActivityLevel={form.setPhysicalActivityLevel}
-                  heightOtpEnabled={isFlagEnabled(HEIGHT_CHANGE_OTP_FLAG)}
+                  heightOtpEnabled={!unifiedSaveOtp && isFlagEnabled(HEIGHT_CHANGE_OTP_FLAG)}
                   lockedHeight={lockedHeight}
                   onHeightRequestOtp={handleHeightRequestOtp}
                   onHeightVerifyOtp={handleHeightVerifyOtp}
@@ -1022,8 +1232,8 @@ const UserProfilePage = ({
                   communityId={form.communityId}
                   setCommunityId={form.setCommunityId}
                   teamSeat={teamSeat}
-                  otpEnabled={isFlagEnabled(COMMUNITY_ID_OTP_FLAG)}
-                  pendingRequest={communityIdRequest}
+                  otpEnabled={!unifiedSaveOtp && isFlagEnabled(COMMUNITY_ID_OTP_FLAG)}
+                  pendingRequest={unifiedSaveOtp ? null : communityIdRequest}
                   communityIdPair={communityIdPair}
                   onCreate={handleCommunityIdCreate}
                   onVerify={handleCommunityIdVerify}
@@ -1036,15 +1246,15 @@ const UserProfilePage = ({
                   userId={resolvedUserId}
                   email={accountEmail}
                   confirmedCode={form.eventLevel}
-                  pendingRequest={communityPositionRequest}
-                  otpEnabled={isFlagEnabled(COMMUNITY_POSITION_OTP_FLAG)}
+                  pendingRequest={unifiedSaveOtp ? null : communityPositionRequest}
+                  otpEnabled={!unifiedSaveOtp && isFlagEnabled(COMMUNITY_POSITION_OTP_FLAG)}
                   disabled={isSaving || isUploadingPhoto}
                   onChange={(code) => {
                     rememberConfirmedCommunityPosition(resolvedUserId, code);
                     form.setEventLevel(code);
                     setCommunityPositionRequest(null);
                   }}
-                  onSettled={() => loadProfile({ cacheBust: true })}
+                  onSettled={() => loadProfile({ cacheBust: true, preserveDraft: true })}
                 />
                 <WorkingPhysicalCentreField
                   userId={resolvedUserId}
@@ -1068,7 +1278,11 @@ const UserProfilePage = ({
                     qualification: form.qualification,
                     languages: form.languages,
                   }}
-                  onChange={form.setIntroField}
+                  onChange={(key, value) => {
+                    form.setIntroField(key, value);
+                    setIntroHighlightKeys((prev) => prev.filter((k) => k !== key));
+                  }}
+                  highlightKeys={introHighlightKeys}
                 />
                 <IdealWeightCards
                   height={form.height}
@@ -1124,11 +1338,75 @@ const UserProfilePage = ({
           </div>
         )}
 
+        {profileChangeOtpOpen && (
+          <div
+            className="bg-white rounded-2xl shadow-sm border border-amber-200 overflow-hidden"
+            role="dialog"
+            aria-labelledby="profile-change-otp-title"
+          >
+            <div className="px-4 py-3 border-b border-amber-100 bg-amber-50">
+              <h2 id="profile-change-otp-title" className="text-sm font-semibold text-amber-900">
+                Enter approval code
+              </h2>
+              <p className="text-xs text-amber-800 mt-1">
+                We sent one code to{' '}
+                <span className="font-medium">{profileChangeOtpMeta?.destination || 'your coach'}</span>
+                {Array.isArray(profileChangeOtpMeta?.changedFields) && profileChangeOtpMeta.changedFields.length > 0
+                  ? ` for: ${profileChangeOtpMeta.changedFields.join(', ')}`
+                  : ''}
+                . Ask them for the code, then confirm below.
+              </p>
+            </div>
+            <div className="p-4 space-y-3">
+              <OtpInputCells
+                otpCtl={profileChangeOtpCtl}
+                length={EMAIL_OTP_LENGTH}
+                emailOtp
+                disabled={profileChangeOtpBusy}
+                onComplete={handleProfileChangeVerifyOtp}
+                cellClassName="w-10 h-12 text-center text-lg font-semibold border border-gray-300 rounded-lg"
+              />
+              {profileChangeOtpError && (
+                <p className="text-sm text-red-600">{profileChangeOtpError}</p>
+              )}
+              <div className="flex gap-2">
+                <TouchFeedbackButton
+                  onClick={() => {
+                    setProfileChangeOtpOpen(false);
+                    setPendingProfileChange(null);
+                    setProfileChangeOtpMeta(null);
+                    setProfileChangeOtpError('');
+                    profileChangeOtpCtl.reset();
+                  }}
+                  disabled={profileChangeOtpBusy}
+                  ariaLabel="Cancel approval"
+                  className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-medium text-sm disabled:opacity-50"
+                >
+                  Cancel
+                </TouchFeedbackButton>
+                <TouchFeedbackButton
+                  onClick={handleProfileChangeVerifyOtp}
+                  disabled={profileChangeOtpBusy || !profileChangeOtpCtl.isComplete}
+                  ariaLabel="Confirm approval code"
+                  className="flex-1 py-2.5 rounded-xl bg-green-500 text-white font-semibold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {profileChangeOtpBusy ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                  ) : (
+                    <KeyRound className="w-4 h-4" />
+                  )}
+                  Confirm
+                </TouchFeedbackButton>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Save Button */}
         {!isLoading && (
           <TouchFeedbackButton
             onClick={handleSave}
-            disabled={saveDisabled}
+            disabled={saveDisabled || profileChangeOtpOpen}
             ariaLabel="Save profile"
             className="w-full py-3.5 bg-green-500 text-white rounded-xl font-semibold text-base disabled:opacity-50 shadow-md flex items-center justify-center gap-2"
           >
@@ -1269,6 +1547,7 @@ const UserProfilePage = ({
         startWithRecrop={startPhotoRecrop}
         onStartWithRecropConsumed={() => setStartPhotoRecrop(false)}
         onUploaded={handlePhotoUploaded}
+        hasExistingPhoto={Boolean(displayAvatarSrc || profileImagePreview)}
       />
 
       {/* Delete Account Modal — userId + typed DELETE (Apple Guideline 5.1.1(v)) */}

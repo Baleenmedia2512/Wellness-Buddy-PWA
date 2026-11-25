@@ -11,6 +11,24 @@ export function formatActivityReportLevel(level) {
   return Number.isFinite(n) ? String(n) : '—';
 }
 
+/**
+ * API Reg. Time is HH:mm or HH:mm:ss (24h). Show like Diary: h:mm AM/PM.
+ * @param {unknown} time
+ * @returns {string}
+ */
+export function formatActivityReportTime(time) {
+  if (time == null || time === '' || time === 'N/A') return '';
+  const s = String(time).trim();
+  const match = /^(\d{1,2}):(\d{2})(?::\d{2})?/.exec(s);
+  if (!match) return s;
+  const hour = Number.parseInt(match[1], 10);
+  const minute = match[2];
+  if (!Number.isFinite(hour) || hour < 0 || hour > 23) return s;
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const h12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${h12}:${minute} ${ampm}`;
+}
+
 /** @deprecated Prefer formatHierarchyPersonType — kept for Activity Report imports. */
 export function formatActivityReportMemberType(memberType) {
   return formatHierarchyPersonType(memberType);
@@ -27,35 +45,15 @@ function formatClubFilterLabel(clubFilter) {
   return clubFilter;
 }
 
-function activityDetailLine(record, activityId) {
+function activityDetailLine(record) {
   const club = formatClub(record.clubName);
-  const parts = [
+  const time12 = formatActivityReportTime(record.time);
+  const dateTime = `${record.date || '—'} ${time12 || record.time || ''}`.trim();
+  return [
     record.memberName || 'N/A',
-    formatActivityReportMemberType(record.memberType),
-  ];
-  const sponsor = record.sponsorName || record.coachName;
-  parts.push(`Level: ${formatActivityReportLevel(record.level)}`);
-  parts.push(`Club: ${club}`);
-  if (sponsor && sponsor !== 'N/A') parts.push(`Sponsor: ${sponsor}`);
-  parts.push(
-    `${record.date || '—'} ${record.time || ''}`.trim(),
-  );
-
-  if (activityId === 'weight' && record.weight != null) {
-    parts.push(`Weight: ${record.weight} kg`);
-  } else if (['breakfast', 'lunch', 'dinner'].includes(activityId)) {
-    if (record.mealType) parts.push(`Meal: ${record.mealType}`);
-    if (record.calories != null) parts.push(`Calories: ${record.calories}`);
-  } else if (activityId === 'water' && record.waterLiters != null) {
-    parts.push(`Water: ${record.waterLiters} L`);
-  } else if (activityId === 'calories') {
-    if (record.steps != null) parts.push(`Steps: ${record.steps}`);
-    if (record.caloriesBurned != null) parts.push(`Burned: ${record.caloriesBurned} kcal`);
-  }
-
-  if (record.phone && record.phone !== 'N/A') parts.push(`Phone: ${record.phone}`);
-
-  return parts.join(' | ');
+    `Club: ${club}`,
+    dateTime,
+  ].join(' | ');
 }
 
 /**
@@ -93,7 +91,7 @@ export function buildActivityReportShareText({
 
   const slice = Array.isArray(records) ? records.slice(0, SHARE_TEXT_MAX_ROWS) : [];
   slice.forEach((record, index) => {
-    lines.push(`${index + 1}. ${activityDetailLine(record, activityId)}`);
+    lines.push(`${index + 1}. ${activityDetailLine(record)}`);
   });
 
   const remaining = Math.max(0, (Number(totalRecords) || 0) - slice.length);

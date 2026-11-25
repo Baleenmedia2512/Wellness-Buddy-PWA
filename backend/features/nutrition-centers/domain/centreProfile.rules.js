@@ -17,12 +17,16 @@ export const CENTRE_PHOTO_DATA_URL_MAX_CHARS = 180000;
 
 export const CENTRE_PHOTO_SLOTS = Object.freeze([
   { key: 'entrance', label: 'Centre entrance photos' },
-  { key: 'interior', label: 'Centre interior photos' },
-  { key: 'name_board', label: 'Centre name board photos' },
-  { key: 'wellness_activity', label: 'Wellness activity photos' },
+  { key: 'interior', label: 'Shake counter Image' },
+  { key: 'wellness_activity', label: 'Education hall image' },
 ]);
 
-const SLOT_KEYS = CENTRE_PHOTO_SLOTS.map((slot) => slot.key);
+/** Still stored when an older client sends it; not required on new forms. */
+export const CENTRE_PHOTO_LEGACY_SLOTS = Object.freeze([
+  { key: 'name_board', label: 'Centre name board photos' },
+]);
+
+const SLOT_KEYS = [...CENTRE_PHOTO_SLOTS, ...CENTRE_PHOTO_LEGACY_SLOTS].map((slot) => slot.key);
 const JPEG_PREFIX = 'data:image/jpeg;base64,';
 const CENTRE_PHOTO_FOLDER = 'nutrition-centres';
 
@@ -116,6 +120,19 @@ export function classifyCentrePhoto(value, slot) {
  * @param {unknown} photos
  * @returns {{ photos?: Record<string, Array<{ type: string, dataUrl?: string, key?: string }>>, error?: string }}
  */
+function normalizeSlotPhotos(slot, list) {
+  if (list.length > CENTRE_PHOTOS_MAX_PER_SLOT) {
+    return { error: `${slot.label} can include up to ${CENTRE_PHOTOS_MAX_PER_SLOT} photos` };
+  }
+  const images = [];
+  for (const item of list) {
+    const classified = classifyCentrePhoto(item, slot.key);
+    if (!classified) return { error: `${slot.label} must be JPEG photos` };
+    images.push(classified);
+  }
+  return { images };
+}
+
 export function normalizeCentrePhotos(photos) {
   if (photos == null || typeof photos !== 'object' || Array.isArray(photos)) {
     return { error: 'Centre photos are required' };
@@ -127,16 +144,16 @@ export function normalizeCentrePhotos(photos) {
     if (!Array.isArray(list) || list.length < 1) {
       return { error: `Add at least one photo for ${slot.label}` };
     }
-    if (list.length > CENTRE_PHOTOS_MAX_PER_SLOT) {
-      return { error: `${slot.label} can include up to ${CENTRE_PHOTOS_MAX_PER_SLOT} photos` };
-    }
-    const images = [];
-    for (const item of list) {
-      const classified = classifyCentrePhoto(item, slot.key);
-      if (!classified) return { error: `${slot.label} must be JPEG photos` };
-      images.push(classified);
-    }
-    out[slot.key] = images;
+    const normalized = normalizeSlotPhotos(slot, list);
+    if (normalized.error) return { error: normalized.error };
+    out[slot.key] = normalized.images;
+  }
+  for (const slot of CENTRE_PHOTO_LEGACY_SLOTS) {
+    const list = photos[slot.key];
+    if (!Array.isArray(list) || list.length < 1) continue;
+    const normalized = normalizeSlotPhotos(slot, list);
+    if (normalized.error) return { error: normalized.error };
+    out[slot.key] = normalized.images;
   }
   return { photos: out };
 }

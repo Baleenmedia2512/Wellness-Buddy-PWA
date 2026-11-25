@@ -31,9 +31,9 @@ describe('centre photos', () => {
   it('requires one photo in each slot', () => {
     const photos = emptyCentrePhotos();
     photos.entrance = [{ dataUrl: 'a' }];
-    assert.match(centrePhotosError(photos), /Centre interior photos/);
+    assert.match(centrePhotosError(photos), /Shake counter Image/);
     photos.interior = [{ dataUrl: 'b' }];
-    photos.name_board = [{ dataUrl: 'c' }];
+    assert.match(centrePhotosError(photos), /Education hall image/);
     photos.wellness_activity = [{ dataUrl: 'd' }];
     assert.equal(centrePhotosError(photos), null);
     assert.deepEqual(centrePhotosForApi(photos).entrance, ['a']);

@@ -9,16 +9,14 @@ export const CENTRE_PHOTOS_MAX_PER_SLOT = 4;
 
 export const CENTRE_PHOTO_SLOTS = Object.freeze([
   { key: 'entrance', label: 'Centre entrance photos' },
-  { key: 'interior', label: 'Centre interior photos' },
-  { key: 'name_board', label: 'Centre name board photos' },
-  { key: 'wellness_activity', label: 'Wellness activity photos' },
+  { key: 'interior', label: 'Shake counter Image' },
+  { key: 'wellness_activity', label: 'Education hall image' },
 ]);
 
 export function emptyCentrePhotos() {
   return {
     entrance: [],
     interior: [],
-    name_board: [],
     wellness_activity: [],
   };
 }

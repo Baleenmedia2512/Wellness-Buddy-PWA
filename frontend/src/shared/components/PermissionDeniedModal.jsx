@@ -15,12 +15,19 @@
  */
 import React, { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { Camera, MapPin, Bell } from 'lucide-react';
 import * as nativeLifecycle from '../services/nativeLifecycle/index.js';
 
 const ACCENT = {
   camera:        '#16a34a',
   location:      '#2563eb',
   notifications: '#d97706',
+};
+
+const ICONS = {
+  camera: Camera,
+  location: MapPin,
+  notifications: Bell,
 };
 
 export default function PermissionDeniedModal({
@@ -72,9 +79,25 @@ export default function PermissionDeniedModal({
           alignItems: 'center',
         }}
       >
-        {/* Icon */}
-        <div style={{ fontSize: 40, marginBottom: 14, lineHeight: 1 }}>
-          {config.icon}
+        {/* Lucide SVG — emoji often renders as "?" on iOS WKWebView */}
+        <div
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: '50%',
+            background: `${accent}14`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: 14,
+          }}
+        >
+          {(() => {
+            const Icon = ICONS[type];
+            return Icon
+              ? <Icon size={28} color={accent} strokeWidth={2} aria-hidden />
+              : null;
+          })()}
         </div>
 
         {/* Message */}
