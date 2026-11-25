@@ -22,7 +22,7 @@ import {
   isAutoCameraOnResumeEnabled,
   setAutoCameraOnResumeEnabled,
 } from '../../../shared/utils/autoCameraPreference';
-import useProfileForm from '../hooks/useProfileForm';
+import useProfileForm, { clearDraftHealthIssues, readDraftHealthIssues } from '../hooks/useProfileForm';
 import {
   fetchProfile,
   saveProfile,
@@ -136,7 +136,10 @@ const UserProfilePage = ({
   /** null = fail-open; object = Admin Config page-access map */
   allowedPages = null,
 }) => {
-  const form = useProfileForm();
+  const form = useProfileForm({ userId: user?.id || Session.getDbUserId() || null });
+  const formRef = useRef(form);
+  formRef.current = form;
+  const loadedUserIdRef = useRef(null);
   const resolvedUserId = user?.id ?? user?._id ?? user?.UserId ?? user?.userId ?? form.userId ?? Session.getDbUserId() ?? null;
   const premiumUserId = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
   const {
@@ -287,6 +290,7 @@ const UserProfilePage = ({
   userId: forceUserId = null,
   email: forceEmail = null,
   cacheBust = false,
+  preserveDraft = false,
 } = {}) => {
     const emailKey = forceEmail || sessionEmail;
     const uid = forceUserId || sessionUserId;
@@ -299,21 +303,32 @@ const UserProfilePage = ({
 
     const applyProfileData = (incoming) => {
       const data = overlayProfileOtpConfirmation(incoming, uid);
+      const currentForm = formRef.current || form;
+      const draftIssues = (Array.isArray(currentForm?.recoveredHealthIssues) && currentForm.recoveredHealthIssues.length > 0)
+        ? currentForm.recoveredHealthIssues
+        : (readDraftHealthIssues(uid) || []);
+      const hasDraftIssues = Array.isArray(draftIssues) && draftIssues.length > 0;
+      const serverIssues = Array.isArray(data?.recoveredHealthIssues) ? data.recoveredHealthIssues : [];
+      const keepDraftIssues = preserveDraft || hasDraftIssues;
+
       const profileData = {
-        name: data?.userName || '',
-        height: data?.height ? String(data.height) : '',
-        phone: data?.phoneNumber || '',
-        dietType: data?.dietType || '',
-        gender: data?.gender || '',
-        bmr: data?.latestBmr ? String(Math.round(data.latestBmr)) : '',
-        physicalActivityLevel: data?.physicalActivityLevel || '',
-        weightGoalMode: data?.weightGoalMode || 'loss',
-        bodyFat: data?.latestWeightBodyFat != null
-          ? String(data.latestWeightBodyFat)
-          : (data?.bodyFat != null ? String(data.bodyFat) : ''),
+        name: (preserveDraft && currentForm?.name) ? currentForm.name : (data?.userName || ''),
+        height: (preserveDraft && currentForm?.height) ? currentForm.height : (data?.height ? String(data.height) : ''),
+        phone: (preserveDraft && currentForm?.phone) ? currentForm.phone : (data?.phoneNumber || ''),
+        dietType: (preserveDraft && currentForm?.dietType) ? currentForm.dietType : (data?.dietType || ''),
+        gender: (preserveDraft && currentForm?.gender) ? currentForm.gender : (data?.gender || ''),
+        bmr: (preserveDraft && currentForm?.bmr) ? currentForm.bmr : (data?.latestBmr ? String(Math.round(data.latestBmr)) : ''),
+        physicalActivityLevel: (preserveDraft && currentForm?.physicalActivityLevel) ? currentForm.physicalActivityLevel : (data?.physicalActivityLevel || ''),
+        weightGoalMode: (preserveDraft && currentForm?.weightGoalMode) ? currentForm.weightGoalMode : (data?.weightGoalMode || 'loss'),
+        bodyFat: (preserveDraft && currentForm?.bodyMetrics?.fatPercent)
+          ? currentForm.bodyMetrics.fatPercent
+          : (data?.latestWeightBodyFat != null
+            ? String(data.latestWeightBodyFat)
+            : (data?.bodyFat != null ? String(data.bodyFat) : '')),
         latestWeightBodyFat: data?.latestWeightBodyFat ?? null,
         email: data?.email || emailKey || '',
         communityId: (() => {
+          if (preserveDraft && currentForm?.communityId) return currentForm.communityId;
           const fromProfile = data?.communityId != null ? String(data.communityId).trim() : '';
           if (fromProfile) return fromProfile;
           const pendingCode = data?.communityIdRequest?.communityId;
@@ -321,27 +336,36 @@ const UserProfilePage = ({
           if (data?.teamId) return String(data.teamId).trim();
           return '';
         })(),
-        workingPhysicalCentreId: data?.workingPhysicalCentre?.id != null
-          ? String(data.workingPhysicalCentre.id)
-          : '',
-        eventTranslation: data?.eventTranslation || '',
-        eventYourCity: data?.eventYourCity || '',
-        eventLevel: communityPositionFromProfile(data, uid),
-        professionalTitle: data?.professionalTitle || '',
-        instagram: data?.instagram || '',
-        youtube: data?.youtube || '',
-        linkedin: data?.linkedin || '',
-        herbalifeJoinedOn: data?.herbalifeJoinedOn || '',
-        aboutMe: data?.aboutMe || '',
-        qualification: data?.qualification || '',
-        languages: Array.isArray(data?.languages) ? data.languages : [],
-        bodyMetrics: data?.bodyMetrics || null,
-        recoveredHealthIssues: Array.isArray(data?.recoveredHealthIssues)
-          ? data.recoveredHealthIssues
-          : [],
+        workingPhysicalCentreId: (preserveDraft && currentForm?.workingPhysicalCentreId)
+          ? currentForm.workingPhysicalCentreId
+          : (data?.workingPhysicalCentre?.id != null ? String(data.workingPhysicalCentre.id) : ''),
+        eventTranslation: (preserveDraft && currentForm?.eventTranslation)
+          ? currentForm.eventTranslation
+          : (data?.eventTranslation || ''),
+        eventYourCity: (preserveDraft && currentForm?.eventYourCity)
+          ? currentForm.eventYourCity
+          : (data?.eventYourCity || ''),
+        eventLevel: (preserveDraft && currentForm?.eventLevel)
+          ? currentForm.eventLevel
+          : communityPositionFromProfile(data, uid),
+        professionalTitle: (preserveDraft && currentForm?.professionalTitle)
+          ? currentForm.professionalTitle
+          : (data?.professionalTitle || ''),
+        instagram: (preserveDraft && currentForm?.instagram) ? currentForm.instagram : (data?.instagram || ''),
+        youtube: (preserveDraft && currentForm?.youtube) ? currentForm.youtube : (data?.youtube || ''),
+        linkedin: (preserveDraft && currentForm?.linkedin) ? currentForm.linkedin : (data?.linkedin || ''),
+        herbalifeJoinedOn: (preserveDraft && currentForm?.herbalifeJoinedOn) ? currentForm.herbalifeJoinedOn : (data?.herbalifeJoinedOn || ''),
+        aboutMe: (preserveDraft && currentForm?.aboutMe) ? currentForm.aboutMe : (data?.aboutMe || ''),
+        qualification: (preserveDraft && currentForm?.qualification) ? currentForm.qualification : (data?.qualification || ''),
+        languages: (preserveDraft && Array.isArray(currentForm?.languages) && currentForm.languages.length > 0)
+          ? currentForm.languages
+          : (Array.isArray(data?.languages) ? data.languages : []),
+        bodyMetrics: (preserveDraft && currentForm?.bodyMetrics) ? currentForm.bodyMetrics : (data?.bodyMetrics || null),
+        recoveredHealthIssues: keepDraftIssues ? draftIssues : serverIssues,
+        serverRecoveredHealthIssues: serverIssues,
       };
 
-      form.reload(profileData);
+      form.reload(profileData, { preserveDraft });
       gatedBaselineRef.current = gatedSnapshotFromProfile({
         ...profileData,
         phoneNumber: profileData.phone,
@@ -472,7 +496,7 @@ const UserProfilePage = ({
           }
           leadPreFilledRef.current = true;
           setLeadPreFilled(true);
-          form.reload(profileData);
+          form.reload(profileData, { preserveDraft: true });
         }
       } catch {
         // Non-fatal — profile fields already shown.
@@ -486,7 +510,13 @@ const UserProfilePage = ({
   }, [sessionEmail, sessionUserId]);
 
   useLayoutEffect(() => {
+    // If this user is already loaded, do not re-run loadProfile or clear success messages
+    // when sessionEmail changes (e.g. after in-page email verification)
+    if (sessionUserId && loadedUserIdRef.current === sessionUserId) {
+      return;
+    }
     if (sessionEmail || sessionUserId) {
+      loadedUserIdRef.current = sessionUserId;
       setSuccessMessage('');
       setHasSaved(false);
       setError('');
@@ -537,6 +567,7 @@ const UserProfilePage = ({
       teamSearchRefresh: true,
     });
     if (user?.id) getUserContext(user.id).catch(() => {});
+      clearDraftHealthIssues(user?.id || sessionUserId);
     await loadProfile({ cacheBust: true });
     transformationPhotos.clearPending();
     setSuccessMessage(data.message || 'Profile saved successfully!');
@@ -719,11 +750,10 @@ const UserProfilePage = ({
       setPendingHeightCm(null);
       setHeightOtpDestination('');
       setSuccessMessage(data.message || 'Height updated.');
-      setHasSaved(true);
       onProfileUpdate?.({
         height: parseFloat(saved),
       });
-      await loadProfile({ cacheBust: true });
+      await loadProfile({ cacheBust: true, preserveDraft: true });
     } catch (e) {
       setHeightOtpError(e.message || 'That verification code did not match.');
     } finally {
@@ -764,12 +794,11 @@ const UserProfilePage = ({
         setTeamSeat(seat);
         if (data.communityIdPair) setCommunityIdPair(data.communityIdPair);
         setSuccessMessage(data.message || 'Community ID confirmed.');
-        setHasSaved(true);
         onProfileUpdate?.({
           communityId: data.communityId || null,
           teamSearchRefresh: true,
         });
-        await loadProfile({ cacheBust: true });
+        await loadProfile({ cacheBust: true, preserveDraft: true });
         setTeamSeat(seat);
         return;
       }
@@ -816,8 +845,7 @@ const UserProfilePage = ({
         teamSearchRefresh: true,
       });
       setSuccessMessage(data.message || 'Community ID confirmed.');
-      setHasSaved(true);
-      await loadProfile({ cacheBust: true });
+      await loadProfile({ cacheBust: true, preserveDraft: true });
       // Profile reload can briefly miss the new coach_teams seat; keep confirmed UI.
       if (confirmedSeat) {
         setTeamSeat(confirmedSeat);
@@ -891,10 +919,21 @@ const UserProfilePage = ({
         ? 'Email updated and verified.'
         : 'Email verified. You can appear as a sponsor to new members.',
     );
-    setHasSaved(true);
+    const currentForm = formRef.current || form;
+    const activeDraftIssues = (Array.isArray(currentForm?.recoveredHealthIssues) && currentForm.recoveredHealthIssues.length > 0)
+      ? currentForm.recoveredHealthIssues
+      : (readDraftHealthIssues(sessionUserId) || []);
+    const hasUnsavedChanges = Boolean(
+      currentForm?.isDirty
+      || (Array.isArray(activeDraftIssues) && activeDraftIssues.length > 0)
+    );
+    if (!hasUnsavedChanges) {
+      setHasSaved(true);
+    }
     await loadProfile({
       cacheBust: true,
       email: nextEmail || undefined,
+      preserveDraft: true,
     });
   }, [form, onProfileUpdate, loadProfile, accountEmail, sessionUserId, onBack]);
 
@@ -1215,7 +1254,7 @@ const UserProfilePage = ({
                     form.setEventLevel(code);
                     setCommunityPositionRequest(null);
                   }}
-                  onSettled={() => loadProfile({ cacheBust: true })}
+                  onSettled={() => loadProfile({ cacheBust: true, preserveDraft: true })}
                 />
                 <WorkingPhysicalCentreField
                   userId={resolvedUserId}
