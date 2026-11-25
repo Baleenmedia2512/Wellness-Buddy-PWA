@@ -6,7 +6,10 @@ import { avatarUrlForKey, r2AvatarsEnabled } from '../../user/avatar-storage.ser
 import {
   findActiveCentersByOwnerIds,
   findCenterById,
+  listCenterPhotos,
 } from '../../nutrition-centers/centers.repository.js';
+import { parseStoredOpeningHours } from '../../nutrition-centers/domain/centreListing.rules.js';
+import { centrePhotoUrls } from '../../nutrition-centers/centre-photo-storage.service.js';
 import { fetchCityVillage } from '../../../shared/lib/reverseGeocode.js';
 import { hydratePortfolioFormFromApp } from '../domain/hydrate-from-app.rules.js';
 
@@ -17,6 +20,9 @@ const EMPTY_CLUB = {
   mapsLink: null,
   latitude: null,
   longitude: null,
+  openingHours: null,
+  photos: null,
+  ownerPhone: null,
 };
 
 function sortOwnedCenters(list) {
@@ -49,6 +55,29 @@ async function loadOwnedCenterDetails(userId, centerId) {
     longitude = lng;
     mapsLink = `https://maps.google.com/?q=${lat},${lng}`;
   }
+
+  let openingHours = null;
+  try {
+    openingHours = parseStoredOpeningHours(center.opening_hours_json);
+  } catch {
+    openingHours = null;
+  }
+
+  let photos = {
+    entrance: [],
+    interior: [],
+    name_board: [],
+    wellness_activity: [],
+  };
+  try {
+    const rows = await listCenterPhotos(centerId);
+    photos = await centrePhotoUrls(Array.isArray(rows) ? rows : []);
+  } catch {
+    // Photos are best-effort — never block public portfolio SSR.
+  }
+
+  const ownerPhone = String(center.owner_phone || '').trim() || null;
+
   return {
     hasClub: true,
     centerId: Number(centerId),
@@ -56,6 +85,9 @@ async function loadOwnedCenterDetails(userId, centerId) {
     mapsLink,
     latitude,
     longitude,
+    openingHours,
+    photos,
+    ownerPhone,
   };
 }
 
@@ -218,6 +250,9 @@ export async function getAppPortfolioHeroPhotoUrl(userId) {
  *   mapsLink: string|null,
  *   latitude: number|null,
  *   longitude: number|null,
+ *   openingHours: object|null,
+ *   photos: Record<string, string[]>|null,
+ *   ownerPhone: string|null,
  * }>}
  */
 export async function getAppWorkingClubForPortfolio(userId, centerId = null) {
@@ -234,6 +269,9 @@ export async function getAppWorkingClubForPortfolio(userId, centerId = null) {
       mapsLink: club.mapsLink,
       latitude: club.latitude,
       longitude: club.longitude,
+      openingHours: club.openingHours ?? null,
+      photos: club.photos ?? null,
+      ownerPhone: club.ownerPhone ?? null,
     };
   } catch {
     return { ...EMPTY_CLUB };
@@ -271,6 +309,7 @@ export async function hydrateFormWithAppData(userId, form, { centerId = null } =
   } catch {
     // Intro columns may be missing on older DBs — never block portfolio.
   }
+  let openingHours = null;
   try {
     // Freestyle (no CenterId): keep typed City/Area — do not overwrite from primary club GPS.
     if (centerId != null) {
@@ -279,6 +318,7 @@ export async function hydrateFormWithAppData(userId, form, { centerId = null } =
         centerName = club.centerName;
         latitude = club.latitude;
         longitude = club.longitude;
+        openingHours = club.openingHours ?? null;
         if (latitude != null && longitude != null) {
           const place = await fetchCityVillage(latitude, longitude);
           city = place.city || null;
@@ -301,6 +341,7 @@ export async function hydrateFormWithAppData(userId, form, { centerId = null } =
     longitude,
     city,
     locality,
+    openingHours,
     professionalTitle: intro.professionalTitle,
     aboutMe: intro.aboutMe,
     qualification: intro.qualification,

@@ -229,8 +229,8 @@ export default function AppNavTabs({
           iconClass="text-emerald-700"
           labelActiveClass="text-emerald-900"
           labelClass="text-emerald-800"
-          label="Digital Portfolio"
-          ariaLabel="Digital Portfolio"
+          label="Paid Feature"
+          ariaLabel="Paid Feature"
         />
       )}
       {mapBusinessEnabled && allow('map-business') && (

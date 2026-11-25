@@ -1468,6 +1468,10 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         entry={goodHabitDetail}
         ownerUserId={ownerId}
         timezoneIana={diaryOwnerTimezoneIana}
+        canReject={!viewingSelf}
+        onRejected={() => {
+          reloadDiary();
+        }}
         onClose={() => setGoodHabitDetail(null)}
       />
     )}

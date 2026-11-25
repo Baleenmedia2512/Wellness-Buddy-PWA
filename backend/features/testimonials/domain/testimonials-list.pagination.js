@@ -75,8 +75,9 @@ export function isRealImagePath(path) {
  * @returns {{ filledCount: number, totalSlots: number, level: string }}
  */
 export function computeUploadCompletenessFromRow(t) {
+  const TOTAL_SLOTS = 4;
   if (!t) {
-    return { filledCount: 0, totalSlots: 5, level: 'not_uploaded' };
+    return { filledCount: 0, totalSlots: TOTAL_SLOTS, level: 'not_uploaded' };
   }
 
   const videoOnly = isRealImagePath(t.before_image_path) === false
@@ -86,6 +87,8 @@ export function computeUploadCompletenessFromRow(t) {
   const hasBefore = isRealImagePath(t.before_image_path);
   const hasAfter = isRealImagePath(t.after_image_path)
     && (t.status === 'pending' || t.status === 'verified');
+  // Collage UI: Before+After are one transformation photo section.
+  const hasTransformPhoto = hasBefore || hasAfter;
   const hasHealthVideo = !!t.health_video_path;
   const hasBusinessVideo = !!t.business_video_path;
   const issues = t.recovered_health_issues ?? [];
@@ -93,17 +96,17 @@ export function computeUploadCompletenessFromRow(t) {
 
   // Video-only placeholder with no videos → treat as empty (matches enrich null)
   if (videoOnly && !hasHealthVideo && !hasBusinessVideo) {
-    return { filledCount: 0, totalSlots: 5, level: 'not_uploaded' };
+    return { filledCount: 0, totalSlots: TOTAL_SLOTS, level: 'not_uploaded' };
   }
 
-  const filledCount = [hasBefore, hasAfter, hasHealthVideo, hasBusinessVideo, hasHealthIssues]
+  const filledCount = [hasTransformPhoto, hasHealthVideo, hasBusinessVideo, hasHealthIssues]
     .filter(Boolean).length;
 
   let level = 'not_uploaded';
-  if (filledCount === 5) level = 'fully_uploaded';
+  if (filledCount === TOTAL_SLOTS) level = 'fully_uploaded';
   else if (filledCount > 0) level = 'partial_upload';
 
-  return { filledCount, totalSlots: 5, level };
+  return { filledCount, totalSlots: TOTAL_SLOTS, level };
 }
 
 /**

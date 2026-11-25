@@ -67,6 +67,12 @@ import {
 } from '../domain/communityPosition';
 import { consumeCommunityPositionFill } from '../domain/communityPositionFocus';
 import {
+  clearProfileIntroFill,
+  peekProfileIntroFill,
+  profileIntroFieldDomId,
+  scrollProfileFieldIntoView,
+} from '../domain/profileIntroFocus';
+import {
   overlayProfileOtpConfirmation,
   rememberProfileOtpConfirmation,
 } from '../domain/profileOtpHold';
@@ -163,6 +169,7 @@ const UserProfilePage = ({
     if (!email && !uid) return false;
     return !getCachedProfile({ email, userId: uid })?.data;
   });
+  const [introHighlightKeys, setIntroHighlightKeys] = useState([]);
   useEffect(() => {
     if (isLoading || !consumeCommunityPositionFill()) return undefined;
     let tries = 0;
@@ -178,6 +185,46 @@ const UserProfilePage = ({
       }
     }, 200);
     return () => clearInterval(timer);
+  }, [isLoading]);
+  useEffect(() => {
+    if (isLoading) return undefined;
+    const keys = peekProfileIntroFill();
+    if (!keys.length) return undefined;
+    setIntroHighlightKeys(keys);
+    let tries = 0;
+    let done = false;
+    const firstId = profileIntroFieldDomId(keys[0]);
+    const attemptScroll = () => {
+      if (done) return;
+      const field = document.getElementById(firstId);
+      tries += 1;
+      if (field) {
+        done = true;
+        // Wait one frame so red highlight layout is applied, then scroll the ios-scroll-body.
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => {
+            scrollProfileFieldIntoView(field);
+            const focusable = field.querySelector('input, textarea, button');
+            try {
+              focusable?.focus?.({ preventScroll: true });
+            } catch {
+              focusable?.focus?.();
+            }
+            clearProfileIntroFill();
+          });
+        });
+        return;
+      }
+      if (tries > 40) {
+        done = true;
+        clearProfileIntroFill();
+      }
+    };
+    const timer = setInterval(attemptScroll, 100);
+    attemptScroll();
+    return () => {
+      clearInterval(timer);
+    };
   }, [isLoading]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -1107,7 +1154,11 @@ const UserProfilePage = ({
                     qualification: form.qualification,
                     languages: form.languages,
                   }}
-                  onChange={form.setIntroField}
+                  onChange={(key, value) => {
+                    form.setIntroField(key, value);
+                    setIntroHighlightKeys((prev) => prev.filter((k) => k !== key));
+                  }}
+                  highlightKeys={introHighlightKeys}
                 />
                 <IdealWeightCards
                   height={form.height}

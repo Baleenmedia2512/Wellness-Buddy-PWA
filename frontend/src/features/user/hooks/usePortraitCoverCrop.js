@@ -13,9 +13,9 @@ export const PORTRAIT_COVER_ASPECT = 9 / 16;
 
 const PORTRAIT_CROP_OPTS = {
   square: false,
-  maxDimension: 1200,
-  targetBytes: 900 * 1024,
-  startQuality: 0.85,
+  maxDimension: 1920,
+  targetBytes: 800 * 1024,
+  startQuality: 0.92,
 };
 
 function cropPortraitCover(src, pixels, rotation) {

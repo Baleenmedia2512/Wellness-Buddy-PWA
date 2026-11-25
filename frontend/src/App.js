@@ -269,6 +269,7 @@ import { ADMIN_CONFIG_TABS } from "./shell/domain/adminConfigSetupTabs";
 import { isAdminLikeRole, normalizeAppRole, ROLE_USER } from "./shared/constants/roles";
 import { canAccessReportsModule } from "./features/reports/domain/reportsAccess.rules.js";
 import { OPEN_COMMUNITY_POSITION_EVENT } from "./features/user/domain/communityPositionFocus";
+import { OPEN_PROFILE_INTRO_EVENT } from "./features/user/domain/profileIntroFocus";
 import {
   fetchNavAccessForMe,
   resolveNavTargetOrFallback,
@@ -3208,15 +3209,20 @@ function WellnessValleyApp() {
   useEffect(() => {
     const openProfile = () => navigateTo('profile');
     window.addEventListener(OPEN_COMMUNITY_POSITION_EVENT, openProfile);
-    return () => window.removeEventListener(OPEN_COMMUNITY_POSITION_EVENT, openProfile);
+    window.addEventListener(OPEN_PROFILE_INTRO_EVENT, openProfile);
+    return () => {
+      window.removeEventListener(OPEN_COMMUNITY_POSITION_EVENT, openProfile);
+      window.removeEventListener(OPEN_PROFILE_INTRO_EVENT, openProfile);
+    };
   }, [navigateTo]);
   // -- Permission flow ------------------------------------------------------
   //
   // Design: zero custom screens before OS dialogs. Permissions are requested
   // immediately in order. The PermissionBlockedDialog appears only AFTER an OS
   // prompt has been denied, as a last-resort block. Required permissions
-  // (camera, location) block the app entirely; optional ones (notifications, contacts)
-  // are silently skipped on denial.
+  // (camera, location) block the app entirely; optional notifications are
+  // silently skipped on denial. Contacts is NOT requested here — only when a
+  // coach saves a Body Parameters member to device contacts (App Store 5.1.2).
   //
   // States
   //   activePermission = null          ? no gate, home accessible
@@ -3230,10 +3236,11 @@ function WellnessValleyApp() {
   const _permissionFlowRunningRef = useRef(false);
 
   /**
-   * Walk [camera → location → contacts → notifications] in order.
+   * Walk [camera → location → notifications] in order.
    *
-   * Contacts is asked before notifications so the dialog is not dropped after
-   * the push prompt. Contacts is optional — denial does not block the app.
+   * Contacts is intentionally omitted: request only at Body Parameters card
+   * save time (local device write; never uploaded). Asking at login caused
+   * App Store Guideline 5.1.2 review flags.
    *
    * For every non-granted permission, requestPermission() is called
    * IMMEDIATELY — no pre-dialog, no canRequest gate on the first check.
@@ -3246,8 +3253,8 @@ function WellnessValleyApp() {
    * the blocking dialog before the OS prompt ever fired.
    *
    * The OS itself is the arbiter:
-   *   � First-time / 'prompt' ? OS shows the system dialog.
-   *   � Permanent denial    ? OS silently returns 'denied'; no dialog shown.
+   *   First-time / 'prompt' → OS shows the system dialog.
+   *   Permanent denial → OS silently returns 'denied'; no dialog shown.
    *
    * After requestPermission returns we re-check canRequest to decide whether
    * to offer "Allow Again" (still requestable) or just "Exit App" (permanent).
@@ -3258,9 +3265,7 @@ function WellnessValleyApp() {
     _permissionFlowRunningRef.current = true;
 
     try {
-      // Contacts before notifications — iOS often drops a 4th prompt if it
-      // immediately follows the push dialog. Brief pause lets prior sheet settle.
-      const PERMISSIONS = ['camera', 'location', 'contacts', 'notifications'];
+      const PERMISSIONS = ['camera', 'location', 'notifications'];
 
       for (const type of PERMISSIONS) {
         const config = PermissionManager.PERMISSION_CONFIG[type];
@@ -3280,18 +3285,6 @@ function WellnessValleyApp() {
           }
         }
 
-        if (type === 'contacts') {
-          const nativeOk = await PermissionManager.isContactsNativeAvailable();
-          if (!nativeOk) {
-            console.error(
-              '[App] Skipping Contacts prompt — native plugin not linked. Rebuild iOS after pod install.',
-            );
-            continue;
-          }
-          // Let the previous OS sheet fully dismiss before showing Contacts.
-          await new Promise((r) => setTimeout(r, 450));
-        }
-
         // Not granted — request directly. The OS either shows a dialog
         // (first-time or 'prompt') or silently returns denied (permanent).
         // We never show a custom screen before this call.
@@ -3299,7 +3292,7 @@ function WellnessValleyApp() {
         if (nowGranted) continue;
 
         // Request returned denied.
-        if (!config.required) continue; // Notifications / contacts optional — skip.
+        if (!config.required) continue; // Notifications optional — skip.
 
         // Required permission denied. Re-check canRequest NOW — this
         // post-request value is accurate: Capacitor correctly maps 'prompt'
@@ -8842,9 +8835,10 @@ function WellnessValleyApp() {
           profileKey={headerProfileKey}
         />
         <div className="ios-scroll-body">
-          <Suspense fallback={<LoadingSpinner message="Loading Digital Portfolio..." />}>
+          <Suspense fallback={<LoadingSpinner message="Loading Paid Feature..." />}>
             <PaidFeaturesPage
               userId={user?.id || user?.UserId || user?.userId || null}
+              allowedPages={navAccessPages}
               onClose={() => navigateTo('home')}
             />
           </Suspense>

@@ -44,7 +44,7 @@ function buildRankBadgeDataUri(rank, colorClass = '') {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
-export default function LeaderboardRankBadge({ rank = 1, colorClass = '' }) {
+export default function LeaderboardRankBadge({ rank = 1, colorClass = '', className = '' }) {
   const src = useMemo(() => buildRankBadgeDataUri(rank, colorClass), [rank, colorClass]);
 
   return (
@@ -53,7 +53,7 @@ export default function LeaderboardRankBadge({ rank = 1, colorClass = '' }) {
       alt={`Rank ${rank}`}
       width={36}
       height={36}
-      className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 select-none drop-shadow-sm pointer-events-none"
+      className={className || "w-8 h-8 sm:w-9 sm:h-9 shrink-0 select-none drop-shadow-sm pointer-events-none"}
       draggable={false}
     />
   );

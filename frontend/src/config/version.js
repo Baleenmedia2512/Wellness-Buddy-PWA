@@ -74,35 +74,39 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.5.6',
+  VERSION: '3.5.7',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
   // NOTE: versionCode must never decrease for Play Store compatibility.
-  VERSION_CODE: 87,
+  VERSION_CODE: 88,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
   // Must be > last App Store build (3.5.5 was build 84).
-  IOS_BUILD_NUMBER: 85,
+  IOS_BUILD_NUMBER: 86,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version  3.5.6',
+  RELEASE_NAME: 'Version  3.5.7',
   
   // Build date
-  BUILD_DATE: '2026-11-18',
+  BUILD_DATE: '2026-11-20',
   
   // Platform release notes..
   PLATFORMS: {
-    ANDROID: { versionCode: 87, versionName: '3.5.6' },
-    IOS: { buildNumber: 85, versionName: '3.5.6' },
+    ANDROID: { versionCode: 88, versionName: '3.5.7' },
+    IOS: { buildNumber: 86, versionName: '3.5.7' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
  * 
+ * Version 3.5.7 (Code 88 / iOS build 86) - 2026-11-20 [ANDROID + iOS — not yet released]
+ *   ✨ Digital Portfolio — ₹399/yr per website slot (Cashfree); hub open without Premium
+ *   ✨ Public coach page live-syncs profile about/title/photo + club media/location
+ *
  * Version 3.5.6 (Code 87 / iOS build 85) - 2026-11-18 [ANDROID + iOS — not yet released]
- *   ✨ Task by Coach — coach email OTP before save; score only on verify IST day
+ *   ✨ Task by Coach — save + score now; coach email with Reject (no OTP)
  *   ✨ Home Top 10 date filter (Today / Yesterday / Last 10 / Custom up to 30 days)
  *   ✨ Profile role badge — Customer / Sponsor / Admin / Developer
  *
