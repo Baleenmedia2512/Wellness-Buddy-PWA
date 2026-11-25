@@ -2,7 +2,7 @@
  * Profile introduction limits. Matches backend/features/user/domain/profileIntro.rules.js.
  * About me is 500 characters. Qualification is 250 characters.
  */
-import { WORLD_LANGUAGES } from './worldLanguages';
+import { WORLD_LANGUAGES } from './worldLanguages.js';
 
 export const PROFESSIONAL_TITLE_MAX = 80;
 export const ABOUT_ME_MAX = 500;
@@ -95,8 +95,12 @@ function hostAllowed(raw, kind) {
 
 export function validateProfileIntro(values = {}, keys = PROFILE_INTRO_KEYS) {
   const ask = (key) => !keys || keys.includes(key);
-  if (ask('professionalTitle') && String(values.professionalTitle || '').trim().length > PROFESSIONAL_TITLE_MAX) {
-    return `Professional title can be up to ${PROFESSIONAL_TITLE_MAX} characters.`;
+  if (ask('professionalTitle')) {
+    const title = String(values.professionalTitle || '').trim();
+    if (!title) return 'Professional title is required.';
+    if (title.length > PROFESSIONAL_TITLE_MAX) {
+      return `Professional title can be up to ${PROFESSIONAL_TITLE_MAX} characters.`;
+    }
   }
   if (ask('instagram') && !hostAllowed(values.instagram, 'instagram')) {
     return 'Enter an Instagram link, such as https://instagram.com/your-name.';

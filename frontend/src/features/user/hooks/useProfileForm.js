@@ -10,6 +10,7 @@ import {
 import { normalizeCommunityId, validateCommunityId, COMMUNITY_ID_OTP_FLAG } from '../domain/communityId';
 import { COMMUNITY_POSITION_OTP_FLAG } from '../domain/communityPosition';
 import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked } from '../domain/heightChange';
+import { usesUnifiedProfileChangeOtp } from '../domain/profileChange';
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { introPayload, validateProfileIntro } from '../domain/profileIntro';
 
@@ -310,7 +311,8 @@ export default function useProfileForm(initial = {}) {
     if (requireFat && !fatPercentValid) {
       return `Please enter Fat % (${MIN_BODY_FAT_PCT}–${MAX_BODY_FAT_PCT}%).`;
     }
-    const skipCommunityIdOnSave = isFlagEnabled(COMMUNITY_ID_OTP_FLAG);
+    const unifiedSaveOtp = usesUnifiedProfileChangeOtp();
+    const skipCommunityIdOnSave = !unifiedSaveOtp && isFlagEnabled(COMMUNITY_ID_OTP_FLAG);
     if (!skipCommunityIdOnSave) {
       const communityIdCheck = validateCommunityId(communityId);
       if (!communityIdCheck.valid) return communityIdCheck.message;
@@ -321,7 +323,9 @@ export default function useProfileForm(initial = {}) {
   };
 
   const payload = (emailArg, extras = {}) => {
-    const skipHeightOnSave = isFlagEnabled(HEIGHT_CHANGE_OTP_FLAG)
+    const unifiedSaveOtp = usesUnifiedProfileChangeOtp();
+    const skipHeightOnSave = !unifiedSaveOtp
+      && isFlagEnabled(HEIGHT_CHANGE_OTP_FLAG)
       && isHeightLocked(extras.lockedHeight);
     const body = {
       email: emailArg,
@@ -346,7 +350,7 @@ export default function useProfileForm(initial = {}) {
       body.height = height ? parseFloat(height) : undefined;
     }
 
-    if (!isFlagEnabled(COMMUNITY_ID_OTP_FLAG)) {
+    if (unifiedSaveOtp || !isFlagEnabled(COMMUNITY_ID_OTP_FLAG)) {
       body.communityId = normalizeCommunityId(communityId);
     }
 
@@ -363,7 +367,7 @@ export default function useProfileForm(initial = {}) {
     body.eventYourCity = eventYourCity && String(eventYourCity).trim() !== ''
       ? String(eventYourCity).trim()
       : null;
-    if (!isFlagEnabled(COMMUNITY_POSITION_OTP_FLAG)) {
+    if (unifiedSaveOtp || !isFlagEnabled(COMMUNITY_POSITION_OTP_FLAG)) {
       body.eventLevel = eventLevel && String(eventLevel).trim() !== ''
         ? String(eventLevel).trim()
         : null;

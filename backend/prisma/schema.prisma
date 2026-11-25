@@ -259,6 +259,23 @@ model community_position_requests_table {
   @@index([RequesterId, Status], map: "idx_community_position_requests_requester_status")
 }
 
+model profile_change_requests_table {
+  Id             BigInt    @id @default(autoincrement())
+  RequesterId    BigInt
+  ApproverId     BigInt
+  PendingPayload Json
+  ChangedKeys    Json
+  OtpHash        String    @db.VarChar(255)
+  OtpExpiresAt   DateTime
+  OtpSentAt      DateTime?
+  OtpAttempts    Int       @default(0)
+  Status         String    @default("pending") @db.VarChar(16)
+  RequestedAt    DateTime
+  ProcessedAt    DateTime?
+
+  @@index([RequesterId, Status], map: "idx_profile_change_requests_requester_status")
+}
+
 model daily_step_activity {
   Id             BigInt          @id @default(autoincrement())
   UserId         BigInt

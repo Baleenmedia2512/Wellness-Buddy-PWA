@@ -74,33 +74,48 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.5.7',
+  // App semver (X-App-Version). iOS App Store marketing string may stay on
+  // rejected 3.5.6 in Info.plist while this build number increments.
+  VERSION: '3.5.8',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
   // NOTE: versionCode must never decrease for Play Store compatibility.
-  VERSION_CODE: 88,
+  VERSION_CODE: 89,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
-  // Must be > last App Store build (3.5.5 was build 84).
-  IOS_BUILD_NUMBER: 86,
+  // Must be > last App Store submitted build (3.5.6 build 87 rejected for 5.1.1(iv)).
+  IOS_BUILD_NUMBER: 91,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version  3.5.7',
+  RELEASE_NAME: 'Version  3.5.8',
   
   // Build date
-  BUILD_DATE: '2026-11-20',
+  BUILD_DATE: '2026-11-24',
   
   // Platform release notes..
   PLATFORMS: {
-    ANDROID: { versionCode: 88, versionName: '3.5.7' },
-    IOS: { buildNumber: 86, versionName: '3.5.7' },
+    ANDROID: { versionCode: 89, versionName: '3.5.8' },
+    IOS: { buildNumber: 91, versionName: '3.5.6' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
- * 
+ *
+ * Version 3.5.6 (iOS build 91) - 2026-11-25 [iOS App Store 5.1.1(iv)]
+ *   🔒 Location soft like Camera — no Allow Again / Exit / GPS app block after Deny
+ *
+ * Version 3.5.6 (iOS build 89) - 2026-11-25 [iOS App Store 5.1.1(iv)]
+ *   🔒 Camera denial respected — Settings only at Take Photo; AppSettingsPlugin for Open Settings
+ *   🐛 iOS: Lucide icons (emoji showed as "?"); Open Settings works again (App.openUrl removed in Cap 8)
+ *
+ * Version 3.5.6 (iOS build 88) - 2026-11-24 [iOS App Store 5.1.1(iv)]
+ *   🔒 Camera denial respected — no Allow Again / Exit gate; Settings only at Take Photo
+ *
+ * Version 3.5.7 (Code 88 / iOS build 87) - 2026-11-23 [iOS App Store resubmit]
+ *   🔒 App Store 5.1.2 — Contacts asked only at BCM save; usage string says not uploaded
+ *
  * Version 3.5.7 (Code 88 / iOS build 86) - 2026-11-20 [ANDROID + iOS — not yet released]
  *   ✨ Digital Portfolio — ₹399/yr per website slot (Cashfree); hub open without Premium
  *   ✨ Public coach page live-syncs profile about/title/photo + club media/location

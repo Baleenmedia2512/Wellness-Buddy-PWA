@@ -1,6 +1,6 @@
 /**
  * Profile: title, social links, community date, about, qualification, languages you speak.
- * Links are optional until an admin makes the field required.
+ * Professional title is always required. Social links stay optional unless highlighted.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { LANGUAGE_BY_CODE, WORLD_LANGUAGES } from '../../domain/worldLanguages';
@@ -20,12 +20,13 @@ const inputClass =
 const highlightInputClass =
   'w-full px-3 py-2 border-2 border-rose-500 rounded-lg ring-2 ring-rose-200 focus:ring-2 focus:ring-rose-500 focus:border-rose-600 outline-none bg-rose-50/40 text-gray-900';
 
-function FieldLabel({ children, hint, requiredMark = false }) {
+function FieldLabel({ children, hint, requiredMark = false, required = false }) {
+  const showStar = requiredMark || required;
   return (
     <div className="mb-1">
       <span className={`block text-sm font-medium ${requiredMark ? 'text-rose-700' : 'text-gray-700'}`}>
         {children}
-        {requiredMark ? <span className="ml-1 font-semibold text-rose-600">*</span> : null}
+        {showStar ? <span className="ml-1 font-semibold text-rose-600">*</span> : null}
       </span>
       {hint ? (
         <span className={`block text-xs ${requiredMark ? 'text-rose-500' : 'text-gray-400'}`}>{hint}</span>
@@ -194,21 +195,22 @@ export default function ProfileIntroFields({
       {show('professionalTitle') && (
         <div id={profileIntroFieldDomId('professionalTitle')} className={wrapClass('professionalTitle')}>
           <FieldLabel
+            required
             requiredMark={marked('professionalTitle')}
-            hint={marked('professionalTitle')
-              ? `Required — up to ${PROFESSIONAL_TITLE_MAX} characters.`
-              : `Up to ${PROFESSIONAL_TITLE_MAX} characters. Example: Wellness coach`}
+            hint={`Required — up to ${PROFESSIONAL_TITLE_MAX} characters. Example: Wellness coach`}
           >
             Professional title
           </FieldLabel>
           <input
             type="text"
+            required
             maxLength={PROFESSIONAL_TITLE_MAX}
             value={values.professionalTitle || ''}
             onChange={set('professionalTitle')}
             placeholder=""
             className={fieldClass('professionalTitle')}
             style={{ fontSize: '16px' }}
+            aria-required="true"
           />
         </div>
       )}

@@ -155,6 +155,7 @@ All work-in-progress is gated behind a feature flag. No exception.
 | `ff.community-id-otp` | ON | @principal-eng | 2027-03-18 | ADR-0013 — Profile Community ID create/co-sponsor via 24h sponsor OTP. Live 3.4.9 still saves Community ID on profile POST; 3.5.0+ uses OTP. |
 | `ff.community-position-otp` | ON | @principal-eng | 2027-05-11 | ADR-0015 — Profile Community Position is a catalog role. Coach OTP on select. Apps below 3.5.6, and requests with no version, still save the legacy list on profile POST. |
 | `ff.height-change-otp` | ON | @principal-eng | 2027-03-25 | Profile height: first save free; later changes need email/phone OTP. Apps below 3.5.0 still change height on profile POST; 3.5.0+ uses OTP. |
+| `ff.profile-change-sponsor-otp` | ON | @principal-eng | 2027-05-24 | ADR-0018 — One coach OTP on Profile Save for later gated field changes. First fill free. Apps below 3.5.8 (and missing version) keep per-field OTP / immediate save. |
 | `ff.broadcast` | ON | @principal-eng | 2027-03-29 | BroadCast paid screen: how-to video and payment entry. Upload and Burst stay locked until recharge is connected. |
 | `ff.go-premium` | ON | @principal-eng | 2027-04-28 | Profile Go Premium opens Cashfree checkout. Kill switch hides the row and the create-order API. |
 | `ff.report-trial` | ON | @principal-eng | 2027-05-05 | Reports stay open. Unpaid detail hides until a 14-day trial or Premium. Apps below 3.5.5, and requests with no version, keep the full report. |

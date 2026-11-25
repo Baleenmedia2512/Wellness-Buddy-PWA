@@ -149,7 +149,7 @@ const PrivacyPolicy = ({ onClose }) => {
 
               <h4 className="font-semibold text-gray-700 mb-2">5.2 App Permissions</h4>
               <ul className="list-disc list-inside ml-4 space-y-1 mb-3">
-                <li><strong>Camera:</strong> Required for food photo analysis (can be revoked)</li>
+                <li><strong>Camera:</strong> Used for food photo analysis when you choose Take Photo (you can deny or revoke access anytime; other app features still work)</li>
                 <li><strong>Storage:</strong> For saving photos and app data locally</li>
                 <li><strong>Internet:</strong> For syncing data and AI analysis</li>
                 <li><strong>Notifications:</strong> For wellness reminders (optional)</li>

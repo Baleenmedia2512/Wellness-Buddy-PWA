@@ -96,7 +96,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const cacheKey = `lb:hierarchy:wellness:v4:${viewerUserId}:${topN}:${scoreDate}:d${windowDays}`;
+    const cacheKey = `lb:hierarchy:wellness:v5:${viewerUserId}:${topN}:${scoreDate}:d${windowDays}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       res.setHeader('X-Cache', 'HIT');
@@ -195,8 +195,8 @@ export default async function handler(req, res) {
 
     const activeMap = new Map(appUsers.map((u) => [Number(u.UserId), u]));
     const candidates = windowDays === 1
-      ? candidatesFromSingleDay(activeMap, scores)
-      : candidatesFromWindow(activeMap, scores);
+      ? candidatesFromSingleDay(activeMap, scores, windowDays)
+      : candidatesFromWindow(activeMap, scores, windowDays);
 
     const ranked = rankWellnessLeaderboardEntries(
       candidates,
@@ -251,24 +251,47 @@ export default async function handler(req, res) {
 }
 
 /**
+ * Determine the configured daily max score from the retrieved score rows.
+ * Defaults to 1000 if not present or lower.
+ * @param {Array<object>} scores
+ * @returns {number}
+ */
+function resolveDailyMaxPossible(scores) {
+  let max = 0;
+  for (const s of scores || []) {
+    const p = Number(s?.total_possible) || 0;
+    if (p > max) max = p;
+  }
+  return max > 0 ? max : 1000;
+}
+
+/**
  * @param {Map<number, object>} activeMap
  * @param {Array<object>} scores
+ * @param {number} [windowDays=1]
  */
-function candidatesFromSingleDay(activeMap, scores) {
+function candidatesFromSingleDay(activeMap, scores, windowDays = 1) {
   const scoreByUser = new Map();
   for (const row of scores) {
     const uid = Number(row.user_id);
     if (!scoreByUser.has(uid)) scoreByUser.set(uid, row);
   }
 
+  const dailyPossible = resolveDailyMaxPossible(scores);
+  const fixedPossible = Math.max(1, Number(windowDays) || 1) * dailyPossible;
+
   const candidates = [];
   for (const [uid, row] of scoreByUser) {
     const user = activeMap.get(uid);
     if (!user) continue;
+    const earned = Number(row.total_earned) || 0;
+    const pct = fixedPossible > 0
+      ? Math.round((earned / fixedPossible) * 100)
+      : (Number(row.percentage) || 0);
     candidates.push(toCandidate(user, {
-      wellnessPercentage: Number(row.percentage) || 0,
-      totalEarned: row.total_earned,
-      totalPossible: row.total_possible,
+      wellnessPercentage: pct,
+      totalEarned: earned,
+      totalPossible: fixedPossible,
     }));
   }
   return candidates;
@@ -277,9 +300,11 @@ function candidatesFromSingleDay(activeMap, scores) {
 /**
  * @param {Map<number, object>} activeMap
  * @param {Array<object>} scores
+ * @param {number} windowDays
  */
-function candidatesFromWindow(activeMap, scores) {
-  const totalsByUser = aggregateWellnessWindowScores(scores);
+function candidatesFromWindow(activeMap, scores, windowDays) {
+  const dailyPossible = resolveDailyMaxPossible(scores);
+  const totalsByUser = aggregateWellnessWindowScores(scores, windowDays, dailyPossible);
   const candidates = [];
   for (const [uid, totals] of totalsByUser) {
     const user = activeMap.get(uid);

@@ -212,6 +212,16 @@ const REGISTRY = Object.freeze({
     description:    'Profile height lock after first save; OTP to change.',
   },
 
+  // ADR-0018 — one coach OTP on Profile Save for later gated field changes.
+  // Default ON. Set REACT_APP_FF_PROFILE_CHANGE_SPONSOR_OTP=false or
+  // localStorage 'ff.profile-change-sponsor-otp'='false' to restore legacy per-field OTP.
+  'ff.profile-change-sponsor-otp': {
+    envKey:         'REACT_APP_FF_PROFILE_CHANGE_SPONSOR_OTP',
+    storageKey:     'ff.profile-change-sponsor-otp',
+    defaultEnabled: true,
+    description:    'One coach OTP on Save for later profile field changes (3.5.8+).',
+  },
+
   // BroadCast — paid how-to + payment entry. Upload and Burst wait on recharge.
   // Default ON. Set REACT_APP_FF_BROADCAST=false or
   // localStorage 'ff.broadcast'='false' to hide the tab.

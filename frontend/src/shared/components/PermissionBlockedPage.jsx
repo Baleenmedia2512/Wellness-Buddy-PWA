@@ -17,15 +17,18 @@
  */
 import React, { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { Camera, MapPin, Bell } from 'lucide-react';
 import * as nativeLifecycle from '../services/nativeLifecycle/index.js';
 
 const PAGE_CONTENT = {
   camera: {
-    title: 'Camera Permission Required',
+    // Kept for completeness; camera must not gate the whole app (App Store 5.1.1(iv)).
+    title: 'Camera Access Needed',
     description:
-      'Wellness Valley uses your camera to capture meal photos for AI nutrition analysis. Without this permission, this feature cannot work.',
+      'Meal photo capture needs Camera access. You can enable it in Settings when you want to use that feature. The rest of the app still works.',
     accent: '#16a34a',
     iconBg: '#f0fdf4',
+    Icon: Camera,
   },
   location: {
     title: 'Location Permission Required',
@@ -33,6 +36,7 @@ const PAGE_CONTENT = {
       'Wellness Valley uses your location to automatically check you in at your nearest wellness center. Without this permission, attendance tracking cannot work.',
     accent: '#2563eb',
     iconBg: '#eff6ff',
+    Icon: MapPin,
   },
   notifications: {
     title: 'Notifications Permission Required',
@@ -40,6 +44,7 @@ const PAGE_CONTENT = {
       'Wellness Valley uses notifications to remind you to log your meals, water intake, and daily weight on time.',
     accent: '#d97706',
     iconBg: '#fffbeb',
+    Icon: Bell,
   },
 };
 
@@ -50,6 +55,7 @@ export default function PermissionBlockedPage({
   onExit,
 }) {
   const content = PAGE_CONTENT[type] ?? PAGE_CONTENT.camera;
+  const Icon = content.Icon;
   const [gpsOff, setGpsOff] = useState(false);
 
   useEffect(() => {
@@ -90,7 +96,7 @@ export default function PermissionBlockedPage({
         overflowY: 'auto',
       }}
     >
-      {/* Large icon in a soft circle */}
+      {/* Large icon in a soft circle — Lucide SVG (emoji shows as "?" on iOS WKWebView) */}
       <div
         style={{
           width: 100,
@@ -100,12 +106,13 @@ export default function PermissionBlockedPage({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontSize: 50,
           marginBottom: 32,
           flexShrink: 0,
         }}
       >
-        {config.icon}
+        {Icon
+          ? <Icon size={48} color={content.accent} strokeWidth={2} aria-hidden />
+          : null}
       </div>
 
       {/* Title */}

@@ -31,13 +31,13 @@ function matchRank(valueLower, queryLower) {
 
 /**
  * Build autocomplete suggestions from body-parameter cards.
- * Prefix matches (name/phone starting with the typed letters) are listed first.
+ * Prefix matches (name/phone/venue starting with the typed letters) are listed first.
  * Case-insensitive. Dedupes by display term.
  *
- * @param {Array<{ id?: string|number, name?: string|null, phoneNumber?: string|null }>} cards
+ * @param {Array<{ id?: string|number, name?: string|null, phoneNumber?: string|null, locationName?: string|null }>} cards
  * @param {string} query
  * @param {number} [limit]
- * @returns {Array<{ id: string|number|null, term: string, name: string, phoneNumber: string }>}
+ * @returns {Array<{ id: string|number|null, term: string, name: string, phoneNumber: string, locationName?: string }>}
  */
 export function buildBpcSearchSuggestions(cards, query, limit = DEFAULT_LIMIT) {
   const q = normalizeBpcSearchQuery(query);
@@ -50,37 +50,61 @@ export function buildBpcSearchSuggestions(cards, query, limit = DEFAULT_LIMIT) {
   for (const card of list) {
     const name = String(card?.name || '').trim();
     const phone = String(card?.phoneNumber || '').trim();
+    const venue = String(card?.locationName || '').trim();
     const nameRank = matchRank(name.toLowerCase(), q);
     const phoneRank = matchRank(phone.toLowerCase(), q);
+    const venueRank = matchRank(venue.toLowerCase(), q);
 
-    if (nameRank == null && phoneRank == null) continue;
+    if (nameRank == null && phoneRank == null && venueRank == null) continue;
 
-    // Prefer name when it matches; otherwise use phone as the suggestion term.
-    const useName = nameRank != null && (phoneRank == null || nameRank <= phoneRank);
-    const term = useName ? name : phone;
+    // Determine the best matching field:
+    // If name matches with equal or better rank than phone and venue, prefer name.
+    // Else if phone matches with equal or better rank than venue, prefer phone.
+    // Otherwise use venue.
+    let term = name;
+    let rank = nameRank ?? 999;
+    let fieldPriority = 1;
+
+    if (nameRank != null && (phoneRank == null || nameRank <= phoneRank) && (venueRank == null || nameRank <= venueRank)) {
+      term = name;
+      rank = nameRank;
+      fieldPriority = 1;
+    } else if (phoneRank != null && (venueRank == null || phoneRank <= venueRank)) {
+      term = phone;
+      rank = phoneRank;
+      fieldPriority = 2;
+    } else if (venueRank != null) {
+      term = venue;
+      rank = venueRank;
+      fieldPriority = 3;
+    }
+
     const key = term.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
 
-    const rank = useName ? nameRank : phoneRank;
     scored.push({
       id: card?.id ?? null,
       term,
       name,
       phoneNumber: phone,
+      locationName: venue,
       rank,
+      fieldPriority,
     });
   }
 
   scored.sort((a, b) => {
     if (a.rank !== b.rank) return a.rank - b.rank;
+    if (a.fieldPriority !== b.fieldPriority) return a.fieldPriority - b.fieldPriority;
     return a.term.localeCompare(b.term, undefined, { sensitivity: 'base' });
   });
 
-  return scored.slice(0, Math.max(0, limit)).map(({ id, term, name, phoneNumber }) => ({
+  return scored.slice(0, Math.max(0, limit)).map(({ id, term, name, phoneNumber, locationName }) => ({
     id,
     term,
     name,
     phoneNumber,
+    locationName,
   }));
 }
