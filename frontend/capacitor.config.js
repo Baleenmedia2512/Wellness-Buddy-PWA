@@ -101,7 +101,27 @@ const config = {
       style: 'light',
       resizeOnFullScreen: true
     }
-  }
+  },
+
+  // Capacitor 8 iOS/Android: only classes listed here are auto-registered.
+  // AppSettingsPlugin opens UIApplication.openSettingsURLString (App.openUrl
+  // was removed in @capacitor/app v8 — without this entry Open Settings is a no-op).
+  packageClassList: [
+    'ContactsPlugin',
+    'AppPlugin',
+    'CAPCameraPlugin',
+    'FilesystemPlugin',
+    'GeolocationPlugin',
+    'KeyboardPlugin',
+    'PushNotificationsPlugin',
+    'SharePlugin',
+    'SplashScreenPlugin',
+    'StatusBarPlugin',
+    'AndroidSmsRetrieverPlugin',
+    'CapgoNavigationBarPlugin',
+    'GoogleAuth',
+    'AppSettingsPlugin',
+  ],
 };
 
 module.exports = config;

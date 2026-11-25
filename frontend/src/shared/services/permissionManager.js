@@ -37,7 +37,6 @@
  */
 
 import { Capacitor } from '@capacitor/core';
-import { App as CapacitorApp } from '@capacitor/app';
 import { Camera } from '@capacitor/camera';
 import { Geolocation } from '@capacitor/geolocation';
 import { PushNotifications } from '@capacitor/push-notifications';
@@ -45,7 +44,7 @@ import { Contacts } from '@capacitor-community/contacts';
 
 // ── Permission type constants ─────────────────────────────────────────────────
 
-/** @typedef {'camera'|'location'|'notifications'|'contacts'} PermissionType */
+/** @typedef {'camera'|'photos'|'location'|'notifications'|'contacts'} PermissionType */
 
 /**
  * Static configuration for each permission.
@@ -53,19 +52,32 @@ import { Contacts } from '@capacitor-community/contacts';
  * label    : human-readable short name.
  * reason   : one-sentence use-case (inline prompt copy).
  * required : true = blocks app access; false = silently skipped on denial.
+ *
+ * Camera is NOT required (App Store Guideline 5.1.1(iv)):
+ * After the user denies Camera, we must respect that decision — no "Allow Again",
+ * no full-app block / Exit gate. Camera is requested at feature use; if still
+ * denied, show a dismissible notice with a Settings link only.
  */
 export const PERMISSION_CONFIG = {
   camera: {
     label: 'Camera',
     icon: '📷',
     reason: 'Snap your meal and get instant AI nutrition analysis.',
-    required: true,
+    required: false,
+  },
+  photos: {
+    label: 'Photos',
+    icon: '🖼️',
+    reason: 'Choose an existing meal photo from your gallery.',
+    required: false,
   },
   location: {
     label: 'Location',
     icon: '📍',
     reason: 'Auto-check in at your nearest wellness center and track your attendance.',
-    required: true,
+    // App Store 5.1.1(iv): do not block the whole app after Deny / no Allow Again.
+    // Request once at startup; Settings only when a location feature needs it.
+    required: false,
   },
   notifications: {
     label: 'Notifications',
@@ -135,6 +147,11 @@ export async function checkPermission(type) {
       const result = await Camera.checkPermissions();
       rawStatus = result?.camera;
       // iOS 'limited' = partial Photos access; treat as granted for our purposes.
+      if (rawStatus === 'limited') rawStatus = 'granted';
+    } else if (type === 'photos') {
+      const result = await Camera.checkPermissions();
+      rawStatus = result?.photos;
+      // iOS limited library selection is enough to pick a photo.
       if (rawStatus === 'limited') rawStatus = 'granted';
     } else if (type === 'location') {
       const result = await Geolocation.checkPermissions();
@@ -237,27 +254,14 @@ export async function requestPermission(type) {
 /**
  * Open this app's entry in the OS Settings app.
  *
- * Android: calls GalleryMonitorPlugin.openAppSettings() which fires
- *          ACTION_APPLICATION_DETAILS_SETTINGS — opens the app's own
- *          Permissions page directly. `app-settings:` is iOS-only and
- *          silently fails on Android.
- * iOS:     uses the `app-settings:` URL scheme via CapacitorApp.openUrl().
+ * Android: GalleryMonitorPlugin → ACTION_APPLICATION_DETAILS_SETTINGS.
+ * iOS:     AppSettingsPlugin → UIApplication.openSettingsURLString
+ *          (@capacitor/app v8 removed App.openUrl / app-settings:).
  * Web:     no-op.
  */
 export async function openAppSettings() {
-  if (!Capacitor.isNativePlatform()) return;
-  const platform = Capacitor.getPlatform();
-  try {
-    if (platform === 'android') {
-      const { GalleryMonitorPlugin } = await import('../plugins/galleryMonitorPlugin.js');
-      await GalleryMonitorPlugin.openAppSettings();
-    } else {
-      // iOS: app-settings: opens this app's Settings entry.
-      await CapacitorApp.openUrl({ url: 'app-settings:' });
-    }
-  } catch (err) {
-    console.warn('[PermissionManager] openAppSettings failed:', err);
-  }
+  const { openNativeAppSettings } = await import('../plugins/appSettingsPlugin.js');
+  await openNativeAppSettings();
 }
 
 // ── Sequential flow helper ────────────────────────────────────────────────────
