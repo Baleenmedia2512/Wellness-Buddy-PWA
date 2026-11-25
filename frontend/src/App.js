@@ -234,6 +234,7 @@ import {
   isCaptureFlowBusy,
 } from "./shared/services/captureFlowBusy";
 import PermissionDeniedModal from "./shared/components/PermissionDeniedModal";
+import CameraPermissionNeededModal from "./shared/components/CameraPermissionNeededModal";
 import PermissionBlockedPage from "./shared/components/PermissionBlockedPage";
 import GpsRequiredModal from "./shared/components/GpsRequiredModal";
 import * as authFsm from "./shared/services/auth/fsm";
@@ -474,12 +475,16 @@ function WellnessValleyApp() {
   // Services are disabled on the device. Blocks home access until GPS is on.
   const [showGpsRequired, setShowGpsRequired] = useState(false);
   // Active per-permission gate. null = no gate active.
-  // { type: 'camera'|'location'|'notifications'|'contacts', canRequest: boolean }
-  // canRequest: true  ? OS can re-prompt � show [Allow Again] [Exit App]
-  // canRequest: false ? permanently denied � show [Exit App] only
+  // Location only (camera is never an app-wide gate — App Store 5.1.1(iv)).
+  // { type: 'location'|..., canRequest: boolean }
+  // canRequest: true  → OS can re-prompt → show [Allow Again] [Exit App]
+  // canRequest: false → permanently denied → show Settings / Exit
   const [activePermission, setActivePermission] = useState(null);
   // True while a native OS permission dialog is pending ("Allow Again" spinner).
   const [permissionDialogLoading, setPermissionDialogLoading] = useState(false);
+  // Dismissible Camera/Photos notice after OS denial (App Store 5.1.1(iv)).
+  // iOS will not re-prompt — only Settings. kind: null | 'camera' | 'photos'
+  const [mediaPermissionNeeded, setMediaPermissionNeeded] = useState(null);
   // Full-screen branded overlay that bridges the native splash ? camera gap.
   // Starts visible on native so the home screen is never shown during the
   // ~100-300 ms between splash dismiss and native camera overlay appearing.
@@ -1949,9 +1954,9 @@ function WellnessValleyApp() {
           return;
         }
 
-        // All guards passed n++ open camera
+        // All guards passed — open camera (silent if Camera already denied)
         debugLog("?? [Resume] Opening camera after app resume");
-        fileInputRef.current.openCamera();
+        fileInputRef.current.openCamera({ userInitiated: false });
       })
       .then((h) => {
         if (cancelled) {
@@ -2097,7 +2102,12 @@ function WellnessValleyApp() {
       const api = fileInputRef.current;
       if (api?.openCamera) {
         _hasFiredCameraOnLoginRef.current = true;
-        api.openCamera(); // handleCameraStateChange('opened') will dismiss the overlay
+        // Auto-open only if Camera already granted (see ImageUpload).
+        // Opening getPhoto while permission is still prompt/denied can leave a
+        // black native camera screen on iOS. Dismiss cover immediately so Home
+        // is never trapped behind a blank WebView if openCamera no-ops.
+        setShowLaunchOverlay(false);
+        api.openCamera({ userInitiated: false });
         return;
       }
       // ImageUpload not yet mounted n++ try again next animation frame.
@@ -3234,17 +3244,17 @@ function WellnessValleyApp() {
   }, [navigateTo]);
   // -- Permission flow ------------------------------------------------------
   //
-  // Design: zero custom screens before OS dialogs. Permissions are requested
-  // immediately in order. The PermissionBlockedDialog appears only AFTER an OS
-  // prompt has been denied, as a last-resort block. Required permissions
-  // (camera, location) block the app entirely; optional notifications are
-  // silently skipped on denial. Contacts is NOT requested here — only when a
+  // Design: zero custom screens before OS dialogs. Location is requested at
+  // startup and may gate the app. Camera is NOT in this gate (App Store
+  // 5.1.1(iv)): after Camera denial we must not show "Allow Again" / Exit or
+  // block the app — Settings is offered only when the user taps Take Photo.
+  // Notifications are optional. Contacts is NOT requested here — only when a
   // coach saves a Body Parameters member to device contacts (App Store 5.1.2).
   //
   // States
-  //   activePermission = null          ? no gate, home accessible
-  //   activePermission.canRequest=true ? [Allow Again] [Exit App]
-  //   activePermission.canRequest=false? [Exit App] only (permanent)
+  //   activePermission = null           → no gate, home accessible
+  //   activePermission.canRequest=true  → [Allow Again] [Exit App] (location)
+  //   activePermission.canRequest=false → Settings / Exit (location)
 
   // Guard: prevents advancePermissionFlow from running concurrently.
   // Without this, the appStateChange listener could kick off a second run
@@ -3253,8 +3263,9 @@ function WellnessValleyApp() {
   const _permissionFlowRunningRef = useRef(false);
 
   /**
-   * Walk [camera → location → notifications] in order.
+   * Walk [location → notifications] in order.
    *
+   * Camera is intentionally omitted here (App Store 5.1.1(iv)).
    * Contacts is intentionally omitted: request only at Body Parameters card
    * save time (local device write; never uploaded). Asking at login caused
    * App Store Guideline 5.1.2 review flags.
@@ -3282,7 +3293,10 @@ function WellnessValleyApp() {
     _permissionFlowRunningRef.current = true;
 
     try {
-      const PERMISSIONS = ['camera', 'location', 'notifications'];
+      // Camera is intentionally omitted (App Store 5.1.1(iv)).
+      // Request it only when the user opens a camera feature; never gate the app
+      // or show "Allow Again" / Exit after a Camera denial.
+      const PERMISSIONS = ['location', 'notifications'];
 
       for (const type of PERMISSIONS) {
         const config = PermissionManager.PERMISSION_CONFIG[type];
@@ -4550,7 +4564,9 @@ function WellnessValleyApp() {
             await advancePermissionFlow();
             return;
           }
-          const requiredTypes = ['camera', 'location'];
+          // Location only — camera denial must not re-open an app-wide gate
+          // (App Store Guideline 5.1.1(iv)).
+          const requiredTypes = ['location'];
           let requiredRevoked = false;
           for (const type of requiredTypes) {
             const { granted } = await PermissionManager.checkPermission(type);
@@ -9105,14 +9121,11 @@ function WellnessValleyApp() {
         }}
       >
         {/* -- Permission denied modal (canRequest: true) ---------------------
-          Shown after a first denial when the OS can still present a dialog.
+          Location only. Camera must NEVER use this gate (App Store 5.1.1(iv)).
           Small overlay card: "<Perm> permission is required to continue."
           [ Allow Again ] immediately re-invokes the native OS dialog.
-          [ Exit ] closes the app.
-          When the user denies a second time (Android "Don't ask again") the
-          state flips to canRequest: false and React automatically unmounts
-          this modal and mounts PermissionBlockedPage instead. */}
-        {activePermission?.canRequest === true && (
+          [ Exit ] closes the app. */}
+        {activePermission?.canRequest === true && activePermission.type !== 'camera' && (
           <PermissionDeniedModal
             type={activePermission.type}
             config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
@@ -9123,12 +9136,9 @@ function WellnessValleyApp() {
         )}
 
         {/* -- Permission blocked page (canRequest: false) ----------------------
-          Full-screen page for permanently denied permissions.
-          Shown when Android reports "Don't ask again" or iOS denies (permanent).
-          Provides per-permission title + description + "Open App Settings".
-          The resume listener (above) auto-dismisses this page when the user
-          grants the permission from device Settings and returns to the app. */}
-        {activePermission?.canRequest === false && (
+          Location only. Camera denial uses CameraPermissionNeededModal at
+          feature-use time instead (App Store 5.1.1(iv)). */}
+        {activePermission?.canRequest === false && activePermission.type !== 'camera' && (
           <PermissionBlockedPage
             type={activePermission.type}
             config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
@@ -9140,6 +9150,25 @@ function WellnessValleyApp() {
               }
             }}
             onExit={() => { import('@capacitor/app').then(({ App: CApp }) => CApp.exitApp()); }}
+          />
+        )}
+
+        {/* Camera feature-use notice — dismissible; Settings link only.
+          Shown when the user taps Take Photo after Camera was denied.
+          Never "Allow Again" / never Exit / never blocks the whole app. */}
+        {mediaPermissionNeeded && (
+          <CameraPermissionNeededModal
+            kind={mediaPermissionNeeded}
+            onOpenSettings={async () => {
+              try {
+                await PermissionManager.openAppSettings();
+              } catch (err) {
+                console.warn('[App] openAppSettings failed:', err);
+              } finally {
+                setMediaPermissionNeeded(null);
+              }
+            }}
+            onDismiss={() => setMediaPermissionNeeded(null)}
           />
         )}
 
@@ -9514,7 +9543,7 @@ function WellnessValleyApp() {
                   {/* Camera — primary CTA opens camera directly; gallery icon for choosing existing photo */}
                   <div className="mt-1.5 flex gap-3">
                     <button
-                      onClick={() => fileInputRef.current?.openCamera?.()}
+                      onClick={() => fileInputRef.current?.openCamera?.({ userInitiated: true })}
                       disabled={loading}
                       className="flex-1 flex items-center justify-center gap-2.5 bg-white rounded-xl py-3 shadow-sm active:scale-95 transition-transform disabled:opacity-50"
                       aria-label="Open camera"
@@ -9600,6 +9629,7 @@ function WellnessValleyApp() {
               onHelpClick={() => setShowHowToUse(!showHowToUse)}
               educationWindow={educationWindow}
               onCameraStateChange={handleCameraStateChange}
+              onCameraPermissionNeeded={(kind = 'camera') => setMediaPermissionNeeded(kind === 'photos' ? 'photos' : 'camera')}
             />
 
             {/* Share Image + Link button removed: auto-share fires directly

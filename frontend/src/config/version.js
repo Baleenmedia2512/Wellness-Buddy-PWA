@@ -74,7 +74,8 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  // iOS App Store resubmit stays on rejected marketing version 3.5.6 (build 87).
+  // App semver (X-App-Version). iOS App Store marketing string may stay on
+  // rejected 3.5.6 in Info.plist while this build number increments.
   VERSION: '3.5.8',
   
   // Version code (for Android builds - must match build.gradle)
@@ -83,8 +84,8 @@ export const APP_VERSION = {
   VERSION_CODE: 89,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match Info.plist / pbxproj
-  // Must be > last App Store submitted build (3.5.6 was build 86).
-  IOS_BUILD_NUMBER: 87,
+  // Must be > last App Store submitted build (3.5.6 build 87 rejected for 5.1.1(iv)).
+  IOS_BUILD_NUMBER: 90,
   
   // Release name (for Play Store / App Store)
   RELEASE_NAME: 'Version  3.5.8',
@@ -95,13 +96,20 @@ export const APP_VERSION = {
   // Platform release notes..
   PLATFORMS: {
     ANDROID: { versionCode: 89, versionName: '3.5.8' },
-    IOS: { buildNumber: 87, versionName: '3.5.8' },
+    IOS: { buildNumber: 90, versionName: '3.5.6' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
- * 
+ *
+ * Version 3.5.6 (iOS build 89) - 2026-11-25 [iOS App Store 5.1.1(iv)]
+ *   🔒 Camera denial respected — Settings only at Take Photo; AppSettingsPlugin for Open Settings
+ *   🐛 iOS: Lucide icons (emoji showed as "?"); Open Settings works again (App.openUrl removed in Cap 8)
+ *
+ * Version 3.5.6 (iOS build 88) - 2026-11-24 [iOS App Store 5.1.1(iv)]
+ *   🔒 Camera denial respected — no Allow Again / Exit gate; Settings only at Take Photo
+ *
  * Version 3.5.7 (Code 88 / iOS build 87) - 2026-11-23 [iOS App Store resubmit]
  *   🔒 App Store 5.1.2 — Contacts asked only at BCM save; usage string says not uploaded
  *
