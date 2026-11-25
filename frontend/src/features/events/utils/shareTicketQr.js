@@ -32,13 +32,21 @@ export async function shareTicketQrImage({ dataUrl, text, title, fileName }) {
     if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
       const plugin = Capacitor.Plugins?.WhatsAppShare;
       if (plugin && typeof plugin.shareToWhatsApp === 'function') {
-        await plugin.shareToWhatsApp({
-          base64Data: dataUrl,
-          fileName: safeName,
-          text: String(text || '').trim(),
-          mimeType: 'image/png',
-        });
-        return { ok: true, saved: false };
+        try {
+          await plugin.shareToWhatsApp({
+            base64Data: dataUrl,
+            fileName: safeName,
+            text: String(text || '').trim(),
+            mimeType: 'image/png',
+          });
+          return { ok: true, saved: false };
+        } catch (waErr) {
+          const waMsg = String(waErr?.message || '').toLowerCase();
+          if (waMsg.includes('cancel') || waMsg.includes('dismiss') || waMsg.includes('abort')) {
+            return { ok: true, saved: false };
+          }
+          // Fall through to shareViaCapacitorAPI chooser/system share sheet.
+        }
       }
     }
     if (Capacitor.isNativePlatform()) {
