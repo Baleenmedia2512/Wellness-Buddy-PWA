@@ -428,33 +428,57 @@ export const shareViaCapacitorAPI = async (dataUrl, options = {}) => {
 
   // ── NATIVE (iOS / Android) ────────────────────────────────────────────
   if (Capacitor.isNativePlatform()) {
-    // Android Manual Log / classify: open WhatsApp directly with image + caption.
-    // Package-targeted send attaches EXTRA_TEXT as the photo caption without the
-    // duplicate-image bug seen on the system chooser path.
+    // Android Manual Log / classify: open WhatsApp directly with image + caption,
+    // falling back to the native Android chooser (shareImage) before Share.share.
     if (isAndroidNative()) {
-      try {
-        const { WhatsAppShare } = Capacitor.Plugins || {};
-        if (WhatsAppShare && typeof WhatsAppShare.shareToWhatsApp === "function") {
-          const caption = String(text || "").trim();
-          await copyAndroidShareCaptionBackup(caption);
-          await WhatsAppShare.shareToWhatsApp({
-            base64Data: dataUrl,
-            fileName,
-            text: caption,
-            mimeType: mimeTypeFromDataUrl(dataUrl),
-          });
-          debugLog("✅ [CapacitorShare] WhatsApp direct share with caption");
-          return { ok: true, dismissed: false };
+      const mimeType = mimeTypeFromDataUrl(dataUrl);
+      const caption = String(text || "").trim();
+      const { WhatsAppShare } = Capacitor.Plugins || {};
+      if (WhatsAppShare) {
+        await copyAndroidShareCaptionBackup(caption);
+        if (typeof WhatsAppShare.shareToWhatsApp === "function") {
+          try {
+            await WhatsAppShare.shareToWhatsApp({
+              base64Data: dataUrl,
+              fileName,
+              text: caption,
+              mimeType,
+            });
+            debugLog("✅ [CapacitorShare] WhatsApp direct share with caption");
+            return { ok: true, dismissed: false };
+          } catch (waErr) {
+            if (isCanceled(waErr)) {
+              debugLog("ℹ️ [CapacitorShare] WhatsApp share cancelled");
+              return { ok: true, dismissed: true };
+            }
+            console.warn(
+              "⚠️ [CapacitorShare] WhatsApp direct share failed, trying chooser:",
+              waErr?.message || waErr,
+            );
+          }
         }
-      } catch (waErr) {
-        if (isCanceled(waErr)) {
-          debugLog("ℹ️ [CapacitorShare] WhatsApp share cancelled");
-          return { ok: true, dismissed: true };
+        if (typeof WhatsAppShare.shareImage === "function") {
+          try {
+            await WhatsAppShare.shareImage({
+              base64Data: dataUrl,
+              fileName,
+              title,
+              text: "",
+              mimeType,
+            });
+            debugLog("✅ [CapacitorShare] Android chooser share launched");
+            return { ok: true, dismissed: false };
+          } catch (chooserErr) {
+            if (isCanceled(chooserErr)) {
+              debugLog("ℹ️ [CapacitorShare] Android chooser cancelled");
+              return { ok: true, dismissed: true };
+            }
+            console.warn(
+              "⚠️ [CapacitorShare] Android chooser failed, falling back to Share.share:",
+              chooserErr?.message || chooserErr,
+            );
+          }
         }
-        console.warn(
-          "⚠️ [CapacitorShare] WhatsApp direct share failed, falling back:",
-          waErr?.message || waErr,
-        );
       }
     }
 
