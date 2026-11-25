@@ -270,6 +270,7 @@ import {
 import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
 import { ADMIN_CONFIG_TABS } from "./shell/domain/adminConfigSetupTabs";
+import KeepAlivePanel from "./shell/components/KeepAlivePanel";
 import { isAdminLikeRole, normalizeAppRole, ROLE_USER } from "./shared/constants/roles";
 import { canAccessReportsModule } from "./features/reports/domain/reportsAccess.rules.js";
 import { OPEN_COMMUNITY_POSITION_EVENT } from "./features/user/domain/communityPositionFocus";
@@ -374,6 +375,10 @@ function WellnessValleyApp() {
   const [detectedFoodNames, setDetectedFoodNames] = useState([]); // AI-detected food names
   const [error, setError] = useState(null);
   const [showDashboard, setShowDashboard] = useState(false); // restored via useEffect to avoid suspending lazy component on mount
+  // Which full-page overlay is visible. null = Home. Keep-alive nav modules
+  // stay mounted after first visit; inactive ones use display:none so scroll /
+  // search / filters survive tab switches (same idea as Home under overlays).
+  const [activeOverlayPage, setActiveOverlayPage] = useState(null);
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
   // Deep-link (App Link) seed values for Dashboard ? set when the app is
   // opened via /share/<token> and the resolve API confirms permission.
@@ -1271,6 +1276,7 @@ function WellnessValleyApp() {
     setShowRegisterCenter(false);
     setEditCenterData(null);
     setShowNutritionCentersMap(true);
+    setActiveOverlayPage('physical-club');
   }, [bumpTabVisitKey]);
 
   // Navigation lock ref: prevents concurrent showDashboardPage() calls from
@@ -1305,26 +1311,17 @@ function WellnessValleyApp() {
                 originalCapturedAt: pendingClassify.originalCapturedAt ?? null,
               });
               setShowManualEntry(true);
+              setActiveOverlayPage('manual-entry');
             });
             window.history.pushState({ wvPage: 'manual-entry' }, '');
             return;
           }
         }
-        // Returning to home from any full-screen route:
+        // Returning to home: hide overlays but keep nav modules mounted so
+        // Diary/Activity/etc. restore scroll + filters when the user returns.
         enrollmentHistoryPushedRef.current = false;
-        setShowDashboard(false);
-        setShowWellnessCounselling(false);
-        setShowUniversityEnrollment(false);
-        setShowNutritionCentersMap(false);
-        setShowActivityReport(false);
+        setActiveOverlayPage(null);
         setShowActivityTimeReport(false);
-        setShowTestimonials(false);
-        setShowEvents(false);
-        setShowBroadcast(false);
-        setShowCreateEvent(false);
-        setShowPaidFeatures(false);
-        setShowMapBusiness(false);
-        setShowReports(false);
         setShowProfilePage(false);
         setShowAdminConfigSetup(false);
         setShowManualEntry(false);
@@ -1333,98 +1330,56 @@ function WellnessValleyApp() {
         refreshOnTabFocusRef.current();
         Session.setCurrentPage('main');
       } else if (page === 'dashboard') {
-        bumpTabVisitKeyRef.current('dashboard');
+        setActiveOverlayPage('dashboard');
         startTransition(() => setShowDashboard(true));
-        setShowWellnessCounselling(false);
-        setShowUniversityEnrollment(false);
         setShowProfilePage(false);
         Session.setCurrentPage('dashboard');
       } else if (page === 'counselling') {
-        bumpTabVisitKeyRef.current('counselling');
-        setShowDashboard(false);
+        setActiveOverlayPage('counselling');
         startTransition(() => setShowWellnessCounselling(true));
-        setShowUniversityEnrollment(false);
         Session.setCurrentPage('main');
       } else if (page === 'enrollment') {
-        bumpTabVisitKeyRef.current('enrollment');
         enrollmentHistoryPushedRef.current = true;
-        setShowDashboard(false);
-        setShowWellnessCounselling(false);
+        setActiveOverlayPage('enrollment');
         startTransition(() => setShowUniversityEnrollment(true));
         Session.setCurrentPage('main');
       } else if (page === 'physical-club') {
-        bumpTabVisitKeyRef.current('physical-club');
+        setActiveOverlayPage('physical-club');
         startTransition(() => setShowNutritionCentersMap(true));
         Session.setCurrentPage('main');
       } else if (page === 'activity-report') {
-        bumpTabVisitKeyRef.current('activity-report');
-        setShowDashboard(false);
+        setActiveOverlayPage('activity-report');
         startTransition(() => setShowActivityReport(true));
         Session.setCurrentPage('main');
       } else if (page === 'testimonials') {
-        bumpTabVisitKeyRef.current('testimonials');
-        setShowBroadcast(false);
-        setShowCreateEvent(false);
-        setShowPaidFeatures(false);
-        setShowMapBusiness(false);
+        setActiveOverlayPage('testimonials');
         startTransition(() => setShowTestimonials(true));
         Session.setCurrentPage('main');
       } else if (page === 'events') {
         if (!isFlagEnabled('ff.events')) return;
-        setShowDashboard(false);
-        setShowWellnessCounselling(false);
-        setShowUniversityEnrollment(false);
-        setShowNutritionCentersMap(false);
-        setShowActivityReport(false);
-        setShowActivityTimeReport(false);
-        setShowTestimonials(false);
-        setShowBroadcast(false);
-        setShowReports(false);
+        setActiveOverlayPage('events');
+        setShowProfilePage(false);
         setShowAdminConfigSetup(false);
         setShowManualEntry(false);
         setShowWellnessScore(false);
-        setShowProfilePage(false);
         startTransition(() => setShowEvents(true));
         Session.setCurrentPage('main');
       } else if (page === 'broadcast') {
         if (!isFlagEnabled('ff.broadcast')) return;
-        bumpTabVisitKeyRef.current('broadcast');
-        setShowDashboard(false);
-        setShowWellnessCounselling(false);
-        setShowUniversityEnrollment(false);
-        setShowNutritionCentersMap(false);
-        setShowActivityReport(false);
-        setShowActivityTimeReport(false);
-        setShowTestimonials(false);
-        setShowReports(false);
+        setActiveOverlayPage('broadcast');
+        setShowProfilePage(false);
         setShowAdminConfigSetup(false);
         setShowWellnessScore(false);
-        setShowProfilePage(false);
-        setShowCreateEvent(false);
-        setShowPaidFeatures(false);
-        setShowMapBusiness(false);
         startTransition(() => setShowBroadcast(true));
         Session.setCurrentPage('main');
       } else if (page === 'create-event' || page === 'event-check-in') {
         if (!isFlagEnabled('ff.create-event')) return;
-        bumpTabVisitKeyRef.current('create-event');
-        setShowDashboard(false);
-        setShowWellnessCounselling(false);
-        setShowUniversityEnrollment(false);
-        setShowNutritionCentersMap(false);
-        setShowActivityReport(false);
-        setShowActivityTimeReport(false);
-        setShowTestimonials(false);
-        setShowBroadcast(false);
-        setShowPaidFeatures(false);
-        setShowMapBusiness(false);
-        setShowReports(false);
+        setActiveOverlayPage(page);
+        setShowProfilePage(false);
         setShowAdminConfigSetup(false);
         setShowWellnessScore(false);
-        setShowProfilePage(false);
         if (page === 'event-check-in') {
           setCreateEventTab('checkin');
-          setShowEvents(false);
           startTransition(() => setShowCreateEvent(true));
         } else {
           const canCreate = canAccessNavPage(navAccessPagesRef.current, 'create-event');
@@ -1435,57 +1390,34 @@ function WellnessValleyApp() {
         Session.setCurrentPage('main');
       } else if (page === 'paid-features') {
         if (!isFlagEnabled('ff.coach-portfolio')) return;
-        bumpTabVisitKeyRef.current('paid-features');
-        setShowDashboard(false);
-        setShowWellnessCounselling(false);
-        setShowUniversityEnrollment(false);
-        setShowNutritionCentersMap(false);
-        setShowActivityReport(false);
-        setShowActivityTimeReport(false);
-        setShowTestimonials(false);
-        setShowEvents(false);
-        setShowBroadcast(false);
-        setShowCreateEvent(false);
-        setShowMapBusiness(false);
-        setShowReports(false);
+        setActiveOverlayPage('paid-features');
+        setShowProfilePage(false);
         setShowAdminConfigSetup(false);
         setShowWellnessScore(false);
-        setShowProfilePage(false);
         startTransition(() => setShowPaidFeatures(true));
         Session.setCurrentPage('main');
       } else if (page === 'map-business') {
         if (!isFlagEnabled('ff.gbp-listing')) return;
-        bumpTabVisitKeyRef.current('map-business');
-        setShowDashboard(false);
-        setShowWellnessCounselling(false);
-        setShowUniversityEnrollment(false);
-        setShowNutritionCentersMap(false);
-        setShowActivityReport(false);
-        setShowActivityTimeReport(false);
-        setShowTestimonials(false);
-        setShowEvents(false);
-        setShowBroadcast(false);
-        setShowCreateEvent(false);
-        setShowPaidFeatures(false);
-        setShowReports(false);
+        setActiveOverlayPage('map-business');
+        setShowProfilePage(false);
         setShowAdminConfigSetup(false);
         setShowWellnessScore(false);
-        setShowProfilePage(false);
         startTransition(() => setShowMapBusiness(true));
         Session.setCurrentPage('main');
       } else if (page === 'reports' || page === 'wellness-score-report') {
         if (!isFlagEnabled('ff.reports-module') || !canAccessReportsModule(userRole)) {
           return;
         }
-        bumpTabVisitKeyRef.current('reports');
         setReportsDashboardTab(
           page === 'wellness-score-report'
             ? REPORT_DASHBOARD_TABS.WELLNESS_SCORE
             : REPORT_DASHBOARD_TABS.IDEAL_WEIGHT,
         );
+        setActiveOverlayPage('reports');
         startTransition(() => setShowReports(true));
         Session.setCurrentPage('main');
       } else if (page === 'profile') {
+        setActiveOverlayPage('profile');
         setShowProfilePage(true);
         Session.setCurrentPage('main');
       }
@@ -1593,18 +1525,12 @@ function WellnessValleyApp() {
       !!user &&
       !authLoading &&
       !onboardingBlocking &&
-      !showDashboard &&
-      !showManualEntry &&
-      !showActivityReport &&
-      !showActivityTimeReport;
+      !activeOverlayPage;
   }, [
     user,
     authLoading,
     onboardingBlocking,
-    showDashboard,
-    showManualEntry,
-    showActivityReport,
-    showActivityTimeReport,
+    activeOverlayPage,
   ]);
 
   const _userIdRef = useRef(null);  // mirrors user?.id
@@ -1711,6 +1637,7 @@ function WellnessValleyApp() {
     if (!onboardingHardBlocking) return;
     setShowProfilePage(false);
     setShowDashboard(false);
+    setActiveOverlayPage(null);
     setShowNewUserProfileModal(false);
   }, [onboardingHardBlocking]);
 
@@ -2539,7 +2466,10 @@ function WellnessValleyApp() {
       page === "weight-tracking" ||
       page === "weight-insights"
     ) {
-      startTransition(() => setShowDashboard(true));
+      startTransition(() => {
+        setShowDashboard(true);
+        setActiveOverlayPage('dashboard');
+      });
       // The popstate effect's replaceState('main') runs first (declared earlier),
       // so history is [main] at this point. Push 'dashboard' on top so the
       // browser back button pops to 'main' and fires the popstate handler.
@@ -2574,6 +2504,7 @@ function WellnessValleyApp() {
             originalCapturedAt: pending.originalCapturedAt ?? null,
           });
           setShowManualEntry(true);
+          setActiveOverlayPage('manual-entry');
         });
         window.history.pushState({ wvPage: 'manual-entry' }, '');
       } else if (!manualEntryPayload.userId) {
@@ -2596,111 +2527,53 @@ function WellnessValleyApp() {
   // Initialize back button handler
   useEffect(() => {
     const goBack = () => {
-      if (showDashboard) {
-        // showMainPage is now a stable useCallback([]) reference, so this
-        // closure always calls the current version without stale captures.
-        showMainPage();
-        return true;
-      }
-      if (showWellnessCounselling) {
-        setShowWellnessCounselling(false);
-        // Pop the history entry pushed when counselling was opened instead
-        // of pushing a new 'main' entry (which would bloat history).
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showUniversityEnrollment) {
-        enrollmentHistoryPushedRef.current = false;
-        setShowUniversityEnrollment(false);
-        // Use replaceState instead of history.back() so no popstate fires.
-        // history.back() would trigger the handlePopState 'enrollment' branch
-        // which calls startTransition(setShowUniversityEnrollment(true)) and
-        // fights the urgent false update, leaving enrollment re-opened.
-        window.history.replaceState({ wvPage: 'main' }, '');
-        return true;
-      }
-      if (showNutritionCentersMap) {
-        setShowNutritionCentersMap(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showActivityReport) {
-        setShowActivityReport(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showActivityTimeReport) {
-        setShowActivityTimeReport(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showReports) {
-        setShowReports(false);
-        setReportsDashboardTab(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showAdminConfigSetup) {
-        setShowAdminConfigSetup(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showManualEntry) {
+      // Classify lock — must not leave via hardware back.
+      if (activeOverlayPage === 'manual-entry' || showManualEntry) {
         showToast('Log and share your photo to continue');
         return true;
       }
-      if (showWellnessScore) {
+      if (!activeOverlayPage) return false;
+
+      // Keep-alive modules: hide only (stay mounted). Exclusive: close flag.
+      if (activeOverlayPage === 'dashboard') {
+        showMainPage();
+        return true;
+      }
+      if (activeOverlayPage === 'enrollment') {
+        enrollmentHistoryPushedRef.current = false;
+        setActiveOverlayPage(null);
+        // replaceState — see prior note; avoid popstate re-opening enrollment.
+        window.history.replaceState({ wvPage: 'main' }, '');
+        Session.setCurrentPage('main');
+        return true;
+      }
+      if (activeOverlayPage === 'activity-time-report') {
+        setShowActivityTimeReport(false);
+      } else if (activeOverlayPage === 'admin-config-setup') {
+        setShowAdminConfigSetup(false);
+      } else if (activeOverlayPage === 'wellness-score') {
         setShowWellnessScore(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showProfilePage) {
+      } else if (activeOverlayPage === 'profile') {
         setShowProfilePage(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
       }
-      if (showBroadcast) {
-        setShowBroadcast(false);
-        setShowCreateEvent(false);
-        setShowPaidFeatures(false);
-        setShowMapBusiness(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showCreateEvent) {
-        setShowCreateEvent(false);
-        setShowPaidFeatures(false);
-        setShowMapBusiness(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showEvents) {
-        setShowEvents(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      return false; // all navigation cases handled above; no Ionic router fallback needed
+      // Keep-alive show* flags stay true so state/scroll survive.
+      setActiveOverlayPage(null);
+      Session.setCurrentPage('main');
+      const currentWvPage = window.history.state?.wvPage;
+      if (currentWvPage && currentWvPage !== 'main') window.history.back();
+      return true;
     };
 
     initializeBackButton(
       goBack,
       showToast,
-      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showBroadcast && !showCreateEvent && !showPaidFeatures && !showMapBusiness && !showEvents && !showReports && !showAdminConfigSetup && !showManualEntry && !showWellnessScore && !showProfilePage,
+      !activeOverlayPage,
     );
     return () => cleanupBackButton();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- showMainPage is useCallback([]) stable; listing it here causes a TDZ crash because it is declared after this effect
   }, [
+    activeOverlayPage,
+    showManualEntry,
     showDashboard,
     showWellnessCounselling,
     showUniversityEnrollment,
@@ -2884,6 +2757,7 @@ function WellnessValleyApp() {
           if (!isActive) {
             // Account became inactive while dashboard was opening � close it.
             setShowDashboard(false);
+            setActiveOverlayPage((p) => (p === 'dashboard' ? null : p));
           }
         }).catch(() => {/* fail-open */});
       }
@@ -2932,8 +2806,9 @@ function WellnessValleyApp() {
       }
       // Urgent update — navigation flags are now used directly (no useDeferredValue),
       // so this is an immediate render with no deferral possible.
-      bumpTabVisitKey('dashboard');
+      // No tabVisitKey bump: remounts reset scroll/search; keep-alive preserves state.
       setShowDashboard(true);
+      setActiveOverlayPage('dashboard');
       Session.setCurrentPage("dashboard");
       // Push a browser history entry so the native back button can return to home.
       window.history.pushState({ wvPage: 'dashboard' }, '');
@@ -2946,7 +2821,7 @@ function WellnessValleyApp() {
     // is now cleared unconditionally and read via refs, so it is NOT a dep.
     // This keeps showDashboardPage stable across AI analysis cycles and
     // prevents the gallery-monitoring effect from re-initialising on every result.
-    [user, checkUserStatus, bumpTabVisitKey],
+    [user, checkUserStatus],
   );
 
   // showMainPage is stable across renders (useCallback with no deps) because
@@ -2955,7 +2830,8 @@ function WellnessValleyApp() {
   // in useCallback prevents Dashboard from receiving a new onBack prop on
   // every render and avoids stale-closure in the Android back-button effect.
   const showMainPage = useCallback(() => {
-    setShowDashboard(false);
+    // Hide Diary overlay but keep Dashboard mounted (scroll/search survive).
+    setActiveOverlayPage(null);
     setDashboardInitialTab(null); // Clear initial tab when going back
     setDashboardInitialSelectedMember(null); // Clear deep-link member context
     setDashboardInitialDate(null); // Clear deep-link date context
@@ -3033,20 +2909,9 @@ function WellnessValleyApp() {
     const isOnSubPage = currentWvPage && currentWvPage !== 'main';
 
     if (targetPage === 'home') {
-      // Close every sub-page and pop the current history entry.
-      setShowDashboard(false);
-      setShowWellnessCounselling(false);
-      setShowUniversityEnrollment(false);
-      setShowNutritionCentersMap(false);
-      setShowActivityReport(false);
+      // Hide overlays; keep-alive nav modules stay mounted (scroll/filters survive).
+      setActiveOverlayPage(null);
       setShowActivityTimeReport(false);
-      setShowTestimonials(false);
-      setShowEvents(false);
-      setShowBroadcast(false);
-      setShowCreateEvent(false);
-      setShowPaidFeatures(false);
-        setShowMapBusiness(false);
-      setShowReports(false);
       setShowAdminConfigSetup(false);
       setShowManualEntry(false);
       setManualEntryPayload(null);
@@ -3067,52 +2932,30 @@ function WellnessValleyApp() {
       setError(null);
       setImagePreview(null);
       lastImageFileRef.current = null;
+      // Close exclusive overlays only — do not unmount other keep-alive tabs.
+      setShowActivityTimeReport(false);
+      setShowAdminConfigSetup(false);
+      setShowManualEntry(false);
+      setManualEntryPayload(null);
+      setShowWellnessScore(false);
+      setShowProfilePage(false);
+      enrollmentHistoryPushedRef.current = false;
       if (isOnSubPage) {
-        // Close current sub-page; replace history so back still ? Home.
-        setShowWellnessCounselling(false);
-        setShowUniversityEnrollment(false);
-        setShowNutritionCentersMap(false);
-        setShowActivityReport(false);
-        setShowActivityTimeReport(false);
-        setShowTestimonials(false);
-        setShowEvents(false);
-        setShowBroadcast(false);
-        setShowCreateEvent(false);
-        setShowPaidFeatures(false);
-        setShowMapBusiness(false);
-        setShowReports(false);
-        setShowAdminConfigSetup(false);
-        setShowManualEntry(false);
-        setManualEntryPayload(null);
-        setShowWellnessScore(false);
-        setShowProfilePage(false);
-        enrollmentHistoryPushedRef.current = false;
-        bumpTabVisitKey('dashboard');
+        // Replace history so back still → Home. No tabVisitKey bump (preserves scroll).
         window.history.replaceState({ wvPage: 'dashboard' }, '');
         Session.setCurrentPage('dashboard');
-        setShowDashboard(true); // urgent � same reason as showDashboardPage
+        setShowDashboard(true);
+        setActiveOverlayPage('dashboard');
       } else {
         showDashboardPage();
       }
       return;
     }
 
-    // For counselling / enrollment / physical-club / activity-report:
-    // � Clear ALL current sub-pages.
-    // � Replace history when switching tabs; push when opening from Home.
-    setShowDashboard(false);
-    setShowWellnessCounselling(false);
-    setShowUniversityEnrollment(false);
-    setShowNutritionCentersMap(false);
-    setShowActivityReport(false);
+    // For counselling / enrollment / physical-club / activity-report / etc:
+    // Close exclusive overlays only. Keep-alive tabs stay mounted under display:none.
+    // Replace history when switching tabs; push when opening from Home.
     setShowActivityTimeReport(false);
-    setShowTestimonials(false);
-    setShowEvents(false);
-    setShowBroadcast(false);
-    setShowCreateEvent(false);
-    setShowPaidFeatures(false);
-        setShowMapBusiness(false);
-    setShowReports(false);
     setShowAdminConfigSetup(false);
     setShowManualEntry(false);
     setManualEntryPayload(null);
@@ -3125,7 +2968,8 @@ function WellnessValleyApp() {
       : (targetPage === 'wellness-score-setup' || targetPage === 'ai-credits-setup' || targetPage === 'page-access-setup')
         ? 'admin-config-setup'
         : targetPage;
-    bumpTabVisitKey(historyPage);
+    // Soft refetch keys are for intentional remounts / pull-refresh — not tab switches.
+    // Bumping here remounted list state and wiped scroll/search on every tab return.
 
     if (isOnSubPage) {
       window.history.replaceState({ wvPage: historyPage }, '');
@@ -3136,30 +2980,40 @@ function WellnessValleyApp() {
     switch (targetPage) {
       case 'counselling':
         setShowWellnessCounselling(true);
+        setActiveOverlayPage('counselling');
         break;
       case 'enrollment':
         enrollmentHistoryPushedRef.current = true;
         setShowUniversityEnrollment(true);
+        setActiveOverlayPage('enrollment');
         break;
       case 'physical-club':
         setShowNutritionCentersMap(true);
+        setActiveOverlayPage('physical-club');
         break;
       case 'activity-report':
         // Merged Attendance Report (ActivityReport): education attendance default tab.
         setShowActivityReport(true);
+        setActiveOverlayPage('activity-report');
         break;
       case 'activity-time-report':
         setShowActivityTimeReport(true);
+        setActiveOverlayPage('activity-time-report');
         break;
       case 'testimonials':
         setShowTestimonials(true);
+        setActiveOverlayPage('testimonials');
         break;
       case 'events':
-        if (isFlagEnabled('ff.events')) setShowEvents(true);
+        if (isFlagEnabled('ff.events')) {
+          setShowEvents(true);
+          setActiveOverlayPage('events');
+        }
         break;
       case 'broadcast':
         if (isFlagEnabled('ff.broadcast')) {
           setShowBroadcast(true);
+          setActiveOverlayPage('broadcast');
         }
         break;
       case 'create-event':
@@ -3167,28 +3021,33 @@ function WellnessValleyApp() {
           const canCreate = canAccessNavPage(navAccessPagesRef.current, 'create-event');
           setEventsInitialTab(canCreate ? 'create' : 'events');
           setShowEvents(true);
+          setActiveOverlayPage('events');
         }
         break;
       case 'event-check-in':
         if (isFlagEnabled('ff.create-event')) {
           setCreateEventTab('checkin');
           setShowCreateEvent(true);
+          setActiveOverlayPage('event-check-in');
         }
         break;
       case 'paid-features':
         if (isFlagEnabled('ff.coach-portfolio')) {
           setShowPaidFeatures(true);
+          setActiveOverlayPage('paid-features');
         }
         break;
       case 'map-business':
         if (isFlagEnabled('ff.gbp-listing')) {
           setShowMapBusiness(true);
+          setActiveOverlayPage('map-business');
         }
         break;
       case 'reports':
         if (isFlagEnabled('ff.reports-module') && canAccessReportsModule(userRole)) {
           setReportsDashboardTab(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
           setShowReports(true);
+          setActiveOverlayPage('reports');
         }
         break;
       case 'wellness-score-report':
@@ -3196,42 +3055,51 @@ function WellnessValleyApp() {
         if (isFlagEnabled('ff.reports-module') && canAccessReportsModule(userRole)) {
           setReportsDashboardTab(REPORT_DASHBOARD_TABS.WELLNESS_SCORE);
           setShowReports(true);
+          setActiveOverlayPage('reports');
         }
         break;
       case 'profile':
         setShowProfilePage(true);
+        setActiveOverlayPage('profile');
         break;
       case 'wellness-score':
         setWellnessScoreSession((n) => n + 1);
         setShowWellnessScore(true);
+        setActiveOverlayPage('wellness-score');
         break;
       case 'wellness-score-setup':
       case 'admin-config-setup':
         if (isAdminLikeRole(userRole)) {
           setAdminConfigTab(ADMIN_CONFIG_TABS.WELLNESS_SCORE);
           setShowAdminConfigSetup(true);
+          setActiveOverlayPage('admin-config-setup');
         }
         break;
       case 'ai-credits-setup':
         if (isAdminLikeRole(userRole)) {
           setAdminConfigTab(ADMIN_CONFIG_TABS.AI_CONFIG);
           setShowAdminConfigSetup(true);
+          setActiveOverlayPage('admin-config-setup');
         }
         break;
       case 'page-access-setup':
         if (isAdminLikeRole(userRole)) {
           setAdminConfigTab(ADMIN_CONFIG_TABS.PAGE_ACCESS);
           setShowAdminConfigSetup(true);
+          setActiveOverlayPage('admin-config-setup');
         }
         break;
       case 'manual-entry':
-        startTransition(() => setShowManualEntry(true));
+        startTransition(() => {
+          setShowManualEntry(true);
+          setActiveOverlayPage('manual-entry');
+        });
         break;
       default:
         break;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- setters/refs stable; showDashboardPage stable
-  }, [showDashboardPage, userRole, bumpTabVisitKey, refreshOnTabFocus]);
+  }, [showDashboardPage, userRole, refreshOnTabFocus]);
 
   useEffect(() => {
     const openProfile = () => navigateTo('profile');
@@ -7210,6 +7078,25 @@ function WellnessValleyApp() {
     setUserRole(ROLE_USER);
     navAccessPagesRef.current = null;
     setNavAccessPages(null);
+    // Drop keep-alive nav mounts so the next login starts clean.
+    setActiveOverlayPage(null);
+    setShowDashboard(false);
+    setShowWellnessCounselling(false);
+    setShowUniversityEnrollment(false);
+    setShowNutritionCentersMap(false);
+    setShowActivityReport(false);
+    setShowActivityTimeReport(false);
+    setShowTestimonials(false);
+    setShowEvents(false);
+    setShowBroadcast(false);
+    setShowCreateEvent(false);
+    setShowPaidFeatures(false);
+    setShowMapBusiness(false);
+    setShowReports(false);
+    setShowProfilePage(false);
+    setShowManualEntry(false);
+    setManualEntryPayload(null);
+    setShowWellnessScore(false);
     setShowAdminConfigSetup(false);
     physicalActivityConfirmedRef.current = false;
     setShowPhysicalActivitySetup(false);
@@ -8177,16 +8064,17 @@ function WellnessValleyApp() {
 
   const adminLikeRole = isAdminLikeRole(userRole);
 
-  // Home keep-alive: sub-pages overlay Home instead of early-return
-  // unmounting it. Returning to Home preserves scroll/state and avoids
-  // dashboard API reloads unless a newer async activity log exists
+  // Home + nav keep-alive: visited modules stay mounted (display:none when
+  // inactive) so scroll / search / filters survive tab switches. Exclusive
+  // overlays (profile, classify, wellness-score, admin) still mount on top.
   // (see homeDashboardActivity + NutritionRefreshContext.triggerRefresh).
-  let homeOverlay = null;
+  const keepAlivePanels = [];
+  let exclusiveOverlay = null;
 
   // Inline Profile Page — full-screen, below nav bar (no modal overlay)
   // Hard onboarding wizards only — soft resolve flags must not hide Profile on Home.
   if (showProfilePage && !onboardingHardBlocking) {
-    homeOverlay = (
+    exclusiveOverlay = (
       <div className="ios-full-page bg-gray-50">
         <Header
           navOnly
@@ -8331,9 +8219,16 @@ function WellnessValleyApp() {
         </div>
       </div>
     );
-  } else if (showDashboard) {
-    homeOverlay = (
-      <div className="ios-full-page bg-[#e8f5e9]">
+  }
+
+  if (showDashboard) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-dashboard"
+        pageId="dashboard"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-[#e8f5e9]"
+      >
         {/* Full Wellness Valley header + nav on every main tab. */}
         <Header
           user={user}
@@ -8379,11 +8274,18 @@ function WellnessValleyApp() {
             />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
-  } else if (showWellnessCounselling) {
-    homeOverlay = (
-      <div className="ios-full-page">
+  }
+
+  if (showWellnessCounselling) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-counselling"
+        pageId="counselling"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8416,19 +8318,22 @@ function WellnessValleyApp() {
                 setHeaderProfileKey((k) => k + 1);
                 setBmrUpdateKey((k) => k + 1);
               }}
-              onBack={() => {
-                setShowWellnessCounselling(false);
-                const currentWvPage = window.history.state?.wvPage;
-                if (currentWvPage && currentWvPage !== 'main') window.history.back();
-              }}
+              onBack={() => navigateTo('home')}
             />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
-  } else if (showUniversityEnrollment) {
-    homeOverlay = (
-      <div className="ios-full-page">
+  }
+
+  if (showUniversityEnrollment) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-enrollment"
+        pageId="enrollment"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8462,17 +8367,25 @@ function WellnessValleyApp() {
               teamSearchRefreshKey={teamSearchRefreshKey}
               onBack={() => {
                 enrollmentHistoryPushedRef.current = false;
-                setShowUniversityEnrollment(false);
+                setActiveOverlayPage(null);
                 window.history.replaceState({ wvPage: 'main' }, '');
+                Session.setCurrentPage('main');
               }}
             />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
-  } else if (showActivityReport) {
-    homeOverlay = (
-      <div className="ios-full-page">
+  }
+
+  if (showActivityReport) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-activity-report"
+        pageId="activity-report"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8503,18 +8416,16 @@ function WellnessValleyApp() {
               apiBaseUrl={apiBaseUrl}
               tabVisitKey={tabVisitKeys['activity-report'] ?? 0}
               teamSearchRefreshKey={teamSearchRefreshKey}
-              onBack={() => {
-                setShowActivityReport(false);
-                const currentWvPage = window.history.state?.wvPage;
-                if (currentWvPage && currentWvPage !== 'main') window.history.back();
-              }}
+              onBack={() => navigateTo('home')}
             />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
-  } else if (showActivityTimeReport) {
-    homeOverlay = (
+  }
+
+  if (showActivityTimeReport) {
+    exclusiveOverlay = exclusiveOverlay ?? (
       <div className="ios-full-page">
         <Header
           user={user}
@@ -8546,6 +8457,8 @@ function WellnessValleyApp() {
               apiBaseUrl={apiBaseUrl}
               onBack={() => {
                 setShowActivityTimeReport(false);
+                setActiveOverlayPage(null);
+                Session.setCurrentPage('main');
                 const currentWvPage = window.history.state?.wvPage;
                 if (currentWvPage && currentWvPage !== 'main') window.history.back();
               }}
@@ -8554,10 +8467,16 @@ function WellnessValleyApp() {
         </div>
       </div>
     );
-  } else if (showNutritionCentersMap) {
-    homeOverlay = (
-      <>
-        <div className="ios-full-page bg-[#e8f5e9]">
+  }
+
+  if (showNutritionCentersMap) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-physical-club"
+        pageId="physical-club"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-[#e8f5e9]"
+      >
           <Header
             user={user}
             userRole={userRole}
@@ -8589,11 +8508,7 @@ function WellnessValleyApp() {
                 mineFocusKey={clubMineFocusKey}
                 savedCenter={savedClub}
                 onSavedCenterConsumed={() => setSavedClub(null)}
-                onBack={() => {
-                  setShowNutritionCentersMap(false);
-                  const currentWvPage = window.history.state?.wvPage;
-                  if (currentWvPage && currentWvPage !== 'main') window.history.back();
-                }}
+                onBack={() => navigateTo('home')}
                 onEditCenter={(center) => {
                   setEditCenterData(center);
                   setShowRegisterCenter(true);
@@ -8605,7 +8520,6 @@ function WellnessValleyApp() {
               />
             </Suspense>
           </div>
-        </div>
         {showRegisterCenter && (
           <Suspense fallback={null}>
             <NutritionCenterRegistration
@@ -8619,11 +8533,18 @@ function WellnessValleyApp() {
             />
           </Suspense>
         )}
-      </>
+      </KeepAlivePanel>
     );
-  } else if (showTestimonials) {
-    homeOverlay = (
-      <div className="ios-full-page bg-gray-50">
+  }
+
+  if (showTestimonials) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-testimonials"
+        pageId="testimonials"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-gray-50"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8663,19 +8584,22 @@ function WellnessValleyApp() {
               }}
               userRole={userRole}
               tabVisitKey={tabVisitKeys.testimonials ?? 0}
-              onBack={() => {
-                setShowTestimonials(false);
-                const currentWvPage = window.history.state?.wvPage;
-                if (currentWvPage && currentWvPage !== 'main') window.history.back();
-              }}
+              onBack={() => navigateTo('home')}
             />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
-  } else if (showEvents && isFlagEnabled('ff.events')) {
-    homeOverlay = (
-      <div className="ios-full-page bg-gray-50">
+  }
+
+  if (showEvents && isFlagEnabled('ff.events')) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-events"
+        pageId="events"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-gray-50"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8699,11 +8623,18 @@ function WellnessValleyApp() {
         <div className="ios-scroll-body">
           <EventsPage user={user} initialTab={eventsInitialTab} allowedPages={navAccessPages} />
         </div>
-      </div>
+      </KeepAlivePanel>
     );
-  } else if (showBroadcast && isFlagEnabled('ff.broadcast')) {
-    homeOverlay = (
-      <div className="ios-full-page bg-gray-50">
+  }
+
+  if (showBroadcast && isFlagEnabled('ff.broadcast')) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-broadcast"
+        pageId="broadcast"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-gray-50"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8731,11 +8662,18 @@ function WellnessValleyApp() {
             <BroadcastPage />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
-  } else if (showCreateEvent && isFlagEnabled('ff.create-event')) {
-    homeOverlay = (
-      <div className="ios-full-page bg-gray-50">
+  }
+
+  if (showCreateEvent && isFlagEnabled('ff.create-event')) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-create-event"
+        pageId="create-event"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-gray-50"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8763,11 +8701,18 @@ function WellnessValleyApp() {
             <CreateEventPage user={user} initialTab={createEventTab} />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
-  } else if (showPaidFeatures && isFlagEnabled('ff.coach-portfolio')) {
-    homeOverlay = (
-      <div className="ios-full-page bg-gray-50">
+  }
+
+  if (showPaidFeatures && isFlagEnabled('ff.coach-portfolio')) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-paid-features"
+        pageId="paid-features"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-gray-50"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8797,12 +8742,19 @@ function WellnessValleyApp() {
             />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
 
-  } else if (showMapBusiness && isFlagEnabled('ff.gbp-listing')) {
-    homeOverlay = (
-      <div className="ios-full-page bg-gray-50">
+  }
+
+  if (showMapBusiness && isFlagEnabled('ff.gbp-listing')) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-map-business"
+        pageId="map-business"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-gray-50"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8831,11 +8783,12 @@ function WellnessValleyApp() {
             />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
+  }
 
-  } else if (showAdminConfigSetup && adminLikeRole) {
-    homeOverlay = (
+  if (showAdminConfigSetup && adminLikeRole) {
+    exclusiveOverlay = exclusiveOverlay ?? (
       <Suspense fallback={<LoadingSpinner message="Loading Admin Config Setup..." />}>
         <AdminConfigSetup
           user={user}
@@ -8844,6 +8797,7 @@ function WellnessValleyApp() {
           onNavAccessSaved={reloadNavAccess}
           onBack={() => {
             setShowAdminConfigSetup(false);
+            setActiveOverlayPage(null);
             void reloadNavAccess();
             refreshOnTabFocus();
             const currentWvPage = window.history.state?.wvPage;
@@ -8852,8 +8806,10 @@ function WellnessValleyApp() {
         />
       </Suspense>
     );
-  } else if (showManualEntry && manualEntryPayload) {
-    homeOverlay = (
+  }
+
+  if (showManualEntry && manualEntryPayload) {
+    exclusiveOverlay = exclusiveOverlay ?? (
       <Suspense fallback={<LoadingSpinner message="Loading…" />}>
         <ManualEntryPage
           key={manualEntryPayload.clientKey || manualEntryPayload.captureId}
@@ -8886,7 +8842,7 @@ function WellnessValleyApp() {
               setImagePreview(null);
             }
             keepHomeFoodPreviewRef.current = false;
-            setShowDashboard(false);
+            setActiveOverlayPage(null);
             Session.setCurrentPage('main');
             // Always land on Home — history.back() can pop to a stale Diary entry.
             window.history.replaceState({ wvPage: 'main' }, '');
@@ -8933,8 +8889,10 @@ function WellnessValleyApp() {
         />
       </Suspense>
     );
-  } else if (showWellnessScore && isFlagEnabled('ff.wellness-score-sheet')) {
-    homeOverlay = (
+  }
+
+  if (showWellnessScore && isFlagEnabled('ff.wellness-score-sheet')) {
+    exclusiveOverlay = exclusiveOverlay ?? (
       <Suspense fallback={<LoadingSpinner message="Loading Wellness Score..." />}>
         <WellnessScorePage
           key={wellnessScoreSession}
@@ -8949,6 +8907,7 @@ function WellnessValleyApp() {
           canManageTimeWindows={adminLikeRole}
           onBack={(rangeOpts = {}) => {
             setShowWellnessScore(false);
+            setActiveOverlayPage(null);
             // Sync sheet date filter back to Home (e.g. Yesterday → Today).
             if (rangeOpts.dateRange) {
               const next = {
@@ -8981,13 +8940,20 @@ function WellnessValleyApp() {
         />
       </Suspense>
     );
-  } else if (
+  }
+
+  if (
     showReports
     && isFlagEnabled('ff.reports-module')
     && canAccessReportsModule(userRole)
   ) {
-    homeOverlay = (
-      <div className="ios-full-page bg-gray-50">
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-reports"
+        pageId="reports"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-gray-50"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -9022,17 +8988,18 @@ function WellnessValleyApp() {
             />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
   }
 
-  // Main app interface — Home stays mounted under overlays (display:none)
+  // Main app interface — Home + visited nav modules stay mounted (display:none)
+  const overlayVisible = Boolean(activeOverlayPage);
   return (
     <>
       <NetworkStatusNotice />
       <div
-        style={{ display: homeOverlay ? 'none' : undefined }}
-        aria-hidden={Boolean(homeOverlay)}
+        style={{ display: overlayVisible ? 'none' : undefined }}
+        aria-hidden={overlayVisible}
       >
     <LocationGuard>
       <div
@@ -10412,6 +10379,7 @@ function WellnessValleyApp() {
                 setShowRegisterCenter(false);
                 setEditCenterData(null);
                 setShowNutritionCentersMap(true);
+                setActiveOverlayPage('physical-club');
               }}
             />
           </Suspense>
@@ -10770,7 +10738,8 @@ function WellnessValleyApp() {
       <PremiumSuccessHost
         userId={user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null}
       />
-      {homeOverlay}
+      {keepAlivePanels}
+      {exclusiveOverlay}
     </>
   );
 }
