@@ -61,8 +61,9 @@
             <action android:name="android.intent.action.SEND_MULTIPLE" />
             <data android:mimeType="image/*" />
         </intent>
-        <!-- WhatsApp -->
+        <!-- WhatsApp & WhatsApp Business -->
         <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
         <!-- Gmail -->
         <package android:name="com.google.android.gm" />
         <!-- Messages -->
