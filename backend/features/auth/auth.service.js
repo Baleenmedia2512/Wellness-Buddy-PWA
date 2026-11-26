@@ -477,10 +477,10 @@ export async function verifyOtp(input) {
     return { httpStatus: 400, body: { success: false, message: 'Invalid OTP' } };
   }
 
-  await repo.markOtpVerified(otpData.ID);
-
   const resolved = await resolveUserAfterOtp({ recipient, contactType, consentInput: input });
   const { isNewUser, user } = resolved;
+
+  await repo.markOtpVerified(otpData.ID);
 
   await syncUserTimezoneIfChanged(user.id, input.timezoneIana);
 

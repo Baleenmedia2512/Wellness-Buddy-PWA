@@ -430,6 +430,30 @@ export function planCollectionStep({
     return { step: 'profileIntro', entryFields: [], photoSlots: [], profileFields, scheduled: null };
   }
 
+  // Any prompt-based field configured as "Required while entering" (e.g. healthIssues,
+  // currentWeight, fatPercent, bodyAge, chest, waist, hip) that is blocking:
+  const blockingEntry = decisions.find((item) => {
+    return item.field.phase === 'entry' && item.mode === 'ask_blocking';
+  });
+  if (blockingEntry) {
+    return {
+      step: 'scheduled',
+      entryFields: [],
+      photoSlots: [],
+      profileFields: [],
+      scheduled: {
+        key: blockingEntry.field.key,
+        label: blockingEntry.field.label,
+        mode: 'ask_blocking',
+        askEveryDays: null,
+        maxSkips: 0,
+        mustFillWithinDays: null,
+        skipCount: 0,
+        skipsRemaining: 0,
+      },
+    };
+  }
+
   const deferred = new Set(deferKeys);
   const scheduled = decisions.find((item) => {
     // A skip closes the field for this visit. The next time the app opens,
