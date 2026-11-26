@@ -70,7 +70,7 @@ export function buildHeightChangeOtpEmail({
   });
   const whatsappButtonHtml = buildWhatsAppShareButtonHtml({
     shareUrl: waUrl,
-    label: 'Share code on WhatsApp',
+    label: `Share code ${code} on WhatsApp`,
   });
   const text = [
     'Wellness Valley',
@@ -78,9 +78,9 @@ export function buildHeightChangeOtpEmail({
     requestLine,
     `Share this approval code with them. It expires in ${expiresHours} hours.`,
     `Approval code: ${code}`,
-    ...(waUrl ? ['', `Share on WhatsApp: ${waUrl}`] : []),
+    ...(waUrl ? ['', `Share code ${code} on WhatsApp: ${waUrl}`] : []),
     '',
-    'If you were not expecting this, you can ignore this message.',
+    `If you were not expecting this, you can ignore this message. (Ref: #${code})`,
   ].join('\n');
 
   let requestHtml;
@@ -98,7 +98,7 @@ export function buildHeightChangeOtpEmail({
     + `<p>Share this approval code with them. It expires in ${expiresHours} hours.</p>`
     + `<p>Approval code: <strong>${escapeHtml(code)}</strong></p>`
     + whatsappButtonHtml
-    + `<p style="margin-top:16px">If you were not expecting this, you can ignore this message.</p>`,
+    + `<p style="margin-top:16px;font-size:13px;color:#666666">If you were not expecting this, you can ignore this message. (Ref: #${escapeHtml(code)})</p>`,
   );
   return { subject, text, html, whatsappUrl: waUrl };
 }
