@@ -656,9 +656,9 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, email
         <div className="shrink-0" style={{ overflow: 'visible' }}>
           <LeaderboardAvatar
             apiBaseUrl={apiBaseUrl}
-            userId={user.userId}
-            email={user.email}
-            userName={user.userName}
+            userId={user.userId ?? user.UserId ?? user.userID ?? user.id}
+            email={user.email || user.Email}
+            userName={user.userName || user.UserName}
             profileImage={user.profileImage}
             interactive={false}
             sizeClass="w-12 h-12"

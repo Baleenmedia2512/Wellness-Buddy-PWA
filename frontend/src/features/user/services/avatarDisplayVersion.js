@@ -5,6 +5,25 @@
  */
 let generation = 0;
 const listeners = new Set();
+const failedAvatarUserIds = new Set();
+
+export function isAvatarFailed(userId) {
+  if (userId == null || userId === '') return false;
+  return failedAvatarUserIds.has(String(userId));
+}
+
+export function markAvatarFailed(userId) {
+  if (userId == null || userId === '') return;
+  failedAvatarUserIds.add(String(userId));
+}
+
+export function clearAvatarFailed(userId) {
+  if (userId == null || userId === '') {
+    failedAvatarUserIds.clear();
+  } else {
+    failedAvatarUserIds.delete(String(userId));
+  }
+}
 
 export function getAvatarDisplayVersion() {
   return generation;
@@ -12,6 +31,7 @@ export function getAvatarDisplayVersion() {
 
 export function bumpAvatarDisplayVersion() {
   generation += 1;
+  failedAvatarUserIds.clear();
   listeners.forEach((fn) => {
     try {
       fn(generation);

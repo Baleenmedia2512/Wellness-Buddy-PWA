@@ -40,23 +40,24 @@ export function buildSignInOtpEmail(otp, { expiresMinutes = 5 } = {}) {
   });
   const whatsappButtonHtml = buildWhatsAppShareButtonHtml({
     shareUrl: waUrl,
-    label: 'Share code on WhatsApp',
+    label: `Share code ${code} on WhatsApp`,
   });
   const text = [
     'Wellness Valley',
     '',
     `Your sign-in code is ${code}.`,
-    `This code expires in ${expiresMinutes} minutes.`,
-    ...(waUrl ? ['', `Share on WhatsApp: ${waUrl}`] : []),
+    ...(waUrl ? ['', `Share code ${code} on WhatsApp: ${waUrl}`] : []),
     '',
-    'If you did not ask for this code, you can ignore this message.',
+    `This code expires in ${expiresMinutes} minutes.`,
+    '',
+    `If you did not ask for this code, you can ignore this message. (Ref: #${code})`,
   ].join('\n');
   const html = wrapHtml(
     `<p>Wellness Valley</p>`
     + `<p>Your sign-in code is <strong>${escapeHtml(code)}</strong>.</p>`
-    + `<p>This code expires in ${expiresMinutes} minutes.</p>`
     + whatsappButtonHtml
-    + `<p style="margin-top:16px">If you did not ask for this code, you can ignore this message.</p>`,
+    + `<p style="margin-top:16px">This code expires in ${expiresMinutes} minutes.</p>`
+    + `<p style="margin-top:12px;font-size:13px;color:#666666">If you did not ask for this code, you can ignore this message. (Ref: #${escapeHtml(code)})</p>`,
   );
   return { subject, text, html, whatsappUrl: waUrl };
 }
@@ -75,25 +76,26 @@ export function buildSponsorOtpEmail({ otp, memberName = '', memberPhone = '', e
   });
   const whatsappButtonHtml = buildWhatsAppShareButtonHtml({
     shareUrl: waUrl,
-    label: 'Share code on WhatsApp',
+    label: `Share code ${code} on WhatsApp`,
   });
   const text = [
     'Wellness Valley',
     '',
     `${who} asked to join your team.`,
     `Your team code is ${code}.`,
-    `Share this code with them. It expires in ${expiresHours} hours.`,
-    ...(waUrl ? ['', `Share on WhatsApp: ${waUrl}`] : []),
+    ...(waUrl ? ['', `Share code ${code} on WhatsApp: ${waUrl}`] : []),
     '',
-    'If you were not expecting this, you can ignore this message.',
+    `Share this code with ${who}. It expires in ${expiresHours} hours.`,
+    '',
+    `If you were not expecting this request from ${who}, you can ignore this message. (Ref: #${code})`,
   ].join('\n');
   const html = wrapHtml(
     `<p>Wellness Valley</p>`
     + `<p>${escapeHtml(who)} asked to join your team.</p>`
     + `<p>Your team code is <strong>${escapeHtml(code)}</strong>.</p>`
-    + `<p>Share this code with them. It expires in ${expiresHours} hours.</p>`
     + whatsappButtonHtml
-    + `<p style="margin-top:16px">If you were not expecting this, you can ignore this message.</p>`,
+    + `<p style="margin-top:16px">Share this code with ${escapeHtml(who)}. It expires in ${expiresHours} hours.</p>`
+    + `<p style="margin-top:12px;font-size:13px;color:#666666">If you were not expecting this request from ${escapeHtml(who)}, you can ignore this message. (Ref: #${escapeHtml(code)})</p>`,
   );
   return { subject, text, html, whatsappUrl: waUrl };
 }
