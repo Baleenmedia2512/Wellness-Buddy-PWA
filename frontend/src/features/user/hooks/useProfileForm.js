@@ -137,7 +137,7 @@ export default function useProfileForm(initial = {}) {
   const [workingPhysicalCentreId, setWorkingPhysicalCentreId] = useState(initial.workingPhysicalCentreId || '');
   const [eventTranslation, setEventTranslation] = useState(initial.eventTranslation || '');
   const [eventYourCity, setEventYourCity] = useState(initial.eventYourCity || '');
-  const [eventLevel, setEventLevel] = useState(initial.eventLevel || '');
+  const [eventLevel, setEventLevel] = useState(initial.eventLevel || 'GUEST');
   const [professionalTitle, setProfessionalTitle] = useState(initial.professionalTitle || '');
   const [instagram, setInstagram] = useState(initial.instagram || '');
   const [youtube, setYoutube] = useState(initial.youtube || '');
@@ -211,7 +211,7 @@ export default function useProfileForm(initial = {}) {
     const nextCentre = p.workingPhysicalCentreId != null ? String(p.workingPhysicalCentreId) : '';
     const nextTranslation = p.eventTranslation ? String(p.eventTranslation) : '';
     const nextCity = p.eventYourCity ? String(p.eventYourCity) : '';
-    const nextLevel = p.eventLevel ? String(p.eventLevel) : '';
+    const nextLevel = p.eventLevel ? String(p.eventLevel) : 'GUEST';
     const nextTitle = p.professionalTitle ? String(p.professionalTitle) : '';
     const nextInstagram = p.instagram ? String(p.instagram) : '';
     const nextYoutube = p.youtube ? String(p.youtube) : '';

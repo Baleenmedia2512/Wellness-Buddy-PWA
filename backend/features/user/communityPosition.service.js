@@ -94,7 +94,7 @@ async function loadActiveCatalog() {
 
 async function loadConfirmedCode(userId) {
   const prefs = await userRepo.getEventProfilePreferences(userId);
-  return normalizePositionCode(prefs?.eventLevel);
+  return normalizePositionCode(prefs?.eventLevel) || 'GUEST';
 }
 
 /**

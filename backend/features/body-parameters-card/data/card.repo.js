@@ -673,6 +673,7 @@ export async function createTeamMemberFromPhone({
     PhoneNumber: storedPhone,
     CoachId: null,
     Role: 'user',
+    EventLevel: 'GUEST',
     ...(memberFields.Height != null ? { Height: memberFields.Height } : {}),
     ...(memberFields.Bmr != null ? { Bmr: memberFields.Bmr } : {}),
   };

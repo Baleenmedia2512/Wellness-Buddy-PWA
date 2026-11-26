@@ -13,6 +13,7 @@ export const EVENT_TRANSLATION_OPTIONS = Object.freeze([
 
 /** Released roles used by field collection until a screen loads the catalog. */
 export const EVENT_LEVEL_OPTIONS = Object.freeze([
+  'GUEST',
   'PC',
   'ASSOCIATE',
   'SV',

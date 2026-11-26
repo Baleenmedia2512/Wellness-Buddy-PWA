@@ -297,7 +297,9 @@ export async function getProfile({ email, userId = null, appVersion = null, bypa
   let communityPosition = null;
   let communityPositionRequest = null;
   try {
-    communityPosition = await describeCommunityPosition(eventProfilePrefs.eventLevel);
+    const rawLevel = eventProfilePrefs.eventLevel;
+    const resolvedLevel = (rawLevel && String(rawLevel).trim()) || 'GUEST';
+    communityPosition = await describeCommunityPosition(resolvedLevel);
     communityPositionRequest = await getPublicPendingCommunityPositionRequest(user.UserId);
   } catch (err) {
     logger.warn('[profile] community position lookup failed', {
@@ -401,7 +403,7 @@ export async function getProfile({ email, userId = null, appVersion = null, bypa
         workingPhysicalCentre,
         eventTranslation: eventProfilePrefs.eventTranslation,
         eventYourCity: eventProfilePrefs.eventYourCity,
-        eventLevel: eventProfilePrefs.eventLevel,
+        eventLevel: (eventProfilePrefs.eventLevel && String(eventProfilePrefs.eventLevel).trim()) || 'GUEST',
         ...profileIntro,
         communityPosition,
         communityPositionRequest,

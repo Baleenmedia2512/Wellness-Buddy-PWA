@@ -169,6 +169,7 @@ async function resolveUserAfterOtp({ recipient, contactType, consentInput }) {
           CoachApproved: 0,
           Role: 'user',
           PhoneNumber: storedPhone,
+          EventLevel: 'GUEST',
         },
         recipient,
       );
@@ -212,6 +213,7 @@ async function resolveUserAfterOtp({ recipient, contactType, consentInput }) {
       CoachApproved: 0,
       Role: 'user',
       Email: recipient,
+      EventLevel: 'GUEST',
     });
     isNewUser = true;
     logger.debug('🆕 [verify-otp] New user created (consent pending):', recipient);
