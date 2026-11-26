@@ -286,6 +286,7 @@ export default function FieldCollectionPrompt({ user, prompt, apiBaseUrl, onDone
               value={issues}
               onChange={setIssues}
               onQueryChange={setHealthQuery}
+              required={prompt.mode === 'ask_blocking'}
             />
           ) : PROFILE_INTRO_KEYS.includes(prompt.key) ? (
             <ProfileIntroFields
