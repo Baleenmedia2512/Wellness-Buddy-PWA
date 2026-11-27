@@ -20,6 +20,7 @@ import {
   savedCenterTotalRecords,
   toClubListRow,
 } from '../domain/centerListRefresh.js';
+import { firstIncompleteOwnedCentre } from '../domain/centreCompleteness.rules.js';
 import { cardAreaCity, formatAreaCity } from '../domain/placeAreaCity.js';
 import { geocodeAreaCity } from '../services/geocodeAreaCity.js';
 
@@ -95,6 +96,7 @@ const NutritionCentersMap = ({
   onBack,
   onEditCenter,
   onRegisterCenter,
+  onForceCompleteCenter,
   embedded = false,
   tabVisitKey = 0,
   mineFocusKey = 0,
@@ -153,15 +155,19 @@ const NutritionCentersMap = ({
   const appliedSaveTokenRef = useRef(null);
   /** Next filter refetch should keep the club we just painted. */
   const preserveListOnNextFetchRef = useRef(false);
+  /** Avoid re-opening the same incomplete club until the user leaves Mine / saves. */
+  const promptedIncompleteIdRef = useRef(null);
   const mapLoadedRef = useRef(mapLoaded);
   const fetchCentersRef = useRef(null);
   const onSavedCenterConsumedRef = useRef(onSavedCenterConsumed);
+  const onForceCompleteCenterRef = useRef(onForceCompleteCenter);
   const aliveRef = useRef(true);
   centersRef.current = centers;
   teamFilterRef.current = teamFilter;
   paginationRef.current = pagination;
   mapLoadedRef.current = mapLoaded;
   onSavedCenterConsumedRef.current = onSavedCenterConsumed;
+  onForceCompleteCenterRef.current = onForceCompleteCenter;
 
   const apiBaseUrl = getApiBaseUrl();
   const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || '';
@@ -728,6 +734,25 @@ const NutritionCentersMap = ({
       if (fetchAbortRef.current === controller) fetchAbortRef.current = null;
     };
   }, [mapLoaded, user, teamFilter, dateRange, customDate, debouncedSearch, tabVisitKey, mineFocusKey, fetchCenters]);
+
+  // Reset the one-shot incomplete prompt when Mine / tab is revisited.
+  useEffect(() => {
+    promptedIncompleteIdRef.current = null;
+  }, [tabVisitKey, mineFocusKey]);
+
+  // Existing clubs created before code/hours/facilities/photos: force owner to fill once.
+  useEffect(() => {
+    if (typeof onForceCompleteCenterRef.current !== 'function') return;
+    if (loading || teamFilter !== 'self' || !currentUserId) return;
+    const incomplete = firstIncompleteOwnedCentre(centers, currentUserId);
+    if (!incomplete) {
+      promptedIncompleteIdRef.current = null;
+      return;
+    }
+    if (promptedIncompleteIdRef.current === incomplete.id) return;
+    promptedIncompleteIdRef.current = incomplete.id;
+    onForceCompleteCenterRef.current(incomplete);
+  }, [centers, currentUserId, loading, teamFilter]);
 
   // Paint a create/update on My Club as soon as the write returns.
   // Attendance for the rest of the list refreshes behind that row.

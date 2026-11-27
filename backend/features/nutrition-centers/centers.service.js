@@ -13,6 +13,7 @@ import {
   parseStoredOpeningHours,
   prepareCentreListing,
 } from './domain/centreListing.rules.js';
+import { isCentreProfileComplete } from './domain/centreCompleteness.rules.js';
 import {
   centrePhotoUrls,
   removeCentrePhotoFiles,
@@ -65,6 +66,29 @@ function publicListing(row) {
     features: parseStoredCatalogIds(row?.features_json, CENTRE_FEATURES),
     seatingCount: storedSeatingCount(row?.seating_count),
   };
+}
+
+/**
+ * @param {object|null|undefined} row
+ * @param {Iterable<string>} photoCategories
+ */
+function withProfileCompleteness(row, photoCategories = []) {
+  const listing = publicListing(row);
+  return {
+    ...row,
+    ...listing,
+    profileComplete: isCentreProfileComplete({
+      centerCode: row?.center_code,
+      openingHours: listing.openingHours,
+      facilities: listing.facilities,
+      photoCategories,
+    }),
+  };
+}
+
+function photoCategoriesFromPrepared(photos) {
+  if (!photos || typeof photos !== 'object') return [];
+  return Object.keys(photos).filter((key) => Array.isArray(photos[key]) && photos[key].length > 0);
 }
 
 function storedSeatingCount(raw) {
@@ -204,7 +228,11 @@ export async function register(input) {
 
   return {
     httpStatus: 201,
-    body: { success: true, data: center, message: 'Nutrition center registered successfully' },
+    body: {
+      success: true,
+      data: withProfileCompleteness(center, photoCategoriesFromPrepared(profile.photos)),
+      message: 'Nutrition center registered successfully',
+    },
   };
 }
 
@@ -368,9 +396,18 @@ export async function updateCenter(input) {
   }
   await consumeCentrePhoneOtp(userId, ownerPhone);
   invalidateNutritionCentersListCache();
+  let photoCategories = photoCategoriesFromPrepared(profile.photos);
+  if (photoCategories.length < 1) {
+    const byCenter = await repo.listPhotoCategoriesForCenters([centerId]);
+    photoCategories = [...(byCenter.get(Number(centerId)) || [])];
+  }
   return {
     httpStatus: 200,
-    body: { success: true, data: updated, message: 'Nutrition center updated successfully' },
+    body: {
+      success: true,
+      data: withProfileCompleteness(updated, photoCategories),
+      message: 'Nutrition center updated successfully',
+    },
   };
 }
 
@@ -570,14 +607,16 @@ async function listCentersImpl(input, epochAtStart = centersListEpoch) {
   const centers = await repo.listCenters({ teamUserIds, scope });
 
   const ownerIds = [...new Set(centers.map((c) => c.owner_user_id).filter(Boolean))];
-  const [owners, attendanceByCenter] = await Promise.all([
+  const centerIds = centers.map((c) => c.id);
+  const [owners, attendanceByCenter, photoCategoriesByCenter] = await Promise.all([
     repo.getOwnerNames(ownerIds),
     repo.attendanceForCenters(
-      centers.map((c) => c.id),
+      centerIds,
       startDate,
       endDate,
       timezoneIana,
     ),
+    repo.listPhotoCategoriesForCenters(centerIds),
   ]);
 
   const ownerMap = {};
@@ -587,6 +626,10 @@ async function listCentersImpl(input, epochAtStart = centersListEpoch) {
   const centersWithMetrics = centers.map((center) => {
     const rangeLogs = attendanceByCenter.get(Number(center.id)) || [];
     const todayAttendance = new Set(rangeLogs.map((log) => log.UserId)).size;
+    const listing = publicListing(center);
+    const photoCategories = [
+      ...(photoCategoriesByCenter.get(Number(center.id)) || []),
+    ];
     return {
       id: center.id,
       center_name: center.center_name,
@@ -602,7 +645,13 @@ async function listCentersImpl(input, epochAtStart = centersListEpoch) {
       attendancePercentage: todayAttendance > 0 ? 100 : 0,
       area: center.area || null,
       city: center.city || null,
-      ...publicListing(center),
+      ...listing,
+      profileComplete: isCentreProfileComplete({
+        centerCode: center.center_code,
+        openingHours: listing.openingHours,
+        facilities: listing.facilities,
+        photoCategories,
+      }),
     };
   });
 

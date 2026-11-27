@@ -1072,6 +1072,7 @@ function WellnessValleyApp() {
   // Register nutrition center state (for coaches)
   const [showRegisterCenter, setShowRegisterCenter] = useState(false);
   const [editCenterData, setEditCenterData] = useState(null); // centre to pre-load for editing
+  const [forceCompleteClub, setForceCompleteClub] = useState(false);
   const [clubMineFocusKey, setClubMineFocusKey] = useState(0);
   const [savedClub, setSavedClub] = useState(null);
 
@@ -1275,6 +1276,7 @@ function WellnessValleyApp() {
     }
     setShowRegisterCenter(false);
     setEditCenterData(null);
+    setForceCompleteClub(false);
     setShowNutritionCentersMap(true);
     setActiveOverlayPage('physical-club');
   }, [bumpTabVisitKey]);
@@ -8519,10 +8521,17 @@ function WellnessValleyApp() {
                 onSavedCenterConsumed={() => setSavedClub(null)}
                 onBack={() => navigateTo('home')}
                 onEditCenter={(center) => {
+                  setForceCompleteClub(false);
+                  setEditCenterData(center);
+                  setShowRegisterCenter(true);
+                }}
+                onForceCompleteCenter={(center) => {
+                  setForceCompleteClub(true);
                   setEditCenterData(center);
                   setShowRegisterCenter(true);
                 }}
                 onRegisterCenter={() => {
+                  setForceCompleteClub(false);
                   setEditCenterData(null);
                   setShowRegisterCenter(true);
                 }}
@@ -8534,10 +8543,13 @@ function WellnessValleyApp() {
             <NutritionCenterRegistration
               user={user}
               initialCenter={editCenterData}
+              forceComplete={forceCompleteClub}
               onSaved={returnToMyClubs}
               onBack={() => {
+                if (forceCompleteClub) return;
                 setShowRegisterCenter(false);
                 setEditCenterData(null);
+                setForceCompleteClub(false);
               }}
             />
           </Suspense>
@@ -10383,10 +10395,13 @@ function WellnessValleyApp() {
             <NutritionCenterRegistration
               user={user}
               initialCenter={editCenterData}
+              forceComplete={forceCompleteClub}
               onSaved={returnToMyClubs}
               onBack={() => {
+                if (forceCompleteClub) return;
                 setShowRegisterCenter(false);
                 setEditCenterData(null);
+                setForceCompleteClub(false);
                 setShowNutritionCentersMap(true);
                 setActiveOverlayPage('physical-club');
               }}

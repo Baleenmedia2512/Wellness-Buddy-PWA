@@ -107,5 +107,21 @@ describe('toCentersListSummary', () => {
     assert.equal(summary.extra, undefined);
     assert.equal(summary.id, 1);
     assert.equal(summary.center_code, 'RS1');
+    assert.equal(summary.profileComplete, true);
+  });
+
+  it('keeps profileComplete false for legacy incomplete clubs', () => {
+    const summary = toCentersListSummary({
+      id: 2,
+      center_name: 'Legacy',
+      ownerName: 'Owner',
+      todayAttendance: 0,
+      attendancePercentage: 0,
+      latitude: 1,
+      longitude: 2,
+      owner_user_id: 9,
+      profileComplete: false,
+    });
+    assert.equal(summary.profileComplete, false);
   });
 });

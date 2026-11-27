@@ -202,6 +202,33 @@ export async function listCenterPhotos(centerId) {
   return data || [];
 }
 
+/**
+ * Lightweight photo-slot presence for completeness checks (no image keys).
+ * @param {number[]} centerIds
+ * @returns {Promise<Map<number, Set<string>>>}
+ */
+export async function listPhotoCategoriesForCenters(centerIds) {
+  const ids = [...new Set((centerIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
+  /** @type {Map<number, Set<string>>} */
+  const byCenter = new Map();
+  for (const id of ids) byCenter.set(id, new Set());
+  if (ids.length === 0) return byCenter;
+
+  const db = getMysqlClient();
+  const { data, error } = await db
+    .from('nutrition_center_photos_table')
+    .select('center_id, category')
+    .in('center_id', ids);
+  if (error) throw new Error(error.message);
+  for (const row of data || []) {
+    const centerId = Number(row.center_id);
+    const category = String(row.category || '').trim();
+    if (!byCenter.has(centerId) || !category) continue;
+    byCenter.get(centerId).add(category);
+  }
+  return byCenter;
+}
+
 export async function deleteCenterPhotos(centerId) {
   const db = getMysqlClient();
   const { error } = await db

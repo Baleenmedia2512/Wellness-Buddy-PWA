@@ -47,8 +47,23 @@ describe('toClubListRow', () => {
         ownerName: 'Coach A',
         area: null,
         city: null,
+        center_code: null,
       },
     );
+  });
+
+  it('keeps profileComplete from an update response', () => {
+    const row = toClubListRow({
+      id: 12,
+      center_name: 'Club',
+      center_code: 'RS12',
+      profileComplete: true,
+      openingHours: { monday: { closed: false, slots: [{ open: '09:00', close: '17:00' }] } },
+      facilities: ['parking'],
+    }, 'Coach A');
+    assert.equal(row.center_code, 'RS12');
+    assert.equal(row.profileComplete, true);
+    assert.deepEqual(row.facilities, ['parking']);
   });
 });
 

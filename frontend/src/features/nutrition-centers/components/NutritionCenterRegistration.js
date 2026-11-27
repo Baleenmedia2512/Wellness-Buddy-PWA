@@ -25,7 +25,7 @@ import CentreListingFields from './CentreListingFields';
 import { centreListingError, defaultOpeningHours, seatingCountError } from '../domain/centreListing.rules.js';
 import { apiFetch } from '../../../shared/services/apiFetch.js';
 
-const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) => {
+const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter, forceComplete = false }) => {
   const [centerName, setCenterName] = useState('');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
@@ -633,7 +633,28 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
     }
   };
 
+  const requestLeaveForm = () => {
+    if (forceComplete) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Complete centre details',
+        message: 'Your club is missing required details (code, hours, facilities, or photos). Please fill them in and tap Save — then this screen will not appear again.',
+        type: 'warning',
+        confirmText: 'OK',
+        cancelText: null,
+        onConfirm: () => setAlertModal((prev) => ({ ...prev, isOpen: false })),
+        onCancel: null,
+      });
+      return;
+    }
+    if (typeof onBack === 'function') onBack();
+  };
+
   const handleCancelEdit = () => {
+    if (forceComplete) {
+      requestLeaveForm();
+      return;
+    }
     setEditingCenter(null);
     setCenterName('');
     setLatitude('');
@@ -991,7 +1012,7 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <TouchFeedbackButton
-              onClick={onBack}
+              onClick={forceComplete ? requestLeaveForm : onBack}
               className="p-2 hover:bg-gray-100 rounded-full"
               ariaLabel="Go back"
             >
@@ -999,10 +1020,18 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
             </TouchFeedbackButton>
             <div>
               <h1 className="text-xl font-bold text-gray-800">
-                {editingCenter ? 'Edit Nutrition Centre' : 'Register Nutrition Centre'}
+                {forceComplete
+                  ? 'Complete Nutrition Centre'
+                  : editingCenter
+                    ? 'Edit Nutrition Centre'
+                    : 'Register Nutrition Centre'}
               </h1>
               <p className="text-xs text-gray-500">
-                {editingCenter ? `Editing: ${editingCenter.center_name}` : 'Add a new club location'}
+                {forceComplete
+                  ? 'Required details are missing. Save once — then this will not show again.'
+                  : editingCenter
+                    ? `Editing: ${editingCenter.center_name}`
+                    : 'Add a new club location'}
               </p>
             </div>
           </div>
@@ -1024,38 +1053,51 @@ const NutritionCenterRegistration = ({ user, onBack, onSaved, initialCenter }) =
 
         {/* Registration Form */}
         <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-gray-800">
-              {editingCenter ? 'Edit Centre Details' : 'New Centre Details'}
-            </h2>
-            {editingCenter && (
-              <div className="flex gap-2">
-                <TouchFeedbackButton
-                  type="button"
-                  onClick={handleUpdate}
-                  disabled={loading || photosLoading || nameAvailable === false}
-                  className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {loading ? (
-                    <>
-                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      {/* <span className="text-lg"></span> */}
-                      Save
-                    </>
+          <div className="mb-4 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold text-gray-800">
+                {forceComplete
+                  ? 'Missing Centre Details'
+                  : editingCenter
+                    ? 'Edit Centre Details'
+                    : 'New Centre Details'}
+              </h2>
+              {editingCenter && (
+                <div className="flex gap-2 shrink-0">
+                  <TouchFeedbackButton
+                    type="button"
+                    onClick={handleUpdate}
+                    disabled={loading || photosLoading || nameAvailable === false}
+                    className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {loading ? (
+                      <>
+                        <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        {/* <span className="text-lg"></span> */}
+                        Save
+                      </>
+                    )}
+                  </TouchFeedbackButton>
+                  {!forceComplete && (
+                    <TouchFeedbackButton
+                      type="button"
+                      onClick={handleCancelEdit}
+                      className="px-3 py-1 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 flex items-center gap-2"
+                    >
+                      Cancel
+                    </TouchFeedbackButton>
                   )}
-                </TouchFeedbackButton>
-                <TouchFeedbackButton
-                  type="button"
-                  onClick={handleCancelEdit}
-                  className="px-3 py-1 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 flex items-center gap-2"
-                >
-                  Cancel
-                </TouchFeedbackButton>
-              </div>
+                </div>
+              )}
+            </div>
+            {forceComplete && (
+              <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                Add centre code, opening hours, facilities, and at least one photo in each required group, then Save.
+              </p>
             )}
           </div>
           <form onSubmit={editingCenter ? handleUpdate : handleRegister} className="space-y-4">

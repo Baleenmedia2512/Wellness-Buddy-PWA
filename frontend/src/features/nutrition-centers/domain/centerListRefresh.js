@@ -32,10 +32,16 @@ export function toClubListRow(saved, ownerNameFallback = '') {
     ownerName: saved.ownerName || ownerNameFallback || 'Unknown',
     area: saved.area || null,
     city: saved.city || null,
+    center_code: saved.center_code ?? saved.centerCode ?? null,
   };
   if (saved.todayAttendance != null) row.todayAttendance = saved.todayAttendance;
   if (saved.attendancePercentage != null) row.attendancePercentage = saved.attendancePercentage;
   if (saved.totalParticipants != null) row.totalParticipants = saved.totalParticipants;
+  if (saved.openingHours !== undefined) row.openingHours = saved.openingHours;
+  if (saved.facilities !== undefined) row.facilities = saved.facilities;
+  if (saved.features !== undefined) row.features = saved.features;
+  if (saved.seatingCount !== undefined) row.seatingCount = saved.seatingCount;
+  if (saved.profileComplete !== undefined) row.profileComplete = saved.profileComplete;
   return row;
 }
 

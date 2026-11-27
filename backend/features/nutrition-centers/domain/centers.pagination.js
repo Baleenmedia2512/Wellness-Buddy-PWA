@@ -109,6 +109,8 @@ export function toCentersListSummary(center) {
     area: center.area || null,
     city: center.city || null,
     education_hour: center.education_hour || null,
+    // Additive: older clients ignore. Used to force-complete legacy clubs once.
+    profileComplete: center.profileComplete !== false,
   };
 }
 
