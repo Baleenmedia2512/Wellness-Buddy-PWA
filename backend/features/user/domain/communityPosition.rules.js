@@ -33,6 +33,7 @@ export const POSITION_REQUEST = 'request';
  * Do not add new roles here — insert a community_positions_table row.
  */
 export const LEGACY_COMMUNITY_POSITIONS = Object.freeze([
+  { code: 'GUEST', label: 'Guest', featureKey: 'guest', usageNote: 'Default role for new users before Community ID verification.', sortOrder: 5 },
   { code: 'PC', label: 'PC', featureKey: 'pc', usageNote: 'Profile role. Features check the key pc.', sortOrder: 10 },
   { code: 'ASSOCIATE', label: 'ASSOCIATE', featureKey: 'associate', usageNote: 'Profile role. Features check the key associate.', sortOrder: 20 },
   { code: 'SV', label: 'SV', featureKey: 'sv', usageNote: 'Profile role. Features check the key sv.', sortOrder: 30 },

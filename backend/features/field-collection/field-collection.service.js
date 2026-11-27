@@ -212,7 +212,8 @@ export async function recordPromptAction({ userId, fieldKey, action, appVersion 
   }
   const { user, values, role, fields, states, nowIso } = await loadContext(userId, appVersion);
   const field = fields.find((item) => item.key === fieldKey);
-  if (!field || field.phase !== 'scheduled') {
+  if (!field) throw new ValidationError(400, 'Unknown field');
+  if (action === 'skip' && field.phase !== 'scheduled') {
     throw new ValidationError(400, 'Only later fields can be skipped or clocked here');
   }
   if (action === 'filled') {

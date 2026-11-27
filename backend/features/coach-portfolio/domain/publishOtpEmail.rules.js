@@ -178,7 +178,7 @@ export function buildPublishOtpEmail({
   });
   const whatsappButtonHtml = buildWhatsAppShareButtonHtml({
     shareUrl: whatsappUrl,
-    label: 'Share code on WhatsApp',
+    label: `Share code ${rawOtp} on WhatsApp`,
   });
 
   const subject = forCoachApproval
@@ -242,14 +242,14 @@ export function buildPublishOtpEmail({
     '',
     `Verification OTP: ${spacedOtp(otp)}`,
     `Valid for ${hours} hours`,
-    whatsappUrl ? `Share on WhatsApp: ${whatsappUrl}` : null,
+    whatsappUrl ? `Share code ${rawOtp} on WhatsApp: ${whatsappUrl}` : null,
     '',
     'Verification instructions:',
     ...instructionsText,
     '',
     'Wellness Valley Team',
     'Automated message. Do not reply.',
-    'Support: easy2work.india@gmail.com',
+    `Support: easy2work.india@gmail.com (Ref: #${rawOtp})`,
   ].filter((line) => line != null).join('\n');
 
   const html = `<!DOCTYPE html>

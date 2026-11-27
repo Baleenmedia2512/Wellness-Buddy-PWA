@@ -514,7 +514,7 @@ export function buildTestimonialCoachEmailHtml({
   const rawOtp = String(otp ?? '').trim();
   const waText = `Hi ${memberName || 'Member'}, your Wellness Valley transformation verification code is ${rawOtp}.`;
   const whatsappUrl = buildWhatsAppShareUrl({ phone: memberPhone, text: waText });
-  const whatsappButtonHtml = buildWhatsAppShareButtonHtml({ shareUrl: whatsappUrl, label: 'Share code on WhatsApp' });
+  const whatsappButtonHtml = buildWhatsAppShareButtonHtml({ shareUrl: whatsappUrl, label: `Share code ${rawOtp} on WhatsApp` });
   const goalLabel = goalType === 'loss' ? 'Weight Loss' : 'Weight Gain';
   // Prefer HTML card from real Before/After URLs (left/right) — never a stale client bitmap.
   const transformationCard = buildTransformationCardEmailBlock({
@@ -736,7 +736,7 @@ export function buildVideoCoachEmailHtml({ memberName, memberPhone = null, otp, 
   const rawOtp = String(otp ?? '').trim();
   const waText = `Hi ${memberName || 'Member'}, your Wellness Valley video verification code is ${rawOtp}.`;
   const whatsappUrl = buildWhatsAppShareUrl({ phone: memberPhone, text: waText });
-  const whatsappButtonHtml = buildWhatsAppShareButtonHtml({ shareUrl: whatsappUrl, label: 'Share code on WhatsApp' });
+  const whatsappButtonHtml = buildWhatsAppShareButtonHtml({ shareUrl: whatsappUrl, label: `Share code ${rawOtp} on WhatsApp` });
 
   const videoButtons = [
     healthVideoUrl   ? buildVideoButton('Health Results Video (up to 1 min)',   healthVideoUrl,   '#059669') : '',
@@ -1087,7 +1087,7 @@ export function buildUnifiedSubmitEmailHtml({
   const rawOtp = String(otp ?? '').trim();
   const waText = `Hi ${memberName || 'Member'}, your Wellness Valley transformation verification code is ${rawOtp}.`;
   const whatsappUrl = buildWhatsAppShareUrl({ phone: memberPhone, text: waText });
-  const whatsappButtonHtml = buildWhatsAppShareButtonHtml({ shareUrl: whatsappUrl, label: 'Share code on WhatsApp' });
+  const whatsappButtonHtml = buildWhatsAppShareButtonHtml({ shareUrl: whatsappUrl, label: `Share code ${rawOtp} on WhatsApp` });
   const displaySlots = normalizeChangedSlotsForEmail(changedSlots, shareAsCollage);
   const slots      = new Set(displaySlots);
 

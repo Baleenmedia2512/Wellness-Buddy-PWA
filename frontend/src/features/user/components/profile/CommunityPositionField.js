@@ -33,7 +33,7 @@ export default function CommunityPositionField({
   const [positions, setPositions] = useState([]);
   const [loadError, setLoadError] = useState('');
   const [draft, setDraft] = useState(
-    pendingRequest?.positionCode || confirmedCode || readHeldCommunityPosition(userId) || '',
+    pendingRequest?.positionCode || confirmedCode || readHeldCommunityPosition(userId) || 'GUEST',
   );
   const [pending, setPending] = useState(pendingRequest);
   const [busy, setBusy] = useState(false);
@@ -94,9 +94,9 @@ export default function CommunityPositionField({
     otpEnabled && draft && draft !== (confirmedCode || '') && draft !== heldCode && !pendingForDraft,
   );
   const options = [...positions];
-  [confirmedCode, pending?.positionCode, draft].forEach((code) => {
+  [confirmedCode, pending?.positionCode, draft, 'GUEST'].forEach((code) => {
     if (code && !options.some((row) => row.code === code)) {
-      options.push({ code, label: code, featureKey: '', usageNote: '' });
+      options.push({ code, label: code === 'GUEST' ? 'Guest' : code, featureKey: 'guest', usageNote: '' });
     }
   });
 

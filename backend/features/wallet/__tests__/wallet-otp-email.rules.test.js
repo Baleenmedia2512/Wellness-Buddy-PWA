@@ -61,6 +61,8 @@ describe('buildWalletCashOtpEmail', () => {
         'Amount: ₹2,00,001',
         '',
         'Approval code: 4321',
+        '',
+        '(Ref: #4321)',
       ].join('\n'),
     );
     assert.match(mail.html, /Wellness Valley/);
@@ -86,9 +88,9 @@ describe('buildWalletCashOtpEmail', () => {
       amountLabel: '200',
       requesterPhone: '9876543210',
     });
-    assert.match(mail.html, /Share code on WhatsApp/);
+    assert.match(mail.html, /Share code 7930 on WhatsApp/);
     assert.match(mail.html, /https:\/\/wa\.me\/919876543210\?text=/);
-    assert.match(mail.text, /Share on WhatsApp: https:\/\/wa\.me\/919876543210\?text=/);
+    assert.match(mail.text, /Share code 7930 on WhatsApp: https:\/\/wa\.me\/919876543210\?text=/);
     assert.match(mail.whatsappUrl, /7930/);
   });
 

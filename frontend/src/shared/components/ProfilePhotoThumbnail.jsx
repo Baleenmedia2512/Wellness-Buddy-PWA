@@ -9,6 +9,7 @@ export default function ProfilePhotoThumbnail({
   fallbackClassName,
   fallback,
   onViewProfile,
+  onError,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
@@ -35,7 +36,10 @@ export default function ProfilePhotoThumbnail({
             src={src}
             alt={alt}
             className={imageClassName}
-            onError={() => setImageFailed(true)}
+            onError={() => {
+              setImageFailed(true);
+              onError?.();
+            }}
           />
         </button>
       ) : (

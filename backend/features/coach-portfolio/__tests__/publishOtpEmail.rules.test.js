@@ -72,7 +72,7 @@ describe('coach-portfolio publishOtpEmail.rules', () => {
     assert.match(mail.html, /\/coach\/chennai\/kodambakkam\/system/);
     assert.match(mail.html, /5 6 5 0/);
     assert.match(mail.html, /Valid for 24 hours/);
-    assert.match(mail.html, /Share code on WhatsApp/);
+    assert.match(mail.html, /Share code 5650 on WhatsApp/);
     assert.ok(mail.whatsappUrl.includes('api.whatsapp.com') || mail.whatsappUrl.includes('wa.me'));
     assert.match(mail.html, /System Nitheesh/);
     assert.match(mail.text, /Verification OTP: 5 6 5 0/);
