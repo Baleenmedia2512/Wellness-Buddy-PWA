@@ -170,6 +170,8 @@ export function extractNutrientContributions(meals, paramKey, options = {}) {
     }
   }
 
+  const isMultiDay = Boolean(options.isMultiDay || options.includeDateDetail);
+
   const groupedFoods = [...groupedByName.values()].map((g) => {
     let detail;
     if (includeDateDetail) {
@@ -179,19 +181,26 @@ export function extractNutrientContributions(meals, paramKey, options = {}) {
         detail = g.dates[0];
       }
     }
+    // For multi-day periods (> 1 day), display divided per-log amount so foods
+    // are compared by single-serving nutrient density rather than frequency of consumption.
+    const displayAmount = (isMultiDay && g.logCount > 1)
+      ? (g.amount / g.logCount)
+      : g.amount;
     return {
       foodName: g.foodName,
-      amount: g.amount,
+      amount: displayAmount,
+      totalAmount: g.amount,
+      logCount: g.logCount,
       detail,
     };
   });
 
-  const total = groupedFoods.reduce((sum, f) => sum + f.amount, 0);
+  const total = [...groupedByName.values()].reduce((sum, g) => sum + g.amount, 0);
   const breakdown = groupedFoods
     .sort((a, b) => b.amount - a.amount)
     .map((f) => ({
       ...f,
-      percentage: total > 0 ? (f.amount / total) * 100 : 0,
+      percentage: total > 0 ? (f.totalAmount / total) * 100 : 0,
     }));
 
   return { breakdown, total, unit: cfg.unit, decimals: cfg.decimals };
@@ -323,6 +332,7 @@ export function buildParameterContributionView({
     decimals: 0,
     breakdown: [],
     showAmountPercent: true,
+    isPerServing: false,
   };
 
   if (!key) return base;
@@ -343,6 +353,8 @@ export function buildParameterContributionView({
       decimals,
       listLabel: foodsListLabel,
       emptyHint: 'No foods logged for this nutrient',
+      showAmountPercent: !isMultiDay,
+      isPerServing: true,
     };
   }
 
