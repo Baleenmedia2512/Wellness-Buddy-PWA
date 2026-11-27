@@ -10,8 +10,8 @@ import {
 
 const PLAN_POINTS = [
   '30-day Premium access for report and plan analysis',
-  'Pay with UPI, card, or net banking',
-  'Secure checkout — recharge anytime before expiry',
+  'Pay securely on wellnessvalley.in (UPI, card, or net banking)',
+  'After payment, return to the app — Premium unlocks automatically',
 ];
 
 /**

@@ -403,7 +403,7 @@ registerFlag({
   owner:          '@principal-eng',
   createdAt:      '2026-10-28',
   removeBy:       '2027-04-28',
-  description:    'Profile Go Premium opens Cashfree checkout. Kill switch hides the row and the create-order API.',
+  description:    'Profile Go Premium (native → website checkout; web modal). Kill switch hides the row and create-order API.',
   defaultEnabled: true,
 });
 

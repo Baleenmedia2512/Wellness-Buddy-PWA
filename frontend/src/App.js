@@ -1925,16 +1925,23 @@ function WellnessValleyApp() {
       // Accept both legacy UUID links and new short-code links.
       return /(?:^wellnessvalley:\/\/share\/)|(?:\/share(?:\/|$))/i.test(url);
     };
+    // Premium website checkout return — suppress camera; status refresh unlocks Premium.
+    const isPremiumReturnUrl = (url) => {
+      if (!url || typeof url !== "string") return false;
+      return /(?:^wellnessvalley:\/\/premium\/)|(?:\/premium\/paid)/i.test(url);
+    };
 
     // Part B n++ early appUrlOpen listener. Fires on cold starts where the OS
     // delivers the intent URL via the event bridge rather than getLaunchUrl().
     let earlyHandle = null;
     nativeLifecycle
       .addAppUrlOpenListener((event) => {
-        if (isShareUrl(event?.url)) {
+        if (isShareUrl(event?.url) || isPremiumReturnUrl(event?.url)) {
           _hasFiredCameraOnLoginRef.current = true;
           _suppressAutoCameraOnDeepLinkRef.current = true;
-          _pendingDeepLinkUrlRef.current = event?.url || null;
+          if (isShareUrl(event?.url)) {
+            _pendingDeepLinkUrlRef.current = event?.url || null;
+          }
         }
         _launchUrlCheckedRef.current = true;
       })
@@ -1953,10 +1960,12 @@ function WellnessValleyApp() {
       .getLaunchUrl()
       .then((url) => {
         clearTimeout(fallbackTimer);
-        if (isShareUrl(url)) {
+        if (isShareUrl(url) || isPremiumReturnUrl(url)) {
           _hasFiredCameraOnLoginRef.current = true;
           _suppressAutoCameraOnDeepLinkRef.current = true;
-          _pendingDeepLinkUrlRef.current = url;
+          if (isShareUrl(url)) {
+            _pendingDeepLinkUrlRef.current = url;
+          }
         }
         _launchUrlCheckedRef.current = true;
       })
