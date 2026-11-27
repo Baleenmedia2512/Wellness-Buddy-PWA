@@ -784,6 +784,7 @@ model team_table {
   ConsentDeviceInfo                                                                           String?                                 @db.LongText
   BodyFat                                                                                     Decimal?                                @db.Decimal(5, 2)
   Age                                                                                         Int?
+  DateOfBirth                                                                                 DateTime?                               @db.Date
   VisceralFat                                                                                 Decimal?                                @db.Decimal(20, 6)
   BodyAge                                                                                     Decimal?                                @db.Decimal(20, 6)
   ChestCm                                                                                     Decimal?                                @db.Decimal(20, 6)

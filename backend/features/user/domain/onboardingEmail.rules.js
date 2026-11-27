@@ -98,6 +98,7 @@ export function buildAdoptProfileMetricsPatch(fromRow, toRow) {
   copyIfEmpty('Bmr', (v) => v == null || v === '');
   copyIfEmpty('Gender', (v) => !v);
   copyIfEmpty('Age', (v) => v == null || v === '');
+  copyIfEmpty('DateOfBirth', (v) => v == null || v === '');
   copyIfEmpty('VisceralFat', (v) => v == null || v === '');
   copyIfEmpty('BodyAge', (v) => v == null || v === '');
   copyIfEmpty('ChestCm', (v) => v == null || v === '');

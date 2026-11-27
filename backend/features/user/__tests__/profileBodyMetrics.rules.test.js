@@ -28,6 +28,7 @@ describe('profileBodyMetrics.rules', () => {
   describe('emptyProfileBodyMetrics', () => {
     it('returns all keys as null', () => {
       const empty = emptyProfileBodyMetrics();
+      assert.equal(empty.dateOfBirth, null);
       assert.equal(empty.age, null);
       assert.equal(empty.fatPercent, null);
       assert.equal(empty.bmi, null);
@@ -53,6 +54,7 @@ describe('profileBodyMetrics.rules', () => {
       });
 
       assert.deepEqual(mapped, {
+        dateOfBirth: null,
         age: 32,
         gender: 'Male',
         fatPercent: 18.5,
@@ -73,6 +75,7 @@ describe('profileBodyMetrics.rules', () => {
     it('maps PascalCase team_table columns', () => {
       const mapped = mapTeamRowToProfileBodyMetrics({
         Age: 28,
+        DateOfBirth: '1998-03-10',
         BodyFat: 22.5,
         BodyAge: 26,
         ChestCm: 90,
@@ -80,6 +83,7 @@ describe('profileBodyMetrics.rules', () => {
         HipCm: 95,
         Gender: 'Female',
       });
+      assert.equal(mapped.dateOfBirth, '1998-03-10');
       assert.equal(mapped.age, 28);
       assert.equal(mapped.fatPercent, 22.5);
       assert.equal(mapped.bodyAge, 26);

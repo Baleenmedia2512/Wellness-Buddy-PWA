@@ -13,10 +13,12 @@ import { HEIGHT_CHANGE_OTP_FLAG, isHeightLocked } from '../domain/heightChange';
 import { usesUnifiedProfileChangeOtp } from '../domain/profileChange';
 import { isFlagEnabled } from '../../../config/featureFlags';
 import { introPayload, validateProfileIntro } from '../domain/profileIntro';
+import { ageFromDateOfBirth } from '../domain/dateOfBirth';
 
 const cleanPhone = (s) => s.trim().replace(/[\s\-()]/g, '');
 
 const EMPTY_BODY_METRICS = {
+  dateOfBirth: '',
   age: '',
   fatPercent: '',
   bmi: '',
@@ -32,8 +34,15 @@ function metricsFromProfile(p) {
   const fat = m.fatPercent != null && m.fatPercent !== ''
     ? m.fatPercent
     : fatFallback;
+  const dob = m.dateOfBirth != null && m.dateOfBirth !== ''
+    ? String(m.dateOfBirth)
+    : (p?.dateOfBirth != null && p.dateOfBirth !== '' ? String(p.dateOfBirth) : '');
+  const derivedAge = ageFromDateOfBirth(dob);
   return {
-    age: m.age != null && m.age !== '' ? String(m.age) : '',
+    dateOfBirth: dob,
+    age: derivedAge != null
+      ? String(derivedAge)
+      : (m.age != null && m.age !== '' ? String(m.age) : ''),
     fatPercent: fat != null && fat !== '' ? String(fat) : '',
     bmi: m.bmi != null && m.bmi !== '' ? String(m.bmi) : '',
     bodyAge: m.bodyAge != null && m.bodyAge !== '' ? String(m.bodyAge) : '',
@@ -73,6 +82,7 @@ function formSnapshot(values) {
     aboutMe: values.aboutMe ?? '',
     qualification: values.qualification ?? '',
     languages: values.languages ?? [],
+    dateOfBirth: metrics.dateOfBirth ?? '',
     age: metrics.age ?? '',
     fatPercent: metrics.fatPercent ?? '',
     bodyAge: metrics.bodyAge ?? '',
@@ -191,7 +201,16 @@ export default function useProfileForm(initial = {}) {
   });
 
   const setBodyMetricField = (key, value) => {
-    if (key === 'bmi') return;
+    if (key === 'bmi' || key === 'age') return;
+    if (key === 'dateOfBirth') {
+      const derived = ageFromDateOfBirth(value);
+      setBodyMetrics((prev) => ({
+        ...prev,
+        dateOfBirth: value,
+        age: derived != null ? String(derived) : '',
+      }));
+      return;
+    }
     setBodyMetrics((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -337,6 +356,10 @@ export default function useProfileForm(initial = {}) {
       phoneNumber: phone.trim() || undefined,
       weightGoalMode: weightGoalMode || 'loss',
       age: parseOptionalNumber(bodyMetrics.age, { integer: true }),
+      // Always send so Save persists / clears. Older backends ignore unknown keys.
+      dateOfBirth: bodyMetrics.dateOfBirth && String(bodyMetrics.dateOfBirth).trim() !== ''
+        ? String(bodyMetrics.dateOfBirth).trim()
+        : null,
       bodyAge: parseOptionalNumber(bodyMetrics.bodyAge),
       chestCm: parseOptionalNumber(bodyMetrics.chestCm),
       waistCm: parseOptionalNumber(bodyMetrics.waistCm),
@@ -344,6 +367,10 @@ export default function useProfileForm(initial = {}) {
       recoveredHealthIssues: Array.isArray(recoveredHealthIssues) ? recoveredHealthIssues : [],
       ...extras,
     };
+    if (body.dateOfBirth) {
+      const derived = ageFromDateOfBirth(body.dateOfBirth);
+      if (derived != null) body.age = derived;
+    }
     delete body.lockedHeight;
 
     if (!skipHeightOnSave) {

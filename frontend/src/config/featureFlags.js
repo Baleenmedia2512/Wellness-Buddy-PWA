@@ -232,12 +232,12 @@ const REGISTRY = Object.freeze({
     description:    'BroadCast paid screen: how-to video and payment entry.',
   },
 
-  // Profile Go Premium — opens Cashfree checkout. Kill switch hides the row.
+  // Profile Go Premium — web: Cashfree modal; native: Safari/Chrome → wellnessvalley.in.
   'ff.go-premium': {
     envKey:         'REACT_APP_FF_GO_PREMIUM',
     storageKey:     'ff.go-premium',
     defaultEnabled: true,
-    description:    'Profile Go Premium opens Cashfree checkout.',
+    description:    'Profile Go Premium. Native opens website checkout; web keeps Cashfree modal.',
   },
 
   // Create Event — event form plus update, delete, postpone, and cancel.
