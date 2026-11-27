@@ -234,6 +234,7 @@ import {
   isCaptureFlowBusy,
 } from "./shared/services/captureFlowBusy";
 import PermissionDeniedModal from "./shared/components/PermissionDeniedModal";
+import CameraPermissionNeededModal from "./shared/components/CameraPermissionNeededModal";
 import PermissionBlockedPage from "./shared/components/PermissionBlockedPage";
 import GpsRequiredModal from "./shared/components/GpsRequiredModal";
 import * as authFsm from "./shared/services/auth/fsm";
@@ -269,6 +270,7 @@ import {
 import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
 import { ADMIN_CONFIG_TABS } from "./shell/domain/adminConfigSetupTabs";
+import KeepAlivePanel from "./shell/components/KeepAlivePanel";
 import { isAdminLikeRole, normalizeAppRole, ROLE_USER } from "./shared/constants/roles";
 import { canAccessReportsModule } from "./features/reports/domain/reportsAccess.rules.js";
 import { OPEN_COMMUNITY_POSITION_EVENT } from "./features/user/domain/communityPositionFocus";
@@ -373,6 +375,10 @@ function WellnessValleyApp() {
   const [detectedFoodNames, setDetectedFoodNames] = useState([]); // AI-detected food names
   const [error, setError] = useState(null);
   const [showDashboard, setShowDashboard] = useState(false); // restored via useEffect to avoid suspending lazy component on mount
+  // Which full-page overlay is visible. null = Home. Keep-alive nav modules
+  // stay mounted after first visit; inactive ones use display:none so scroll /
+  // search / filters survive tab switches (same idea as Home under overlays).
+  const [activeOverlayPage, setActiveOverlayPage] = useState(null);
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
   // Deep-link (App Link) seed values for Dashboard ? set when the app is
   // opened via /share/<token> and the resolve API confirms permission.
@@ -474,12 +480,16 @@ function WellnessValleyApp() {
   // Services are disabled on the device. Blocks home access until GPS is on.
   const [showGpsRequired, setShowGpsRequired] = useState(false);
   // Active per-permission gate. null = no gate active.
-  // { type: 'camera'|'location'|'notifications'|'contacts', canRequest: boolean }
-  // canRequest: true  ? OS can re-prompt � show [Allow Again] [Exit App]
-  // canRequest: false ? permanently denied � show [Exit App] only
+  // Location only (camera is never an app-wide gate — App Store 5.1.1(iv)).
+  // { type: 'location'|..., canRequest: boolean }
+  // canRequest: true  → OS can re-prompt → show [Allow Again] [Exit App]
+  // canRequest: false → permanently denied → show Settings / Exit
   const [activePermission, setActivePermission] = useState(null);
   // True while a native OS permission dialog is pending ("Allow Again" spinner).
   const [permissionDialogLoading, setPermissionDialogLoading] = useState(false);
+  // Dismissible Camera/Photos notice after OS denial (App Store 5.1.1(iv)).
+  // iOS will not re-prompt — only Settings. kind: null | 'camera' | 'photos'
+  const [mediaPermissionNeeded, setMediaPermissionNeeded] = useState(null);
   // Full-screen branded overlay that bridges the native splash ? camera gap.
   // Starts visible on native so the home screen is never shown during the
   // ~100-300 ms between splash dismiss and native camera overlay appearing.
@@ -1266,6 +1276,7 @@ function WellnessValleyApp() {
     setShowRegisterCenter(false);
     setEditCenterData(null);
     setShowNutritionCentersMap(true);
+    setActiveOverlayPage('physical-club');
   }, [bumpTabVisitKey]);
 
   // Navigation lock ref: prevents concurrent showDashboardPage() calls from
@@ -1300,26 +1311,17 @@ function WellnessValleyApp() {
                 originalCapturedAt: pendingClassify.originalCapturedAt ?? null,
               });
               setShowManualEntry(true);
+              setActiveOverlayPage('manual-entry');
             });
             window.history.pushState({ wvPage: 'manual-entry' }, '');
             return;
           }
         }
-        // Returning to home from any full-screen route:
+        // Returning to home: hide overlays but keep nav modules mounted so
+        // Diary/Activity/etc. restore scroll + filters when the user returns.
         enrollmentHistoryPushedRef.current = false;
-        setShowDashboard(false);
-        setShowWellnessCounselling(false);
-        setShowUniversityEnrollment(false);
-        setShowNutritionCentersMap(false);
-        setShowActivityReport(false);
+        setActiveOverlayPage(null);
         setShowActivityTimeReport(false);
-        setShowTestimonials(false);
-        setShowEvents(false);
-        setShowBroadcast(false);
-        setShowCreateEvent(false);
-        setShowPaidFeatures(false);
-        setShowMapBusiness(false);
-        setShowReports(false);
         setShowProfilePage(false);
         setShowAdminConfigSetup(false);
         setShowManualEntry(false);
@@ -1328,98 +1330,56 @@ function WellnessValleyApp() {
         refreshOnTabFocusRef.current();
         Session.setCurrentPage('main');
       } else if (page === 'dashboard') {
-        bumpTabVisitKeyRef.current('dashboard');
+        setActiveOverlayPage('dashboard');
         startTransition(() => setShowDashboard(true));
-        setShowWellnessCounselling(false);
-        setShowUniversityEnrollment(false);
         setShowProfilePage(false);
         Session.setCurrentPage('dashboard');
       } else if (page === 'counselling') {
-        bumpTabVisitKeyRef.current('counselling');
-        setShowDashboard(false);
+        setActiveOverlayPage('counselling');
         startTransition(() => setShowWellnessCounselling(true));
-        setShowUniversityEnrollment(false);
         Session.setCurrentPage('main');
       } else if (page === 'enrollment') {
-        bumpTabVisitKeyRef.current('enrollment');
         enrollmentHistoryPushedRef.current = true;
-        setShowDashboard(false);
-        setShowWellnessCounselling(false);
+        setActiveOverlayPage('enrollment');
         startTransition(() => setShowUniversityEnrollment(true));
         Session.setCurrentPage('main');
       } else if (page === 'physical-club') {
-        bumpTabVisitKeyRef.current('physical-club');
+        setActiveOverlayPage('physical-club');
         startTransition(() => setShowNutritionCentersMap(true));
         Session.setCurrentPage('main');
       } else if (page === 'activity-report') {
-        bumpTabVisitKeyRef.current('activity-report');
-        setShowDashboard(false);
+        setActiveOverlayPage('activity-report');
         startTransition(() => setShowActivityReport(true));
         Session.setCurrentPage('main');
       } else if (page === 'testimonials') {
-        bumpTabVisitKeyRef.current('testimonials');
-        setShowBroadcast(false);
-        setShowCreateEvent(false);
-        setShowPaidFeatures(false);
-        setShowMapBusiness(false);
+        setActiveOverlayPage('testimonials');
         startTransition(() => setShowTestimonials(true));
         Session.setCurrentPage('main');
       } else if (page === 'events') {
         if (!isFlagEnabled('ff.events')) return;
-        setShowDashboard(false);
-        setShowWellnessCounselling(false);
-        setShowUniversityEnrollment(false);
-        setShowNutritionCentersMap(false);
-        setShowActivityReport(false);
-        setShowActivityTimeReport(false);
-        setShowTestimonials(false);
-        setShowBroadcast(false);
-        setShowReports(false);
+        setActiveOverlayPage('events');
+        setShowProfilePage(false);
         setShowAdminConfigSetup(false);
         setShowManualEntry(false);
         setShowWellnessScore(false);
-        setShowProfilePage(false);
         startTransition(() => setShowEvents(true));
         Session.setCurrentPage('main');
       } else if (page === 'broadcast') {
         if (!isFlagEnabled('ff.broadcast')) return;
-        bumpTabVisitKeyRef.current('broadcast');
-        setShowDashboard(false);
-        setShowWellnessCounselling(false);
-        setShowUniversityEnrollment(false);
-        setShowNutritionCentersMap(false);
-        setShowActivityReport(false);
-        setShowActivityTimeReport(false);
-        setShowTestimonials(false);
-        setShowReports(false);
+        setActiveOverlayPage('broadcast');
+        setShowProfilePage(false);
         setShowAdminConfigSetup(false);
         setShowWellnessScore(false);
-        setShowProfilePage(false);
-        setShowCreateEvent(false);
-        setShowPaidFeatures(false);
-        setShowMapBusiness(false);
         startTransition(() => setShowBroadcast(true));
         Session.setCurrentPage('main');
       } else if (page === 'create-event' || page === 'event-check-in') {
         if (!isFlagEnabled('ff.create-event')) return;
-        bumpTabVisitKeyRef.current('create-event');
-        setShowDashboard(false);
-        setShowWellnessCounselling(false);
-        setShowUniversityEnrollment(false);
-        setShowNutritionCentersMap(false);
-        setShowActivityReport(false);
-        setShowActivityTimeReport(false);
-        setShowTestimonials(false);
-        setShowBroadcast(false);
-        setShowPaidFeatures(false);
-        setShowMapBusiness(false);
-        setShowReports(false);
+        setActiveOverlayPage(page);
+        setShowProfilePage(false);
         setShowAdminConfigSetup(false);
         setShowWellnessScore(false);
-        setShowProfilePage(false);
         if (page === 'event-check-in') {
           setCreateEventTab('checkin');
-          setShowEvents(false);
           startTransition(() => setShowCreateEvent(true));
         } else {
           const canCreate = canAccessNavPage(navAccessPagesRef.current, 'create-event');
@@ -1430,57 +1390,34 @@ function WellnessValleyApp() {
         Session.setCurrentPage('main');
       } else if (page === 'paid-features') {
         if (!isFlagEnabled('ff.coach-portfolio')) return;
-        bumpTabVisitKeyRef.current('paid-features');
-        setShowDashboard(false);
-        setShowWellnessCounselling(false);
-        setShowUniversityEnrollment(false);
-        setShowNutritionCentersMap(false);
-        setShowActivityReport(false);
-        setShowActivityTimeReport(false);
-        setShowTestimonials(false);
-        setShowEvents(false);
-        setShowBroadcast(false);
-        setShowCreateEvent(false);
-        setShowMapBusiness(false);
-        setShowReports(false);
+        setActiveOverlayPage('paid-features');
+        setShowProfilePage(false);
         setShowAdminConfigSetup(false);
         setShowWellnessScore(false);
-        setShowProfilePage(false);
         startTransition(() => setShowPaidFeatures(true));
         Session.setCurrentPage('main');
       } else if (page === 'map-business') {
         if (!isFlagEnabled('ff.gbp-listing')) return;
-        bumpTabVisitKeyRef.current('map-business');
-        setShowDashboard(false);
-        setShowWellnessCounselling(false);
-        setShowUniversityEnrollment(false);
-        setShowNutritionCentersMap(false);
-        setShowActivityReport(false);
-        setShowActivityTimeReport(false);
-        setShowTestimonials(false);
-        setShowEvents(false);
-        setShowBroadcast(false);
-        setShowCreateEvent(false);
-        setShowPaidFeatures(false);
-        setShowReports(false);
+        setActiveOverlayPage('map-business');
+        setShowProfilePage(false);
         setShowAdminConfigSetup(false);
         setShowWellnessScore(false);
-        setShowProfilePage(false);
         startTransition(() => setShowMapBusiness(true));
         Session.setCurrentPage('main');
       } else if (page === 'reports' || page === 'wellness-score-report') {
         if (!isFlagEnabled('ff.reports-module') || !canAccessReportsModule(userRole)) {
           return;
         }
-        bumpTabVisitKeyRef.current('reports');
         setReportsDashboardTab(
           page === 'wellness-score-report'
             ? REPORT_DASHBOARD_TABS.WELLNESS_SCORE
             : REPORT_DASHBOARD_TABS.IDEAL_WEIGHT,
         );
+        setActiveOverlayPage('reports');
         startTransition(() => setShowReports(true));
         Session.setCurrentPage('main');
       } else if (page === 'profile') {
+        setActiveOverlayPage('profile');
         setShowProfilePage(true);
         Session.setCurrentPage('main');
       }
@@ -1588,18 +1525,12 @@ function WellnessValleyApp() {
       !!user &&
       !authLoading &&
       !onboardingBlocking &&
-      !showDashboard &&
-      !showManualEntry &&
-      !showActivityReport &&
-      !showActivityTimeReport;
+      !activeOverlayPage;
   }, [
     user,
     authLoading,
     onboardingBlocking,
-    showDashboard,
-    showManualEntry,
-    showActivityReport,
-    showActivityTimeReport,
+    activeOverlayPage,
   ]);
 
   const _userIdRef = useRef(null);  // mirrors user?.id
@@ -1706,6 +1637,7 @@ function WellnessValleyApp() {
     if (!onboardingHardBlocking) return;
     setShowProfilePage(false);
     setShowDashboard(false);
+    setActiveOverlayPage(null);
     setShowNewUserProfileModal(false);
   }, [onboardingHardBlocking]);
 
@@ -1949,9 +1881,9 @@ function WellnessValleyApp() {
           return;
         }
 
-        // All guards passed n++ open camera
+        // All guards passed — open camera (silent if Camera already denied)
         debugLog("?? [Resume] Opening camera after app resume");
-        fileInputRef.current.openCamera();
+        fileInputRef.current.openCamera({ userInitiated: false });
       })
       .then((h) => {
         if (cancelled) {
@@ -1993,16 +1925,23 @@ function WellnessValleyApp() {
       // Accept both legacy UUID links and new short-code links.
       return /(?:^wellnessvalley:\/\/share\/)|(?:\/share(?:\/|$))/i.test(url);
     };
+    // Premium website checkout return — suppress camera; status refresh unlocks Premium.
+    const isPremiumReturnUrl = (url) => {
+      if (!url || typeof url !== "string") return false;
+      return /(?:^wellnessvalley:\/\/premium\/)|(?:\/premium\/paid)/i.test(url);
+    };
 
     // Part B n++ early appUrlOpen listener. Fires on cold starts where the OS
     // delivers the intent URL via the event bridge rather than getLaunchUrl().
     let earlyHandle = null;
     nativeLifecycle
       .addAppUrlOpenListener((event) => {
-        if (isShareUrl(event?.url)) {
+        if (isShareUrl(event?.url) || isPremiumReturnUrl(event?.url)) {
           _hasFiredCameraOnLoginRef.current = true;
           _suppressAutoCameraOnDeepLinkRef.current = true;
-          _pendingDeepLinkUrlRef.current = event?.url || null;
+          if (isShareUrl(event?.url)) {
+            _pendingDeepLinkUrlRef.current = event?.url || null;
+          }
         }
         _launchUrlCheckedRef.current = true;
       })
@@ -2021,10 +1960,12 @@ function WellnessValleyApp() {
       .getLaunchUrl()
       .then((url) => {
         clearTimeout(fallbackTimer);
-        if (isShareUrl(url)) {
+        if (isShareUrl(url) || isPremiumReturnUrl(url)) {
           _hasFiredCameraOnLoginRef.current = true;
           _suppressAutoCameraOnDeepLinkRef.current = true;
-          _pendingDeepLinkUrlRef.current = url;
+          if (isShareUrl(url)) {
+            _pendingDeepLinkUrlRef.current = url;
+          }
         }
         _launchUrlCheckedRef.current = true;
       })
@@ -2097,7 +2038,12 @@ function WellnessValleyApp() {
       const api = fileInputRef.current;
       if (api?.openCamera) {
         _hasFiredCameraOnLoginRef.current = true;
-        api.openCamera(); // handleCameraStateChange('opened') will dismiss the overlay
+        // Auto-open only if Camera already granted (see ImageUpload).
+        // Opening getPhoto while permission is still prompt/denied can leave a
+        // black native camera screen on iOS. Dismiss cover immediately so Home
+        // is never trapped behind a blank WebView if openCamera no-ops.
+        setShowLaunchOverlay(false);
+        api.openCamera({ userInitiated: false });
         return;
       }
       // ImageUpload not yet mounted n++ try again next animation frame.
@@ -2529,7 +2475,10 @@ function WellnessValleyApp() {
       page === "weight-tracking" ||
       page === "weight-insights"
     ) {
-      startTransition(() => setShowDashboard(true));
+      startTransition(() => {
+        setShowDashboard(true);
+        setActiveOverlayPage('dashboard');
+      });
       // The popstate effect's replaceState('main') runs first (declared earlier),
       // so history is [main] at this point. Push 'dashboard' on top so the
       // browser back button pops to 'main' and fires the popstate handler.
@@ -2564,6 +2513,7 @@ function WellnessValleyApp() {
             originalCapturedAt: pending.originalCapturedAt ?? null,
           });
           setShowManualEntry(true);
+          setActiveOverlayPage('manual-entry');
         });
         window.history.pushState({ wvPage: 'manual-entry' }, '');
       } else if (!manualEntryPayload.userId) {
@@ -2586,111 +2536,53 @@ function WellnessValleyApp() {
   // Initialize back button handler
   useEffect(() => {
     const goBack = () => {
-      if (showDashboard) {
-        // showMainPage is now a stable useCallback([]) reference, so this
-        // closure always calls the current version without stale captures.
-        showMainPage();
-        return true;
-      }
-      if (showWellnessCounselling) {
-        setShowWellnessCounselling(false);
-        // Pop the history entry pushed when counselling was opened instead
-        // of pushing a new 'main' entry (which would bloat history).
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showUniversityEnrollment) {
-        enrollmentHistoryPushedRef.current = false;
-        setShowUniversityEnrollment(false);
-        // Use replaceState instead of history.back() so no popstate fires.
-        // history.back() would trigger the handlePopState 'enrollment' branch
-        // which calls startTransition(setShowUniversityEnrollment(true)) and
-        // fights the urgent false update, leaving enrollment re-opened.
-        window.history.replaceState({ wvPage: 'main' }, '');
-        return true;
-      }
-      if (showNutritionCentersMap) {
-        setShowNutritionCentersMap(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showActivityReport) {
-        setShowActivityReport(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showActivityTimeReport) {
-        setShowActivityTimeReport(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showReports) {
-        setShowReports(false);
-        setReportsDashboardTab(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showAdminConfigSetup) {
-        setShowAdminConfigSetup(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showManualEntry) {
+      // Classify lock — must not leave via hardware back.
+      if (activeOverlayPage === 'manual-entry' || showManualEntry) {
         showToast('Log and share your photo to continue');
         return true;
       }
-      if (showWellnessScore) {
+      if (!activeOverlayPage) return false;
+
+      // Keep-alive modules: hide only (stay mounted). Exclusive: close flag.
+      if (activeOverlayPage === 'dashboard') {
+        showMainPage();
+        return true;
+      }
+      if (activeOverlayPage === 'enrollment') {
+        enrollmentHistoryPushedRef.current = false;
+        setActiveOverlayPage(null);
+        // replaceState — see prior note; avoid popstate re-opening enrollment.
+        window.history.replaceState({ wvPage: 'main' }, '');
+        Session.setCurrentPage('main');
+        return true;
+      }
+      if (activeOverlayPage === 'activity-time-report') {
+        setShowActivityTimeReport(false);
+      } else if (activeOverlayPage === 'admin-config-setup') {
+        setShowAdminConfigSetup(false);
+      } else if (activeOverlayPage === 'wellness-score') {
         setShowWellnessScore(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showProfilePage) {
+      } else if (activeOverlayPage === 'profile') {
         setShowProfilePage(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
       }
-      if (showBroadcast) {
-        setShowBroadcast(false);
-        setShowCreateEvent(false);
-        setShowPaidFeatures(false);
-        setShowMapBusiness(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showCreateEvent) {
-        setShowCreateEvent(false);
-        setShowPaidFeatures(false);
-        setShowMapBusiness(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      if (showEvents) {
-        setShowEvents(false);
-        const currentWvPage = window.history.state?.wvPage;
-        if (currentWvPage && currentWvPage !== 'main') window.history.back();
-        return true;
-      }
-      return false; // all navigation cases handled above; no Ionic router fallback needed
+      // Keep-alive show* flags stay true so state/scroll survive.
+      setActiveOverlayPage(null);
+      Session.setCurrentPage('main');
+      const currentWvPage = window.history.state?.wvPage;
+      if (currentWvPage && currentWvPage !== 'main') window.history.back();
+      return true;
     };
 
     initializeBackButton(
       goBack,
       showToast,
-      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showBroadcast && !showCreateEvent && !showPaidFeatures && !showMapBusiness && !showEvents && !showReports && !showAdminConfigSetup && !showManualEntry && !showWellnessScore && !showProfilePage,
+      !activeOverlayPage,
     );
     return () => cleanupBackButton();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- showMainPage is useCallback([]) stable; listing it here causes a TDZ crash because it is declared after this effect
   }, [
+    activeOverlayPage,
+    showManualEntry,
     showDashboard,
     showWellnessCounselling,
     showUniversityEnrollment,
@@ -2874,6 +2766,7 @@ function WellnessValleyApp() {
           if (!isActive) {
             // Account became inactive while dashboard was opening � close it.
             setShowDashboard(false);
+            setActiveOverlayPage((p) => (p === 'dashboard' ? null : p));
           }
         }).catch(() => {/* fail-open */});
       }
@@ -2922,8 +2815,9 @@ function WellnessValleyApp() {
       }
       // Urgent update — navigation flags are now used directly (no useDeferredValue),
       // so this is an immediate render with no deferral possible.
-      bumpTabVisitKey('dashboard');
+      // No tabVisitKey bump: remounts reset scroll/search; keep-alive preserves state.
       setShowDashboard(true);
+      setActiveOverlayPage('dashboard');
       Session.setCurrentPage("dashboard");
       // Push a browser history entry so the native back button can return to home.
       window.history.pushState({ wvPage: 'dashboard' }, '');
@@ -2936,7 +2830,7 @@ function WellnessValleyApp() {
     // is now cleared unconditionally and read via refs, so it is NOT a dep.
     // This keeps showDashboardPage stable across AI analysis cycles and
     // prevents the gallery-monitoring effect from re-initialising on every result.
-    [user, checkUserStatus, bumpTabVisitKey],
+    [user, checkUserStatus],
   );
 
   // showMainPage is stable across renders (useCallback with no deps) because
@@ -2945,7 +2839,8 @@ function WellnessValleyApp() {
   // in useCallback prevents Dashboard from receiving a new onBack prop on
   // every render and avoids stale-closure in the Android back-button effect.
   const showMainPage = useCallback(() => {
-    setShowDashboard(false);
+    // Hide Diary overlay but keep Dashboard mounted (scroll/search survive).
+    setActiveOverlayPage(null);
     setDashboardInitialTab(null); // Clear initial tab when going back
     setDashboardInitialSelectedMember(null); // Clear deep-link member context
     setDashboardInitialDate(null); // Clear deep-link date context
@@ -3023,20 +2918,9 @@ function WellnessValleyApp() {
     const isOnSubPage = currentWvPage && currentWvPage !== 'main';
 
     if (targetPage === 'home') {
-      // Close every sub-page and pop the current history entry.
-      setShowDashboard(false);
-      setShowWellnessCounselling(false);
-      setShowUniversityEnrollment(false);
-      setShowNutritionCentersMap(false);
-      setShowActivityReport(false);
+      // Hide overlays; keep-alive nav modules stay mounted (scroll/filters survive).
+      setActiveOverlayPage(null);
       setShowActivityTimeReport(false);
-      setShowTestimonials(false);
-      setShowEvents(false);
-      setShowBroadcast(false);
-      setShowCreateEvent(false);
-      setShowPaidFeatures(false);
-        setShowMapBusiness(false);
-      setShowReports(false);
       setShowAdminConfigSetup(false);
       setShowManualEntry(false);
       setManualEntryPayload(null);
@@ -3057,52 +2941,30 @@ function WellnessValleyApp() {
       setError(null);
       setImagePreview(null);
       lastImageFileRef.current = null;
+      // Close exclusive overlays only — do not unmount other keep-alive tabs.
+      setShowActivityTimeReport(false);
+      setShowAdminConfigSetup(false);
+      setShowManualEntry(false);
+      setManualEntryPayload(null);
+      setShowWellnessScore(false);
+      setShowProfilePage(false);
+      enrollmentHistoryPushedRef.current = false;
       if (isOnSubPage) {
-        // Close current sub-page; replace history so back still ? Home.
-        setShowWellnessCounselling(false);
-        setShowUniversityEnrollment(false);
-        setShowNutritionCentersMap(false);
-        setShowActivityReport(false);
-        setShowActivityTimeReport(false);
-        setShowTestimonials(false);
-        setShowEvents(false);
-        setShowBroadcast(false);
-        setShowCreateEvent(false);
-        setShowPaidFeatures(false);
-        setShowMapBusiness(false);
-        setShowReports(false);
-        setShowAdminConfigSetup(false);
-        setShowManualEntry(false);
-        setManualEntryPayload(null);
-        setShowWellnessScore(false);
-        setShowProfilePage(false);
-        enrollmentHistoryPushedRef.current = false;
-        bumpTabVisitKey('dashboard');
+        // Replace history so back still → Home. No tabVisitKey bump (preserves scroll).
         window.history.replaceState({ wvPage: 'dashboard' }, '');
         Session.setCurrentPage('dashboard');
-        setShowDashboard(true); // urgent � same reason as showDashboardPage
+        setShowDashboard(true);
+        setActiveOverlayPage('dashboard');
       } else {
         showDashboardPage();
       }
       return;
     }
 
-    // For counselling / enrollment / physical-club / activity-report:
-    // � Clear ALL current sub-pages.
-    // � Replace history when switching tabs; push when opening from Home.
-    setShowDashboard(false);
-    setShowWellnessCounselling(false);
-    setShowUniversityEnrollment(false);
-    setShowNutritionCentersMap(false);
-    setShowActivityReport(false);
+    // For counselling / enrollment / physical-club / activity-report / etc:
+    // Close exclusive overlays only. Keep-alive tabs stay mounted under display:none.
+    // Replace history when switching tabs; push when opening from Home.
     setShowActivityTimeReport(false);
-    setShowTestimonials(false);
-    setShowEvents(false);
-    setShowBroadcast(false);
-    setShowCreateEvent(false);
-    setShowPaidFeatures(false);
-        setShowMapBusiness(false);
-    setShowReports(false);
     setShowAdminConfigSetup(false);
     setShowManualEntry(false);
     setManualEntryPayload(null);
@@ -3115,7 +2977,8 @@ function WellnessValleyApp() {
       : (targetPage === 'wellness-score-setup' || targetPage === 'ai-credits-setup' || targetPage === 'page-access-setup')
         ? 'admin-config-setup'
         : targetPage;
-    bumpTabVisitKey(historyPage);
+    // Soft refetch keys are for intentional remounts / pull-refresh — not tab switches.
+    // Bumping here remounted list state and wiped scroll/search on every tab return.
 
     if (isOnSubPage) {
       window.history.replaceState({ wvPage: historyPage }, '');
@@ -3126,30 +2989,40 @@ function WellnessValleyApp() {
     switch (targetPage) {
       case 'counselling':
         setShowWellnessCounselling(true);
+        setActiveOverlayPage('counselling');
         break;
       case 'enrollment':
         enrollmentHistoryPushedRef.current = true;
         setShowUniversityEnrollment(true);
+        setActiveOverlayPage('enrollment');
         break;
       case 'physical-club':
         setShowNutritionCentersMap(true);
+        setActiveOverlayPage('physical-club');
         break;
       case 'activity-report':
         // Merged Attendance Report (ActivityReport): education attendance default tab.
         setShowActivityReport(true);
+        setActiveOverlayPage('activity-report');
         break;
       case 'activity-time-report':
         setShowActivityTimeReport(true);
+        setActiveOverlayPage('activity-time-report');
         break;
       case 'testimonials':
         setShowTestimonials(true);
+        setActiveOverlayPage('testimonials');
         break;
       case 'events':
-        if (isFlagEnabled('ff.events')) setShowEvents(true);
+        if (isFlagEnabled('ff.events')) {
+          setShowEvents(true);
+          setActiveOverlayPage('events');
+        }
         break;
       case 'broadcast':
         if (isFlagEnabled('ff.broadcast')) {
           setShowBroadcast(true);
+          setActiveOverlayPage('broadcast');
         }
         break;
       case 'create-event':
@@ -3157,28 +3030,33 @@ function WellnessValleyApp() {
           const canCreate = canAccessNavPage(navAccessPagesRef.current, 'create-event');
           setEventsInitialTab(canCreate ? 'create' : 'events');
           setShowEvents(true);
+          setActiveOverlayPage('events');
         }
         break;
       case 'event-check-in':
         if (isFlagEnabled('ff.create-event')) {
           setCreateEventTab('checkin');
           setShowCreateEvent(true);
+          setActiveOverlayPage('event-check-in');
         }
         break;
       case 'paid-features':
         if (isFlagEnabled('ff.coach-portfolio')) {
           setShowPaidFeatures(true);
+          setActiveOverlayPage('paid-features');
         }
         break;
       case 'map-business':
         if (isFlagEnabled('ff.gbp-listing')) {
           setShowMapBusiness(true);
+          setActiveOverlayPage('map-business');
         }
         break;
       case 'reports':
         if (isFlagEnabled('ff.reports-module') && canAccessReportsModule(userRole)) {
           setReportsDashboardTab(REPORT_DASHBOARD_TABS.IDEAL_WEIGHT);
           setShowReports(true);
+          setActiveOverlayPage('reports');
         }
         break;
       case 'wellness-score-report':
@@ -3186,42 +3064,51 @@ function WellnessValleyApp() {
         if (isFlagEnabled('ff.reports-module') && canAccessReportsModule(userRole)) {
           setReportsDashboardTab(REPORT_DASHBOARD_TABS.WELLNESS_SCORE);
           setShowReports(true);
+          setActiveOverlayPage('reports');
         }
         break;
       case 'profile':
         setShowProfilePage(true);
+        setActiveOverlayPage('profile');
         break;
       case 'wellness-score':
         setWellnessScoreSession((n) => n + 1);
         setShowWellnessScore(true);
+        setActiveOverlayPage('wellness-score');
         break;
       case 'wellness-score-setup':
       case 'admin-config-setup':
         if (isAdminLikeRole(userRole)) {
           setAdminConfigTab(ADMIN_CONFIG_TABS.WELLNESS_SCORE);
           setShowAdminConfigSetup(true);
+          setActiveOverlayPage('admin-config-setup');
         }
         break;
       case 'ai-credits-setup':
         if (isAdminLikeRole(userRole)) {
           setAdminConfigTab(ADMIN_CONFIG_TABS.AI_CONFIG);
           setShowAdminConfigSetup(true);
+          setActiveOverlayPage('admin-config-setup');
         }
         break;
       case 'page-access-setup':
         if (isAdminLikeRole(userRole)) {
           setAdminConfigTab(ADMIN_CONFIG_TABS.PAGE_ACCESS);
           setShowAdminConfigSetup(true);
+          setActiveOverlayPage('admin-config-setup');
         }
         break;
       case 'manual-entry':
-        startTransition(() => setShowManualEntry(true));
+        startTransition(() => {
+          setShowManualEntry(true);
+          setActiveOverlayPage('manual-entry');
+        });
         break;
       default:
         break;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- setters/refs stable; showDashboardPage stable
-  }, [showDashboardPage, userRole, bumpTabVisitKey, refreshOnTabFocus]);
+  }, [showDashboardPage, userRole, refreshOnTabFocus]);
 
   useEffect(() => {
     const openProfile = () => navigateTo('profile');
@@ -3234,17 +3121,14 @@ function WellnessValleyApp() {
   }, [navigateTo]);
   // -- Permission flow ------------------------------------------------------
   //
-  // Design: zero custom screens before OS dialogs. Permissions are requested
-  // immediately in order. The PermissionBlockedDialog appears only AFTER an OS
-  // prompt has been denied, as a last-resort block. Required permissions
-  // (camera, location) block the app entirely; optional notifications are
-  // silently skipped on denial. Contacts is NOT requested here — only when a
-  // coach saves a Body Parameters member to device contacts (App Store 5.1.2).
+  // App Store 5.1.1(iv): Camera, Photos, and Location never gate the whole app
+  // with "Allow Again" / Exit after Deny. Location + Notifications are
+  // requested once at startup (system dialog only). Denial → continue to Home.
+  // Settings notices appear only when the user uses a feature that needs them.
+  // Contacts is NOT requested here — only at Body Parameters save (5.1.2).
   //
   // States
-  //   activePermission = null          ? no gate, home accessible
-  //   activePermission.canRequest=true ? [Allow Again] [Exit App]
-  //   activePermission.canRequest=false? [Exit App] only (permanent)
+  //   activePermission = null  → no gate (legacy UI kept but unused for soft perms)
 
   // Guard: prevents advancePermissionFlow from running concurrently.
   // Without this, the appStateChange listener could kick off a second run
@@ -3253,11 +3137,10 @@ function WellnessValleyApp() {
   const _permissionFlowRunningRef = useRef(false);
 
   /**
-   * Walk [camera → location → notifications] in order.
+   * Walk [location → notifications] once (soft). Denial never blocks Home.
    *
-   * Contacts is intentionally omitted: request only at Body Parameters card
-   * save time (local device write; never uploaded). Asking at login caused
-   * App Store Guideline 5.1.2 review flags.
+   * Camera/Photos omitted here (requested at Take Photo / Gallery).
+   * Contacts omitted: Body Parameters save only (App Store 5.1.2).
    *
    * For every non-granted permission, requestPermission() is called
    * IMMEDIATELY — no pre-dialog, no canRequest gate on the first check.
@@ -3282,7 +3165,9 @@ function WellnessValleyApp() {
     _permissionFlowRunningRef.current = true;
 
     try {
-      const PERMISSIONS = ['camera', 'location', 'notifications'];
+      // Soft ask only — never set activePermission / GpsRequired / Exit gates
+      // after Deny (App Store 5.1.1(iv)).
+      const PERMISSIONS = ['location', 'notifications'];
 
       for (const type of PERMISSIONS) {
         const config = PermissionManager.PERMISSION_CONFIG[type];
@@ -3291,42 +3176,22 @@ function WellnessValleyApp() {
         const { granted: alreadyGranted, canRequest } = await PermissionManager.checkPermission(type);
         if (alreadyGranted) continue;
 
-        // Optional permissions the user already declined — do not re-prompt on every resume.
-        if (!config.required && !canRequest) continue;
+        // Already declined (iOS permanent / Android don't-ask-again) — respect it.
+        if (!canRequest) continue;
 
-        if (type === 'location') {
-          const gpsOn = await nativeLifecycle.checkGpsEnabled();
-          if (!gpsOn) {
-            setShowGpsRequired(true);
-            return;
-          }
+        // Optional + still promptable: ask the OS once; denial → continue.
+        if (!config.required) {
+          await PermissionManager.requestPermission(type);
+          continue;
         }
 
-        // Not granted — request directly. The OS either shows a dialog
-        // (first-time or 'prompt') or silently returns denied (permanent).
-        // We never show a custom screen before this call.
+        // (No required types remain in this loop — kept for safety.)
         const { granted: nowGranted } = await PermissionManager.requestPermission(type);
-        if (nowGranted) continue;
-
-        // Request returned denied.
-        if (!config.required) continue; // Notifications optional — skip.
-
-        // Required permission denied. Re-check canRequest NOW — this
-        // post-request value is accurate: Capacitor correctly maps 'prompt'
-        // (Android first-denial, can ask again) vs 'denied' (permanent).
-        const { canRequest: canRequestNow } = await PermissionManager.checkPermission(type);
-        setActivePermission({ type, canRequest: canRequestNow });
-        return; // Hold here; user action (Allow Again / Exit) resumes flow.
-      }
-
-      // All permissions satisfied � verify GPS is enabled.
-      const gpsOn = await nativeLifecycle.checkGpsEnabled();
-      if (!gpsOn) {
-        setShowGpsRequired(true);
-        return;
+        if (!nowGranted) continue;
       }
 
       setActivePermission(null);
+      setShowGpsRequired(false);
       localStorage.setItem('wv.permissionsGranted', '1');
       setPermissionsReady(true);
     } finally {
@@ -3364,34 +3229,14 @@ function WellnessValleyApp() {
    *                         switches from PermissionDeniedModal to
    *                         PermissionBlockedPage (no explicit navigation needed).
    */
+  // Legacy "Allow Again" handler — soft permissions no longer use this gate
+  // (App Store 5.1.1(iv)). Kept so PermissionDeniedModal wiring stays safe.
   const handlePermissionAllow = useCallback(async (type) => {
     setPermissionDialogLoading(true);
     try {
-      if (type === 'location') {
-        const gpsOn = await nativeLifecycle.checkGpsEnabled();
-        if (!gpsOn) {
-          setActivePermission(null);
-          setShowGpsRequired(true);
-          return;
-        }
-      }
-
-      const { granted } = await PermissionManager.requestPermission(type);
-      if (granted) {
-        setActivePermission(null);
-        // Reset the concurrent-run guard before resuming the flow so
-        // advancePermissionFlow can proceed to check the remaining permissions.
-        _permissionFlowRunningRef.current = false;
-        await advancePermissionFlow();
-      } else {
-        // Re-check canRequest after denial. If it flipped to false (permanent)
-        // React will switch the rendered component to PermissionBlockedPage.
-        const { canRequest } = await PermissionManager.checkPermission(type);
-        setActivePermission({ type, canRequest });
-      }
-    } catch {
-      const { canRequest } = await PermissionManager.checkPermission(type).catch(() => ({ canRequest: false }));
-      setActivePermission({ type, canRequest });
+      setActivePermission(null);
+      _permissionFlowRunningRef.current = false;
+      await advancePermissionFlow();
     } finally {
       setPermissionDialogLoading(false);
     }
@@ -4544,25 +4389,10 @@ function WellnessValleyApp() {
           return;
         }
 
-        // Case C: no dialog � full re-validation in case a permission was revoked.
-        if (!cancelled) {
-          if (!permissionsReady) {
-            await advancePermissionFlow();
-            return;
-          }
-          const requiredTypes = ['camera', 'location'];
-          let requiredRevoked = false;
-          for (const type of requiredTypes) {
-            const { granted } = await PermissionManager.checkPermission(type);
-            if (!granted) {
-              requiredRevoked = true;
-              break;
-            }
-          }
-          if (requiredRevoked) {
-            _permissionFlowRunningRef.current = false;
-            await advancePermissionFlow();
-          }
+        // Case C: finish soft permission flow if not ready. Never re-gate the
+        // app when Location/Camera were denied (App Store 5.1.1(iv)).
+        if (!cancelled && !permissionsReady) {
+          await advancePermissionFlow();
         }
       }),
     )
@@ -5077,6 +4907,7 @@ function WellnessValleyApp() {
     user, apiBaseUrl, foodCaptureIdRef, captureLocationByIdRef,
     setAlertModal, setSaveLoading, setLoadingState,
     setBmrUpdateKey, handleLeaderboardRefresh, setError, refreshIdealWeight,
+    onLocationPermissionNeeded: () => setMediaPermissionNeeded('location'),
   });
 
   // Ref-sync: keep weightResultRef current so mount-only resume listener can
@@ -5936,13 +5767,8 @@ function WellnessValleyApp() {
         });
       }
       if (gpsDenied) {
-        setAlertModal({
-          isOpen: true,
-          title: "Location Permission Required",
-          message:
-            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
-          type: "warning",
-        });
+        // Soft notice only — never Allow Again / Exit (App Store 5.1.1(iv)).
+        setMediaPermissionNeeded('location');
       }
 
       // selectedClub (from club-selection modal) overrides the auto-detected club.
@@ -6338,13 +6164,7 @@ function WellnessValleyApp() {
         usedCaptureTimeLocation: !!(stashedLocation?.latitude && stashedLocation?.longitude),
       });
       if (!silent && gpsDenied) {
-        setAlertModal({
-          isOpen: true,
-          title: "Location Permission Required",
-          message:
-            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
-          type: "warning",
-        });
+        setMediaPermissionNeeded('location');
       }
 
       const saveRes = await saveNutritionAnalysis({
@@ -6914,13 +6734,7 @@ function WellnessValleyApp() {
       // Soft hint only when cache never got a fix (watcher still warming / denied).
       // Do not block the photo save.
       if (captureGpsDenied && !hasCoords) {
-        setAlertModal({
-          isOpen: true,
-          title: "Location Permission Required",
-          message:
-            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
-          type: "warning",
-        });
+        setMediaPermissionNeeded('location');
       }
 
       let resolvedUserIdForOrchestrate = user?.id;
@@ -7273,6 +7087,25 @@ function WellnessValleyApp() {
     setUserRole(ROLE_USER);
     navAccessPagesRef.current = null;
     setNavAccessPages(null);
+    // Drop keep-alive nav mounts so the next login starts clean.
+    setActiveOverlayPage(null);
+    setShowDashboard(false);
+    setShowWellnessCounselling(false);
+    setShowUniversityEnrollment(false);
+    setShowNutritionCentersMap(false);
+    setShowActivityReport(false);
+    setShowActivityTimeReport(false);
+    setShowTestimonials(false);
+    setShowEvents(false);
+    setShowBroadcast(false);
+    setShowCreateEvent(false);
+    setShowPaidFeatures(false);
+    setShowMapBusiness(false);
+    setShowReports(false);
+    setShowProfilePage(false);
+    setShowManualEntry(false);
+    setManualEntryPayload(null);
+    setShowWellnessScore(false);
     setShowAdminConfigSetup(false);
     physicalActivityConfirmedRef.current = false;
     setShowPhysicalActivitySetup(false);
@@ -8240,16 +8073,17 @@ function WellnessValleyApp() {
 
   const adminLikeRole = isAdminLikeRole(userRole);
 
-  // Home keep-alive: sub-pages overlay Home instead of early-return
-  // unmounting it. Returning to Home preserves scroll/state and avoids
-  // dashboard API reloads unless a newer async activity log exists
+  // Home + nav keep-alive: visited modules stay mounted (display:none when
+  // inactive) so scroll / search / filters survive tab switches. Exclusive
+  // overlays (profile, classify, wellness-score, admin) still mount on top.
   // (see homeDashboardActivity + NutritionRefreshContext.triggerRefresh).
-  let homeOverlay = null;
+  const keepAlivePanels = [];
+  let exclusiveOverlay = null;
 
   // Inline Profile Page — full-screen, below nav bar (no modal overlay)
   // Hard onboarding wizards only — soft resolve flags must not hide Profile on Home.
   if (showProfilePage && !onboardingHardBlocking) {
-    homeOverlay = (
+    exclusiveOverlay = (
       <div className="ios-full-page bg-gray-50">
         <Header
           navOnly
@@ -8394,9 +8228,16 @@ function WellnessValleyApp() {
         </div>
       </div>
     );
-  } else if (showDashboard) {
-    homeOverlay = (
-      <div className="ios-full-page bg-[#e8f5e9]">
+  }
+
+  if (showDashboard) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-dashboard"
+        pageId="dashboard"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-[#e8f5e9]"
+      >
         {/* Full Wellness Valley header + nav on every main tab. */}
         <Header
           user={user}
@@ -8442,11 +8283,18 @@ function WellnessValleyApp() {
             />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
-  } else if (showWellnessCounselling) {
-    homeOverlay = (
-      <div className="ios-full-page">
+  }
+
+  if (showWellnessCounselling) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-counselling"
+        pageId="counselling"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8479,19 +8327,22 @@ function WellnessValleyApp() {
                 setHeaderProfileKey((k) => k + 1);
                 setBmrUpdateKey((k) => k + 1);
               }}
-              onBack={() => {
-                setShowWellnessCounselling(false);
-                const currentWvPage = window.history.state?.wvPage;
-                if (currentWvPage && currentWvPage !== 'main') window.history.back();
-              }}
+              onBack={() => navigateTo('home')}
             />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
-  } else if (showUniversityEnrollment) {
-    homeOverlay = (
-      <div className="ios-full-page">
+  }
+
+  if (showUniversityEnrollment) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-enrollment"
+        pageId="enrollment"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8525,17 +8376,25 @@ function WellnessValleyApp() {
               teamSearchRefreshKey={teamSearchRefreshKey}
               onBack={() => {
                 enrollmentHistoryPushedRef.current = false;
-                setShowUniversityEnrollment(false);
+                setActiveOverlayPage(null);
                 window.history.replaceState({ wvPage: 'main' }, '');
+                Session.setCurrentPage('main');
               }}
             />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
-  } else if (showActivityReport) {
-    homeOverlay = (
-      <div className="ios-full-page">
+  }
+
+  if (showActivityReport) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-activity-report"
+        pageId="activity-report"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8566,18 +8425,16 @@ function WellnessValleyApp() {
               apiBaseUrl={apiBaseUrl}
               tabVisitKey={tabVisitKeys['activity-report'] ?? 0}
               teamSearchRefreshKey={teamSearchRefreshKey}
-              onBack={() => {
-                setShowActivityReport(false);
-                const currentWvPage = window.history.state?.wvPage;
-                if (currentWvPage && currentWvPage !== 'main') window.history.back();
-              }}
+              onBack={() => navigateTo('home')}
             />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
-  } else if (showActivityTimeReport) {
-    homeOverlay = (
+  }
+
+  if (showActivityTimeReport) {
+    exclusiveOverlay = exclusiveOverlay ?? (
       <div className="ios-full-page">
         <Header
           user={user}
@@ -8609,6 +8466,8 @@ function WellnessValleyApp() {
               apiBaseUrl={apiBaseUrl}
               onBack={() => {
                 setShowActivityTimeReport(false);
+                setActiveOverlayPage(null);
+                Session.setCurrentPage('main');
                 const currentWvPage = window.history.state?.wvPage;
                 if (currentWvPage && currentWvPage !== 'main') window.history.back();
               }}
@@ -8617,10 +8476,16 @@ function WellnessValleyApp() {
         </div>
       </div>
     );
-  } else if (showNutritionCentersMap) {
-    homeOverlay = (
-      <>
-        <div className="ios-full-page bg-[#e8f5e9]">
+  }
+
+  if (showNutritionCentersMap) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-physical-club"
+        pageId="physical-club"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-[#e8f5e9]"
+      >
           <Header
             user={user}
             userRole={userRole}
@@ -8652,11 +8517,7 @@ function WellnessValleyApp() {
                 mineFocusKey={clubMineFocusKey}
                 savedCenter={savedClub}
                 onSavedCenterConsumed={() => setSavedClub(null)}
-                onBack={() => {
-                  setShowNutritionCentersMap(false);
-                  const currentWvPage = window.history.state?.wvPage;
-                  if (currentWvPage && currentWvPage !== 'main') window.history.back();
-                }}
+                onBack={() => navigateTo('home')}
                 onEditCenter={(center) => {
                   setEditCenterData(center);
                   setShowRegisterCenter(true);
@@ -8668,7 +8529,6 @@ function WellnessValleyApp() {
               />
             </Suspense>
           </div>
-        </div>
         {showRegisterCenter && (
           <Suspense fallback={null}>
             <NutritionCenterRegistration
@@ -8682,11 +8542,18 @@ function WellnessValleyApp() {
             />
           </Suspense>
         )}
-      </>
+      </KeepAlivePanel>
     );
-  } else if (showTestimonials) {
-    homeOverlay = (
-      <div className="ios-full-page bg-gray-50">
+  }
+
+  if (showTestimonials) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-testimonials"
+        pageId="testimonials"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-gray-50"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8726,19 +8593,22 @@ function WellnessValleyApp() {
               }}
               userRole={userRole}
               tabVisitKey={tabVisitKeys.testimonials ?? 0}
-              onBack={() => {
-                setShowTestimonials(false);
-                const currentWvPage = window.history.state?.wvPage;
-                if (currentWvPage && currentWvPage !== 'main') window.history.back();
-              }}
+              onBack={() => navigateTo('home')}
             />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
-  } else if (showEvents && isFlagEnabled('ff.events')) {
-    homeOverlay = (
-      <div className="ios-full-page bg-gray-50">
+  }
+
+  if (showEvents && isFlagEnabled('ff.events')) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-events"
+        pageId="events"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-gray-50"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8762,11 +8632,18 @@ function WellnessValleyApp() {
         <div className="ios-scroll-body">
           <EventsPage user={user} initialTab={eventsInitialTab} allowedPages={navAccessPages} />
         </div>
-      </div>
+      </KeepAlivePanel>
     );
-  } else if (showBroadcast && isFlagEnabled('ff.broadcast')) {
-    homeOverlay = (
-      <div className="ios-full-page bg-gray-50">
+  }
+
+  if (showBroadcast && isFlagEnabled('ff.broadcast')) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-broadcast"
+        pageId="broadcast"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-gray-50"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8794,11 +8671,18 @@ function WellnessValleyApp() {
             <BroadcastPage />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
-  } else if (showCreateEvent && isFlagEnabled('ff.create-event')) {
-    homeOverlay = (
-      <div className="ios-full-page bg-gray-50">
+  }
+
+  if (showCreateEvent && isFlagEnabled('ff.create-event')) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-create-event"
+        pageId="create-event"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-gray-50"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8826,11 +8710,18 @@ function WellnessValleyApp() {
             <CreateEventPage user={user} initialTab={createEventTab} />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
-  } else if (showPaidFeatures && isFlagEnabled('ff.coach-portfolio')) {
-    homeOverlay = (
-      <div className="ios-full-page bg-gray-50">
+  }
+
+  if (showPaidFeatures && isFlagEnabled('ff.coach-portfolio')) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-paid-features"
+        pageId="paid-features"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-gray-50"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8860,12 +8751,19 @@ function WellnessValleyApp() {
             />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
 
-  } else if (showMapBusiness && isFlagEnabled('ff.gbp-listing')) {
-    homeOverlay = (
-      <div className="ios-full-page bg-gray-50">
+  }
+
+  if (showMapBusiness && isFlagEnabled('ff.gbp-listing')) {
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-map-business"
+        pageId="map-business"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-gray-50"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -8894,11 +8792,12 @@ function WellnessValleyApp() {
             />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
+  }
 
-  } else if (showAdminConfigSetup && adminLikeRole) {
-    homeOverlay = (
+  if (showAdminConfigSetup && adminLikeRole) {
+    exclusiveOverlay = exclusiveOverlay ?? (
       <Suspense fallback={<LoadingSpinner message="Loading Admin Config Setup..." />}>
         <AdminConfigSetup
           user={user}
@@ -8907,6 +8806,7 @@ function WellnessValleyApp() {
           onNavAccessSaved={reloadNavAccess}
           onBack={() => {
             setShowAdminConfigSetup(false);
+            setActiveOverlayPage(null);
             void reloadNavAccess();
             refreshOnTabFocus();
             const currentWvPage = window.history.state?.wvPage;
@@ -8915,8 +8815,10 @@ function WellnessValleyApp() {
         />
       </Suspense>
     );
-  } else if (showManualEntry && manualEntryPayload) {
-    homeOverlay = (
+  }
+
+  if (showManualEntry && manualEntryPayload) {
+    exclusiveOverlay = exclusiveOverlay ?? (
       <Suspense fallback={<LoadingSpinner message="Loading…" />}>
         <ManualEntryPage
           key={manualEntryPayload.clientKey || manualEntryPayload.captureId}
@@ -8949,7 +8851,7 @@ function WellnessValleyApp() {
               setImagePreview(null);
             }
             keepHomeFoodPreviewRef.current = false;
-            setShowDashboard(false);
+            setActiveOverlayPage(null);
             Session.setCurrentPage('main');
             // Always land on Home — history.back() can pop to a stale Diary entry.
             window.history.replaceState({ wvPage: 'main' }, '');
@@ -8996,8 +8898,10 @@ function WellnessValleyApp() {
         />
       </Suspense>
     );
-  } else if (showWellnessScore && isFlagEnabled('ff.wellness-score-sheet')) {
-    homeOverlay = (
+  }
+
+  if (showWellnessScore && isFlagEnabled('ff.wellness-score-sheet')) {
+    exclusiveOverlay = exclusiveOverlay ?? (
       <Suspense fallback={<LoadingSpinner message="Loading Wellness Score..." />}>
         <WellnessScorePage
           key={wellnessScoreSession}
@@ -9012,6 +8916,7 @@ function WellnessValleyApp() {
           canManageTimeWindows={adminLikeRole}
           onBack={(rangeOpts = {}) => {
             setShowWellnessScore(false);
+            setActiveOverlayPage(null);
             // Sync sheet date filter back to Home (e.g. Yesterday → Today).
             if (rangeOpts.dateRange) {
               const next = {
@@ -9044,13 +8949,20 @@ function WellnessValleyApp() {
         />
       </Suspense>
     );
-  } else if (
+  }
+
+  if (
     showReports
     && isFlagEnabled('ff.reports-module')
     && canAccessReportsModule(userRole)
   ) {
-    homeOverlay = (
-      <div className="ios-full-page bg-gray-50">
+    keepAlivePanels.push(
+      <KeepAlivePanel
+        key="ka-reports"
+        pageId="reports"
+        activeOverlayPage={activeOverlayPage}
+        className="ios-full-page bg-gray-50"
+      >
         <Header
           user={user}
           userRole={userRole}
@@ -9085,17 +8997,18 @@ function WellnessValleyApp() {
             />
           </Suspense>
         </div>
-      </div>
+      </KeepAlivePanel>
     );
   }
 
-  // Main app interface — Home stays mounted under overlays (display:none)
+  // Main app interface — Home + visited nav modules stay mounted (display:none)
+  const overlayVisible = Boolean(activeOverlayPage);
   return (
     <>
       <NetworkStatusNotice />
       <div
-        style={{ display: homeOverlay ? 'none' : undefined }}
-        aria-hidden={Boolean(homeOverlay)}
+        style={{ display: overlayVisible ? 'none' : undefined }}
+        aria-hidden={overlayVisible}
       >
     <LocationGuard>
       <div
@@ -9105,14 +9018,13 @@ function WellnessValleyApp() {
         }}
       >
         {/* -- Permission denied modal (canRequest: true) ---------------------
-          Shown after a first denial when the OS can still present a dialog.
+          Location only. Camera must NEVER use this gate (App Store 5.1.1(iv)).
           Small overlay card: "<Perm> permission is required to continue."
           [ Allow Again ] immediately re-invokes the native OS dialog.
-          [ Exit ] closes the app.
-          When the user denies a second time (Android "Don't ask again") the
-          state flips to canRequest: false and React automatically unmounts
-          this modal and mounts PermissionBlockedPage instead. */}
-        {activePermission?.canRequest === true && (
+          [ Exit ] closes the app. */}
+        {/* Legacy hard gates disabled for Camera/Photos/Location (5.1.1(iv)).
+          Soft Settings notices use CameraPermissionNeededModal below. */}
+        {false && activePermission?.canRequest === true && (
           <PermissionDeniedModal
             type={activePermission.type}
             config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
@@ -9121,33 +9033,41 @@ function WellnessValleyApp() {
             loading={permissionDialogLoading}
           />
         )}
-
-        {/* -- Permission blocked page (canRequest: false) ----------------------
-          Full-screen page for permanently denied permissions.
-          Shown when Android reports "Don't ask again" or iOS denies (permanent).
-          Provides per-permission title + description + "Open App Settings".
-          The resume listener (above) auto-dismisses this page when the user
-          grants the permission from device Settings and returns to the app. */}
-        {activePermission?.canRequest === false && (
+        {false && activePermission?.canRequest === false && (
           <PermissionBlockedPage
             type={activePermission.type}
             config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
-            onOpenSettings={() => {
-              if (activePermission.type === 'location') {
-                nativeLifecycle.openLocationPermissionSettings();
-              } else {
-                PermissionManager.openAppSettings();
-              }
-            }}
+            onOpenSettings={() => PermissionManager.openAppSettings()}
             onExit={() => { import('@capacitor/app').then(({ App: CApp }) => CApp.exitApp()); }}
           />
         )}
 
-        {/* GPS required � shown when location permission is granted but Location
-          Services (GPS) are off. Blocks all app usage until GPS is enabled.
-          App.js permission resume listener re-checks GPS on every app-foreground
-          event and auto-dismisses this modal when GPS is confirmed on. */}
-        {showGpsRequired && (
+        {/* Camera feature-use notice — dismissible; Settings link only.
+          Shown when the user taps Take Photo after Camera was denied.
+          Never "Allow Again" / never Exit / never blocks the whole app. */}
+        {mediaPermissionNeeded && (
+          <CameraPermissionNeededModal
+            kind={mediaPermissionNeeded}
+            onOpenSettings={async () => {
+              try {
+                if (mediaPermissionNeeded === 'location') {
+                  await nativeLifecycle.openLocationPermissionSettings();
+                } else {
+                  await PermissionManager.openAppSettings();
+                }
+              } catch (err) {
+                console.warn('[App] openAppSettings failed:', err);
+              } finally {
+                setMediaPermissionNeeded(null);
+              }
+            }}
+            onDismiss={() => setMediaPermissionNeeded(null)}
+          />
+        )}
+
+        {/* GPS hard-block disabled (App Store 5.1.1(iv) — do not trap the app).
+          Location Services issues are handled at feature use with a soft notice. */}
+        {false && showGpsRequired && (
           <GpsRequiredModal
             platform={Capacitor.getPlatform()}
             onOpenSettings={() => nativeLifecycle.openLocationSettings()}
@@ -9514,7 +9434,7 @@ function WellnessValleyApp() {
                   {/* Camera — primary CTA opens camera directly; gallery icon for choosing existing photo */}
                   <div className="mt-1.5 flex gap-3">
                     <button
-                      onClick={() => fileInputRef.current?.openCamera?.()}
+                      onClick={() => fileInputRef.current?.openCamera?.({ userInitiated: true })}
                       disabled={loading}
                       className="flex-1 flex items-center justify-center gap-2.5 bg-white rounded-xl py-3 shadow-sm active:scale-95 transition-transform disabled:opacity-50"
                       aria-label="Open camera"
@@ -9600,6 +9520,11 @@ function WellnessValleyApp() {
               onHelpClick={() => setShowHowToUse(!showHowToUse)}
               educationWindow={educationWindow}
               onCameraStateChange={handleCameraStateChange}
+              onCameraPermissionNeeded={(kind = 'camera') => {
+                if (kind === 'photos') setMediaPermissionNeeded('photos');
+                else if (kind === 'location') setMediaPermissionNeeded('location');
+                else setMediaPermissionNeeded('camera');
+              }}
             />
 
             {/* Share Image + Link button removed: auto-share fires directly
@@ -10463,6 +10388,7 @@ function WellnessValleyApp() {
                 setShowRegisterCenter(false);
                 setEditCenterData(null);
                 setShowNutritionCentersMap(true);
+                setActiveOverlayPage('physical-club');
               }}
             />
           </Suspense>
@@ -10821,7 +10747,8 @@ function WellnessValleyApp() {
       <PremiumSuccessHost
         userId={user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null}
       />
-      {homeOverlay}
+      {keepAlivePanels}
+      {exclusiveOverlay}
     </>
   );
 }

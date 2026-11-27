@@ -216,7 +216,7 @@ export default function PermissionPrimerModal({ onContinue }) {
             padding: '0 8px',
           }}
         >
-          Camera and Location are required.
+          Location and Camera help with check-in and meal photos. You can deny and still use the app.
           Notifications are optional and can be changed in device Settings.
         </p>
       </div>

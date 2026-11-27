@@ -35,6 +35,7 @@ import { buildTeamFieldsFromProfileCommunityId } from './domain/communityIdTeamA
 import { deriveWeightGoalMode } from '../../utils/weightValidation.js';
 import { resolveProfileTimezone } from './domain/profileTimezone.js';
 import { mapTeamRowToProfileBodyMetrics, mergeProfileBodyMetrics, mapCardToProfileBodyMetrics } from './domain/profileBodyMetrics.rules.js';
+import { ageFromDateOfBirth } from './domain/dateOfBirth.rules.js';
 import { mapTeamRecoveredHealthIssues } from './domain/recoveredHealthIssues.rules.js';
 import {
   hasTransformationPhotoUpdates,
@@ -137,6 +138,19 @@ export async function getProfile({ email, userId = null, appVersion = null, bypa
   const canClaimTeamCode = !!user.CoachId && !teamId && !teamSeat;
   const cardMetrics = mapCardToProfileBodyMetrics(latestBodyMetricsCard);
   const teamMetrics = mapTeamRowToProfileBodyMetrics(user);
+  try {
+    const dobIso = await repo.getDateOfBirth(user.UserId);
+    if (dobIso) {
+      teamMetrics.dateOfBirth = dobIso;
+      const derivedAge = ageFromDateOfBirth(dobIso);
+      if (derivedAge != null) teamMetrics.age = derivedAge;
+    }
+  } catch (err) {
+    logger.warn('[profile] DateOfBirth lookup failed', {
+      userId: user.UserId,
+      message: err?.message,
+    });
+  }
   const cardHeight = latestBodyMetricsCard?.height_cm != null
     ? parseFloat(latestBodyMetricsCard.height_cm)
     : null;
@@ -416,6 +430,7 @@ export async function getProfile({ email, userId = null, appVersion = null, bypa
         weightRecordDate: latestWeight?.CreatedAt || null,
         marathonWeightComparison,
         bodyMetrics,
+        dateOfBirth: bodyMetrics?.dateOfBirth || null,
         recoveredHealthIssues: mapTeamRecoveredHealthIssues(user.recovered_health_issues),
         transformationPhotos: mapTransformationPhotosForClient(user.transformation_photos, {
           preferR2: preferTransformR2,
@@ -437,7 +452,7 @@ export async function getProfile({ email, userId = null, appVersion = null, bypa
 
 function buildProfileUpdate({
   name, height, dietType, phoneNumber, profileImage, gender, weightGoalMode, physicalActivityLevel, communityId, timezoneIana,
-  age, visceralFat, bodyAge, chestCm, waistCm, hipCm, recoveredHealthIssues,
+  age, dateOfBirth, visceralFat, bodyAge, chestCm, waistCm, hipCm, recoveredHealthIssues,
   transformationPhotos, existingTransformationPhotos,
   skipProfileImageBase64 = false,
 }) {
@@ -480,6 +495,7 @@ function buildProfileUpdate({
     }
   }
   if (age !== undefined) updateData.Age = age;
+  if (dateOfBirth !== undefined) updateData.DateOfBirth = dateOfBirth || null;
   if (visceralFat !== undefined) updateData.VisceralFat = visceralFat;
   if (bodyAge !== undefined) updateData.BodyAge = bodyAge;
   if (chestCm !== undefined) updateData.ChestCm = chestCm;
@@ -528,7 +544,7 @@ function isPhotoOnlyProfileUpdate(input) {
   const keys = [
     'name', 'height', 'bmr', 'dietType', 'phoneNumber', 'gender',
     'weightGoalMode', 'physicalActivityLevel', 'communityId', 'timezoneIana',
-    'bodyFat', 'currentWeight', 'age', 'visceralFat', 'bodyAge',
+    'bodyFat', 'currentWeight', 'age', 'dateOfBirth', 'visceralFat', 'bodyAge',
     'chestCm', 'waistCm', 'hipCm', 'recoveredHealthIssues',
   ];
   return keys.every((key) => input[key] === undefined || input[key] === null);
@@ -729,7 +745,22 @@ export async function updateProfile(input) {
 
   let savedCommunityId;
   if (Object.keys(updateData).length > 0) {
-    await repo.updateUserById(userId, updateData);
+    try {
+      await repo.updateUserById(userId, updateData);
+    } catch (colErr) {
+      const msg = String(colErr?.message || colErr || '');
+      if (!/DateOfBirth|Unknown column|1054|column/i.test(msg) || updateData.DateOfBirth === undefined) {
+        throw colErr;
+      }
+      // Pre-migration: still save Age (and other fields) when DateOfBirth column is absent.
+      const { DateOfBirth: _omitDob, ...withoutDob } = updateData;
+      if (Object.keys(withoutDob).length === 0) {
+        logger.warn('[profile/update] DateOfBirth column missing; DOB not saved', { userId });
+      } else {
+        await repo.updateUserById(userId, withoutDob);
+        logger.warn('[profile/update] DateOfBirth column missing; saved other fields', { userId });
+      }
+    }
     logger.info('[profile/update] database update result', {
       userId,
       updatedFields: Object.keys(updateData),

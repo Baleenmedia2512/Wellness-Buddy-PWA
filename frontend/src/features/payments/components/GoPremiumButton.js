@@ -14,7 +14,8 @@ const CONFIRM_RETRY_DELAY_MS = 2000;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Header chip that opens the Premium plan page, then Cashfree on Pay Now.
+ * Header chip that opens the Premium plan page, then Pay Now.
+ * Native iOS/Android open wellnessvalley.in in Safari/Chrome; web keeps Cashfree modal.
  * `onPremiumCheck` asks the server whether the payment went through.
  * Members who already paid do not see this chip again, unless `renew` (expiry reminder).
  * Visibility also follows Admin Config → Page Access (`go-premium`).
@@ -94,6 +95,11 @@ export default function GoPremiumButton({
     setMessage('');
     try {
       const { result } = await openPremiumCheckout({ userId });
+      // iOS/Android: Safari/Chrome opened wellnessvalley.in — confirm when they return.
+      if (result?.externalBrowser) {
+        setMessage('Complete payment in your browser. Return to the app when done — Premium will unlock automatically.');
+        return;
+      }
       const paidInCheckout = Boolean(result?.paymentDetails);
       const confirmed = await checkPremium(paidInCheckout ? CONFIRM_ATTEMPTS_AFTER_PAYMENT : 1);
       if (!confirmed && paidInCheckout) {

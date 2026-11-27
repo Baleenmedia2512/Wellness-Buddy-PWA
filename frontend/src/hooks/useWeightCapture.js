@@ -16,6 +16,7 @@ export function useWeightCapture({
   user, apiBaseUrl, foodCaptureIdRef, captureLocationByIdRef,
   setAlertModal, setSaveLoading, setLoadingState,
   setBmrUpdateKey, handleLeaderboardRefresh, setError, refreshIdealWeight,
+  onLocationPermissionNeeded = null,
 }) {
   // State (verbatim from App.js) ---
   const [weightResult, setWeightResult] = useState(null); // Store weight detection results
@@ -203,13 +204,18 @@ export function useWeightCapture({
         });
       }
       if (gpsDenied) {
-        setAlertModal({
-          isOpen: true,
-          title: "Location Permission Required",
-          message:
-            "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
-          type: "warning",
-        });
+        // Soft Settings notice — never Allow Again / Exit (App Store 5.1.1(iv)).
+        if (typeof onLocationPermissionNeeded === 'function') {
+          onLocationPermissionNeeded();
+        } else {
+          setAlertModal({
+            isOpen: true,
+            title: "Location access needed",
+            message:
+              "Club attendance may be marked Remote without Location. Enable it in Settings when you want check-in. The rest of the app still works.",
+            type: "warning",
+          });
+        }
       }
       Object.assign(payload, locationFields);
       if (captureIdForLoc && captureLocationByIdRef?.current) {

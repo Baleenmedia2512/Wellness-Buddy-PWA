@@ -11,6 +11,7 @@
  */
 
 export const PROFILE_BODY_METRIC_KEYS = [
+  'dateOfBirth',
   'age',
   'gender',
   'fatPercent',
@@ -101,6 +102,11 @@ export function mapTeamRowToProfileBodyMetrics(user) {
   fields.waistCm = numOrNull(user.WaistCm);
   fields.hipCm = numOrNull(user.HipCm);
 
+  const dob = user.DateOfBirth != null && user.DateOfBirth !== ''
+    ? String(user.DateOfBirth).trim()
+    : (user.dateOfBirth != null && user.dateOfBirth !== '' ? String(user.dateOfBirth).trim() : '');
+  fields.dateOfBirth = dob || null;
+
   const g = user.Gender != null ? String(user.Gender).trim() : '';
   fields.gender = (g === 'Male' || g === 'Female') ? g : null;
 
@@ -129,6 +135,11 @@ export function mergeProfileBodyMetrics({
   const card = cardMetrics || emptyProfileBodyMetrics();
 
   for (const key of PROFILE_BODY_METRIC_KEYS) {
+    // DOB is team/self only — body-params cards do not carry Aadhaar DOB.
+    if (key === 'dateOfBirth') {
+      if (!isBodyMetricEmpty(team[key])) out[key] = team[key];
+      continue;
+    }
     if (!isBodyMetricEmpty(card[key])) {
       out[key] = card[key];
     } else if (!isBodyMetricEmpty(team[key])) {

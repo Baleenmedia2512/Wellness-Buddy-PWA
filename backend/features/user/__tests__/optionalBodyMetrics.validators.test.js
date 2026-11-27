@@ -68,4 +68,33 @@ describe('validateUpdateProfile optional body metrics', () => {
       (err) => err instanceof ValidationError && err.status === 400,
     );
   });
+
+  it('accepts dateOfBirth and derives age', () => {
+    const parsed = validateUpdateProfile({
+      ...baseBody,
+      dateOfBirth: '1990-05-15',
+      age: 99, // client age ignored when DOB present
+    });
+    assert.equal(parsed.dateOfBirth, '1990-05-15');
+    assert.equal(typeof parsed.age, 'number');
+    assert.ok(parsed.age >= 1 && parsed.age <= 120);
+    assert.notEqual(parsed.age, 99);
+  });
+
+  it('clears dateOfBirth when null', () => {
+    const parsed = validateUpdateProfile({
+      ...baseBody,
+      dateOfBirth: null,
+      age: 32,
+    });
+    assert.equal(parsed.dateOfBirth, null);
+    assert.equal(parsed.age, 32);
+  });
+
+  it('throws ValidationError for invalid dateOfBirth', () => {
+    assert.throws(
+      () => validateUpdateProfile({ ...baseBody, dateOfBirth: '2099-01-01' }),
+      (err) => err instanceof ValidationError && err.status === 400,
+    );
+  });
 });

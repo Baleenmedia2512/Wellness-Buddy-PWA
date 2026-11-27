@@ -63,7 +63,7 @@ const PHOTO_KEYS = Object.freeze(Object.keys(PHOTO_SLOT_BY_KEY));
 export const FIELD_LABELS = Object.freeze({
   communityPosition: 'Community Position',
   gender: 'Gender',
-  age: 'Age',
+  age: 'Date of birth (as per Aadhaar)',
   height: 'Height',
   diet: 'Diet',
   lifestyle: 'Lifestyle',

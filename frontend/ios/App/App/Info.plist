@@ -26,9 +26,17 @@
 				<string>com.googleusercontent.apps.610941252952-epffmqng5h6043i51fmolvameuqr5sue</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.wellnessvalley.app.premium</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>wellnessvalley</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>87</string>
+	<string>91</string>
 	<key>GIDClientID</key>
 	<string>610941252952-epffmqng5h6043i51fmolvameuqr5sue.apps.googleusercontent.com</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
