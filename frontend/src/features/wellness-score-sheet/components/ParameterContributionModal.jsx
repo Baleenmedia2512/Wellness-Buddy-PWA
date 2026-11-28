@@ -36,6 +36,7 @@ export default function ParameterContributionModal({
     breakdown = [],
     showAmountPercent = true,
     amountIsLabel = false,
+    isPerServing = false,
   } = view;
 
   const earnedLabel = formatPoints(earnedPoints);
@@ -69,7 +70,14 @@ export default function ParameterContributionModal({
       >
         <div className="flex items-start justify-between border-b border-gray-200 px-4 py-3">
           <div className="min-w-0 pr-3">
-            <h2 className="text-lg font-bold text-gray-900">{title}</h2>
+            <h2 className="text-lg font-bold text-gray-900">
+              {title}
+              {isPerServing && (
+                <span className="ml-1.5 text-xs font-normal text-gray-500">
+                  (per serving)
+                </span>
+              )}
+            </h2>
             <div className="mt-0.5 flex flex-wrap items-baseline gap-2">
               <span className="text-sm text-gray-600">
                 {earnedLabel}/{maxLabel} {ptsCaption}

@@ -81,6 +81,7 @@ describe('parameterContributions', () => {
       meals,
     });
     expect(view.title).toBe('Protein');
+    expect(view.isPerServing).toBe(true);
     expect(view.breakdown.length).toBeGreaterThan(0);
     expect(view.unit).toBe('g');
   });
@@ -118,7 +119,7 @@ describe('parameterContributions', () => {
     expect(view.breakdown[1].detail).toBe('2026-07-20');
   });
 
-  test('multi-day nutrient view groups same food name and sums amounts', () => {
+  test('multi-day nutrient view groups same food name and divides amount by log count, sorting by per-log density', () => {
     const shakeMeals = [
       {
         CreatedAt: '2026-10-01T08:00:00',
@@ -156,14 +157,63 @@ describe('parameterContributions', () => {
       periodDayCount: 10,
     });
     expect(view.breakdown).toHaveLength(2);
-    expect(view.breakdown[0].foodName).toBe('Herbalife Shake');
-    expect(view.breakdown[0].amount).toBe(75);
-    expect(view.breakdown[0].detail).toBe('3 logs');
-    expect(view.breakdown[0].percentage).toBeCloseTo((75 / 105) * 100);
-    expect(view.breakdown[1].foodName).toBe('Chicken');
-    expect(view.breakdown[1].amount).toBe(30);
-    expect(view.breakdown[1].detail).toBe('2026-10-03');
+    // Chicken provides 30g/serving vs Herbalife Shake 25g/serving (75g total / 3 logs)
+    // so Chicken is sorted first to accurately show which food is richer in protein per consumption.
+    expect(view.breakdown[0].foodName).toBe('Chicken');
+    expect(view.breakdown[0].amount).toBe(30);
+    expect(view.breakdown[0].detail).toBe('2026-10-03');
+    expect(view.breakdown[1].foodName).toBe('Herbalife Shake');
+    expect(view.breakdown[1].amount).toBe(25);
+    expect(view.breakdown[1].totalAmount).toBe(75);
+    expect(view.breakdown[1].detail).toBe('3 logs');
     expect(view.totalConsumed).toBe(105);
+    expect(view.showAmountPercent).toBe(false);
+  });
+
+  test('multi-day nutrient view: HN Skin Booster (20mg/log) ranks above Herbalife Shake (15mg/log across 11 logs)', () => {
+    const meals = [];
+    // 11 logs of Herbalife Shake with 15mg Vitamin C each (total 165mg)
+    for (let i = 1; i <= 11; i++) {
+      meals.push({
+        CreatedAt: `2026-11-${String(i).padStart(2, '0')}T08:00:00`,
+        AnalysisData: {
+          foods: [{ name: 'Herbalife Shake', nutrition: { vitaminC: 15 } }],
+        },
+      });
+    }
+    // 1 log of HN - Skin Booster - Orange with 20mg Vitamin C
+    meals.push({
+      CreatedAt: '2026-11-24T10:00:00',
+      AnalysisData: {
+        foods: [{ name: 'HN - Skin Booster - Orange', nutrition: { vitaminC: 20 } }],
+      },
+    });
+
+    const view = buildParameterContributionView({
+      parameter: {
+        key: 'vitamin_c',
+        label: 'Vitamin C',
+        earnedPoints: 3.9,
+        maxPoints: 10,
+      },
+      meals,
+      periodDayCount: 10,
+    });
+
+    expect(view.breakdown).toHaveLength(2);
+    // HN Skin Booster (20mg) ranks higher than Herbalife Shake (15mg per log)
+    expect(view.breakdown[0].foodName).toBe('HN - Skin Booster - Orange');
+    expect(view.breakdown[0].amount).toBe(20);
+    expect(view.breakdown[0].detail).toBe('2026-11-24');
+
+    expect(view.breakdown[1].foodName).toBe('Herbalife Shake');
+    expect(view.breakdown[1].amount).toBe(15);
+    expect(view.breakdown[1].totalAmount).toBe(165);
+    expect(view.breakdown[1].detail).toBe('11 logs');
+
+    expect(view.totalConsumed).toBe(185);
+    expect(view.showAmountPercent).toBe(false);
+    expect(view.isPerServing).toBe(true);
   });
 
   test('extractNutrientContributions includeDateDetail attaches CreatedAt date', () => {
