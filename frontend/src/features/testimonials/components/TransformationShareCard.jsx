@@ -26,12 +26,9 @@ import {
   shareResultVideos,
 } from '../utils/downloadVideo.js';
 import { drawImageCoverTop } from '../utils/fitContainSize.js';
-import { healthIssueShareIcon } from '../utils/healthIssueShareIcon.js';
 import {
   CARD_H,
   CARD_W,
-  MAX_VISIBLE_ISSUES,
-  issueColumnsForCount,
   shareCardPhotoHeight,
 } from '../utils/shareCardLayout.js';
 import { isTransformationWeightLoss } from '../services/testimonialFormUtils.js';
@@ -524,9 +521,6 @@ function enqueueShareWarm(task) {
 }
 
 function shareCardCacheKey(testimonial, userName) {
-  const issues = Array.isArray(testimonial?.recoveredHealthIssues)
-    ? testimonial.recoveredHealthIssues.join('|')
-    : '';
   return [
     userName || '',
     testimonial?.beforeImageUrl || '',
@@ -536,7 +530,6 @@ function shareCardCacheKey(testimonial, userName) {
     testimonial?.durationText || '',
     testimonial?.goalType || '',
     testimonial?.status || '',
-    issues,
   ].join('\u0001');
 }
 
@@ -808,46 +801,9 @@ function PhotoCell({ src, label, scriptLabel, weightKg, isVerified, side, photoH
   );
 }
 
-function HealthIssueChip({ label, widthPct }) {
-  return (
-    <div
-      style={{
-        display: 'inline-block',
-        width: `${widthPct}%`,
-        verticalAlign: 'top',
-        padding: '3px 4px',
-        boxSizing: 'border-box',
-        textAlign: 'center',
-      }}
-    >
-      <div
-        style={{
-          display: 'block',
-          width: '100%',
-          minHeight: 36,
-          padding: '8px 8px',
-          boxSizing: 'border-box',
-          border: '1.5px solid #f9a8d4',
-          borderRadius: 8,
-          background: '#ffffff',
-          color: '#4b5563',
-          fontFamily: CARD_FONT,
-          fontSize: 14,
-          fontWeight: 700,
-          lineHeight: '18px',
-          textAlign: 'center',
-          overflowWrap: 'anywhere',
-        }}
-      >
-        {label}
-      </div>
-    </div>
-  );
-}
-
 /**
  * Standalone transformation card — capture this element, never the page.
- * Before vs After photos + health issues. Videos are shared as real files.
+ * Before vs After photos. Videos are shared as real files.
  */
 export const TransformationCardContent = forwardRef(function TransformationCardContent(
   { testimonial, userName },
@@ -866,20 +822,16 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const diff = isLoss == null ? null : Math.abs(aw - bw).toFixed(1);
   const isVerified = testimonial?.status === 'verified';
   const verb = isLoss === false ? 'Gained' : 'Lost';
-  const rawIssues = testimonial?.recoveredHealthIssues;
-  const issues = (Array.isArray(rawIssues) ? rawIssues : []).filter(Boolean).slice(0, MAX_VISIBLE_ISSUES);
   const durationRaw = String(testimonial?.durationText || '').trim();
   const durationText = durationRaw && durationRaw !== '—' && durationRaw !== '-' ? durationRaw : '';
   const displayName = String(userName || 'Customer').trim() || 'Customer';
-  const issuesPerRow = issueColumnsForCount(issues.length);
-  const chipWidthPct = issuesPerRow > 0 ? 100 / issuesPerRow : 100;
   // Single trimmed label — SVG pill keeps it optically centered in the capture.
   // Equal before/after has no lost/gained line, so show duration on its own.
   const resultPillLabel = diff
     ? [verb, `${diff} kgs`, durationText ? `in ${durationText}` : null].filter(Boolean).join(' ')
     : durationText;
   const photoH = shareCardPhotoHeight({
-    issueCount: issues.length,
+    issueCount: 0,
     hasResultPill: Boolean(resultPillLabel),
   });
   const resultPillSrc = resultPillLabel ? buildResultPillSrc(resultPillLabel) : '';
@@ -1134,61 +1086,9 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
               </td>
             </tr>
           ) : null}
-          {issues.length > 0 ? (
-            <tr>
-              <td style={{ padding: '4px 12px 6px', verticalAlign: 'top' }}>
-                <div
-                  style={{
-                    background: '#fff1f2',
-                    border: '1px solid #f9a8d4',
-                    borderRadius: 12,
-                    boxShadow: '0 1px 3px rgba(190, 24, 93, 0.12)',
-                    padding: '4px 6px 4px',
-                    boxSizing: 'border-box',
-                  }}
-                >
-                  <p
-                    style={{
-                      margin: 0,
-                      fontFamily: SCRIPT_FONT,
-                      fontSize: 18,
-                      lineHeight: '22px',
-                      color: '#be185d',
-                      textAlign: 'center',
-                    }}
-                  >
-                    Health Issues
-                  </p>
-                  <p
-                    style={{
-                      margin: '0 0 10px',
-                      fontSize: 9,
-                      fontWeight: 500,
-                      fontStyle: 'italic',
-                      color: '#9ca3af',
-                      lineHeight: '12px',
-                      textAlign: 'center',
-                    }}
-                  >
-                    while joining the community
-                  </p>
-                  <div style={{ textAlign: 'center', fontSize: 0, paddingBottom: 6 }}>
-                    {issues.map((issue) => (
-                      <HealthIssueChip
-                        key={issue}
-                        label={issue}
-                        widthPct={chipWidthPct}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </td>
-            </tr>
-          ) : (
-            <tr>
-              <td style={{ padding: '0 0 2px' }} />
-            </tr>
-          )}
+          <tr>
+            <td style={{ padding: '0 0 2px' }} />
+          </tr>
         </tbody>
       </table>
 

@@ -39,7 +39,6 @@ import {
   isValidEmailOtp,
 } from '../../user/domain/otpLength';
 import VideoThumbnailCard from './VideoThumbnailCard.jsx';
-import HealthIssueCoachEditor from './HealthIssueCoachEditor.jsx';
 import {
   TransformationCardContent,
   TransformationShareActions,
@@ -64,7 +63,6 @@ import {
   resolveTeamScopeCount,
 } from '../utils/testimonialFilters.js';
 import {
-  buildHealthIssueSuggestions,
   buildSearchSuggestions,
   normalizeSearchQuery,
 } from '../utils/testimonialSearch.js';
@@ -89,7 +87,6 @@ import {
   isProfileSeededTransformation,
 } from '../services/testimonialFormUtils.js';
 import { resolveRowTeamUploadPerformance } from '../utils/testimonialTeamPerformance.js';
-import { uniqueConditions, isSameIssueList, withoutHealthIssue } from '../utils/uniqueConditions.js';
 import { getApiBaseUrl } from '../../../config/api.config.js';
 import {
   buildUserAvatarUrl,
@@ -234,42 +231,20 @@ function VisibleTransformationCard({ testimonial, userName }) {
       ro?.disconnect();
       window.removeEventListener('resize', update);
     };
-  }, []);
-}, [isCollageCard, testimonial]);
   }, [isCollageCard, testimonial]);
 
 const effectiveHeight = isCollageCard ? contentHeight : CARD_H;
-const effectiveHeight = isCollageCard ? contentHeight : CARD_H;
 
-return (
-  <div
-    ref={wrapRef}
-    className="w-full overflow-hidden rounded-2xl border border-emerald-100 shadow-sm bg-white"
-    style={{
-      height: scale > 0 ? Math.round(CARD_H * scale) : undefined,
-      aspectRatio: scale > 0 ? undefined : `${CARD_W} / ${CARD_H}`,
-      height: scale > 0 ? Math.round(effectiveHeight * scale) : undefined,
-      aspectRatio: scale > 0 ? undefined : `${CARD_W} / ${effectiveHeight}`,
-    }}
-    aria-label="Transformation results card"
-  >
     return (
     <div
-      ref={innerRef}
       ref={wrapRef}
       className="w-full overflow-hidden rounded-2xl border border-emerald-100 shadow-sm bg-white"
       style={{
-        width: CARD_W,
-        height: CARD_H,
-        height: isCollageCard ? 'auto' : CARD_H,
-        transform: scale > 0 ? `scale(${scale})` : undefined,
-        transformOrigin: 'top left',
         height: scale > 0 ? Math.round(effectiveHeight * scale) : undefined,
         aspectRatio: scale > 0 ? undefined : `${CARD_W} / ${effectiveHeight}`,
       }}
       aria-label="Transformation results card"
     >
-      <TransformationCardContent testimonial={testimonial} userName={userName} />
       <div
         ref={innerRef}
         style={{
@@ -282,8 +257,6 @@ return (
         <TransformationCardContent testimonial={testimonial} userName={userName} />
       </div>
     </div>
-  </div>
-);
   );
 }
 
@@ -722,14 +695,6 @@ function UnifiedOtpInline({
   );
 }
 
-const EMPTY_HEALTH_ISSUES = Object.freeze([]);
-
-function sameIssueList(a, b) {
-  if (a === b) return true;
-  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
-  return a.every((value, index) => value === b[index]);
-}
-
 function afterWeightDiffers(beforeKg, afterKg) {
   const before = Number(beforeKg);
   const after = Number(afterKg);
@@ -795,7 +760,6 @@ function MemberCard({
   coachId = null,
   onMineRefresh,
   onOtpVerified,
-  knownHealthIssues = [],
 }) {
   const { user } = row;
   const [detailTestimonial, setDetailTestimonial] = useState(null);
@@ -855,12 +819,6 @@ function MemberCard({
       testimonial?.status !== 'incomplete'
       || afterWeightDiffers(testimonial?.beforeWeightKg, testimonial?.afterWeightKg)
     );
-  // Stable empty fallback — a fresh `[]` each render re-triggers setState forever.
-  const issues = Array.isArray(testimonial?.recoveredHealthIssues)
-    ? testimonial.recoveredHealthIssues
-    : EMPTY_HEALTH_ISSUES;
-  const [approvedIssues, setApprovedIssues] = useState(issues);
-
   // ── Inline editing state (Mine card only) ────────────────────────────────
   const [expandedSlots, setExpandedSlots] = useState(new Set());
   const [draftBefore, setDraftBefore] = useState(null); // { imageBase64, previewUrl, weightKg, goalType, durationText }
@@ -869,7 +827,6 @@ function MemberCard({
   const [draftBusinessPath, setDraftBusinessPath] = useState(null);
   const [draftHealthPreview, setDraftHealthPreview] = useState(null);
   const [draftBusinessPreview, setDraftBusinessPreview] = useState(null);
-  const [draftIssues, setDraftIssues] = useState(null);
 
   // Baseline snapshot before unverified / pending edits were applied
   const baselineKey = userId ? `transformation_baseline_${userId}` : null;
@@ -885,7 +842,6 @@ function MemberCard({
         afterWeightKg: testimonial.afterWeightKg,
         goalType: testimonial.goalType,
         durationText: testimonial.durationText,
-        recoveredHealthIssues: testimonial.recoveredHealthIssues,
         videoStatus: testimonial.videoStatus,
         healthVideoPath: testimonial.healthVideoPath,
         businessVideoPath: testimonial.businessVideoPath,
@@ -911,18 +867,11 @@ function MemberCard({
     setDraftBusinessPath(null);
     setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return null; });
     setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return null; });
-    setDraftIssues(null);
     setBeforeWeightText(null);
     setAfterWeightText(null);
     setDurationValueText(null);
     setExpandedSlots(new Set());
   }, []);
-  // Freeze the last approved issue list while new tags are draft/pending OTP.
-  useEffect(() => {
-    if (draftIssues != null) return;
-    if (testimonial?.status === 'pending') return;
-    setApprovedIssues((prev) => (sameIssueList(prev, issues) ? prev : issues));
-  }, [issues, draftIssues, testimonial?.status]);
   // Local text while weight/duration fields are open — needed for Android WebView typing
   const [beforeWeightText, setBeforeWeightText] = useState(null);
   const [afterWeightText, setAfterWeightText] = useState(null);
@@ -1001,8 +950,6 @@ function MemberCard({
     draftAfter?.imageBase64 && 'after',
     draftHealthPath && 'health',
     draftBusinessPath && 'business',
-    // Mark issues dirty whenever draftIssues array exists
-    Array.isArray(draftIssues) && 'issues',
   ].filter(Boolean);
   // hasDirtySlots: true for ANY pending change including weight-only edits or video drafts
   const hasDirtySlots = dirtySlots.length > 0
@@ -1011,8 +958,7 @@ function MemberCard({
     || !!draftHealthPreview
     || !!draftBusinessPreview
     || !!draftHealthPath
-    || !!draftBusinessPath
-    || Array.isArray(draftIssues);
+    || !!draftBusinessPath;
   const changedCount = Math.max(dirtySlots.length, hasDirtySlots ? 1 : 0);
   const anyVideoUploading = uploadingHealth || uploadingBusiness;
 
@@ -1251,182 +1197,73 @@ function MemberCard({
     parseWeightInput,
   ]);
 
-  const clearCollageSlot = useCallback(() => {
-    setDraftBefore((prev) => {
-      revokeBlobUrl(prev?.previewUrl);
-      return { cleared: true };
-    });
-    setDraftAfter((prev) => {
-      revokeBlobUrl(prev?.previewUrl);
-      return { cleared: true };
-    });
-    const clearCollageSlot = useCallback(async () => {
-      if (deletingCollage) return;
-      setSubmitError(null);
-      const hasPersistedRow = Boolean(testimonial?.id && userId);
-      if (hasPersistedRow) {
-        setDeletingCollage(true);
-        try {
-          const res = await deleteTestimonialPhoto({ userId });
-          baselineTestimonialRef.current = null;
-          if (baselineKey) {
+        const clearCollageSlot = useCallback(async () => {
+          if (deletingCollage) return;
+          setSubmitError(null);
+          const hasPersistedRow = Boolean(testimonial?.id && userId);
+          if (hasPersistedRow) {
+            setDeletingCollage(true);
             try {
-              localStorage.removeItem(baselineKey);
-            } catch {
-              // ignore storage errors
-            }
-            const clearCollageSlot = useCallback(async () => {
-              if (deletingCollage) return;
-              setSubmitError(null);
-              const hasPersistedRow = Boolean(testimonial?.id && userId);
-              if (hasPersistedRow) {
-                setDeletingCollage(true);
+              const res = await deleteTestimonialPhoto({ userId });
+              baselineTestimonialRef.current = null;
+              if (baselineKey) {
                 try {
-                  const res = await deleteTestimonialPhoto({ userId });
-                  baselineTestimonialRef.current = null;
-                  if (baselineKey) {
-                    try {
-                      localStorage.removeItem(baselineKey);
-                    } catch {
-                      // ignore storage errors
-                    }
-                    setDraftBefore((prev) => {
-                      revokeBlobUrl(prev?.previewUrl);
-                      return null;
-                    });
-                    setDraftAfter((prev) => {
-                      revokeBlobUrl(prev?.previewUrl);
-                      return null;
-                    });
-                    setDraftIssues(null);
-                    setBeforeWeightText(null);
-                    setAfterWeightText(null);
-                    setDurationValueText(null);
-                    setUnifiedOtpVerified(false);
-                    setUnifiedOtpDismissed(true);
-                    setSubmitDone(false);
-                    if (typeof onMineRefresh === 'function') {
-                      const nextRow = res?.testimonial
-                        ? { ...res.testimonial, photosFromProfileSeed: false }
-                        : {
-                          id: null,
-                          beforeImageUrl: null,
-                          afterImageUrl: null,
-                          beforeWeightKg: 0,
-                          afterWeightKg: 0,
-                          durationText: '—',
-                          status: 'incomplete',
-                          hasPendingOtp: false,
-                          otpPending: false,
-                          otpExpired: false,
-                          otpExpiresAt: null,
-                          recoveredHealthIssues: [],
-                          healthVideoPath: null,
-                          businessVideoPath: null,
-                          healthVideoUrl: null,
-                          businessVideoUrl: null,
-                          videoStatus: 'none',
-                          photosFromProfileSeed: false,
-                        };
-                      await onMineRefresh(nextRow);
-                    }
-                  } catch (err) {
-                    setSubmitError(err?.message || 'Could not delete transformation. Please try again.');
-                    setDeletingCollage(false);
-                    return;
-                  } finally {
-                    setDeletingCollage(false);
-                  }
-                } else {
-                  setDraftBefore((prev) => {
-                    revokeBlobUrl(prev?.previewUrl);
-                    return { cleared: true };
-                    return null;
-                  });
-                  setDraftAfter((prev) => {
-                    revokeBlobUrl(prev?.previewUrl);
-                    return { cleared: true };
-                    return null;
-                  });
-                  setDraftIssues(null);
-                  setBeforeWeightText(null);
-                  setAfterWeightText(null);
-                  setDurationValueText(null);
-                  setUnifiedOtpVerified(false);
-                  setUnifiedOtpDismissed(true);
-                  setSubmitDone(false);
-                  if (typeof onMineRefresh === 'function') {
-                    const nextRow = res?.testimonial
-                      ? { ...res.testimonial, photosFromProfileSeed: false }
-                      : {
-                        id: null,
-                        beforeImageUrl: null,
-                        afterImageUrl: null,
-                        beforeWeightKg: 0,
-                        afterWeightKg: 0,
-                        durationText: '—',
-                        status: 'incomplete',
-                        hasPendingOtp: false,
-                        otpPending: false,
-                        otpExpired: false,
-                        otpExpiresAt: null,
-                        recoveredHealthIssues: [],
-                        healthVideoPath: null,
-                        businessVideoPath: null,
-                        healthVideoUrl: null,
-                        businessVideoUrl: null,
-                        videoStatus: 'none',
-                        photosFromProfileSeed: false,
-                      };
-                    await onMineRefresh(nextRow);
-                  }
-                } catch (err) {
-                  setSubmitError(err?.message || 'Could not delete transformation. Please try again.');
-                  setDeletingCollage(false);
-                  return;
-                } finally {
-                  setDeletingCollage(false);
+                  localStorage.removeItem(baselineKey);
+                } catch {
+                  // ignore storage errors
                 }
-                setPickerSlot(null);
-                setCollageMetaOpen(false);
-                setCollageGuideOpen(false);
-                setCollageImageBroken(false);
-                setCollageMetaSaved(false);
-                setPromptCopied(false);
-                setSubmitError(null);
-              }, []);
-          }, [baselineKey, deletingCollage, onMineRefresh, testimonial?.id, userId]);
-
-    const handleCollageShare = useCallback(async () => {
-      const src = draftBefore?.previewUrl
-        || (draftBefore?.imageBase64 ? `data:image/jpeg;base64,${draftBefore.imageBase64}` : null)
-        || beforeImageSrc
-        || afterImageSrc;
-      if (!src || collageImageBroken) {
-        setSubmitError('Upload the ChatGPT collage photo first, then share.');
-        return;
-      }
-      try {
-        await shareImageDirectly(src, {
-          title: 'Transformation',
-          text: [
-            user?.userName || 'Transformation',
-            shownBeforeKg != null && shownAfterKg != null
-              ? `Before ${shownBeforeKg} kg → After ${shownAfterKg} kg`
-              : null,
-            usableDuration ? `in ${displayDuration}` : null,
-          ].filter(Boolean).join(' · '),
-          fileName: `transformation-collage-${Date.now()}.jpg`,
-        } else {
-          setDraftBefore((prev) => {
+              }
+              setDraftBefore((prev) => {
+                revokeBlobUrl(prev?.previewUrl);
+                return null;
+              });
+              setDraftAfter((prev) => {
+                revokeBlobUrl(prev?.previewUrl);
+                return null;
+              });
+              setBeforeWeightText(null);
+              setAfterWeightText(null);
+              setDurationValueText(null);
+              setUnifiedOtpVerified(false);
+              setUnifiedOtpDismissed(true);
+              setSubmitDone(false);
+              if (typeof onMineRefresh === 'function') {
+                const nextRow = res?.testimonial
+                  ? { ...res.testimonial, photosFromProfileSeed: false }
+                  : {
+                    id: null,
+                    beforeImageUrl: null,
+                    afterImageUrl: null,
+                    beforeWeightKg: 0,
+                    afterWeightKg: 0,
+                    durationText: '—',
+                    status: 'incomplete',
+                    hasPendingOtp: false,
+                    otpPending: false,
+                    otpExpired: false,
+                    otpExpiresAt: null,
+                    recoveredHealthIssues: [],
+                    healthVideoPath: null,
+                    businessVideoPath: null,
+                    healthVideoUrl: null,
+                    businessVideoUrl: null,
+                    videoStatus: 'none',
+                    photosFromProfileSeed: false,
+                  };
+                await onMineRefresh(nextRow);
+              }
+            } catch (err) {
+              setSubmitError(err?.message || 'Could not delete transformation. Please try again.');
+              setDeletingCollage(false);
+              return;
+            } finally {
+              setDeletingCollage(false);
+            }
+    } else {
+  setDraftBefore((prev) => {
     revokeBlobUrl(prev?.previewUrl);
     return { cleared: true };
   });
-} catch (err) {
-  if (!err?.message?.toLowerCase().includes('cancel')) {
-    console.error('[Transformation] Collage share failed:', err);
-    setSubmitError('Could not share collage. Please try again.');
-  }
   setDraftAfter((prev) => {
     revokeBlobUrl(prev?.previewUrl);
     return { cleared: true };
@@ -1435,18 +1272,6 @@ function MemberCard({
   setAfterWeightText(null);
   setDurationValueText(null);
 }
-  }, [
-  afterImageSrc,
-  beforeImageSrc,
-  collageImageBroken,
-  displayDuration,
-  draftBefore?.imageBase64,
-  draftBefore?.previewUrl,
-  shownAfterKg,
-  shownBeforeKg,
-  usableDuration,
-  user?.userName,
-]);
 setPickerSlot(null);
 setCollageMetaOpen(false);
 setCollageGuideOpen(false);
@@ -1670,10 +1495,9 @@ const handleSubmitAll = useCallback(() => {
   );
   // Profile-seeded URLs look like Before/After but are not on the testimonial row.
   const hasVisiblePhotoCard = hasStoredTransformationPhotoCard(testimonial);
-  const issuesNeedOtp = dirtySlots.includes('issues') && (hasAfter || hasResultVideo || hasVisiblePhotoCard);
   const afterWeightDirty = draftAfter?.weightKg !== undefined
     && afterWeightDiffers(testimonial?.beforeWeightKg, draftAfter.weightKg);
-  const isSilentSave = !photoOrVideoChanged && !issuesNeedOtp && !afterWeightDirty
+  const isSilentSave = !photoOrVideoChanged && !afterWeightDirty
     && !hasVisiblePhotoCard;
   // Photos still compressing — wait so we do not submit without image bytes.
   if (draftBefore?.compressing || draftAfter?.compressing || coverCrop.isPreparing) {
@@ -1711,9 +1535,6 @@ const handleSubmitAll = useCallback(() => {
     } : {}),
     ...(draftHealthPath ? { healthVideoPath: draftHealthPath } : {}),
     ...(draftBusinessPath ? { businessVideoPath: draftBusinessPath } : {}),
-    ...(Array.isArray(draftIssues)
-      ? { recoveredHealthIssues: draftIssues.filter(Boolean) }
-      : {}),
     ...(!draftBefore && usableDurationForSubmit ? { durationText: usableDurationForSubmit } : {}),
   };
   const visibleBeforeUrl = draftBefore?.previewUrl && /^https?:\/\//i.test(draftBefore.previewUrl)
@@ -1747,21 +1568,13 @@ const handleSubmitAll = useCallback(() => {
   }
 
   // Visible Before+After (stored Transformation photos or drafts) needs duration + OTP.
-  // Health issues are optional.
   const willComplete =
     Boolean(draftBefore?.imageBase64 || (hasVisiblePhotoCard && testimonial?.beforeImageUrl))
     && Boolean(draftAfter?.imageBase64 || (hasVisiblePhotoCard && testimonial?.afterImageUrl) || hasAfter);
-  const issuesForSubmit = Array.isArray(draftIssues)
-    ? draftIssues.filter(Boolean)
-    : (testimonial?.recoveredHealthIssues || []);
   const submittingPhotoCard = Boolean(hasVisiblePhotoCard || willComplete || afterWeightDirty || approvalReadyBefore);
-  // Health issues are optional — user may submit without selecting any.
   if (submittingPhotoCard && !usableDurationForSubmit) {
     setSubmitError('Add a duration in days or months (e.g. 3 months) before submitting.');
     return;
-  }
-  if (submittingPhotoCard && payload.recoveredHealthIssues == null && Array.isArray(draftIssues)) {
-    payload.recoveredHealthIssues = issuesForSubmit;
   }
 
   // First-time submit needs the before image bytes in the payload.
@@ -1860,7 +1673,7 @@ const handleSubmitAll = useCallback(() => {
       setIsSubmitting(false);
       setCaptureFlowBusy(false);
     });
-}, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, draftIssues, onMineRefresh, hasAfter, displayBeforeKg, coverCrop.isPreparing, testimonial?.id, testimonial?.beforeImageUrl, testimonial?.afterImageUrl, testimonial?.beforeWeightKg, testimonial?.afterWeightKg, testimonial?.goalType, testimonial?.durationText, testimonial?.recoveredHealthIssues, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
+}, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, onMineRefresh, hasAfter, displayBeforeKg, coverCrop.isPreparing, testimonial?.id, testimonial?.beforeImageUrl, testimonial?.afterImageUrl, testimonial?.beforeWeightKg, testimonial?.afterWeightKg, testimonial?.goalType, testimonial?.durationText, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
 const anyPhotoCompressing = Boolean(
   draftBefore?.compressing || draftAfter?.compressing || coverCrop.isPreparing,
@@ -1971,18 +1784,6 @@ const handleUnifiedOtpMetaUpdate = useCallback(async (meta) => {
   }
 }, [onMineRefresh, testimonial]);
 
-const handleHealthIssuesSaved = useCallback((nextIssues) => {
-  const next = uniqueConditions(nextIssues);
-  setDraftIssues(isSameIssueList(next, approvedIssues) ? null : next);
-}, [approvedIssues]);
-
-const handleHealthIssueRemoved = useCallback((issue) => {
-  setDraftIssues((prev) => {
-    const next = withoutHealthIssue(prev ?? issues, issue);
-    return isSameIssueList(next, approvedIssues) ? null : next;
-  });
-}, [issues, approvedIssues]);
-
 const prepareShareCard = useCallback(async () => {
   const full = await ensureDetail();
   return full;
@@ -2026,7 +1827,6 @@ const shareCardTestimonial = testimonial ? {
       ? draftBefore.durationText
       : testimonial.durationText
   ),
-  recoveredHealthIssues: draftIssues ?? testimonial.recoveredHealthIssues,
   // Mine collage slot: one ChatGPT Before|After|Now image in share card.
   shareAsCollage: true,
 } : null;
@@ -2076,62 +1876,6 @@ return (
       {/* Transformation collage — + → weight form → ChatGPT prompt → upload */}
       {(editable || (!showBrandedCard && testimonial && (testimonial.beforeImageUrl || testimonial.afterImageUrl))) && (
         <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
-          <div className="flex items-center px-3 pt-3 pb-2 gap-2">
-            <div className="flex-1 min-w-0 flex items-center justify-start">
-              <div className="flex items-center justify-between px-3 pt-3 pb-2 gap-2">
-                <div className="w-20 shrink-0 flex items-center justify-start">
-                  {isVerified && hasCollageImage ? (
-                    <span
-                      className="h-7 w-7 rounded-full bg-green-500 text-white shadow flex items-center justify-center"
-                      aria-label="Verified"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </span>
-                  ) : null}
-                </div>
-                <p className="shrink-0 text-sm font-bold text-gray-900 text-center">
-                  <p className="min-w-0 text-sm font-bold text-gray-900 text-center">
-                    Transformation
-                  </p>
-                  <div className="flex-1 min-w-0 flex items-center justify-end gap-1.5">
-                    <div className="w-20 shrink-0 flex items-center justify-end gap-1.5">
-                      {editable && (hasCollageMeta || hasCollageImage) ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={openCollageMetaForm}
-                            className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full bg-gray-800 text-white"
-                            disabled={deletingCollage}
-                            className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full bg-gray-800 text-white disabled:opacity-50"
-                            aria-label="Edit transformation details"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => { void handleCollageShare(); }}
-                            className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full bg-emerald-600 text-white"
-                            aria-label="Share transformation"
-                          >
-                            <Share2 className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={clearCollageSlot}
-                            className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full bg-red-50 text-red-600 border border-red-100"
-                            onClick={() => { void clearCollageSlot(); }}
-                            disabled={deletingCollage}
-                            className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full bg-red-50 text-red-600 border border-red-100 disabled:opacity-50"
-                            aria-label="Delete transformation"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
                   <div className="flex items-center justify-between px-3 pt-3 pb-2 gap-2">
                     <div className="w-20 shrink-0 flex items-center justify-start">
                       {isVerified && hasCollageImage ? (
@@ -2505,50 +2249,6 @@ return (
                 </div>
               )}
 
-              {/* Health Issues — Mine editable. Team chips only when branded card is hidden. */}
-              {(editable || (testimonial && !showBrandedCard)) && (
-                <div className="space-y-1.5 overflow-visible relative z-20">
-                  <p className="text-[10px] font-bold text-gray-400 tracking-normal whitespace-normal">
-                    Health Issues while joining this community{editable ? ' (optional · up to 10)' : ''}
-                  </p>
-                  {editable ? (
-                    <HealthIssueCoachEditor
-                      userId={userId || user?.userId}
-                      coachId={coachId}
-                      currentIssues={draftIssues ?? issues}
-                      approvedIssues={approvedIssues}
-                      knownHealthIssues={knownHealthIssues}
-                      persist={false}
-                      allowRemove
-                      editable
-                      disabled={false}
-                      onSaved={handleHealthIssuesSaved}
-                      onRemove={handleHealthIssueRemoved}
-                    />
-                  ) : (
-                    <div className="rounded-lg border border-indigo-100 bg-indigo-50/40 px-2.5 py-2">
-                      {(issues || []).length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          {issues.map((issue) => (
-                            <span
-                              key={issue}
-                              className="inline-flex max-w-[11rem] truncate rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-800"
-                            >
-                              {issue}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-400 italic">No health issues recorded.</p>
-                      )}
-                      <p className="mt-1.5 text-[10px] text-gray-400 italic">
-                        View only — only the member can edit health issues.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-
               {/* Result Video above divider — Mine upload only.
           Direct/Full with branded card: videos live under the card (no duplicate). */}
               {(editable || (testimonial && !showBrandedCard)) && (
@@ -2886,7 +2586,6 @@ return (
                     left: -10000,
                     top: 0,
                     width: CARD_W,
-                    height: CARD_H,
                     height: shareCardTestimonial?.shareAsCollage ? 'auto' : CARD_H,
                     opacity: 0,
                     pointerEvents: 'none',
@@ -2917,13 +2616,9 @@ return (
           const [uploadFilter, setUploadFilter] = useState(UPLOAD_FILTERS.ALL);
           const [teamScope, setTeamScope] = useState(TEAM_SCOPES.MINE);
           const [searchQuery, setSearchQuery] = useState('');
-          const [healthIssueQuery, setHealthIssueQuery] = useState('');
-          const [committedHealthIssue, setCommittedHealthIssue] = useState('');
           const [isSearchOpen, setIsSearchOpen] = useState(false);
-          const [isIssueSearchOpen, setIsIssueSearchOpen] = useState(false);
           const [listReloadKey, setListReloadKey] = useState(0);
           const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
-          const [highlightedIssue, setHighlightedIssue] = useState(-1);
 
           const [teamPerformanceByUserId, setTeamPerformanceByUserId] = useState({ });
           /** Unfiltered Direct/Full sizes for tab badges — never overwritten by upload filters. */
@@ -3139,32 +2834,27 @@ return (
   }, [reloadSignal, buildMineRow, hasDownline, coachId]);
 
   const resetTeamSearch = useCallback(() => {
-            setSearchQuery('');
-          setHealthIssueQuery('');
-          setCommittedHealthIssue('');
+          setSearchQuery('');
           setIsSearchOpen(false);
-          setIsIssueSearchOpen(false);
           setHighlightedSuggestion(-1);
-          setHighlightedIssue(-1);
           setUploadFilter(UPLOAD_FILTERS.ALL);
           setTeamScope(TEAM_SCOPES.MINE);
   }, []);
 
   // No Mine/Direct/Full tabs: own card by default; search uses Full-team API.
-  const syncScopeForSearch = useCallback((nextSearchQuery, nextIssueQuery) => {
+  const syncScopeForSearch = useCallback((nextSearchQuery) => {
     if (!hasDownline) {
-            setTeamScope(TEAM_SCOPES.MINE);
+          setTeamScope(TEAM_SCOPES.MINE);
           return;
     }
-    const searching = normalizeSearchQuery(nextSearchQuery).length > 0
-      || normalizeSearchQuery(nextIssueQuery).length > 0;
+    const searching = normalizeSearchQuery(nextSearchQuery).length > 0;
           if (searching) {
             setTeamScope((prev) => {
               if (prev !== TEAM_SCOPES.FULL) setFullLoaded(false);
               return TEAM_SCOPES.FULL;
             });
     } else {
-            setTeamScope(TEAM_SCOPES.MINE);
+          setTeamScope(TEAM_SCOPES.MINE);
     }
   }, [hasDownline]);
 
@@ -3202,49 +2892,26 @@ return (
           // Server already filtered — use scopeRows as filteredRows for team scopes.
           const filteredRows = scopeRows;
 
-  const knownHealthIssues = useMemo(() => {
-    const seen = new Set();
-          const labels = [];
-          const rows = [mineRow, ...directRows, ...fullRows].filter(Boolean);
-          for (const row of rows) {
-      const issueList = row.testimonial?.recoveredHealthIssues;
-          for (const issue of (Array.isArray(issueList) ? issueList : [])) {
-        const label = String(issue || '').trim();
-          if (!label) continue;
-          const key = label.toLowerCase();
-          if (seen.has(key)) continue;
-          seen.add(key);
-          labels.push(label);
-      }
-    }
-          return labels;
-  }, [mineRow, directRows, fullRows]);
-
           const nameSuggestions = useMemo(
     () => buildSearchSuggestions(filteredRows, searchQuery),
           [filteredRows, searchQuery],
-          );
-
-          const issueSuggestions = useMemo(
-    () => buildHealthIssueSuggestions(healthIssueQuery, knownHealthIssues),
-          [healthIssueQuery, knownHealthIssues],
           );
 
           const activePagination = teamScope === TEAM_SCOPES.FULL ? fullPagination : directPagination;
 
   const loadMoreTeam = useCallback(async () => {
     if (isMineScope || loadingMore || loading || fullLoading) return;
-          if (!activePagination.hasMore) return;
+    if (!activePagination.hasMore) return;
           const scope = teamScope === TEAM_SCOPES.FULL ? 'full' : 'direct';
           const nextPage = (activePagination.page || 1) + 1;
-          const cacheKey = `${scope}|${normalizeSearchQuery(searchQuery)}|${normalizeSearchQuery(committedHealthIssue)}|${uploadFilter}|${nextPage}`;
+          const cacheKey = `${scope}|${normalizeSearchQuery(searchQuery)}|${uploadFilter}|${nextPage}`;
           if (pageCacheRef.current.has(cacheKey)) {
       const cached = pageCacheRef.current.get(cacheKey);
           if (scope === 'full') {
             setFullRows((prev) => [...prev, ...cached.data]);
           setFullPagination(cached.pagination);
       } else {
-            setDirectRows((prev) => [...prev, ...cached.data]);
+        setDirectRows((prev) => [...prev, ...cached.data]);
           setDirectPagination(cached.pagination);
       }
           return;
@@ -3257,10 +2924,9 @@ return (
             page: nextPage,
           limit: 10,
           search: normalizeSearchQuery(searchQuery),
-          healthIssue: normalizeSearchQuery(committedHealthIssue),
           uploadFilter,
     });
-          inFlightRef.current.set(cacheKey, promise);
+            inFlightRef.current.set(cacheKey, promise);
           try {
       const result = await promise;
           pageCacheRef.current.set(cacheKey, result);
@@ -3270,28 +2936,28 @@ return (
           setFullPagination(result.pagination || {page: nextPage, hasMore: false });
           if (result.uploadCounts) setFullUploadCounts(result.uploadCounts);
       } else {
-            setDirectRows((prev) => [...prev, ...pageData]);
+        setDirectRows((prev) => [...prev, ...pageData]);
           setDirectPagination(result.pagination || {page: nextPage, hasMore: false });
           if (result.uploadCounts) setDirectUploadCounts(result.uploadCounts);
       }
     } catch (err) {
-            setError(err.message || 'Failed to load more');
+          setError(err.message || 'Failed to load more');
     } finally {
-            inFlightRef.current.delete(cacheKey);
+          inFlightRef.current.delete(cacheKey);
           setLoadingMore(false);
     }
   }, [
           isMineScope, loadingMore, loading, fullLoading, activePagination,
-          teamScope, searchQuery, committedHealthIssue, uploadFilter, coachId,
+          teamScope, searchQuery, uploadFilter, coachId,
           ]);
 
-          // Load / refetch page 1 when scope, name search, committed health issue, or upload filter changes.
+          // Load / refetch page 1 when scope, name search, or upload filter changes.
           const prevTeamFetchRef = useRef({teamScope, listReloadKey});
           const fullRowsCountRef = useRef(0);
           fullRowsCountRef.current = fullRows.length;
   useEffect(() => {
     if (!coachId || !hasDownline || isMineScope) {
-            prevTeamFetchRef.current = { teamScope, listReloadKey };
+          prevTeamFetchRef.current = {teamScope, listReloadKey};
           return undefined;
     }
           const scope = teamScope === TEAM_SCOPES.FULL ? 'full' : 'direct';
@@ -3308,19 +2974,17 @@ return (
     const timer = setTimeout(async () => {
       try {
         const result = await listForCoach(coachId, {
-            scope,
-            page: 1,
+          scope,
+          page: 1,
           limit: 10,
           search: normalizeSearchQuery(searchQuery),
-          healthIssue: normalizeSearchQuery(committedHealthIssue),
           uploadFilter,
         });
           if (cancelled) return;
           const pageData = Array.isArray(result?.data) ? result.data : [];
           const pagination = result.pagination || {page: 1, hasMore: false, total: 0 };
           const isUnfilteredList = (!uploadFilter || uploadFilter === UPLOAD_FILTERS.ALL)
-          && !normalizeSearchQuery(searchQuery)
-          && !normalizeSearchQuery(committedHealthIssue);
+          && !normalizeSearchQuery(searchQuery);
           if (scope === 'full') {
             setFullRows(pageData);
           setFullPagination(pagination);
@@ -3331,7 +2995,7 @@ return (
           }
           setFullLoaded(true);
         } else {
-            setDirectRows(pageData);
+          setDirectRows(pageData);
           setDirectPagination(pagination);
           if (result.uploadCounts) setDirectUploadCounts(result.uploadCounts);
           if (isUnfilteredList && Number.isFinite(pagination.total)) {
@@ -3345,11 +3009,11 @@ return (
       }
     }, delay);
     return () => {
-            cancelled = true;
+          cancelled = true;
           clearTimeout(timer);
     };
   }, [
-          searchQuery, committedHealthIssue, uploadFilter, teamScope, coachId,
+          searchQuery, uploadFilter, teamScope, coachId,
           hasDownline, isMineScope, listReloadKey,
           ]);
 
@@ -3372,43 +3036,19 @@ return (
   }, []);
 
   const handleSearchChange = useCallback((value) => {
-            setSearchQuery(value);
+          setSearchQuery(value);
           setIsSearchOpen(true);
           setHighlightedSuggestion(-1);
-          syncScopeForSearch(value, committedHealthIssue);
-  }, [committedHealthIssue, syncScopeForSearch]);
-
-  const handleIssueSearchChange = useCallback((value) => {
-            setHealthIssueQuery(value);
-          setIsIssueSearchOpen(true);
-          setHighlightedIssue(-1);
-          let nextCommitted = committedHealthIssue;
-          if (!value.trim()) {
-            nextCommitted = '';
-          setCommittedHealthIssue('');
-    } else if (normalizeSearchQuery(value) !== normalizeSearchQuery(committedHealthIssue)) {
-            nextCommitted = '';
-          setCommittedHealthIssue('');
-    }
-          syncScopeForSearch(searchQuery, nextCommitted || value);
-  }, [committedHealthIssue, searchQuery, syncScopeForSearch]);
+          syncScopeForSearch(value);
+  }, [syncScopeForSearch]);
 
   const handleSelectNameSuggestion = useCallback((row) => {
     const name = row?.user?.userName || '';
           setSearchQuery(name);
           setIsSearchOpen(false);
           setHighlightedSuggestion(-1);
-          syncScopeForSearch(name, committedHealthIssue);
-  }, [committedHealthIssue, syncScopeForSearch]);
-
-  const handleSelectIssueSuggestion = useCallback((issue) => {
-    const label = typeof issue === 'string' ? issue : (issue?.label || '');
-          setHealthIssueQuery(label);
-          setCommittedHealthIssue(label);
-          setIsIssueSearchOpen(false);
-          setHighlightedIssue(-1);
-          syncScopeForSearch(searchQuery, label);
-  }, [searchQuery, syncScopeForSearch]);
+          syncScopeForSearch(name);
+  }, [syncScopeForSearch]);
 
   const handleSearchKeyDown = useCallback((event) => {
     const hasQuery = normalizeSearchQuery(searchQuery).length > 0;
@@ -3431,9 +3071,9 @@ return (
           if (event.key === 'Enter') {
             event.preventDefault();
       if (highlightedSuggestion >= 0 && nameSuggestions[highlightedSuggestion]) {
-            handleSelectNameSuggestion(nameSuggestions[highlightedSuggestion]);
+          handleSelectNameSuggestion(nameSuggestions[highlightedSuggestion]);
       } else {
-            setIsSearchOpen(false);
+          setIsSearchOpen(false);
           setHighlightedSuggestion(-1);
       }
           return;
@@ -3444,45 +3084,7 @@ return (
     }
   }, [searchQuery, nameSuggestions, highlightedSuggestion, handleSelectNameSuggestion]);
 
-  const handleIssueSearchKeyDown = useCallback((event) => {
-    const hasQuery = normalizeSearchQuery(healthIssueQuery).length > 0;
-          if (!hasQuery) return;
-
-          if (event.key === 'ArrowDown') {
-            event.preventDefault();
-          if (!issueSuggestions.length) return;
-          setIsIssueSearchOpen(true);
-      setHighlightedIssue((prev) => (prev < issueSuggestions.length - 1 ? prev + 1 : 0));
-          return;
-    }
-          if (event.key === 'ArrowUp') {
-            event.preventDefault();
-          if (!issueSuggestions.length) return;
-          setIsIssueSearchOpen(true);
-      setHighlightedIssue((prev) => (prev > 0 ? prev - 1 : issueSuggestions.length - 1));
-          return;
-    }
-          if (event.key === 'Enter') {
-            event.preventDefault();
-      if (highlightedIssue >= 0 && issueSuggestions[highlightedIssue]) {
-            handleSelectIssueSuggestion(issueSuggestions[highlightedIssue]);
-      } else {
-        const label = healthIssueQuery.trim();
-          setCommittedHealthIssue(label);
-          setIsIssueSearchOpen(false);
-          setHighlightedIssue(-1);
-          syncScopeForSearch(searchQuery, label);
-      }
-          return;
-    }
-          if (event.key === 'Escape') {
-            setIsIssueSearchOpen(false);
-          setHighlightedIssue(-1);
-    }
-  }, [healthIssueQuery, issueSuggestions, highlightedIssue, handleSelectIssueSuggestion, searchQuery, syncScopeForSearch]);
-
-  const hasActiveSearch = normalizeSearchQuery(searchQuery).length > 0
-    || normalizeSearchQuery(committedHealthIssue).length > 0;
+  const hasActiveSearch = normalizeSearchQuery(searchQuery).length > 0;
           const hasActiveUploadFilter = uploadFilter && uploadFilter !== UPLOAD_FILTERS.ALL;
           const showTeamChrome = hasDownline;
           const showPageSkeleton = shouldShowTestimonialsPageSkeleton(loading, mineRow);
@@ -3520,38 +3122,11 @@ return (
                     onChange={handleSearchChange}
                     suggestions={nameSuggestions}
                     isOpen={isSearchOpen}
-                    onOpenChange={(open) => {
-                      setIsSearchOpen(open);
-                      if (open) {
-                        setIsIssueSearchOpen(false);
-                        setHighlightedIssue(-1);
-                      }
-                    }}
+                    onOpenChange={setIsSearchOpen}
                     highlightedIndex={highlightedSuggestion}
                     onHighlightChange={setHighlightedSuggestion}
                     onSelectSuggestion={handleSelectNameSuggestion}
                     onKeyDown={handleSearchKeyDown}
-                  />
-                </div>
-                <div className="relative">
-                  <p className="text-xs font-semibold text-gray-600 mb-1.5">Search health issue</p>
-                  <TestimonialSearchBar
-                    variant="issue"
-                    value={healthIssueQuery}
-                    onChange={handleIssueSearchChange}
-                    suggestions={issueSuggestions}
-                    isOpen={isIssueSearchOpen}
-                    onOpenChange={(open) => {
-                      setIsIssueSearchOpen(open);
-                      if (open) {
-                        setIsSearchOpen(false);
-                        setHighlightedSuggestion(-1);
-                      }
-                    }}
-                    highlightedIndex={highlightedIssue}
-                    onHighlightChange={setHighlightedIssue}
-                    onSelectSuggestion={handleSelectIssueSuggestion}
-                    onKeyDown={handleIssueSearchKeyDown}
                   />
                 </div>
                 {hasActiveSearch ? (
@@ -3627,7 +3202,6 @@ return (
                 editable={isMineScope}
                 userId={row.user.userId}
                 coachId={coachId}
-                knownHealthIssues={knownHealthIssues}
                 onMineRefresh={isMineScope ? refreshMineRow : undefined}
                 onOtpVerified={isMineScope ? () => loadDirectAndMine() : undefined}
               />
