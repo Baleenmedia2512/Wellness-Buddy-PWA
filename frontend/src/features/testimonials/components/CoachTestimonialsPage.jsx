@@ -1129,344 +1129,301 @@ function MemberCard({
     closeDurationEdit();
   }, [closeDurationEdit, durationUnitDraft, durationValueText, testimonial?.beforeWeightKg, testimonial?.goalType]);
 
-    const openCollageMetaForm = useCallback(({ forChatGpt = false } = {}) => {
-      setCollageMetaError(null);
-      setBeforeWeightText(String(
-        draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? user?.latestWeightKg ?? '',
-      ));
-      setAfterWeightText(String(
-        draftAfter?.weightKg ?? testimonial?.afterWeightKg ?? '',
-      ));
-      const rawBefore = draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? user?.latestWeightKg;
-      const rawAfter = draftAfter?.weightKg ?? testimonial?.afterWeightKg;
-      setBeforeWeightText(Number(rawBefore) > 0 ? String(rawBefore) : '');
-      setAfterWeightText(Number(rawAfter) > 0 ? String(rawAfter) : '');
-      const parsed = parseDurationText(draftBefore?.durationText ?? testimonial?.durationText);
-      setDurationValueText(parsed.durationValue);
-      setDurationUnitDraft(parsed.durationUnit);
-      setChatGptFlowActive(Boolean(forChatGpt));
-      setCollageGuideOpen(false);
-      setCollageMetaOpen(true);
-      setPickerSlot(null);
-    }, [
-      draftAfter?.weightKg,
-      draftBefore?.durationText,
-      draftBefore?.weightKg,
-      testimonial?.afterWeightKg,
-      testimonial?.beforeWeightKg,
-      testimonial?.durationText,
-      user?.latestWeightKg,
-    ]);
+  const openCollageMetaForm = useCallback(({ forChatGpt = false } = {}) => {
+    setCollageMetaError(null);
+    setBeforeWeightText(String(
+      draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? user?.latestWeightKg ?? '',
+    ));
+    setAfterWeightText(String(
+      draftAfter?.weightKg ?? testimonial?.afterWeightKg ?? '',
+    ));
+    const rawBefore = draftBefore?.weightKg ?? testimonial?.beforeWeightKg ?? user?.latestWeightKg;
+    const rawAfter = draftAfter?.weightKg ?? testimonial?.afterWeightKg;
+    setBeforeWeightText(Number(rawBefore) > 0 ? String(rawBefore) : '');
+    setAfterWeightText(Number(rawAfter) > 0 ? String(rawAfter) : '');
+    const parsed = parseDurationText(draftBefore?.durationText ?? testimonial?.durationText);
+    setDurationValueText(parsed.durationValue);
+    setDurationUnitDraft(parsed.durationUnit);
+    setChatGptFlowActive(Boolean(forChatGpt));
+    setCollageGuideOpen(false);
+    setCollageMetaOpen(true);
+    setPickerSlot(null);
+  }, [
+    draftAfter?.weightKg,
+    draftBefore?.durationText,
+    draftBefore?.weightKg,
+    testimonial?.afterWeightKg,
+    testimonial?.beforeWeightKg,
+    testimonial?.durationText,
+    user?.latestWeightKg,
+  ]);
 
-    const closeCollageMetaForm = useCallback(() => {
-      setCollageMetaOpen(false);
-      setChatGptFlowActive(false);
-      setCollageMetaError(null);
-    }, []);
+  const closeCollageMetaForm = useCallback(() => {
+    setCollageMetaOpen(false);
+    setChatGptFlowActive(false);
+    setCollageMetaError(null);
+  }, []);
 
-    const submitCollageMetaForm = useCallback(async () => {
-      const beforeKg = parseWeightInput(beforeWeightText);
-      const afterKg = parseWeightInput(afterWeightText);
-      if (beforeKg == null) {
-        setCollageMetaError('Enter a valid before weight.');
-        return;
-      }
-      if (afterKg == null) {
-        setCollageMetaError('Enter a valid after weight.');
-        return;
-      }
-      const durationErr = validateDurationFields(durationUnitDraft, durationValueText);
-      if (durationErr) {
-        setCollageMetaError(durationErr);
-        return;
-      }
-      const durationText = formatDurationText(durationUnitDraft, durationValueText);
-      const goalType = beforeKg >= afterKg ? 'loss' : 'gain';
-      setDraftBefore((prev) => {
-        const { cleared: _cleared, ...rest } = prev || {};
-        return {
-          ...rest,
-          weightKg: beforeKg,
-          durationText,
-          goalType,
-        };
-      });
-      setDraftAfter((prev) => {
-        const { cleared: _cleared, ...rest } = prev || {};
-        return {
-          ...rest,
-          weightKg: afterKg,
-        };
-      });
-      setSubmitError(null);
-      setCollageMetaError(null);
-      setCollageMetaOpen(false);
-      setCollageImageBroken(false);
-      setCollageMetaSaved(true);
-      setPromptCopied(false);
-      setCollageGuideOpen(!hasCollageImage);
-      setCollageGuideOpen(chatGptFlowActive || !hasCollageImage);
-      setChatGptFlowActive(false);
-      setPickerSlot(null);
-    }, [
-      afterWeightText,
-      beforeWeightText,
-      chatGptFlowActive,
-      durationUnitDraft,
-      durationValueText,
-      hasCollageImage,
-      parseWeightInput,
-    ]);
+  const submitCollageMetaForm = useCallback(async () => {
+    const beforeKg = parseWeightInput(beforeWeightText);
+    const afterKg = parseWeightInput(afterWeightText);
+    if (beforeKg == null) {
+      setCollageMetaError('Enter a valid before weight.');
+      return;
+    }
+    if (afterKg == null) {
+      setCollageMetaError('Enter a valid after weight.');
+      return;
+    }
+    const durationErr = validateDurationFields(durationUnitDraft, durationValueText);
+    if (durationErr) {
+      setCollageMetaError(durationErr);
+      return;
+    }
+    const durationText = formatDurationText(durationUnitDraft, durationValueText);
+    const goalType = beforeKg >= afterKg ? 'loss' : 'gain';
+    setDraftBefore((prev) => {
+      const { cleared: _cleared, ...rest } = prev || {};
+      return {
+        ...rest,
+        weightKg: beforeKg,
+        durationText,
+        goalType,
+      };
+    });
+    setDraftAfter((prev) => {
+      const { cleared: _cleared, ...rest } = prev || {};
+      return {
+        ...rest,
+        weightKg: afterKg,
+      };
+    });
+    setSubmitError(null);
+    setCollageMetaError(null);
+    setCollageMetaOpen(false);
+    setCollageImageBroken(false);
+    setCollageMetaSaved(true);
+    setPromptCopied(false);
+    setCollageGuideOpen(!hasCollageImage);
+    setCollageGuideOpen(chatGptFlowActive || !hasCollageImage);
+    setChatGptFlowActive(false);
+    setPickerSlot(null);
+  }, [
+    afterWeightText,
+    beforeWeightText,
+    chatGptFlowActive,
+    durationUnitDraft,
+    durationValueText,
+    hasCollageImage,
+    parseWeightInput,
+  ]);
 
-    const clearCollageSlot = useCallback(async () => {
-      if (deletingCollage) return;
-      setSubmitError(null);
-      const hasPersistedRow = Boolean(testimonial?.id && userId);
-      if (hasPersistedRow) {
-        setDeletingCollage(true);
-        try {
-          const res = await deleteTestimonialPhoto({ userId });
-          baselineTestimonialRef.current = null;
-          if (baselineKey) {
-            try {
-              localStorage.removeItem(baselineKey);
-            } catch {
-              // ignore storage errors
-            }
+  const clearCollageSlot = useCallback(async () => {
+    if (deletingCollage) return;
+    setSubmitError(null);
+    const hasPersistedRow = Boolean(testimonial?.id && userId);
+    if (hasPersistedRow) {
+      setDeletingCollage(true);
+      try {
+        const res = await deleteTestimonialPhoto({ userId });
+        baselineTestimonialRef.current = null;
+        if (baselineKey) {
+          try {
+            localStorage.removeItem(baselineKey);
+          } catch {
+            // ignore storage errors
           }
-          setDraftBefore((prev) => {
-            revokeBlobUrl(prev?.previewUrl);
-            return null;
-          });
-          setDraftAfter((prev) => {
-            revokeBlobUrl(prev?.previewUrl);
-            return null;
-          });
-          setBeforeWeightText(null);
-          setAfterWeightText(null);
-          setDurationValueText(null);
-          setUnifiedOtpVerified(false);
-          setUnifiedOtpDismissed(true);
-          setSubmitDone(false);
-          if (typeof onMineRefresh === 'function') {
-            const nextRow = res?.testimonial
-              ? { ...res.testimonial, photosFromProfileSeed: false }
-              : {
-                id: null,
-                beforeImageUrl: null,
-                afterImageUrl: null,
-                beforeWeightKg: 0,
-                afterWeightKg: 0,
-                durationText: '—',
-                status: 'incomplete',
-                hasPendingOtp: false,
-                otpPending: false,
-                otpExpired: false,
-                otpExpiresAt: null,
-                recoveredHealthIssues: [],
-                healthVideoPath: null,
-                businessVideoPath: null,
-                healthVideoUrl: null,
-                businessVideoUrl: null,
-                videoStatus: 'none',
-                photosFromProfileSeed: false,
-              };
-            await onMineRefresh(nextRow);
-          }
-        } catch (err) {
-          setSubmitError(err?.message || 'Could not delete transformation. Please try again.');
-          setDeletingCollage(false);
-          return;
-        } finally {
-          setDeletingCollage(false);
         }
-      } else {
         setDraftBefore((prev) => {
           revokeBlobUrl(prev?.previewUrl);
-          return { cleared: true };
+          return null;
         });
         setDraftAfter((prev) => {
           revokeBlobUrl(prev?.previewUrl);
-          return { cleared: true };
+          return null;
         });
         setBeforeWeightText(null);
         setAfterWeightText(null);
         setDurationValueText(null);
+        setUnifiedOtpVerified(false);
+        setUnifiedOtpDismissed(true);
+        setSubmitDone(false);
+        if (typeof onMineRefresh === 'function') {
+          const nextRow = res?.testimonial
+            ? { ...res.testimonial, photosFromProfileSeed: false }
+            : {
+              id: null,
+              beforeImageUrl: null,
+              afterImageUrl: null,
+              beforeWeightKg: 0,
+              afterWeightKg: 0,
+              durationText: '—',
+              status: 'incomplete',
+              hasPendingOtp: false,
+              otpPending: false,
+              otpExpired: false,
+              otpExpiresAt: null,
+              recoveredHealthIssues: [],
+              healthVideoPath: null,
+              businessVideoPath: null,
+              healthVideoUrl: null,
+              businessVideoUrl: null,
+              videoStatus: 'none',
+              photosFromProfileSeed: false,
+            };
+          await onMineRefresh(nextRow);
+        }
+      } catch (err) {
+        setSubmitError(err?.message || 'Could not delete transformation. Please try again.');
+        setDeletingCollage(false);
+        return;
+      } finally {
+        setDeletingCollage(false);
       }
-      setPickerSlot(null);
-      setCollageMetaOpen(false);
-      setCollageGuideOpen(false);
-      setCollageImageBroken(false);
-      setCollageMetaSaved(false);
-      setPromptCopied(false);
-    }, [baselineKey, deletingCollage, onMineRefresh, testimonial?.id, userId]);
-
-    const openPhotoPicker = useCallback((inputRef) => {
-      setCaptureFlowBusy(true);
-      setPickerSlot(null);
-      inputRef?.current?.click();
-      const onFocus = () => {
-        window.removeEventListener('focus', onFocus);
-        window.setTimeout(() => {
-          if (!compressBusyRef.current) setCaptureFlowBusy(false);
-        }, 400);
-      };
-      window.addEventListener('focus', onFocus);
-    }, []);
-
-    const handleImageFile = useCallback((slot, file) => {
-      if (!file) return;
-      cropSlotRef.current = slot;
-      setPickerSlot(null);
-      setSubmitError(null);
-      void coverCrop.pickFile(file, slot);
-    }, [coverCrop]);
-
-    /** ChatGPT Before|After|Now collage → one slot; stored as before+after for existing save/OTP. */
-    const handleCollageFile = useCallback(async (file) => {
-      if (!file) return;
-      setPickerSlot(null);
-      setSubmitError(null);
-      setCollageImageBroken(false);
-      setCollageGuideOpen(false);
-      setCaptureFlowBusy(true);
-      const beforeBase = {
-        weightKg: testimonial?.beforeWeightKg,
-        goalType: testimonial?.goalType,
-        durationText: testimonial?.durationText,
-      };
-      const afterBase = { weightKg: testimonial?.afterWeightKg };
+    } else {
       setDraftBefore((prev) => {
-        const { cleared: _cleared, ...rest } = prev || beforeBase;
-        return { ...rest, compressing: true };
+        revokeBlobUrl(prev?.previewUrl);
+        return { cleared: true };
       });
       setDraftAfter((prev) => {
-        const { cleared: _cleared, ...rest } = prev || afterBase;
-        return { ...rest, compressing: true };
+        revokeBlobUrl(prev?.previewUrl);
+        return { cleared: true };
       });
-      try {
-        const { base64, preview } = await compressImage(file, {
-          allowLandscape: true,
-          maxDim: 1920,
-        });
-        const previewBefore = jpegDataUrlToObjectUrl(preview) || preview;
-        const previewAfter = jpegDataUrlToObjectUrl(preview) || preview;
-        setDraftBefore((prev) => {
-          revokeBlobUrl(prev?.previewUrl);
-          const { cleared: _cleared, ...rest } = prev || beforeBase;
-          return {
-            ...rest,
-            previewUrl: previewBefore,
-            imageBase64: base64,
-            compressing: false,
-          };
-        });
-        setDraftAfter((prev) => {
-          revokeBlobUrl(prev?.previewUrl);
-          const { cleared: _cleared, ...rest } = prev || afterBase;
-          return {
-            ...rest,
-            previewUrl: previewAfter,
-            imageBase64: base64,
-            compressing: false,
-          };
-        });
-      } catch (err) {
-        setSubmitError(err?.message || 'Could not read that collage. Please try another image.');
-        setDraftBefore((prev) => (prev ? { ...prev, compressing: false } : null));
-        setDraftAfter((prev) => (prev ? { ...prev, compressing: false } : null));
-      } finally {
-        setCaptureFlowBusy(false);
-      }
-    }, [testimonial?.afterWeightKg, testimonial?.beforeWeightKg, testimonial?.durationText, testimonial?.goalType]);
+      setBeforeWeightText(null);
+      setAfterWeightText(null);
+      setDurationValueText(null);
+    }
+    setPickerSlot(null);
+    setCollageMetaOpen(false);
+    setCollageGuideOpen(false);
+    setCollageImageBroken(false);
+    setCollageMetaSaved(false);
+    setPromptCopied(false);
+  }, [baselineKey, deletingCollage, onMineRefresh, testimonial?.id, userId]);
 
-    const handleAdjustExisting = useCallback((slot) => {
-      const src = slot === 'after'
-        ? (draftAfter?.previewUrl || testimonial?.afterImageUrl)
-        : (draftBefore?.previewUrl || testimonial?.beforeImageUrl);
-      if (!src) return;
-      cropSlotRef.current = slot;
-      setPickerSlot(null);
-      setSubmitError(null);
-      void coverCrop.recrop(src, slot);
-    }, [coverCrop, draftAfter?.previewUrl, draftBefore?.previewUrl, testimonial?.afterImageUrl, testimonial?.beforeImageUrl]);
+  const openPhotoPicker = useCallback((inputRef) => {
+    setCaptureFlowBusy(true);
+    setPickerSlot(null);
+    inputRef?.current?.click();
+    const onFocus = () => {
+      window.removeEventListener('focus', onFocus);
+      window.setTimeout(() => {
+        if (!compressBusyRef.current) setCaptureFlowBusy(false);
+      }, 400);
+    };
+    window.addEventListener('focus', onFocus);
+  }, []);
 
-    const handleVideoFile = useCallback(async (slot, file) => {
-      const numericUserId = Number(userId);
-      if (!numericUserId) {
-        setVideoUploadError('Cannot upload video: user ID is missing. Please refresh the page.');
-        return;
-      }
-      setVideoUploadError(null);
+  const handleImageFile = useCallback((slot, file) => {
+    if (!file) return;
+    cropSlotRef.current = slot;
+    setPickerSlot(null);
+    setSubmitError(null);
+    void coverCrop.pickFile(file, slot);
+  }, [coverCrop]);
 
-      // Restrict photos / non-video files: only video files are allowed
-      const isImage = file.type?.startsWith('image/') || /\.(jpe?g|png|gif|webp|bmp|heic|heif|svg)$/i.test(file.name || '');
-      const isVideo = file.type?.startsWith('video/') || /\.(mp4|mov|webm|3gp|mkv|avi|m4v)$/i.test(file.name || '');
-      if (isImage || !isVideo) {
-        setVideoUploadError('Only video files are allowed for results. Photos and images are not allowed.');
-        return;
-      }
+  /** ChatGPT Before|After|Now collage → one slot; stored as before+after for existing save/OTP. */
+  const handleCollageFile = useCallback(async (file) => {
+    if (!file) return;
+    setPickerSlot(null);
+    setSubmitError(null);
+    setCollageImageBroken(false);
+    setCollageGuideOpen(false);
+    setCaptureFlowBusy(true);
+    const beforeBase = {
+      weightKg: testimonial?.beforeWeightKg,
+      goalType: testimonial?.goalType,
+      durationText: testimonial?.durationText,
+    };
+    const afterBase = { weightKg: testimonial?.afterWeightKg };
+    setDraftBefore((prev) => {
+      const { cleared: _cleared, ...rest } = prev || beforeBase;
+      return { ...rest, compressing: true };
+    });
+    setDraftAfter((prev) => {
+      const { cleared: _cleared, ...rest } = prev || afterBase;
+      return { ...rest, compressing: true };
+    });
+    try {
+      const { base64, preview } = await compressImage(file, {
+        allowLandscape: true,
+        maxDim: 1920,
+      });
+      const previewBefore = jpegDataUrlToObjectUrl(preview) || preview;
+      const previewAfter = jpegDataUrlToObjectUrl(preview) || preview;
+      setDraftBefore((prev) => {
+        revokeBlobUrl(prev?.previewUrl);
+        const { cleared: _cleared, ...rest } = prev || beforeBase;
+        return {
+          ...rest,
+          previewUrl: previewBefore,
+          imageBase64: base64,
+          compressing: false,
+        };
+      });
+      setDraftAfter((prev) => {
+        revokeBlobUrl(prev?.previewUrl);
+        const { cleared: _cleared, ...rest } = prev || afterBase;
+        return {
+          ...rest,
+          previewUrl: previewAfter,
+          imageBase64: base64,
+          compressing: false,
+        };
+      });
+    } catch (err) {
+      setSubmitError(err?.message || 'Could not read that collage. Please try another image.');
+      setDraftBefore((prev) => (prev ? { ...prev, compressing: false } : null));
+      setDraftAfter((prev) => (prev ? { ...prev, compressing: false } : null));
+    } finally {
+      setCaptureFlowBusy(false);
+    }
+  }, [testimonial?.afterWeightKg, testimonial?.beforeWeightKg, testimonial?.durationText, testimonial?.goalType]);
 
-      setCaptureFlowBusy(true);
-      const localUrl = URL.createObjectURL(file);
-      if (slot === 'health') {
-        setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return localUrl; });
-        setDraftHealthPath(null);
-        setUploadingHealth(true);
-      } else {
-        setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return localUrl; });
-        setDraftBusinessPath(null);
-        setUploadingBusiness(true);
-      }
-      try {
-        const normalized = await normalizeVideoUploadFile(file);
-        const maxBytes = maxVideoMbForSlot(slot) * 1024 * 1024;
-        const compressed = await compressVideoToMaxBytes(normalized, maxBytes);
-        if (isVideoOverSizeLimit(compressed, slot)) {
-          setVideoSizeAlert(videoTooLargeMessage(slot));
-          if (slot === 'health') {
-            setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return null; });
-            setDraftHealthPath(null);
-          } else {
-            setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return null; });
-            setDraftBusinessPath(null);
-          }
-          return;
-        }
-        const prep = await prepareTestimonialVideoUpload({
-          userId: numericUserId,
-          uploadHealth: slot === 'health',
-          uploadBusiness: slot === 'business',
-        });
-        const info = slot === 'health' ? prep?.health : prep?.business;
-        if (!info?.path || !info?.sessionId) {
-          throw new Error('Server did not return a valid upload path. Please try again.');
-        }
-        const uploadPromise = uploadTestimonialVideoInChunks(compressed, info, slot, numericUserId);
-        uploadPromise.catch(() => { });
-        const path = await Promise.race([
-          uploadPromise,
-          new Promise((_, reject) => {
-            setTimeout(() => {
-              reject(new Error('Video upload timed out. Please try a smaller MP4 file.'));
-            }, 180000);
-          }),
-        ]);
-        if (slot === 'health') setDraftHealthPath(path);
-        else setDraftBusinessPath(path);
-      } catch (err) {
-        const msg = err?.message || '';
-        const isTooLarge = /max of \d+ MB|exceeds \d+ MB/i.test(msg);
-        if (isTooLarge) {
-          setVideoSizeAlert(videoTooLargeMessage(slot));
-        } else {
-          const isNoCoach = msg.toLowerCase().includes('no coach');
-          setVideoUploadError(
-            isNoCoach
-              ? 'You do not have a sponsor assigned yet. Please ask your admin to assign a sponsor before uploading videos.'
-              : (msg || 'Video upload failed. Please try again.')
-          );
-        }
+  const handleAdjustExisting = useCallback((slot) => {
+    const src = slot === 'after'
+      ? (draftAfter?.previewUrl || testimonial?.afterImageUrl)
+      : (draftBefore?.previewUrl || testimonial?.beforeImageUrl);
+    if (!src) return;
+    cropSlotRef.current = slot;
+    setPickerSlot(null);
+    setSubmitError(null);
+    void coverCrop.recrop(src, slot);
+  }, [coverCrop, draftAfter?.previewUrl, draftBefore?.previewUrl, testimonial?.afterImageUrl, testimonial?.beforeImageUrl]);
+
+  const handleVideoFile = useCallback(async (slot, file) => {
+    const numericUserId = Number(userId);
+    if (!numericUserId) {
+      setVideoUploadError('Cannot upload video: user ID is missing. Please refresh the page.');
+      return;
+    }
+    setVideoUploadError(null);
+
+    // Restrict photos / non-video files: only video files are allowed
+    const isImage = file.type?.startsWith('image/') || /\.(jpe?g|png|gif|webp|bmp|heic|heif|svg)$/i.test(file.name || '');
+    const isVideo = file.type?.startsWith('video/') || /\.(mp4|mov|webm|3gp|mkv|avi|m4v)$/i.test(file.name || '');
+    if (isImage || !isVideo) {
+      setVideoUploadError('Only video files are allowed for results. Photos and images are not allowed.');
+      return;
+    }
+
+    setCaptureFlowBusy(true);
+    const localUrl = URL.createObjectURL(file);
+    if (slot === 'health') {
+      setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return localUrl; });
+      setDraftHealthPath(null);
+      setUploadingHealth(true);
+    } else {
+      setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return localUrl; });
+      setDraftBusinessPath(null);
+      setUploadingBusiness(true);
+    }
+    try {
+      const normalized = await normalizeVideoUploadFile(file);
+      const maxBytes = maxVideoMbForSlot(slot) * 1024 * 1024;
+      const compressed = await compressVideoToMaxBytes(normalized, maxBytes);
+      if (isVideoOverSizeLimit(compressed, slot)) {
+        setVideoSizeAlert(videoTooLargeMessage(slot));
         if (slot === 'health') {
           setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return null; });
           setDraftHealthPath(null);
@@ -1474,274 +1431,347 @@ function MemberCard({
           setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return null; });
           setDraftBusinessPath(null);
         }
-      } finally {
-        setCaptureFlowBusy(false);
-        if (slot === 'health') setUploadingHealth(false);
-        else setUploadingBusiness(false);
-      }
-    }, [userId]);
-
-    const handleSubmitAll = useCallback(() => {
-      if (testimonial && (testimonial.status === 'verified' || testimonial.verifiedAt || hasAfter)) {
-        const snap = {
-          status: testimonial.status || 'verified',
-          verifiedAt: testimonial.verifiedAt || new Date().toISOString(),
-          beforeImagePath: testimonial.beforeImagePath,
-          afterImagePath: testimonial.afterImagePath,
-          beforeWeightKg: testimonial.beforeWeightKg,
-          afterWeightKg: testimonial.afterWeightKg,
-          goalType: testimonial.goalType,
-          durationText: testimonial.durationText,
-          recoveredHealthIssues: testimonial.recoveredHealthIssues,
-          videoStatus: testimonial.videoStatus,
-          healthVideoPath: testimonial.healthVideoPath,
-          businessVideoPath: testimonial.businessVideoPath,
-          beforeImageUrl: testimonial.beforeImageUrl,
-          afterImageUrl: testimonial.afterImageUrl,
-          healthVideoUrl: testimonial.healthVideoUrl,
-          businessVideoUrl: testimonial.businessVideoUrl,
-        };
-        baselineTestimonialRef.current = snap;
-        if (baselineKey) {
-          try {
-            localStorage.setItem(baselineKey, JSON.stringify(snap));
-          } catch { }
-        }
-      }
-
-      const photoOrVideoChanged = dirtySlots.some((s) => ['before', 'after', 'health', 'business'].includes(s));
-      const hasResultVideo = Boolean(
-        testimonial?.healthVideoPath || testimonial?.businessVideoPath
-        || testimonial?.healthVideoUrl || testimonial?.businessVideoUrl,
-      );
-      // Profile-seeded URLs look like Before/After but are not on the testimonial row.
-      const hasVisiblePhotoCard = hasStoredTransformationPhotoCard(testimonial);
-      const afterWeightDirty = draftAfter?.weightKg !== undefined
-        && afterWeightDiffers(testimonial?.beforeWeightKg, draftAfter.weightKg);
-      const isSilentSave = !photoOrVideoChanged && !afterWeightDirty
-        && !hasVisiblePhotoCard;
-      // Photos still compressing — wait so we do not submit without image bytes.
-      if (draftBefore?.compressing || draftAfter?.compressing || coverCrop.isPreparing) {
-        setSubmitError('Photo is still preparing — try Submit again in a moment.');
         return;
       }
-      if (draftBefore?.previewUrl && draftBefore.imageBase64 == null && !draftBefore.compressing) {
-        setSubmitError('Before photo failed to prepare. Please pick it again.');
-        return;
+      const prep = await prepareTestimonialVideoUpload({
+        userId: numericUserId,
+        uploadHealth: slot === 'health',
+        uploadBusiness: slot === 'business',
+      });
+      const info = slot === 'health' ? prep?.health : prep?.business;
+      if (!info?.path || !info?.sessionId) {
+        throw new Error('Server did not return a valid upload path. Please try again.');
       }
-      if (draftAfter?.previewUrl && draftAfter.imageBase64 == null && !draftAfter.compressing) {
-        setSubmitError('After photo failed to prepare. Please pick it again.');
-        return;
+      const uploadPromise = uploadTestimonialVideoInChunks(compressed, info, slot, numericUserId);
+      uploadPromise.catch(() => { });
+      const path = await Promise.race([
+        uploadPromise,
+        new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error('Video upload timed out. Please try a smaller MP4 file.'));
+          }, 180000);
+        }),
+      ]);
+      if (slot === 'health') setDraftHealthPath(path);
+      else setDraftBusinessPath(path);
+    } catch (err) {
+      const msg = err?.message || '';
+      const isTooLarge = /max of \d+ MB|exceeds \d+ MB/i.test(msg);
+      if (isTooLarge) {
+        setVideoSizeAlert(videoTooLargeMessage(slot));
+      } else {
+        const isNoCoach = msg.toLowerCase().includes('no coach');
+        setVideoUploadError(
+          isNoCoach
+            ? 'You do not have a sponsor assigned yet. Please ask your admin to assign a sponsor before uploading videos.'
+            : (msg || 'Video upload failed. Please try again.')
+        );
       }
+      if (slot === 'health') {
+        setDraftHealthPreview((prev) => { revokeBlobUrl(prev); return null; });
+        setDraftHealthPath(null);
+      } else {
+        setDraftBusinessPreview((prev) => { revokeBlobUrl(prev); return null; });
+        setDraftBusinessPath(null);
+      }
+    } finally {
+      setCaptureFlowBusy(false);
+      if (slot === 'health') setUploadingHealth(false);
+      else setUploadingBusiness(false);
+    }
+  }, [userId]);
 
-      const durationForSubmit = String(draftBefore?.durationText ?? testimonial?.durationText ?? '').trim();
-      const usableDurationForSubmit = isUsableDurationText(durationForSubmit)
-        ? durationForSubmit
-        : '';
-
-      const payload = {
-        userId,
-        dirtySlots,
-        submitForApproval: !isSilentSave,
-        ...(draftBefore ? {
-          ...(draftBefore.imageBase64 ? { beforeImageBase64: draftBefore.imageBase64 } : {}),
-          ...(draftBefore.weightKg !== undefined ? { beforeWeightKg: draftBefore.weightKg } : {}),
-          // Always send goal on drafts — UI may show "Weight Loss" without writing state
-          goalType: draftBefore.goalType || testimonial?.goalType || 'loss',
-          ...(usableDurationForSubmit ? { durationText: usableDurationForSubmit } : {}),
-        } : {}),
-        ...(draftAfter ? {
-          ...(draftAfter.imageBase64 ? { afterImageBase64: draftAfter.imageBase64 } : {}),
-          ...(draftAfter.weightKg !== undefined ? { afterWeightKg: draftAfter.weightKg } : {}),
-        } : {}),
-        ...(draftHealthPath ? { healthVideoPath: draftHealthPath } : {}),
-        ...(draftBusinessPath ? { businessVideoPath: draftBusinessPath } : {}),
-        ...(!draftBefore && usableDurationForSubmit ? { durationText: usableDurationForSubmit } : {}),
+  const handleSubmitAll = useCallback(() => {
+    if (testimonial && (testimonial.status === 'verified' || testimonial.verifiedAt || hasAfter)) {
+      const snap = {
+        status: testimonial.status || 'verified',
+        verifiedAt: testimonial.verifiedAt || new Date().toISOString(),
+        beforeImagePath: testimonial.beforeImagePath,
+        afterImagePath: testimonial.afterImagePath,
+        beforeWeightKg: testimonial.beforeWeightKg,
+        afterWeightKg: testimonial.afterWeightKg,
+        goalType: testimonial.goalType,
+        durationText: testimonial.durationText,
+        recoveredHealthIssues: testimonial.recoveredHealthIssues,
+        videoStatus: testimonial.videoStatus,
+        healthVideoPath: testimonial.healthVideoPath,
+        businessVideoPath: testimonial.businessVideoPath,
+        beforeImageUrl: testimonial.beforeImageUrl,
+        afterImageUrl: testimonial.afterImageUrl,
+        healthVideoUrl: testimonial.healthVideoUrl,
+        businessVideoUrl: testimonial.businessVideoUrl,
       };
-      const visibleBeforeUrl = draftBefore?.previewUrl && /^https?:\/\//i.test(draftBefore.previewUrl)
-        ? draftBefore.previewUrl
-        : testimonial?.beforeImageUrl;
-      // Default Left-in-both: After display may reuse Before until a real After upload.
-      const visibleAfterUrl = draftAfter?.previewUrl && /^https?:\/\//i.test(draftAfter.previewUrl)
-        ? draftAfter.previewUrl
-        : (hasAfterImage ? testimonial?.afterImageUrl : visibleBeforeUrl);
-      if (!draftBefore?.imageBase64 && typeof visibleBeforeUrl === 'string') {
-        payload.displayedBeforeUrl = visibleBeforeUrl;
+      baselineTestimonialRef.current = snap;
+      if (baselineKey) {
+        try {
+          localStorage.setItem(baselineKey, JSON.stringify(snap));
+        } catch { }
       }
-      if (!draftAfter?.imageBase64 && typeof visibleAfterUrl === 'string') {
-        payload.displayedAfterUrl = visibleAfterUrl;
+    }
+
+    const photoOrVideoChanged = dirtySlots.some((s) => ['before', 'after', 'health', 'business'].includes(s));
+    const hasResultVideo = Boolean(
+      testimonial?.healthVideoPath || testimonial?.businessVideoPath
+      || testimonial?.healthVideoUrl || testimonial?.businessVideoUrl,
+    );
+    // Profile-seeded URLs look like Before/After but are not on the testimonial row.
+    const hasVisiblePhotoCard = hasStoredTransformationPhotoCard(testimonial);
+    const afterWeightDirty = draftAfter?.weightKg !== undefined
+      && afterWeightDiffers(testimonial?.beforeWeightKg, draftAfter.weightKg);
+    const isSilentSave = !photoOrVideoChanged && !afterWeightDirty
+      && !hasVisiblePhotoCard;
+    // Photos still compressing — wait so we do not submit without image bytes.
+    if (draftBefore?.compressing || draftAfter?.compressing || coverCrop.isPreparing) {
+      setSubmitError('Photo is still preparing — try Submit again in a moment.');
+      return;
+    }
+    if (draftBefore?.previewUrl && draftBefore.imageBase64 == null && !draftBefore.compressing) {
+      setSubmitError('Before photo failed to prepare. Please pick it again.');
+      return;
+    }
+    if (draftAfter?.previewUrl && draftAfter.imageBase64 == null && !draftAfter.compressing) {
+      setSubmitError('After photo failed to prepare. Please pick it again.');
+      return;
+    }
+
+    const durationForSubmit = String(draftBefore?.durationText ?? testimonial?.durationText ?? '').trim();
+    const usableDurationForSubmit = isUsableDurationText(durationForSubmit)
+      ? durationForSubmit
+      : '';
+
+    const payload = {
+      userId,
+      dirtySlots,
+      submitForApproval: !isSilentSave,
+      ...(draftBefore ? {
+        ...(draftBefore.imageBase64 ? { beforeImageBase64: draftBefore.imageBase64 } : {}),
+        ...(draftBefore.weightKg !== undefined ? { beforeWeightKg: draftBefore.weightKg } : {}),
+        // Always send goal on drafts — UI may show "Weight Loss" without writing state
+        goalType: draftBefore.goalType || testimonial?.goalType || 'loss',
+        ...(usableDurationForSubmit ? { durationText: usableDurationForSubmit } : {}),
+      } : {}),
+      ...(draftAfter ? {
+        ...(draftAfter.imageBase64 ? { afterImageBase64: draftAfter.imageBase64 } : {}),
+        ...(draftAfter.weightKg !== undefined ? { afterWeightKg: draftAfter.weightKg } : {}),
+      } : {}),
+      ...(draftHealthPath ? { healthVideoPath: draftHealthPath } : {}),
+      ...(draftBusinessPath ? { businessVideoPath: draftBusinessPath } : {}),
+      ...(!draftBefore && usableDurationForSubmit ? { durationText: usableDurationForSubmit } : {}),
+    };
+    const visibleBeforeUrl = draftBefore?.previewUrl && /^https?:\/\//i.test(draftBefore.previewUrl)
+      ? draftBefore.previewUrl
+      : testimonial?.beforeImageUrl;
+    // Default Left-in-both: After display may reuse Before until a real After upload.
+    const visibleAfterUrl = draftAfter?.previewUrl && /^https?:\/\//i.test(draftAfter.previewUrl)
+      ? draftAfter.previewUrl
+      : (hasAfterImage ? testimonial?.afterImageUrl : visibleBeforeUrl);
+    if (!draftBefore?.imageBase64 && typeof visibleBeforeUrl === 'string') {
+      payload.displayedBeforeUrl = visibleBeforeUrl;
+    }
+    if (!draftAfter?.imageBase64 && typeof visibleAfterUrl === 'string') {
+      payload.displayedAfterUrl = visibleAfterUrl;
+    }
+    if (
+      payload.beforeWeightKg === undefined
+      && (payload.afterWeightKg !== undefined || payload.durationText)
+    ) {
+      const beforeKg = Number(testimonial?.beforeWeightKg ?? displayBeforeKg);
+      if (Number.isFinite(beforeKg) && beforeKg > 0) {
+        payload.beforeWeightKg = beforeKg;
       }
-      if (
-        payload.beforeWeightKg === undefined
-        && (payload.afterWeightKg !== undefined || payload.durationText)
-      ) {
-        const beforeKg = Number(testimonial?.beforeWeightKg ?? displayBeforeKg);
-        if (Number.isFinite(beforeKg) && beforeKg > 0) {
-          payload.beforeWeightKg = beforeKg;
+    }
+
+    const approvalReadyBefore = hasApprovalReadyBeforePhoto({ testimonial, draftBefore });
+    // New users / profile-seeded cards must upload Transformation Before so OTP can start.
+    if (!isSilentSave && !approvalReadyBefore) {
+      setSubmitError('Add a Before photo on this Transformation card, then submit for approval.');
+      return;
+    }
+
+    // Visible Before+After (stored Transformation photos or drafts) needs duration + OTP.
+    const willComplete =
+      Boolean(draftBefore?.imageBase64 || (hasVisiblePhotoCard && testimonial?.beforeImageUrl))
+      && Boolean(draftAfter?.imageBase64 || (hasVisiblePhotoCard && testimonial?.afterImageUrl) || hasAfter);
+    const submittingPhotoCard = Boolean(hasVisiblePhotoCard || willComplete || afterWeightDirty || approvalReadyBefore);
+    if (submittingPhotoCard && !usableDurationForSubmit) {
+      setSubmitError('Add a duration in days or months (e.g. 3 months) before submitting.');
+      return;
+    }
+
+    // First-time submit needs the before image bytes in the payload.
+    if (!testimonial?.id && dirtySlots.includes('before') && !draftBefore?.imageBase64) {
+      setSubmitError('Before photo failed to prepare. Please pick it again.');
+      return;
+    }
+
+    setSubmitError(null);
+
+    const reloadMine = async (patchedTestimonial) => {
+      if (typeof onMineRefresh === 'function') {
+        await onMineRefresh(patchedTestimonial || null);
+      }
+      setMediaEpoch((n) => n + 1);
+    };
+
+    const finishSubmit = async (result) => {
+      // Prefer explicit otpSent from API; fall back to pending OTP fields if older responses omit it.
+      const otpSent = result?.otpSent === true
+        || (result?.otpSent == null && Boolean(
+          result?.testimonial?.hasPendingOtp
+          || result?.testimonial?.otpPending
+          || result?.otpExpiresAt,
+        ));
+      const patched = result?.testimonial
+        ? {
+          ...result.testimonial,
+          sponsorName: result.sponsorName ?? result.testimonial.sponsorName ?? null,
+          otpExpiresAt: result.otpExpiresAt ?? result.testimonial.otpExpiresAt ?? null,
+          otpValidityHours: result.otpValidityHours ?? result.testimonial.otpValidityHours ?? 24,
+          otpExpired: false,
+          hasPendingOtp: otpSent || Boolean(
+            result.testimonial.hasPendingOtp || result.testimonial.otpPending,
+          ),
         }
-      }
-
-      const approvalReadyBefore = hasApprovalReadyBeforePhoto({ testimonial, draftBefore });
-      // New users / profile-seeded cards must upload Transformation Before so OTP can start.
-      if (!isSilentSave && !approvalReadyBefore) {
-        setSubmitError('Add a Before photo on this Transformation card, then submit for approval.');
-        return;
-      }
-
-      // Visible Before+After (stored Transformation photos or drafts) needs duration + OTP.
-      const willComplete =
-        Boolean(draftBefore?.imageBase64 || (hasVisiblePhotoCard && testimonial?.beforeImageUrl))
-        && Boolean(draftAfter?.imageBase64 || (hasVisiblePhotoCard && testimonial?.afterImageUrl) || hasAfter);
-      const submittingPhotoCard = Boolean(hasVisiblePhotoCard || willComplete || afterWeightDirty || approvalReadyBefore);
-      if (submittingPhotoCard && !usableDurationForSubmit) {
-        setSubmitError('Add a duration in days or months (e.g. 3 months) before submitting.');
-        return;
-      }
-
-      // First-time submit needs the before image bytes in the payload.
-      if (!testimonial?.id && dirtySlots.includes('before') && !draftBefore?.imageBase64) {
-        setSubmitError('Before photo failed to prepare. Please pick it again.');
-        return;
-      }
-
-      setSubmitError(null);
-
-      const reloadMine = async (patchedTestimonial) => {
-        if (typeof onMineRefresh === 'function') {
-          await onMineRefresh(patchedTestimonial || null);
-        }
-        setMediaEpoch((n) => n + 1);
-      };
-
-      const finishSubmit = async (result) => {
-        // Prefer explicit otpSent from API; fall back to pending OTP fields if older responses omit it.
-        const otpSent = result?.otpSent === true
-          || (result?.otpSent == null && Boolean(
-            result?.testimonial?.hasPendingOtp
-            || result?.testimonial?.otpPending
-            || result?.otpExpiresAt,
-          ));
-        const patched = result?.testimonial
-          ? {
-            ...result.testimonial,
-            sponsorName: result.sponsorName ?? result.testimonial.sponsorName ?? null,
-            otpExpiresAt: result.otpExpiresAt ?? result.testimonial.otpExpiresAt ?? null,
-            otpValidityHours: result.otpValidityHours ?? result.testimonial.otpValidityHours ?? 24,
-            otpExpired: false,
-            hasPendingOtp: otpSent || Boolean(
-              result.testimonial.hasPendingOtp || result.testimonial.otpPending,
-            ),
-          }
-          : null;
-        if (!isSilentSave && !otpSent) {
-          const saved = result?.testimonial;
-          const waitingForOtherPhoto = Boolean(saved) && !hasDistinctTransformationAfter(saved);
-          if (waitingForOtherPhoto && (hasStoredTransformationBefore(saved) || saved.beforeImageUrl || saved.afterImageUrl)) {
-            const cleared = hasStoredTransformationBefore(saved)
-              ? { ...patched, photosFromProfileSeed: false }
-              : patched;
-            clearDrafts();
-            void reloadMine(cleared);
-            setSubmitError(
-              'Add a different After photo (change the right photo), then tap Submit for Approval again.',
-            );
-            return;
-          }
-          const hasDuration = Boolean(usableDurationForSubmit);
+        : null;
+      if (!isSilentSave && !otpSent) {
+        const saved = result?.testimonial;
+        const waitingForOtherPhoto = Boolean(saved) && !hasDistinctTransformationAfter(saved);
+        if (waitingForOtherPhoto && (hasStoredTransformationBefore(saved) || saved.beforeImageUrl || saved.afterImageUrl)) {
+          const cleared = hasStoredTransformationBefore(saved)
+            ? { ...patched, photosFromProfileSeed: false }
+            : patched;
+          clearDrafts();
+          void reloadMine(cleared);
           setSubmitError(
-            hasDuration
-              ? 'Coach approval did not start. Change the After photo (right side), then tap Submit again.'
-              : 'Coach approval did not start. Add a duration in days or months, then submit again.',
+            'Add a different After photo (change the right photo), then tap Submit for Approval again.',
           );
           return;
         }
-        clearDrafts();
-        // Show OTP immediately from submit response; refresh media/profile in background.
-        if (otpSent || patched?.hasPendingOtp) {
-          setUnifiedOtpDismissed(false);
-          setUnifiedOtpVerified(false);
-          setSubmitDone(true);
-        }
-        void reloadMine(patched);
-        if (userId) {
-          void getProfile({ userId, cacheBust: true }).catch(() => {
-            // Non-fatal — Profile reloads on next open with cache bust.
-          });
-        }
-      };
-
-      // Weight / issues only — still show OTP when the server emailed a code.
-      if (isSilentSave) {
-        void submitAllEdits(payload)
-          .then(finishSubmit)
-          .catch((err) => {
-            setSubmitError(err?.message || 'Failed to save. Please try again.');
-          });
+        const hasDuration = Boolean(usableDurationForSubmit);
+        setSubmitError(
+          hasDuration
+            ? 'Coach approval did not start. Change the After photo (right side), then tap Submit again.'
+            : 'Coach approval did not start. Add a duration in days or months, then submit again.',
+        );
         return;
       }
+      clearDrafts();
+      // Show OTP immediately from submit response; refresh media/profile in background.
+      if (otpSent || patched?.hasPendingOtp) {
+        setUnifiedOtpDismissed(false);
+        setUnifiedOtpVerified(false);
+        setSubmitDone(true);
+      }
+      void reloadMine(patched);
+      if (userId) {
+        void getProfile({ userId, cacheBust: true }).catch(() => {
+          // Non-fatal — Profile reloads on next open with cache bust.
+        });
+      }
+    };
 
-      // Photo / video changes — return OTP as soon as the API responds.
-      // Server composes the share card + emails the coach after the response (waitUntil).
-      // Skip client html2canvas here so Submit is not blocked on card capture.
-      setIsSubmitting(true);
-      setCaptureFlowBusy(true);
+    // Weight / issues only — still show OTP when the server emailed a code.
+    if (isSilentSave) {
       void submitAllEdits(payload)
         .then(finishSubmit)
         .catch((err) => {
-          setSubmitError(err?.message || 'Failed to submit. Please try again.');
-        })
-        .finally(() => {
-          setIsSubmitting(false);
-          setCaptureFlowBusy(false);
+          setSubmitError(err?.message || 'Failed to save. Please try again.');
         });
-    }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, onMineRefresh, hasAfter, displayBeforeKg, coverCrop.isPreparing, testimonial?.id, testimonial?.beforeImageUrl, testimonial?.afterImageUrl, testimonial?.beforeWeightKg, testimonial?.afterWeightKg, testimonial?.goalType, testimonial?.durationText, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
+      return;
+    }
 
-    const anyPhotoCompressing = Boolean(
-      draftBefore?.compressing || draftAfter?.compressing || coverCrop.isPreparing,
-    );
+    // Photo / video changes — return OTP as soon as the API responds.
+    // Server composes the share card + emails the coach after the response (waitUntil).
+    // Skip client html2canvas here so Submit is not blocked on card capture.
+    setIsSubmitting(true);
+    setCaptureFlowBusy(true);
+    void submitAllEdits(payload)
+      .then(finishSubmit)
+      .catch((err) => {
+        setSubmitError(err?.message || 'Failed to submit. Please try again.');
+      })
+      .finally(() => {
+        setIsSubmitting(false);
+        setCaptureFlowBusy(false);
+      });
+  }, [userId, dirtySlots, draftBefore, draftAfter, draftHealthPath, draftBusinessPath, onMineRefresh, hasAfter, displayBeforeKg, coverCrop.isPreparing, testimonial?.id, testimonial?.beforeImageUrl, testimonial?.afterImageUrl, testimonial?.beforeWeightKg, testimonial?.afterWeightKg, testimonial?.goalType, testimonial?.durationText, testimonial?.healthVideoPath, testimonial?.businessVideoPath, testimonial?.healthVideoUrl, testimonial?.businessVideoUrl]);
 
-    const showUnifiedOtp = editable
-      && !unifiedOtpDismissed
-      && !unifiedOtpVerified
-      && (submitDone
-        || Boolean(testimonial?.hasPendingOtp)
-        || Boolean(testimonial?.otpPending));
+  const anyPhotoCompressing = Boolean(
+    draftBefore?.compressing || draftAfter?.compressing || coverCrop.isPreparing,
+  );
 
-    const handleUnifiedOtpVerified = useCallback((verifiedTestimonial = null) => {
-      setUnifiedOtpDismissed(true);
-      setSubmitDone(false);
-      setUnifiedOtpVerified(true);
-      if (typeof onMineRefresh === 'function') {
-        void onMineRefresh({
+  const showUnifiedOtp = editable
+    && !unifiedOtpDismissed
+    && !unifiedOtpVerified
+    && (submitDone
+      || Boolean(testimonial?.hasPendingOtp)
+      || Boolean(testimonial?.otpPending));
+
+  const handleUnifiedOtpVerified = useCallback((verifiedTestimonial = null) => {
+    setUnifiedOtpDismissed(true);
+    setSubmitDone(false);
+    setUnifiedOtpVerified(true);
+    if (typeof onMineRefresh === 'function') {
+      void onMineRefresh({
+        ...(testimonial || {}),
+        ...(verifiedTestimonial || {}),
+        status: 'verified',
+        hasPendingOtp: false,
+        otpPending: false,
+        otpExpired: false,
+        otpExpiresAt: null,
+      });
+    }
+    onOtpVerified?.();
+  }, [onOtpVerified, onMineRefresh, testimonial]);
+
+  const handleUnifiedOtpClose = useCallback(async () => {
+    setUnifiedOtpDismissed(true);
+    clearDrafts();
+    setSubmitDone(false);
+    setUnifiedOtpVerified(true);
+    setSubmitError(null);
+
+    let baseline = baselineTestimonialRef.current;
+    if (!baseline && baselineKey) {
+      try {
+        const stored = localStorage.getItem(baselineKey);
+        if (stored) baseline = JSON.parse(stored);
+      } catch { }
+    }
+
+    if (typeof onMineRefresh === 'function') {
+      void onMineRefresh({
+        ...(testimonial || {}),
+        ...(baseline || {}),
+        status: baseline?.status || 'verified',
+        hasPendingOtp: false,
+        otpPending: false,
+        otpExpired: false,
+        otpExpiresAt: null,
+      });
+    }
+
+    try {
+      const result = await cancelUnifiedOtp({
+        userId,
+        restoreData: baseline || undefined,
+      });
+      const reverted = result?.testimonial || baseline;
+      if (reverted && typeof onMineRefresh === 'function') {
+        await onMineRefresh({
           ...(testimonial || {}),
-          ...(verifiedTestimonial || {}),
-          status: 'verified',
+          ...reverted,
+          status: reverted.status || 'verified',
           hasPendingOtp: false,
           otpPending: false,
           otpExpired: false,
           otpExpiresAt: null,
         });
       }
-      onOtpVerified?.();
-    }, [onOtpVerified, onMineRefresh, testimonial]);
-
-    const handleUnifiedOtpClose = useCallback(async () => {
-      setUnifiedOtpDismissed(true);
-      clearDrafts();
-      setSubmitDone(false);
-      setUnifiedOtpVerified(true);
-      setSubmitError(null);
-
-      let baseline = baselineTestimonialRef.current;
-      if (!baseline && baselineKey) {
-        try {
-          const stored = localStorage.getItem(baselineKey);
-          if (stored) baseline = JSON.parse(stored);
-        } catch { }
-      }
-
+    } catch {
       if (typeof onMineRefresh === 'function') {
-        void onMineRefresh({
+        await onMineRefresh({
           ...(testimonial || {}),
           ...(baseline || {}),
           status: baseline?.status || 'verified',
@@ -1751,500 +1781,630 @@ function MemberCard({
           otpExpiresAt: null,
         });
       }
+    }
+  }, [userId, clearDrafts, onMineRefresh, testimonial, baselineKey]);
 
-      try {
-        const result = await cancelUnifiedOtp({
-          userId,
-          restoreData: baseline || undefined,
-        });
-        const reverted = result?.testimonial || baseline;
-        if (reverted && typeof onMineRefresh === 'function') {
-          await onMineRefresh({
-            ...(testimonial || {}),
-            ...reverted,
-            status: reverted.status || 'verified',
-            hasPendingOtp: false,
-            otpPending: false,
-            otpExpired: false,
-            otpExpiresAt: null,
-          });
-        }
-      } catch {
-        if (typeof onMineRefresh === 'function') {
-          await onMineRefresh({
-            ...(testimonial || {}),
-            ...(baseline || {}),
-            status: baseline?.status || 'verified',
-            hasPendingOtp: false,
-            otpPending: false,
-            otpExpired: false,
-            otpExpiresAt: null,
-          });
-        }
-      }
-    }, [userId, clearDrafts, onMineRefresh, testimonial, baselineKey]);
+  const handleUnifiedOtpMetaUpdate = useCallback(async (meta) => {
+    if (!meta) return;
+    if (meta.testimonial && typeof onMineRefresh === 'function') {
+      await onMineRefresh({
+        ...meta.testimonial,
+        sponsorName: meta.sponsorName ?? meta.testimonial.sponsorName ?? null,
+        otpExpiresAt: meta.otpExpiresAt ?? meta.testimonial.otpExpiresAt ?? null,
+        otpExpired: meta.otpExpired ?? meta.testimonial.otpExpired ?? false,
+        hasPendingOtp: true,
+      });
+      return;
+    }
+    if (typeof onMineRefresh === 'function' && testimonial) {
+      await onMineRefresh({
+        ...testimonial,
+        ...meta,
+        hasPendingOtp: true,
+      });
+    }
+  }, [onMineRefresh, testimonial]);
 
-    const handleUnifiedOtpMetaUpdate = useCallback(async (meta) => {
-      if (!meta) return;
-      if (meta.testimonial && typeof onMineRefresh === 'function') {
-        await onMineRefresh({
-          ...meta.testimonial,
-          sponsorName: meta.sponsorName ?? meta.testimonial.sponsorName ?? null,
-          otpExpiresAt: meta.otpExpiresAt ?? meta.testimonial.otpExpiresAt ?? null,
-          otpExpired: meta.otpExpired ?? meta.testimonial.otpExpired ?? false,
-          hasPendingOtp: true,
-        });
-        return;
-      }
-      if (typeof onMineRefresh === 'function' && testimonial) {
-        await onMineRefresh({
-          ...testimonial,
-          ...meta,
-          hasPendingOtp: true,
-        });
-      }
-    }, [onMineRefresh, testimonial]);
+  const prepareShareCard = useCallback(async () => {
+    const full = await ensureDetail();
+    return full;
+  }, [ensureDetail]);
 
-    const prepareShareCard = useCallback(async () => {
-      const full = await ensureDetail();
-      return full;
-    }, [ensureDetail]);
+  const isVerified = testimonial?.status === 'verified';
+  const resultVideoUrl = resolveResultVideoUrl(testimonial);
+  const healthVideoThumb = getCachedVideoThumbnail(testimonial?.healthVideoUrl);
+  const businessVideoThumb = getCachedVideoThumbnail(testimonial?.businessVideoUrl);
 
-    const isVerified = testimonial?.status === 'verified';
-    const resultVideoUrl = resolveResultVideoUrl(testimonial);
-    const healthVideoThumb = getCachedVideoThumbnail(testimonial?.healthVideoUrl);
-    const businessVideoThumb = getCachedVideoThumbnail(testimonial?.businessVideoUrl);
+  const loadHealthVideoUrl = useCallback(async () => {
+    const full = await ensureDetail();
+    return full?.healthVideoUrl || testimonial?.healthVideoUrl || null;
+  }, [ensureDetail, testimonial?.healthVideoUrl]);
 
-    const loadHealthVideoUrl = useCallback(async () => {
-      const full = await ensureDetail();
-      return full?.healthVideoUrl || testimonial?.healthVideoUrl || null;
-    }, [ensureDetail, testimonial?.healthVideoUrl]);
-
-    const loadBusinessVideoUrl = useCallback(async () => {
-      const full = await ensureDetail();
-      return full?.businessVideoUrl || testimonial?.businessVideoUrl || null;
-    }, [ensureDetail, testimonial?.businessVideoUrl]);
+  const loadBusinessVideoUrl = useCallback(async () => {
+    const full = await ensureDetail();
+    return full?.businessVideoUrl || testimonial?.businessVideoUrl || null;
+  }, [ensureDetail, testimonial?.businessVideoUrl]);
 
 
-    const borderCls =
-      level === UPLOAD_FILTERS.FULLY_UPLOADED ? 'border-green-300'
-        : level === UPLOAD_FILTERS.PARTIAL ? 'border-amber-300'
-          : 'border-gray-200';
+  const borderCls =
+    level === UPLOAD_FILTERS.FULLY_UPLOADED ? 'border-green-300'
+      : level === UPLOAD_FILTERS.PARTIAL ? 'border-amber-300'
+        : 'border-gray-200';
 
-    const bgCls =
-      level === UPLOAD_FILTERS.FULLY_UPLOADED ? 'bg-gradient-to-b from-green-50/60 to-white'
-        : level === UPLOAD_FILTERS.PARTIAL ? 'bg-gradient-to-b from-amber-50/50 to-white'
-          : 'bg-white';
+  const bgCls =
+    level === UPLOAD_FILTERS.FULLY_UPLOADED ? 'bg-gradient-to-b from-green-50/60 to-white'
+      : level === UPLOAD_FILTERS.PARTIAL ? 'bg-gradient-to-b from-amber-50/50 to-white'
+        : 'bg-white';
 
-    const shareCardTestimonial = testimonial ? {
-      ...testimonial,
-      beforeImageUrl: beforeImageSrc,
-      afterImageUrl: afterImageSrc,
-      beforeWeightKg: displayBeforeKg || testimonial.beforeWeightKg,
-      afterWeightKg: displayAfterKg || testimonial.afterWeightKg,
-      goalType: draftBefore?.goalType || testimonial.goalType,
-      durationText: (
-        isUsableDurationText(draftBefore?.durationText)
-          ? draftBefore.durationText
-          : testimonial.durationText
-      ),
-      // Mine collage slot: one ChatGPT Before|After|Now image in share card.
-      shareAsCollage: true,
-    } : null;
-    const shareCardUserName = user?.userName || user?.displayName || user?.name || null;
-    const showBrandedCard = Boolean(shareCardTestimonial && (beforeImageSrc || afterImageSrc));
-    // Share only after coach approval. Hide while Mine has unsaved edits or OTP in flight.
-    const canSharePhoto =
-      canShareTransformationPhoto(testimonial)
-      && !(editable && (hasDirtySlots || showUnifiedOtp));
-    const canShareVideo = Boolean(
-      testimonial?.videoStatus === 'verified'
-      && Boolean(resultVideoUrl || testimonial?.healthVideoPath || testimonial?.businessVideoPath)
-    );
+  const shareCardTestimonial = testimonial ? {
+    ...testimonial,
+    beforeImageUrl: beforeImageSrc,
+    afterImageUrl: afterImageSrc,
+    beforeWeightKg: displayBeforeKg || testimonial.beforeWeightKg,
+    afterWeightKg: displayAfterKg || testimonial.afterWeightKg,
+    goalType: draftBefore?.goalType || testimonial.goalType,
+    durationText: (
+      isUsableDurationText(draftBefore?.durationText)
+        ? draftBefore.durationText
+        : testimonial.durationText
+    ),
+    // Mine collage slot: one ChatGPT Before|After|Now image in share card.
+    shareAsCollage: true,
+  } : null;
+  const shareCardUserName = user?.userName || user?.displayName || user?.name || null;
+  const showBrandedCard = Boolean(shareCardTestimonial && (beforeImageSrc || afterImageSrc));
+  // Share only after coach approval. Hide while Mine has unsaved edits or OTP in flight.
+  const canSharePhoto =
+    canShareTransformationPhoto(testimonial)
+    && !(editable && (hasDirtySlots || showUnifiedOtp));
+  const canShareVideo = Boolean(
+    testimonial?.videoStatus === 'verified'
+    && Boolean(resultVideoUrl || testimonial?.healthVideoPath || testimonial?.businessVideoPath)
+  );
 
-    return (
-      <div className={`rounded-3xl border ${borderCls} ${bgCls} shadow-md overflow-visible`}>
-        {coverCrop.overlay}
-        {/* Header strip — Direct/Full photo share top-right (Mine uses Transformation card row) */}
-        <div className="flex items-center gap-3 px-4 pt-4 pb-3">
-          <MemberAvatar
-            user={user}
-            onViewProfile={user?.userId != null ? () => setProfileOpen(true) : undefined}
+  return (
+    <div className={`rounded-3xl border ${borderCls} ${bgCls} shadow-md overflow-visible`}>
+      {coverCrop.overlay}
+      {/* Header strip — Direct/Full photo share top-right (Mine uses Transformation card row) */}
+      <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+        <MemberAvatar
+          user={user}
+          onViewProfile={user?.userId != null ? () => setProfileOpen(true) : undefined}
+        />
+        <div className="flex-1 min-w-0">
+          <TeamComplianceSection
+            userName={user.userName}
+            teamStats={teamStats}
+            onProfileClick={user?.userId != null ? () => setProfileOpen(true) : undefined}
           />
-          <div className="flex-1 min-w-0">
-            <TeamComplianceSection
-              userName={user.userName}
-              teamStats={teamStats}
-              onProfileClick={user?.userId != null ? () => setProfileOpen(true) : undefined}
-            />
-            <div className="mt-0.5">
-              <CompletenessBadge level={level} filledCount={filledCount} totalSlots={totalSlots} />
-            </div>
+          <div className="mt-0.5">
+            <CompletenessBadge level={level} filledCount={filledCount} totalSlots={totalSlots} />
           </div>
-          {!editable && canSharePhoto && (
-            <TransformationShareActions
-              variant="icon"
-              kind="photo"
-              cardRef={shareCardRef}
-              userName={user.userName}
-              testimonial={shareCardTestimonial}
-              onBeforeAction={prepareShareCard}
-            />
-          )}
         </div>
-        <div className="px-4 pb-4 space-y-3">
+        {!editable && canSharePhoto && (
+          <TransformationShareActions
+            variant="icon"
+            kind="photo"
+            cardRef={shareCardRef}
+            userName={user.userName}
+            testimonial={shareCardTestimonial}
+            onBeforeAction={prepareShareCard}
+          />
+        )}
+      </div>
+      <div className="px-4 pb-4 space-y-3">
 
-          {/* Transformation collage — + → weight form → ChatGPT prompt → upload */}
-          {(editable || (!showBrandedCard && testimonial && (testimonial.beforeImageUrl || testimonial.afterImageUrl))) && (
-            <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
-              <div className="flex items-center justify-between px-3 pt-3 pb-2 gap-2">
-                <div className="w-20 shrink-0 flex items-center justify-start">
-                  {isVerified && hasCollageImage ? (
-                    <span
-                      className="h-7 w-7 rounded-full bg-green-500 text-white shadow flex items-center justify-center"
-                      aria-label="Verified"
+        {/* Transformation collage — + → weight form → ChatGPT prompt → upload */}
+        {(editable || (!showBrandedCard && testimonial && (testimonial.beforeImageUrl || testimonial.afterImageUrl))) && (
+          <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+            <div className="flex items-center justify-between px-3 pt-3 pb-2 gap-2">
+              <div className="w-20 shrink-0 flex items-center justify-start">
+                {isVerified && hasCollageImage ? (
+                  <span
+                    className="h-7 w-7 rounded-full bg-green-500 text-white shadow flex items-center justify-center"
+                    aria-label="Verified"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                ) : null}
+              </div>
+              <p className="min-w-0 text-sm font-bold text-gray-900 text-center">
+                Transformation
+              </p>
+              <div className="w-20 shrink-0 flex items-center justify-end gap-1.5">
+                {editable && (hasCollageMeta || hasCollageImage) ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={openCollageMetaForm}
+                      onClick={() => openCollageMetaForm({ forChatGpt: false })}
+                      disabled={deletingCollage}
+                      className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full bg-gray-800 text-white disabled:opacity-50"
+                      aria-label="Edit transformation details"
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </span>
-                  ) : null}
-                </div>
-                <p className="min-w-0 text-sm font-bold text-gray-900 text-center">
-                  Transformation
-                </p>
-                <div className="w-20 shrink-0 flex items-center justify-end gap-1.5">
-                  {editable && (hasCollageMeta || hasCollageImage) ? (
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { void clearCollageSlot(); }}
+                      disabled={deletingCollage}
+                      className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full bg-red-50 text-red-600 border border-red-100 disabled:opacity-50"
+                      aria-label="Delete transformation"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="relative px-3 pb-3">
+              {hasCollageImage ? (
+                <button
+                  type="button"
+                  onClick={() => setExpandedPhoto({
+                    url: beforeImageSrc || afterImageSrc,
+                    label: `${user.userName} — Transformation`,
+                  })}
+                  className="w-full overflow-hidden rounded-xl"
+                >
+                  <img
+                    key={`collage-${beforeImageSrc || afterImageSrc}`}
+                    src={beforeImageSrc || afterImageSrc}
+                    alt=""
+                    className={`${COLLAGE_IMAGE_CLASS} w-full cursor-zoom-in`}
+                    onError={() => setCollageImageBroken(true)}
+                    onLoad={() => setCollageImageBroken(false)}
+                  />
+                </button>
+              ) : editable && !collageMetaSaved && !collageMetaOpen ? (
+                <button
+                  type="button"
+                  onClick={openCollageMetaForm}
+                  className="w-full min-h-[11rem] rounded-xl border-2 border-dashed border-green-300 bg-white flex flex-col items-center justify-center gap-1 hover:bg-green-50 transition-colors"
+                  aria-label="Add transformation details"
+                >
+                  <Plus className="h-10 w-10 text-green-500" strokeWidth={2} />
+                  <span className="text-[10px] font-bold text-green-700 px-2">Tap to add details</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={editable ? () => openPhotoPicker(collageGalRef) : undefined}
+                  className={`${COLLAGE_IMAGE_CLASS} w-full min-h-[9rem] flex flex-col items-center justify-center gap-1 border-2 border-dashed ${editable ? 'border-green-300 hover:bg-green-50' : 'border-gray-200'} transition-colors`}
+                >
+                  {editable ? (
                     <>
-                      <button
-                        type="button"
-                        onClick={openCollageMetaForm}
-                        onClick={() => openCollageMetaForm({ forChatGpt: false })}
-                        disabled={deletingCollage}
-                        className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full bg-gray-800 text-white disabled:opacity-50"
-                        aria-label="Edit transformation details"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { void clearCollageSlot(); }}
-                        disabled={deletingCollage}
-                        className="h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full bg-red-50 text-red-600 border border-red-100 disabled:opacity-50"
-                        aria-label="Delete transformation"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      <Plus className="h-7 w-7 text-green-400" />
+                      <span className="text-[10px] font-bold text-green-700 px-2">
+                        {promptCopied ? 'Prompt copied — tap to add photo' : 'Tap to add photo'}
+                        {promptCopied ? 'Prompt copied — tap to upload collage' : 'Tap to add photo'}
+                      </span>
                     </>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="relative px-3 pb-3">
-                {hasCollageImage ? (
-                  <button
-                    type="button"
-                    onClick={() => setExpandedPhoto({
-                      url: beforeImageSrc || afterImageSrc,
-                      label: `${user.userName} — Transformation`,
-                    })}
-                    className="w-full overflow-hidden rounded-xl"
-                  >
-                    <img
-                      key={`collage-${beforeImageSrc || afterImageSrc}`}
-                      src={beforeImageSrc || afterImageSrc}
-                      alt=""
-                      className={`${COLLAGE_IMAGE_CLASS} w-full cursor-zoom-in`}
-                      onError={() => setCollageImageBroken(true)}
-                      onLoad={() => setCollageImageBroken(false)}
-                    />
-                  </button>
-                ) : editable && !collageMetaSaved && !collageMetaOpen ? (
-                  <button
-                    type="button"
-                    onClick={openCollageMetaForm}
-                    className="w-full min-h-[11rem] rounded-xl border-2 border-dashed border-green-300 bg-white flex flex-col items-center justify-center gap-1 hover:bg-green-50 transition-colors"
-                    aria-label="Add transformation details"
-                  >
-                    <Plus className="h-10 w-10 text-green-500" strokeWidth={2} />
-                    <span className="text-[10px] font-bold text-green-700 px-2">Tap to add details</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={editable ? () => openPhotoPicker(collageGalRef) : undefined}
-                    className={`${COLLAGE_IMAGE_CLASS} w-full min-h-[9rem] flex flex-col items-center justify-center gap-1 border-2 border-dashed ${editable ? 'border-green-300 hover:bg-green-50' : 'border-gray-200'} transition-colors`}
-                  >
-                    {editable ? (
-                      <>
-                        <Plus className="h-7 w-7 text-green-400" />
-                        <span className="text-[10px] font-bold text-green-700 px-2">
-                          {promptCopied ? 'Prompt copied — tap to add photo' : 'Tap to add photo'}
-                          {promptCopied ? 'Prompt copied — tap to upload collage' : 'Tap to add photo'}
-                        </span>
-                      </>
-                    ) : (
-                      <AlertCircle className="h-5 w-5 text-gray-300" />
-                    )}
-                  </button>
-                )}
-
-                {(draftBefore?.compressing || draftAfter?.compressing) && (
-                  <div className="absolute inset-3 bg-black/50 rounded-xl flex items-center justify-center z-10">
-                    <div className="flex flex-col items-center gap-1">
-                      <div className="h-5 w-5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                      <span className="text-white text-[10px] font-bold">Preparing…</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {editable && !collageMetaOpen && (
-                <div className="px-3 pb-3">
-                  <button
-                    type="button"
-                    onClick={() => openCollageMetaForm({ forChatGpt: true })}
-                    className="w-full py-2.5 px-3 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    <Images className="h-3.5 w-3.5 shrink-0" />
-                    Create transformation image through ChatGPT
-                  </button>
-                </div>
-              )}
-
-              {editable && hasCollageImage && collageMetaOpen && (
-                <div className="px-3 pb-3 flex justify-center">
-                  <button
-                    type="button"
-                    onClick={() => openPhotoPicker(collageGalRef)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-green-300 bg-green-50 text-green-800 text-xs font-bold"
-                  >
-                    <Images className="h-3.5 w-3.5" /> Change photo
-                  </button>
-                </div>
-              )}
-
-              {editable && pickerSlot === 'collage' && (
-                <div className="px-3 pb-3 flex flex-wrap gap-1.5 justify-center">
-                  <button
-                    type="button"
-                    onClick={() => openPhotoPicker(collageGalRef)}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-green-600 text-white text-[10px] font-bold"
-                  >
-                    <Images className="h-3 w-3" /> Gallery / Paste
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        const ok = await copyTransformCollagePrompt();
-                        const prompt = buildCollageChatGptPrompt({
-                          beforeWeightKg: shownBeforeKg,
-                          afterWeightKg: shownAfterKg,
-                          durationText: usableDuration ? displayDuration : '',
-                        });
-                        const ok = await copyTransformCollagePrompt(prompt);
-                        if (!ok) throw new Error('Clipboard unavailable');
-                        setPromptCopied(true);
-                        window.setTimeout(() => setPromptCopied(false), 2500);
-                      } catch {
-                        setSubmitError('Could not copy prompt.');
-                      }
-                    }}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-green-300 text-green-800 text-[10px] font-bold"
-                  >
-                    <Share2 className="h-3 w-3" /> {promptCopied ? 'Copied' : 'Copy prompt'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPickerSlot(null)}
-                    className="px-2 py-1.5 rounded-xl border border-gray-200 text-gray-500 text-[10px] font-bold"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              )}
-
-              {hasCollageMeta && (
-                <div className="px-3 pb-3 flex items-center justify-center gap-4 text-center">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Before</p>
-                    <p className="text-base font-bold text-gray-900">
-                      {Number(draftBefore?.weightKg ?? testimonial?.beforeWeightKg).toFixed(1)}
-                      <span className="text-xs font-normal text-gray-400"> kg</span>
-                    </p>
-                  </div>
-                  <div className="text-gray-300 text-lg font-light" aria-hidden="true">→</div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">After</p>
-                    <p className="text-base font-bold text-gray-900">
-                      {Number(draftAfter?.weightKg ?? testimonial?.afterWeightKg).toFixed(1)}
-                      <span className="text-xs font-normal text-gray-400"> kg</span>
-                    </p>
-                  </div>
-                  {usableDuration && (
-                    <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">In</p>
-                      <p className="text-sm font-bold text-gray-700">{displayDuration}</p>
-                    </div>
+                  ) : (
+                    <AlertCircle className="h-5 w-5 text-gray-300" />
                   )}
-                </div>
+                </button>
               )}
 
-              {editable && collageMetaOpen && (
-                <div className="mx-3 mb-3 rounded-2xl border border-green-200 bg-green-50/70 p-3 space-y-2.5 text-left">
-                  <p className="text-xs font-bold text-green-900">Transformation details</p>
-                  <label className="block">
-                    <span className="text-[10px] font-semibold text-gray-500 uppercase">Before weight (kg)</span>
+              {(draftBefore?.compressing || draftAfter?.compressing) && (
+                <div className="absolute inset-3 bg-black/50 rounded-xl flex items-center justify-center z-10">
+                  <div className="flex flex-col items-center gap-1">
+                    <div className="h-5 w-5 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                    <span className="text-white text-[10px] font-bold">Preparing…</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {editable && !collageMetaOpen && (
+              <div className="px-3 pb-3">
+                <button
+                  type="button"
+                  onClick={() => openCollageMetaForm({ forChatGpt: true })}
+                  className="w-full py-2.5 px-3 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <Images className="h-3.5 w-3.5 shrink-0" />
+                  Create transformation image through ChatGPT
+                </button>
+              </div>
+            )}
+
+            {editable && hasCollageImage && collageMetaOpen && (
+              <div className="px-3 pb-3 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => openPhotoPicker(collageGalRef)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-green-300 bg-green-50 text-green-800 text-xs font-bold"
+                >
+                  <Images className="h-3.5 w-3.5" /> Change photo
+                </button>
+              </div>
+            )}
+
+            {editable && pickerSlot === 'collage' && (
+              <div className="px-3 pb-3 flex flex-wrap gap-1.5 justify-center">
+                <button
+                  type="button"
+                  onClick={() => openPhotoPicker(collageGalRef)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-green-600 text-white text-[10px] font-bold"
+                >
+                  <Images className="h-3 w-3" /> Gallery / Paste
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const ok = await copyTransformCollagePrompt();
+                      const prompt = buildCollageChatGptPrompt({
+                        beforeWeightKg: shownBeforeKg,
+                        afterWeightKg: shownAfterKg,
+                        durationText: usableDuration ? displayDuration : '',
+                      });
+                      const ok = await copyTransformCollagePrompt(prompt);
+                      if (!ok) throw new Error('Clipboard unavailable');
+                      setPromptCopied(true);
+                      window.setTimeout(() => setPromptCopied(false), 2500);
+                    } catch {
+                      setSubmitError('Could not copy prompt.');
+                    }
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-green-300 text-green-800 text-[10px] font-bold"
+                >
+                  <Share2 className="h-3 w-3" /> {promptCopied ? 'Copied' : 'Copy prompt'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPickerSlot(null)}
+                  className="px-2 py-1.5 rounded-xl border border-gray-200 text-gray-500 text-[10px] font-bold"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+
+            {hasCollageMeta && (
+              <div className="px-3 pb-3 flex items-center justify-center gap-4 text-center">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Before</p>
+                  <p className="text-base font-bold text-gray-900">
+                    {Number(draftBefore?.weightKg ?? testimonial?.beforeWeightKg).toFixed(1)}
+                    <span className="text-xs font-normal text-gray-400"> kg</span>
+                  </p>
+                </div>
+                <div className="text-gray-300 text-lg font-light" aria-hidden="true">→</div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">After</p>
+                  <p className="text-base font-bold text-gray-900">
+                    {Number(draftAfter?.weightKg ?? testimonial?.afterWeightKg).toFixed(1)}
+                    <span className="text-xs font-normal text-gray-400"> kg</span>
+                  </p>
+                </div>
+                {usableDuration && (
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">In</p>
+                    <p className="text-sm font-bold text-gray-700">{displayDuration}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {editable && collageMetaOpen && (
+              <div className="mx-3 mb-3 rounded-2xl border border-green-200 bg-green-50/70 p-3 space-y-2.5 text-left">
+                <p className="text-xs font-bold text-green-900">Transformation details</p>
+                <label className="block">
+                  <span className="text-[10px] font-semibold text-gray-500 uppercase">Before weight (kg)</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    value={beforeWeightText ?? ''}
+                    onChange={(e) => setBeforeWeightText(sanitizeWeightTyping(e.target.value))}
+                    className="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                    placeholder="e.g. 82"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[10px] font-semibold text-gray-500 uppercase">After weight (kg)</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    value={afterWeightText ?? ''}
+                    onChange={(e) => setAfterWeightText(sanitizeWeightTyping(e.target.value))}
+                    className="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                    placeholder="e.g. 74"
+                  />
+                </label>
+                <div>
+                  <span className="text-[10px] font-semibold text-gray-500 uppercase">Time to achieve</span>
+                  <div className="mt-1 flex gap-2">
                     <input
                       type="text"
-                      inputMode="decimal"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       autoComplete="off"
-                      value={beforeWeightText ?? ''}
-                      onChange={(e) => setBeforeWeightText(sanitizeWeightTyping(e.target.value))}
-                      className="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-                      placeholder="e.g. 82"
+                      value={durationValueText ?? ''}
+                      onChange={(e) => setDurationValueText(sanitizeDurationDigits(e.target.value))}
+                      className="w-24 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                      placeholder="e.g. 3"
                     />
-                  </label>
-                  <label className="block">
-                    <span className="text-[10px] font-semibold text-gray-500 uppercase">After weight (kg)</span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      autoComplete="off"
-                      value={afterWeightText ?? ''}
-                      onChange={(e) => setAfterWeightText(sanitizeWeightTyping(e.target.value))}
-                      className="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-                      placeholder="e.g. 74"
-                    />
-                  </label>
-                  <div>
-                    <span className="text-[10px] font-semibold text-gray-500 uppercase">Time to achieve</span>
-                    <div className="mt-1 flex gap-2">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        autoComplete="off"
-                        value={durationValueText ?? ''}
-                        onChange={(e) => setDurationValueText(sanitizeDurationDigits(e.target.value))}
-                        className="w-24 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-                        placeholder="e.g. 3"
-                      />
-                      <select
-                        value={durationUnitDraft}
-                        onChange={(e) => setDurationUnitDraft(e.target.value)}
-                        className="flex-1 border border-gray-300 rounded-xl px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-400"
-                      >
-                        <option value="days">days</option>
-                        <option value="months">months</option>
-                      </select>
-                    </div>
-                  </div>
-                  {collageMetaError && (
-                    <p className="text-[11px] text-red-600 font-medium">{collageMetaError}</p>
-                  )}
-                  <div className="flex gap-2 pt-0.5">
-                    <button
-                      type="button"
-                      onClick={closeCollageMetaForm}
-                      className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold"
+                    <select
+                      value={durationUnitDraft}
+                      onChange={(e) => setDurationUnitDraft(e.target.value)}
+                      className="flex-1 border border-gray-300 rounded-xl px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-400"
                     >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { void submitCollageMetaForm(); }}
-                      className="flex-1 py-2.5 rounded-xl bg-green-600 text-white text-xs font-bold"
-                    >
-                      Save
-                    </button>
+                      <option value="days">days</option>
+                      <option value="months">months</option>
+                    </select>
                   </div>
                 </div>
-              )}
+                {collageMetaError && (
+                  <p className="text-[11px] text-red-600 font-medium">{collageMetaError}</p>
+                )}
+                <div className="flex gap-2 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={closeCollageMetaForm}
+                    className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { void submitCollageMetaForm(); }}
+                    className="flex-1 py-2.5 rounded-xl bg-green-600 text-white text-xs font-bold"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            )}
 
-              {editable && collageGuideOpen && !collageMetaOpen && (
-                <div className="mx-3 mb-3 rounded-2xl border-2 border-red-400 bg-red-50 p-3 space-y-2.5 text-left">
-                  <p className="text-xs font-bold text-red-700 leading-snug">
-                    Copy the ChatGPT prompt and open ChatGPT. Paste the prompt, add Before → After → Now photos, then upload the collage here.
-                    <div className="mx-3 mb-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3 space-y-2.5 text-left">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-xs font-bold text-emerald-900 leading-snug">
-                          Ready to create your 3-panel collage in ChatGPT
+            {editable && collageGuideOpen && !collageMetaOpen && (
+              <div className="mx-3 mb-3 rounded-2xl border-2 border-red-400 bg-red-50 p-3 space-y-2.5 text-left">
+                <p className="text-xs font-bold text-red-700 leading-snug">
+                  Copy the ChatGPT prompt and open ChatGPT. Paste the prompt, add Before → After → Now photos, then upload the collage here.
+                  <div className="mx-3 mb-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3 space-y-2.5 text-left">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-bold text-emerald-900 leading-snug">
+                        Ready to create your 3-panel collage in ChatGPT
+                      </p>
+                      <div className="mx-3 mb-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3 space-y-2.5 text-left">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs font-bold text-emerald-900 leading-snug">
+                            Ready to create your 3-panel collage in ChatGPT
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setCollageGuideOpen(false)}
+                            className="text-emerald-700/70 hover:text-emerald-900 p-0.5"
+                            aria-label="Close ChatGPT prompt box"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-emerald-800">
+                          Prompt uses your saved details: Before {shownBeforeKg} kg → After {shownAfterKg} kg
+                          {usableDuration ? ` (${displayDuration})` : ''}.
                         </p>
                         <button
                           type="button"
-                          onClick={() => setCollageGuideOpen(false)}
-                          className="text-emerald-700/70 hover:text-emerald-900 p-0.5"
-                          aria-label="Close ChatGPT prompt box"
+                          onClick={async () => {
+                            const dynamicPrompt = buildCollageChatGptPrompt({
+                              beforeWeightKg: shownBeforeKg,
+                              afterWeightKg: shownAfterKg,
+                              durationText: usableDuration ? displayDuration : '',
+                            });
+                            let copied = false;
+                            try {
+                              copied = await copyTransformCollagePrompt(dynamicPrompt);
+                            } catch {
+                              copied = false;
+                            }
+                            setPromptCopied(Boolean(copied));
+                            setChatGptModalOpen(true);
+                          }}
+                          className="w-full py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold transition-colors"
                         >
-                          <X className="h-3.5 w-3.5" />
+                          {promptCopied ? 'Prompt & link copied — view steps' : 'Copy and open ChatGPT'}
                         </button>
                       </div>
-                      <p className="text-[11px] text-emerald-800">
-                        Prompt uses your saved details: Before {shownBeforeKg} kg → After {shownAfterKg} kg
-                        {usableDuration ? ` (${displayDuration})` : ''}.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const { copied } = await copyAndOpenChatGptCollagePrompt();
-                          const dynamicPrompt = buildCollageChatGptPrompt({
-                            beforeWeightKg: shownBeforeKg,
-                            afterWeightKg: shownAfterKg,
-                            durationText: usableDuration ? displayDuration : '',
-                          });
-                          let copied = false;
-                          try {
-                            copied = await copyTransformCollagePrompt(dynamicPrompt);
-                          } catch {
-                            copied = false;
-                          }
-                          setPromptCopied(Boolean(copied));
-                          setCollageGuideOpen(false);
-                          setPickerSlot('collage');
-                          setChatGptModalOpen(true);
-                        }}
-                        className="w-full py-2.5 rounded-xl bg-green-600 text-white text-xs font-bold"
-                        className="w-full py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold transition-colors"
-                      >
-                        Copy and open
-                        {promptCopied ? 'Prompt & link copied — view steps' : 'Copy and open ChatGPT'}
-                      </button>
-                    </div>
-            )}
+              )}
 
-                    {editable && chatGptModalOpen && typeof document !== 'undefined' && createPortal(
-                      <div
-                        className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4"
-                        role="dialog"
-                        aria-modal="true"
-                        aria-labelledby="chatgpt-collage-guide-title"
-                        onClick={() => setChatGptModalOpen(false)}
-                      >
+                      {editable && chatGptModalOpen && typeof document !== 'undefined' && createPortal(
                         <div
-                          className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-5 space-y-4 text-left"
-                          onClick={(e) => e.stopPropagation()}
+                          className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4"
+                          role="dialog"
+                          aria-modal="true"
+                          aria-labelledby="chatgpt-collage-guide-title"
+                          onClick={() => setChatGptModalOpen(false)}
                         >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-800">
-                                <CheckCircle className="h-3 w-3 shrink-0" />
-                                {promptCopied ? 'Prompt & ChatGPT link copied' : 'Copy prompt below before opening'}
-                              </span>
-                              <h3 id="chatgpt-collage-guide-title" className="text-base font-bold text-gray-900 mt-2">
-                                How to create your collage in ChatGPT
-                              </h3>
+                          <div
+                            className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-5 space-y-4 text-left"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-800">
+                                  <CheckCircle className="h-3 w-3 shrink-0" />
+                                  {promptCopied ? 'Prompt & ChatGPT link copied' : 'Copy prompt below before opening'}
+                                </span>
+                                <h3 id="chatgpt-collage-guide-title" className="text-base font-bold text-gray-900 mt-2">
+                                  How to create your collage in ChatGPT
+                                </h3>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setChatGptModalOpen(false)}
+                                className="p-1.5 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                                aria-label="Close instructions"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => setChatGptModalOpen(false)}
-                              className="p-1.5 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-                              aria-label="Close instructions"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
+
+                            <ol className="space-y-2 text-xs text-gray-700 list-decimal list-inside">
+                              <li>
+                                <span className="font-semibold text-gray-900">Upload 3 photos to edit:</span>{' '}
+                                In ChatGPT, attach your photos in order — <span className="font-semibold">1) BEFORE</span>, <span className="font-semibold">2) AFTER</span>, <span className="font-semibold">3) NOW</span>.
+                              </li>
+                              <li>
+                                <span className="font-semibold text-gray-900">Paste the copied prompt:</span>{' '}
+                                Paste your custom prompt (Before {shownBeforeKg} kg → After {shownAfterKg} kg{usableDuration ? `, ${displayDuration}` : ''}) and send it.
+                              </li>
+                              <li>
+                                <span className="font-semibold text-gray-900">Save the collage image:</span>{' '}
+                                Download the single 3-panel collage generated by ChatGPT.
+                              </li>
+                              <li>
+                                <span className="font-semibold text-gray-900">Upload it back here:</span>{' '}
+                                Return to this page and tap the <span className="font-semibold">Transformation photo box</span> to upload that collage.
+                              </li>
+                            </ol>
+
+                            <div className="rounded-xl border border-gray-200 bg-gray-50 p-2.5 space-y-1.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                                  Your custom prompt
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setCollageGuideOpen(false)}
+                                  className="text-emerald-700/70 hover:text-emerald-900 p-0.5"
+                                  aria-label="Close ChatGPT prompt box"
+                                  onClick={async () => {
+                                    const dynamicPrompt = buildCollageChatGptPrompt({
+                                      beforeWeightKg: shownBeforeKg,
+                                      afterWeightKg: shownAfterKg,
+                                      durationText: usableDuration ? displayDuration : '',
+                                    });
+                                    try {
+                                      const ok = await copyTransformCollagePrompt(dynamicPrompt);
+                                      setPromptCopied(Boolean(ok));
+                                    } catch {
+                                      setPromptCopied(false);
+                                    }
+                                  }}
+                                  className="text-[11px] font-bold text-green-700 hover:text-green-800"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                  {promptCopied ? 'Copied' : 'Copy prompt'}
+                                </button>
+                              </div>
+                              <p className="text-[11px] text-emerald-800">
+                                Prompt uses your saved details: Before {shownBeforeKg} kg → After {shownAfterKg} kg
+                                {usableDuration ? ` (${displayDuration})` : ''}.
+                              </p>
+                              <pre className="text-[11px] text-gray-700 whitespace-pre-wrap font-sans leading-relaxed max-h-32 overflow-y-auto">
+                                {buildCollageChatGptPrompt({
+                                  beforeWeightKg: shownBeforeKg,
+                                  afterWeightKg: shownAfterKg,
+                                  durationText: usableDuration ? displayDuration : '',
+                                })}
+                              </pre>
+                            </div>
+
+                            <div className="flex gap-2 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => setChatGptModalOpen(false)}
+                                className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-50"
+                              >
+                                Close
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const { copied } = await copyAndOpenChatGptCollagePrompt();
+                                  const dynamicPrompt = buildCollageChatGptPrompt({
+                                    beforeWeightKg: shownBeforeKg,
+                                    afterWeightKg: shownAfterKg,
+                                    durationText: usableDuration ? displayDuration : '',
+                                  });
+                                  let copied = false;
+                                  try {
+                                    copied = await copyTransformCollagePrompt(dynamicPrompt);
+                                  } catch {
+                                    copied = false;
+                                    if (!promptCopied) {
+                                      try {
+                                        const ok = await copyTransformCollagePrompt(dynamicPrompt);
+                                        setPromptCopied(Boolean(ok));
+                                      } catch {
+                                        // keep going to open ChatGPT
+                                      }
+                                    }
+                                    setPromptCopied(Boolean(copied));
+                                    openChatGptCollageWindow(dynamicPrompt);
+                                    setChatGptModalOpen(false);
+                                    setCollageGuideOpen(false);
+                                    setPickerSlot('collage');
+                                    setChatGptModalOpen(true);
+                                  }
+                                }
+                        className="w-full py-2.5 rounded-xl bg-green-600 text-white text-xs font-bold"
+                                className="w-full py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold transition-colors"
+                                className="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold"
+                              >
+                                Copy and open
+                                {promptCopied ? 'Prompt & link copied — view steps' : 'Copy and open ChatGPT'}
+                                Open ChatGPT
+                              </button>
+                            </div>
+            )}
                           </div>
+                        </div>,
+                        document.body,
+                      )}
+
+                      {editable && chatGptModalOpen && typeof document !== 'undefined' && createPortal(
+                        <div
+                          className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4"
+                          role="dialog"
+                          aria-modal="true"
+                          aria-labelledby="chatgpt-collage-guide-title"
+                          onClick={() => setChatGptModalOpen(false)}
+                        >
+                          <div
+                            className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-5 space-y-4 text-left"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-800">
+                                  <CheckCircle className="h-3 w-3 shrink-0" />
+                                  {promptCopied ? 'Prompt & ChatGPT link copied' : 'Copy prompt below before opening'}
+                                </span>
+                                <h3 id="chatgpt-collage-guide-title" className="text-base font-bold text-gray-900 mt-2">
+                                  How to create your collage in ChatGPT
+                                </h3>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setChatGptModalOpen(false)}
+                                className="p-1.5 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                                aria-label="Close instructions"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                            <input
+                              ref={collageGalRef}
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              aria-label="Collage gallery upload"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                e.target.value = '';
+                                if (file) { void handleCollageFile(file); setPickerSlot(null); }
+                              }}
+                            />
+                          </div>
+          )}
 
                           <ol className="space-y-2 text-xs text-gray-700 list-decimal list-inside">
                             <li>
@@ -2334,7 +2494,7 @@ function MemberCard({
                           </div>
                         </div>
                       </div>,
-                      document.body,
+                    document.body,
                     )}
 
                     <input
@@ -2349,454 +2509,454 @@ function MemberCard({
                         if (file) { void handleCollageFile(file); setPickerSlot(null); }
                       }}
                     />
-                </div>
-              )}
-
-              {/* Unified OTP — after submit, or when a pending OTP is still open */}
-              {showUnifiedOtp && (
-                <UnifiedOtpInline
-                  userId={userId}
-                  sponsorName={testimonial?.sponsorName}
-                  otpExpiresAt={testimonial?.otpExpiresAt}
-                  otpValidityHours={testimonial?.otpValidityHours}
-                  otpExpired={testimonial?.otpExpired}
-                  onVerified={handleUnifiedOtpVerified}
-                  onOtpMetaUpdate={handleUnifiedOtpMetaUpdate}
-                  onClose={handleUnifiedOtpClose}
-                />
-              )}
-
-              {/* Legacy per-slot OTP — only when no unified OTP is pending */}
-              {editable && !showUnifiedOtp && !unifiedOtpDismissed && testimonial?.status === 'pending' && testimonial?.id && (
-                <OtpInline
-                  testimonialId={testimonial.id}
-                  type="photo"
-                  onVerified={onOtpVerified}
-                />
-              )}
-
-              {/* Stats — Mine always; team only when branded card is not shown (redundant with card) */}
-              {testimonial && (editable || !showBrandedCard) && (
-                <div className="space-y-1.5">
-                  {/* "Lost X kgs in Y duration" — uses live draft weights, not persisted hasAfter */}
-                  {diff && (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${weightIsLoss ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                        {weightIsLoss
-                          ? <TrendingDown className="h-3 w-3 shrink-0" />
-                          : <TrendingUp className="h-3 w-3 shrink-0" />
-                        }
-                        {weightIsLoss ? 'Lost' : 'Gained'} {diff} kgs
-                        {usableDuration ? ` in ${displayDuration}` : ''}
-                      </span>
-                      {editable && (
-                        expandedSlots.has('duration') ? (
-                          <DurationEditor
-                            valueText={durationValueText}
-                            unit={durationUnitDraft}
-                            onValueChange={setDurationValueText}
-                            onUnitChange={setDurationUnitDraft}
-                            onCommit={commitDurationEdit}
-                            onCancel={closeDurationEdit}
-                          />
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={openDurationEdit}
-                            className="p-1 rounded-full border border-gray-200 text-gray-400 hover:text-green-700 hover:border-green-300 transition-colors"
-                            aria-label="Edit duration"
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </button>
-                        )
-                      )}
-                    </div>
-                  )}
-                  {/* No diff yet — show before weight or add prompt + duration */}
-                  {!diff && displayBeforeKg > 0 && (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-[11px] text-gray-600 font-medium">
-                        {displayBeforeKg} kg → ?
-                        {usableDuration ? ` · ${displayDuration}` : ''}
-                      </span>
-                      {editable && (
-                        expandedSlots.has('duration') ? (
-                          <DurationEditor
-                            valueText={durationValueText}
-                            unit={durationUnitDraft}
-                            onValueChange={setDurationValueText}
-                            onUnitChange={setDurationUnitDraft}
-                            onCommit={commitDurationEdit}
-                            onCancel={closeDurationEdit}
-                          />
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={openDurationEdit}
-                            className="p-1 rounded-full border border-gray-200 text-gray-400 hover:text-green-700 hover:border-green-300 transition-colors"
-                            aria-label={usableDuration ? 'Edit duration' : 'Add duration'}
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </button>
-                        )
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Result Video above divider — Mine upload only.
-          Direct/Full with branded card: videos live under the card (no duplicate). */}
-              {(editable || (testimonial && !showBrandedCard)) && (
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1 flex-1 min-w-0">
-                      <Video className="h-3 w-3 shrink-0" /> Result Video
-                      <span className="font-normal normal-case tracking-normal">· max {MAX_HEALTH_VIDEO_MB} MB each</span>
-                    </p>
-                    {!showBrandedCard && canShareVideo && (
-                      <TransformationShareActions
-                        variant="icon"
-                        kind="video"
-                        userName={user.userName}
-                        testimonial={testimonial}
-                        onBeforeAction={prepareShareCard}
-                      />
-                    )}
                   </div>
-                  {editable && videoUploadError && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex items-start gap-2">
-                      <ShieldCheck className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-                      <p className="text-xs text-amber-800 leading-relaxed">{videoUploadError}</p>
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-3">
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Health Result</p>
-                      {editable ? (
-                        <div className="relative">
-                          {draftHealthPreview || testimonial?.healthVideoUrl ? (
-                            <>
-                              <VideoThumbnailCard
-                                url={testimonial?.healthVideoUrl ?? null}
-                                localPreviewUrl={draftHealthPreview}
-                                label="Health Results"
-                                accentColor="bg-green-600"
-                                onNeedUrl={!testimonial?.healthVideoUrl && testimonial?.healthVideoPath ? loadHealthVideoUrl : undefined}
-                              />
-                              {!uploadingHealth && (
-                                <button type="button" onClick={() => healthVidRef.current?.click()}
-                                  className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors z-10"
-                                  aria-label="Replace health video">
-                                  <Pencil className="h-3 w-3" />
-                                </button>
-                              )}
-                            </>
-                          ) : (
-                            <button type="button" onClick={() => healthVidRef.current?.click()}
-                              className="w-full flex items-center justify-center bg-gray-50 border-2 border-dashed border-green-300 rounded-xl py-8 hover:bg-green-50 transition-colors"
-                              aria-label="Add health result video">
-                              <Plus className="h-7 w-7 text-green-400" />
-                            </button>
-                          )}
-                          {uploadingHealth && (
-                            <div className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center z-10">
-                              <div className="flex flex-col items-center gap-1">
-                                <Upload className="h-5 w-5 text-white animate-bounce" />
-                                <span className="text-white text-[10px] font-bold">Preparing…</span>
-                              </div>
-                            </div>
-                          )}
-                          <input ref={healthVidRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/3gpp,video/*" className="hidden"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              e.target.value = '';
-                              if (file) handleVideoFile('health', file);
-                            }} />
-                        </div>
-                      ) : (
-                        <VideoThumbnailCard
-                          url={testimonial?.healthVideoUrl ?? null}
-                          label="Health Results"
-                          accentColor="bg-green-600"
-                          onNeedUrl={!testimonial?.healthVideoUrl && testimonial?.healthVideoPath ? loadHealthVideoUrl : undefined}
-                        />
-                      )}
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Business Result</p>
-                      {editable ? (
-                        <div className="relative">
-                          {draftBusinessPreview || testimonial?.businessVideoUrl ? (
-                            <>
-                              <VideoThumbnailCard
-                                url={testimonial?.businessVideoUrl ?? null}
-                                localPreviewUrl={draftBusinessPreview}
-                                label="Business Results"
-                                accentColor="bg-blue-600"
-                                onNeedUrl={!testimonial?.businessVideoUrl && testimonial?.businessVideoPath ? loadBusinessVideoUrl : undefined}
-                              />
-                              {!uploadingBusiness && (
-                                <button type="button" onClick={() => businessVidRef.current?.click()}
-                                  className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors z-10"
-                                  aria-label="Replace business video">
-                                  <Pencil className="h-3 w-3" />
-                                </button>
-                              )}
-                            </>
-                          ) : (
-                            <button type="button" onClick={() => businessVidRef.current?.click()}
-                              className="w-full flex items-center justify-center bg-gray-50 border-2 border-dashed border-blue-300 rounded-xl py-8 hover:bg-blue-50 transition-colors"
-                              aria-label="Add business result video">
-                              <Plus className="h-7 w-7 text-blue-400" />
-                            </button>
-                          )}
-                          {uploadingBusiness && (
-                            <div className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center z-10">
-                              <div className="flex flex-col items-center gap-1">
-                                <Upload className="h-5 w-5 text-white animate-bounce" />
-                                <span className="text-white text-[10px] font-bold">Preparing…</span>
-                              </div>
-                            </div>
-                          )}
-                          <input ref={businessVidRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/3gpp,video/*" className="hidden"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              e.target.value = '';
-                              if (file) handleVideoFile('business', file);
-                            }} />
-                        </div>
-                      ) : (
-                        <VideoThumbnailCard
-                          url={testimonial?.businessVideoUrl ?? null}
-                          label="Business Results"
-                          accentColor="bg-blue-600"
-                          onNeedUrl={!testimonial?.businessVideoUrl && testimonial?.businessVideoPath ? loadBusinessVideoUrl : undefined}
-                        />
-                      )}
-                    </div>
-                  </div>
-                  {testimonial?.videoStatus === 'verified' && (
-                    <p className="text-[11px] text-green-700 font-medium flex items-center gap-1">
-                      <CheckCircle className="h-3 w-3 shrink-0" /> Videos verified
-                    </p>
-                  )}
+              )}
 
-                  {/* Upline website consent — directly under Result Video / Videos verified */}
-                  {editable
-                    && isFlagEnabled('ff.testimonial-upline-display-consent')
-                    && testimonial
-                    && (testimonial.status === 'verified' || testimonial.videoStatus === 'verified') ? (
-                    <WebsiteDisplayConsentCard
+                  {/* Unified OTP — after submit, or when a pending OTP is still open */}
+                  {showUnifiedOtp && (
+                    <UnifiedOtpInline
                       userId={userId}
-                      testimonial={testimonial}
-                      onChanged={() => {
-                        if (typeof onMineRefresh === 'function') void onMineRefresh();
-                        else if (typeof onOtpVerified === 'function') onOtpVerified();
-                      }}
+                      sponsorName={testimonial?.sponsorName}
+                      otpExpiresAt={testimonial?.otpExpiresAt}
+                      otpValidityHours={testimonial?.otpValidityHours}
+                      otpExpired={testimonial?.otpExpired}
+                      onVerified={handleUnifiedOtpVerified}
+                      onOtpMetaUpdate={handleUnifiedOtpMetaUpdate}
+                      onClose={handleUnifiedOtpClose}
                     />
-                  ) : null}
-
-                  {editable && !showUnifiedOtp && !unifiedOtpDismissed && testimonial?.videoStatus === 'pending' && testimonial?.id && (
-                    <div className="bg-white rounded-2xl border border-amber-200 shadow-sm px-4 py-4 space-y-1 mt-1">
-                      <p className="text-xs font-bold text-amber-700 uppercase tracking-wide flex items-center gap-1.5">
-                        <ShieldCheck className="h-3.5 w-3.5" /> Verify Your Videos
-                      </p>
-                      <p className="text-xs text-gray-500 pb-1">
-                        Ask your sponsor for the OTP they received by email.
-                      </p>
-                      <OtpInline
-                        testimonialId={testimonial.id}
-                        type="video"
-                        onVerified={onOtpVerified}
-                      />
-                    </div>
                   )}
-                  {!editable && testimonial?.videoStatus === 'pending' && (
-                    <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1">
-                      <Clock className="h-3 w-3 shrink-0" /> Videos pending — share OTP with {user.userName}
-                    </p>
+
+                  {/* Legacy per-slot OTP — only when no unified OTP is pending */}
+                  {editable && !showUnifiedOtp && !unifiedOtpDismissed && testimonial?.status === 'pending' && testimonial?.id && (
+                    <OtpInline
+                      testimonialId={testimonial.id}
+                      type="photo"
+                      onVerified={onOtpVerified}
+                    />
                   )}
-                </div>
-              )}
 
-              {/* ── Submit for Approval (Mine, dirty edits) — above Transformation card so it is not buried under the preview ── */}
-              {editable && submitError && (
-                <p className="text-xs text-red-600 text-center bg-red-50 rounded-xl px-3 py-2">{submitError}</p>
-              )}
-              {editable && hasDirtySlots && !submitDone && (
-                <div className="space-y-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleSubmitAll}
-                    disabled={isSubmitting || anyVideoUploading || anyPhotoCompressing}
-                    className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold shadow-sm disabled:opacity-60 transition-colors"
-                  >
-                    {anyPhotoCompressing
-                      ? <><div className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Preparing photo…</>
-                      : isSubmitting
-                        ? <><div className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Submitting…</>
-                        : anyVideoUploading
-                          ? <><Upload className="h-4 w-4 animate-bounce" /> Uploading video…</>
-                          : <><Save className="h-4 w-4" /> Submit for Approval</>
-                    }
-                  </button>
-                  <p className="text-[10px] text-gray-400 text-center">
-                    {changedCount} item{changedCount === 1 ? '' : 's'} changed — your sponsor will receive one verification email
-                  </p>
-                </div>
-              )}
-
-              {/* Branded Transformation Results card + videos.
-          Mine: divider + share next to TRANSFORMATION CARD.
-          Direct/Full: no divider; photo share stays in the member header. */}
-              {showBrandedCard && (
-                <div className="space-y-3 pt-1">
-                  {editable && (
-                    <div className="flex items-center gap-2" role="separator" aria-label="Transformation card">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="flex-1 border-t border-gray-200" />
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide whitespace-nowrap">
-                          Transformation card
-                        </p>
-                        <div className="flex-1 border-t border-gray-200" />
-                      </div>
-                      {canSharePhoto && (
-                        <TransformationShareActions
-                          variant="icon"
-                          kind="photo"
-                          cardRef={shareCardRef}
-                          userName={user.userName}
-                          testimonial={shareCardTestimonial}
-                        />
+                  {/* Stats — Mine always; team only when branded card is not shown (redundant with card) */}
+                  {testimonial && (editable || !showBrandedCard) && (
+                    <div className="space-y-1.5">
+                      {/* "Lost X kgs in Y duration" — uses live draft weights, not persisted hasAfter */}
+                      {diff && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border ${weightIsLoss ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                            {weightIsLoss
+                              ? <TrendingDown className="h-3 w-3 shrink-0" />
+                              : <TrendingUp className="h-3 w-3 shrink-0" />
+                            }
+                            {weightIsLoss ? 'Lost' : 'Gained'} {diff} kgs
+                            {usableDuration ? ` in ${displayDuration}` : ''}
+                          </span>
+                          {editable && (
+                            expandedSlots.has('duration') ? (
+                              <DurationEditor
+                                valueText={durationValueText}
+                                unit={durationUnitDraft}
+                                onValueChange={setDurationValueText}
+                                onUnitChange={setDurationUnitDraft}
+                                onCommit={commitDurationEdit}
+                                onCancel={closeDurationEdit}
+                              />
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={openDurationEdit}
+                                className="p-1 rounded-full border border-gray-200 text-gray-400 hover:text-green-700 hover:border-green-300 transition-colors"
+                                aria-label="Edit duration"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                            )
+                          )}
+                        </div>
+                      )}
+                      {/* No diff yet — show before weight or add prompt + duration */}
+                      {!diff && displayBeforeKg > 0 && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-full px-3 py-1 text-[11px] text-gray-600 font-medium">
+                            {displayBeforeKg} kg → ?
+                            {usableDuration ? ` · ${displayDuration}` : ''}
+                          </span>
+                          {editable && (
+                            expandedSlots.has('duration') ? (
+                              <DurationEditor
+                                valueText={durationValueText}
+                                unit={durationUnitDraft}
+                                onValueChange={setDurationValueText}
+                                onUnitChange={setDurationUnitDraft}
+                                onCommit={commitDurationEdit}
+                                onCancel={closeDurationEdit}
+                              />
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={openDurationEdit}
+                                className="p-1 rounded-full border border-gray-200 text-gray-400 hover:text-green-700 hover:border-green-300 transition-colors"
+                                aria-label={usableDuration ? 'Edit duration' : 'Add duration'}
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                            )
+                          )}
+                        </div>
                       )}
                     </div>
                   )}
-                  <VisibleTransformationCard
-                    testimonial={shareCardTestimonial}
-                    userName={shareCardUserName}
-                  />
 
-                  {/* Health + Business videos under the branded card (tap → preview) */}
-                  {(draftHealthPreview || draftBusinessPreview
-                    || testimonial?.healthVideoUrl || testimonial?.businessVideoUrl
-                    || testimonial?.healthVideoPath || testimonial?.businessVideoPath) && (
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1 flex-1 min-w-0">
-                            <Video className="h-3 w-3 shrink-0" /> Result Video
-                          </p>
-                          {canShareVideo && (
-                            <TransformationShareActions
-                              variant="icon"
-                              kind="video"
-                              userName={user.userName}
-                              testimonial={testimonial}
-                              onBeforeAction={prepareShareCard}
-                            />
-                          )}
+                  {/* Result Video above divider — Mine upload only.
+          Direct/Full with branded card: videos live under the card (no duplicate). */}
+                  {(editable || (testimonial && !showBrandedCard)) && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1 flex-1 min-w-0">
+                          <Video className="h-3 w-3 shrink-0" /> Result Video
+                          <span className="font-normal normal-case tracking-normal">· max {MAX_HEALTH_VIDEO_MB} MB each</span>
+                        </p>
+                        {!showBrandedCard && canShareVideo && (
+                          <TransformationShareActions
+                            variant="icon"
+                            kind="video"
+                            userName={user.userName}
+                            testimonial={testimonial}
+                            onBeforeAction={prepareShareCard}
+                          />
+                        )}
+                      </div>
+                      {editable && videoUploadError && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex items-start gap-2">
+                          <ShieldCheck className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                          <p className="text-xs text-amber-800 leading-relaxed">{videoUploadError}</p>
                         </div>
-                        <div className="flex gap-3">
-                          <div className="flex-1 space-y-1">
-                            <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Health</p>
+                      )}
+                      <div className="flex flex-col gap-3">
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Health Result</p>
+                          {editable ? (
+                            <div className="relative">
+                              {draftHealthPreview || testimonial?.healthVideoUrl ? (
+                                <>
+                                  <VideoThumbnailCard
+                                    url={testimonial?.healthVideoUrl ?? null}
+                                    localPreviewUrl={draftHealthPreview}
+                                    label="Health Results"
+                                    accentColor="bg-green-600"
+                                    onNeedUrl={!testimonial?.healthVideoUrl && testimonial?.healthVideoPath ? loadHealthVideoUrl : undefined}
+                                  />
+                                  {!uploadingHealth && (
+                                    <button type="button" onClick={() => healthVidRef.current?.click()}
+                                      className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors z-10"
+                                      aria-label="Replace health video">
+                                      <Pencil className="h-3 w-3" />
+                                    </button>
+                                  )}
+                                </>
+                              ) : (
+                                <button type="button" onClick={() => healthVidRef.current?.click()}
+                                  className="w-full flex items-center justify-center bg-gray-50 border-2 border-dashed border-green-300 rounded-xl py-8 hover:bg-green-50 transition-colors"
+                                  aria-label="Add health result video">
+                                  <Plus className="h-7 w-7 text-green-400" />
+                                </button>
+                              )}
+                              {uploadingHealth && (
+                                <div className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center z-10">
+                                  <div className="flex flex-col items-center gap-1">
+                                    <Upload className="h-5 w-5 text-white animate-bounce" />
+                                    <span className="text-white text-[10px] font-bold">Preparing…</span>
+                                  </div>
+                                </div>
+                              )}
+                              <input ref={healthVidRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/3gpp,video/*" className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  e.target.value = '';
+                                  if (file) handleVideoFile('health', file);
+                                }} />
+                            </div>
+                          ) : (
                             <VideoThumbnailCard
                               url={testimonial?.healthVideoUrl ?? null}
-                              localPreviewUrl={draftHealthPreview}
                               label="Health Results"
                               accentColor="bg-green-600"
                               onNeedUrl={!testimonial?.healthVideoUrl && testimonial?.healthVideoPath ? loadHealthVideoUrl : undefined}
                             />
-                          </div>
-                          <div className="flex-1 space-y-1">
-                            <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Business</p>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Business Result</p>
+                          {editable ? (
+                            <div className="relative">
+                              {draftBusinessPreview || testimonial?.businessVideoUrl ? (
+                                <>
+                                  <VideoThumbnailCard
+                                    url={testimonial?.businessVideoUrl ?? null}
+                                    localPreviewUrl={draftBusinessPreview}
+                                    label="Business Results"
+                                    accentColor="bg-blue-600"
+                                    onNeedUrl={!testimonial?.businessVideoUrl && testimonial?.businessVideoPath ? loadBusinessVideoUrl : undefined}
+                                  />
+                                  {!uploadingBusiness && (
+                                    <button type="button" onClick={() => businessVidRef.current?.click()}
+                                      className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors z-10"
+                                      aria-label="Replace business video">
+                                      <Pencil className="h-3 w-3" />
+                                    </button>
+                                  )}
+                                </>
+                              ) : (
+                                <button type="button" onClick={() => businessVidRef.current?.click()}
+                                  className="w-full flex items-center justify-center bg-gray-50 border-2 border-dashed border-blue-300 rounded-xl py-8 hover:bg-blue-50 transition-colors"
+                                  aria-label="Add business result video">
+                                  <Plus className="h-7 w-7 text-blue-400" />
+                                </button>
+                              )}
+                              {uploadingBusiness && (
+                                <div className="absolute inset-0 bg-black/60 rounded-xl flex items-center justify-center z-10">
+                                  <div className="flex flex-col items-center gap-1">
+                                    <Upload className="h-5 w-5 text-white animate-bounce" />
+                                    <span className="text-white text-[10px] font-bold">Preparing…</span>
+                                  </div>
+                                </div>
+                              )}
+                              <input ref={businessVidRef} type="file" accept="video/mp4,video/webm,video/quicktime,video/3gpp,video/*" className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  e.target.value = '';
+                                  if (file) handleVideoFile('business', file);
+                                }} />
+                            </div>
+                          ) : (
                             <VideoThumbnailCard
                               url={testimonial?.businessVideoUrl ?? null}
-                              localPreviewUrl={draftBusinessPreview}
                               label="Business Results"
                               accentColor="bg-blue-600"
                               onNeedUrl={!testimonial?.businessVideoUrl && testimonial?.businessVideoPath ? loadBusinessVideoUrl : undefined}
                             />
-                          </div>
+                          )}
                         </div>
-                        {testimonial?.videoStatus === 'verified' && (
-                          <p className="text-[11px] text-green-700 font-medium flex items-center gap-1">
-                            <CheckCircle className="h-3 w-3 shrink-0" /> Videos verified
-                          </p>
-                        )}
                       </div>
-                    )}
-                </div>
-              )}
+                      {testimonial?.videoStatus === 'verified' && (
+                        <p className="text-[11px] text-green-700 font-medium flex items-center gap-1">
+                          <CheckCircle className="h-3 w-3 shrink-0" /> Videos verified
+                        </p>
+                      )}
 
-              {/* OTP hint — team members only (Mine uses inline OTP under Before) */}
-              {!editable && testimonial?.status === 'pending' && (
-                <p className="text-xs text-amber-700 font-medium bg-amber-100 rounded-xl px-3 py-2 text-center flex items-center justify-center gap-1.5">
-                  <Mail className="h-3.5 w-3.5 shrink-0" />
-                  OTP sent to your email — share it with {user.userName} to verify
-                </p>
-              )}
+                      {/* Upline website consent — directly under Result Video / Videos verified */}
+                      {editable
+                        && isFlagEnabled('ff.testimonial-upline-display-consent')
+                        && testimonial
+                        && (testimonial.status === 'verified' || testimonial.videoStatus === 'verified') ? (
+                        <WebsiteDisplayConsentCard
+                          userId={userId}
+                          testimonial={testimonial}
+                          onChanged={() => {
+                            if (typeof onMineRefresh === 'function') void onMineRefresh();
+                            else if (typeof onOtpVerified === 'function') onOtpVerified();
+                          }}
+                        />
+                      ) : null}
 
-              {/* No testimonial — team view only (Mine always has Add slots above) */}
-              {!editable && !testimonial && (
-                <div className="flex items-center gap-2 py-1">
-                  <AlertCircle className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                  <p className="text-xs text-gray-500 italic">No testimonial uploaded yet</p>
-                </div>
-              )}
+                      {editable && !showUnifiedOtp && !unifiedOtpDismissed && testimonial?.videoStatus === 'pending' && testimonial?.id && (
+                        <div className="bg-white rounded-2xl border border-amber-200 shadow-sm px-4 py-4 space-y-1 mt-1">
+                          <p className="text-xs font-bold text-amber-700 uppercase tracking-wide flex items-center gap-1.5">
+                            <ShieldCheck className="h-3.5 w-3.5" /> Verify Your Videos
+                          </p>
+                          <p className="text-xs text-gray-500 pb-1">
+                            Ask your sponsor for the OTP they received by email.
+                          </p>
+                          <OtpInline
+                            testimonialId={testimonial.id}
+                            type="video"
+                            onVerified={onOtpVerified}
+                          />
+                        </div>
+                      )}
+                      {!editable && testimonial?.videoStatus === 'pending' && (
+                        <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1">
+                          <Clock className="h-3 w-3 shrink-0" /> Videos pending — share OTP with {user.userName}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
-              {expandedPhoto && (
-                <FullscreenProfilePhotoViewer
-                  isOpen
-                  src={expandedPhoto.url}
-                  alt={expandedPhoto.label}
-                  title={expandedPhoto.label}
-                  onClose={() => setExpandedPhoto(null)}
-                  onViewProfile={user?.userId != null ? () => {
-                    setExpandedPhoto(null);
-                    setProfileOpen(true);
-                  } : undefined}
-                />
-              )}
-              <TeamMemberProfileModal
-                isOpen={profileOpen}
-                onClose={() => setProfileOpen(false)}
-                memberEmail={user?.email || user?.Email}
-                memberUserId={user?.userId}
-                apiBaseUrl={getApiBaseUrl()}
-              />
-              <CustomAlertModal
-                isOpen={Boolean(videoSizeAlert)}
-                onClose={() => setVideoSizeAlert(null)}
-                title="Video too large"
-                message={videoSizeAlert}
-                type="warning"
-                confirmText="OK"
-              />
+                  {/* ── Submit for Approval (Mine, dirty edits) — above Transformation card so it is not buried under the preview ── */}
+                  {editable && submitError && (
+                    <p className="text-xs text-red-600 text-center bg-red-50 rounded-xl px-3 py-2">{submitError}</p>
+                  )}
+                  {editable && hasDirtySlots && !submitDone && (
+                    <div className="space-y-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleSubmitAll}
+                        disabled={isSubmitting || anyVideoUploading || anyPhotoCompressing}
+                        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white text-sm font-bold shadow-sm disabled:opacity-60 transition-colors"
+                      >
+                        {anyPhotoCompressing
+                          ? <><div className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Preparing photo…</>
+                          : isSubmitting
+                            ? <><div className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Submitting…</>
+                            : anyVideoUploading
+                              ? <><Upload className="h-4 w-4 animate-bounce" /> Uploading video…</>
+                              : <><Save className="h-4 w-4" /> Submit for Approval</>
+                        }
+                      </button>
+                      <p className="text-[10px] text-gray-400 text-center">
+                        {changedCount} item{changedCount === 1 ? '' : 's'} changed — your sponsor will receive one verification email
+                      </p>
+                    </div>
+                  )}
 
-              {/* Hidden full-size share card for sharp html2canvas capture (preview above is scaled). */}
-              {shareCardTestimonial && (
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: 'fixed',
-                    left: -10000,
-                    top: 0,
-                    width: CARD_W,
-                    height: shareCardTestimonial?.shareAsCollage ? 'auto' : CARD_H,
-                    opacity: 0,
-                    pointerEvents: 'none',
-                    zIndex: -1,
-                    overflow: 'hidden',
-                  }}
-                >
-                  <TransformationCardContent
-                    ref={shareCardRef}
-                    testimonial={shareCardTestimonial}
-                    userName={shareCardUserName}
+                  {/* Branded Transformation Results card + videos.
+          Mine: divider + share next to TRANSFORMATION CARD.
+          Direct/Full: no divider; photo share stays in the member header. */}
+                  {showBrandedCard && (
+                    <div className="space-y-3 pt-1">
+                      {editable && (
+                        <div className="flex items-center gap-2" role="separator" aria-label="Transformation card">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className="flex-1 border-t border-gray-200" />
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide whitespace-nowrap">
+                              Transformation card
+                            </p>
+                            <div className="flex-1 border-t border-gray-200" />
+                          </div>
+                          {canSharePhoto && (
+                            <TransformationShareActions
+                              variant="icon"
+                              kind="photo"
+                              cardRef={shareCardRef}
+                              userName={user.userName}
+                              testimonial={shareCardTestimonial}
+                            />
+                          )}
+                        </div>
+                      )}
+                      <VisibleTransformationCard
+                        testimonial={shareCardTestimonial}
+                        userName={shareCardUserName}
+                      />
+
+                      {/* Health + Business videos under the branded card (tap → preview) */}
+                      {(draftHealthPreview || draftBusinessPreview
+                        || testimonial?.healthVideoUrl || testimonial?.businessVideoUrl
+                        || testimonial?.healthVideoPath || testimonial?.businessVideoPath) && (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center gap-1 flex-1 min-w-0">
+                                <Video className="h-3 w-3 shrink-0" /> Result Video
+                              </p>
+                              {canShareVideo && (
+                                <TransformationShareActions
+                                  variant="icon"
+                                  kind="video"
+                                  userName={user.userName}
+                                  testimonial={testimonial}
+                                  onBeforeAction={prepareShareCard}
+                                />
+                              )}
+                            </div>
+                            <div className="flex gap-3">
+                              <div className="flex-1 space-y-1">
+                                <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Health</p>
+                                <VideoThumbnailCard
+                                  url={testimonial?.healthVideoUrl ?? null}
+                                  localPreviewUrl={draftHealthPreview}
+                                  label="Health Results"
+                                  accentColor="bg-green-600"
+                                  onNeedUrl={!testimonial?.healthVideoUrl && testimonial?.healthVideoPath ? loadHealthVideoUrl : undefined}
+                                />
+                              </div>
+                              <div className="flex-1 space-y-1">
+                                <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Business</p>
+                                <VideoThumbnailCard
+                                  url={testimonial?.businessVideoUrl ?? null}
+                                  localPreviewUrl={draftBusinessPreview}
+                                  label="Business Results"
+                                  accentColor="bg-blue-600"
+                                  onNeedUrl={!testimonial?.businessVideoUrl && testimonial?.businessVideoPath ? loadBusinessVideoUrl : undefined}
+                                />
+                              </div>
+                            </div>
+                            {testimonial?.videoStatus === 'verified' && (
+                              <p className="text-[11px] text-green-700 font-medium flex items-center gap-1">
+                                <CheckCircle className="h-3 w-3 shrink-0" /> Videos verified
+                              </p>
+                            )}
+                          </div>
+                        )}
+                    </div>
+                  )}
+
+                  {/* OTP hint — team members only (Mine uses inline OTP under Before) */}
+                  {!editable && testimonial?.status === 'pending' && (
+                    <p className="text-xs text-amber-700 font-medium bg-amber-100 rounded-xl px-3 py-2 text-center flex items-center justify-center gap-1.5">
+                      <Mail className="h-3.5 w-3.5 shrink-0" />
+                      OTP sent to your email — share it with {user.userName} to verify
+                    </p>
+                  )}
+
+                  {/* No testimonial — team view only (Mine always has Add slots above) */}
+                  {!editable && !testimonial && (
+                    <div className="flex items-center gap-2 py-1">
+                      <AlertCircle className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                      <p className="text-xs text-gray-500 italic">No testimonial uploaded yet</p>
+                    </div>
+                  )}
+
+                  {expandedPhoto && (
+                    <FullscreenProfilePhotoViewer
+                      isOpen
+                      src={expandedPhoto.url}
+                      alt={expandedPhoto.label}
+                      title={expandedPhoto.label}
+                      onClose={() => setExpandedPhoto(null)}
+                      onViewProfile={user?.userId != null ? () => {
+                        setExpandedPhoto(null);
+                        setProfileOpen(true);
+                      } : undefined}
+                    />
+                  )}
+                  <TeamMemberProfileModal
+                    isOpen={profileOpen}
+                    onClose={() => setProfileOpen(false)}
+                    memberEmail={user?.email || user?.Email}
+                    memberUserId={user?.userId}
+                    apiBaseUrl={getApiBaseUrl()}
                   />
-                </div>
-              )}
-            </div>
+                  <CustomAlertModal
+                    isOpen={Boolean(videoSizeAlert)}
+                    onClose={() => setVideoSizeAlert(null)}
+                    title="Video too large"
+                    message={videoSizeAlert}
+                    type="warning"
+                    confirmText="OK"
+                  />
+
+                  {/* Hidden full-size share card for sharp html2canvas capture (preview above is scaled). */}
+                  {shareCardTestimonial && (
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        position: 'fixed',
+                        left: -10000,
+                        top: 0,
+                        width: CARD_W,
+                        height: shareCardTestimonial?.shareAsCollage ? 'auto' : CARD_H,
+                        opacity: 0,
+                        pointerEvents: 'none',
+                        zIndex: -1,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <TransformationCardContent
+                        ref={shareCardRef}
+                        testimonial={shareCardTestimonial}
+                        userName={shareCardUserName}
+                      />
+                    </div>
+                  )}
+              </div>
     </div>
         );
 }
