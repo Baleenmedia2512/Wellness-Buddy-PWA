@@ -71,9 +71,9 @@ function registerFlag(spec) {
   if (REGISTRY[name]) {
     throw new Error(`feature-flags: flag '${name}' already registered`);
   }
-  if (!owner)       throw new Error(`feature-flags: '${name}' missing owner`);
-  if (!createdAt)   throw new Error(`feature-flags: '${name}' missing createdAt`);
-  if (!removeBy)    throw new Error(`feature-flags: '${name}' missing removeBy`);
+  if (!owner) throw new Error(`feature-flags: '${name}' missing owner`);
+  if (!createdAt) throw new Error(`feature-flags: '${name}' missing createdAt`);
+  if (!removeBy) throw new Error(`feature-flags: '${name}' missing removeBy`);
   if (!description) throw new Error(`feature-flags: '${name}' missing description`);
   if (typeof defaultEnabled !== 'boolean') {
     throw new Error(`feature-flags: '${name}' defaultEnabled must be boolean`);
@@ -103,11 +103,11 @@ export function isEnabled(name) {
     return false;
   }
   const envValue = process.env[envKeyFor(name)];
-  if (envValue === 'true')  return true;
+  if (envValue === 'true') return true;
   if (envValue === 'false') return false;
   if (typeof envValue === 'string') {
     const lower = envValue.toLowerCase();
-    if (lower === 'true')  return true;
+    if (lower === 'true') return true;
     if (lower === 'false') return false;
   }
   return spec.defaultEnabled;
@@ -197,293 +197,284 @@ export function __registerFlag(spec) {
 // ─── Registered flags ───────────────────────────────────────────────────────
 
 registerFlag({
-  name:           'ff.diary-feed',
-  owner:          '@principal-eng',
-  createdAt:      '2026-06-05',
+  name: 'ff.diary-feed',
+  owner: '@principal-eng',
+  createdAt: '2026-06-05',
   // 90 days after full rollout per claude.md §3.5. Adjust on
   // promotion-to-prod; never extend without an ADR amendment.
-  removeBy:       '2026-12-05',
-  description:    'PR-B/PR-C of ADR-0003 — include `unknown` captures in the Diary list-entries read-model. When OFF, the endpoint behaves identically to the pre-Diary listAnalyses contract (food-only). When ON, the response also carries weight / education / watch / unknown rows for the same date.',
+  removeBy: '2026-12-05',
+  description: 'PR-B/PR-C of ADR-0003 — include `unknown` captures in the Diary list-entries read-model. When OFF, the endpoint behaves identically to the pre-Diary listAnalyses contract (food-only). When ON, the response also carries weight / education / watch / unknown rows for the same date.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.body-parameters-card',
-  owner:          '@principal-eng',
-  createdAt:      '2026-06-09',
-  removeBy:       '2026-09-30',
-  description:    'ADR-0004 — Body Parameters Card share feature. Coach creates a styled card in Wellness Counselling, shares via WhatsApp. New members use the link to pre-fill setup wizard; existing members get silent profile override.',
+  name: 'ff.body-parameters-card',
+  owner: '@principal-eng',
+  createdAt: '2026-06-09',
+  removeBy: '2026-09-30',
+  description: 'ADR-0004 — Body Parameters Card share feature. Coach creates a styled card in Wellness Counselling, shares via WhatsApp. New members use the link to pre-fill setup wizard; existing members get silent profile override.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.diary-timeline',
-  owner:          '@diary-team',
-  createdAt:      '2026-06-18',
+  name: 'ff.diary-timeline',
+  owner: '@diary-team',
+  createdAt: '2026-06-18',
   // 90 days after full rollout per claude.md §3.5. Adjust on
   // promotion-to-prod; never extend without an ADR amendment.
-  removeBy:       '2026-12-31',
-  description:    'Unified activity timeline layout in Diary: replaces stacked section-dashboards (NutritionDashboard / WeightDashboard / EducationDashboard + DiaryFeed(unknown)) with a single chronological DiaryFeed covering all entry kinds (food, weight, education, watch, unknown) for the selected IST day. Requires ff.diary-feed=ON. Toggle FF_DIARY_TIMELINE=false to revert to the stacked layout.',
+  removeBy: '2026-12-31',
+  description: 'Unified activity timeline layout in Diary: replaces stacked section-dashboards (NutritionDashboard / WeightDashboard / EducationDashboard + DiaryFeed(unknown)) with a single chronological DiaryFeed covering all entry kinds (food, weight, education, watch, unknown) for the selected IST day. Requires ff.diary-feed=ON. Toggle FF_DIARY_TIMELINE=false to revert to the stacked layout.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.testimonials',
-  owner:          '@testimonials-team',
-  createdAt:      '2026-07-06',
-  removeBy:       '2027-01-06',
-  description:    'Before/after testimonial upload for members + coach OTP verification flow. Members upload photos + weights; coach receives email with OTP to verify. Coach dashboard shows team upload status.',
+  name: 'ff.testimonials',
+  owner: '@testimonials-team',
+  createdAt: '2026-07-06',
+  removeBy: '2027-01-06',
+  description: 'Before/after testimonial upload for members + coach OTP verification flow. Members upload photos + weights; coach receives email with OTP to verify. Coach dashboard shows team upload status.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.reports-module',
-  owner:          '@reports-team',
-  createdAt:      '2026-07-06',
-  removeBy:       '2026-12-31',
-  description:    'Reports module: coach/upline analytics — Ideal Weight status report and Wellness Score Report (weights + persisted daily score + sponsor/coach). Tab visible only to coach/upline/admin/developer roles.',
+  name: 'ff.reports-module',
+  owner: '@reports-team',
+  createdAt: '2026-07-06',
+  removeBy: '2026-12-31',
+  description: 'Reports module: coach/upline analytics — Ideal Weight status report and Wellness Score Report (weights + persisted daily score + sponsor/coach). Tab visible only to coach/upline/admin/developer roles.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.wellness-score-sheet',
-  owner:          '@wellness-score-team',
-  createdAt:      '2026-07-08',
-  removeBy:       '2027-01-08',
-  description:    'Wellness Score home tile, daily score API, admin Wellness Score Setup, and Wellness Score Report dashboard.',
+  name: 'ff.wellness-score-sheet',
+  owner: '@wellness-score-team',
+  createdAt: '2026-07-08',
+  removeBy: '2027-01-08',
+  description: 'Wellness Score home tile, daily score API, admin Wellness Score Setup, and Wellness Score Report dashboard.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.ai-credits',
-  owner:          '@principal-eng',
-  createdAt:      '2026-07-27',
-  removeBy:       '2027-01-27',
-  description:    'Boolean rollout for AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI). Numeric daily limit lives in ai_credits_config_table, not this flag.',
+  name: 'ff.ai-credits',
+  owner: '@principal-eng',
+  createdAt: '2026-07-27',
+  removeBy: '2027-01-27',
+  description: 'Boolean rollout for AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI). Numeric daily limit lives in ai_credits_config_table, not this flag.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.nutrition-knowledge',
-  owner:          '@nutrition-team',
-  createdAt:      '2026-07-30',
-  removeBy:       '2027-01-30',
-  description:    'ADR-0005 — master nutrition knowledge base: search/resolve prefer approved master profiles, pass micros from AI history, draft candidates from successful AI, optional text enrich.',
+  name: 'ff.nutrition-knowledge',
+  owner: '@nutrition-team',
+  createdAt: '2026-07-30',
+  removeBy: '2027-01-30',
+  description: 'ADR-0005 — master nutrition knowledge base: search/resolve prefer approved master profiles, pass micros from AI history, draft candidates from successful AI, optional text enrich.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.consent-gate',
-  owner:          '@principal-eng',
-  createdAt:      '2026-07-31',
-  removeBy:       '2027-01-31',
-  description:    'ADR-0006 — User Consent Form gate: require Agree before OTP/Google account creation; no team_table insert without consent; existing users blocked until accepted.',
+  name: 'ff.consent-gate',
+  owner: '@principal-eng',
+  createdAt: '2026-07-31',
+  removeBy: '2027-01-31',
+  description: 'ADR-0006 — User Consent Form gate: require Agree before OTP/Google account creation; no team_table insert without consent; existing users blocked until accepted.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.good-habit',
-  owner:          '@principal-eng',
-  createdAt:      '2026-08-16',
-  removeBy:       '2027-02-16',
-  description:    'ADR-0008 — Manual Log Good Habit tile: single photo. New good_habits_table; Diary kind good-habit; wellness-score good_habit_post. Does not change food logging or capture state machine.',
+  name: 'ff.good-habit',
+  owner: '@principal-eng',
+  createdAt: '2026-08-16',
+  removeBy: '2027-02-16',
+  description: 'ADR-0008 — Manual Log Good Habit tile: single photo. New good_habits_table; Diary kind good-habit; wellness-score good_habit_post. Does not change food logging or capture state machine.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.meal-builder',
-  owner:          '@nutrition-team',
-  createdAt:      '2026-08-22',
-  removeBy:       '2027-02-22',
-  description:    'Meal Builder multi-add tray + bottom sheet + voice insert in SmartFoodSearchModal (replaces cart UX). Frontend-primary; backend flag for registry parity.',
+  name: 'ff.meal-builder',
+  owner: '@nutrition-team',
+  createdAt: '2026-08-22',
+  removeBy: '2027-02-22',
+  description: 'Meal Builder multi-add tray + bottom sheet + voice insert in SmartFoodSearchModal (replaces cart UX). Frontend-primary; backend flag for registry parity.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.r2-avatars',
-  owner:          '@principal-eng',
-  createdAt:      '2026-09-03',
-  removeBy:       '2027-03-03',
-  description:    'ADR-0009 — store custom profile avatars in Cloudflare R2; /api/user/avatar 302s to R2. Kill switch; no-ops when R2 env is missing. Does not omit Base64 from GET /api/user/profile.',
+  name: 'ff.r2-avatars',
+  owner: '@principal-eng',
+  createdAt: '2026-09-03',
+  removeBy: '2027-03-03',
+  description: 'ADR-0009 — store custom profile avatars in Cloudflare R2; /api/user/avatar 302s to R2. Kill switch; no-ops when R2 env is missing. Does not omit Base64 from GET /api/user/profile.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.r2-food-images',
-  owner:          '@principal-eng',
-  createdAt:      '2026-09-05',
-  removeBy:       '2027-03-05',
-  description:    'ADR-0010 — store meal photos in Cloudflare R2 at ≤22 KB; meal-image 302s to R2. Kill switch; no-ops when R2 env is missing. Does not omit ImageBase64 from meal-image ?format=json.',
+  name: 'ff.r2-food-images',
+  owner: '@principal-eng',
+  createdAt: '2026-09-05',
+  removeBy: '2027-03-05',
+  description: 'ADR-0010 — store meal photos in Cloudflare R2 at ≤22 KB; meal-image 302s to R2. Kill switch; no-ops when R2 env is missing. Does not omit ImageBase64 from meal-image ?format=json.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.r2-activity-images',
-  owner:          '@principal-eng',
-  createdAt:      '2026-09-05',
-  removeBy:       '2027-03-05',
-  description:    'ADR-0011 — store weight, education, and good-habit photos in Cloudflare R2 at ≤22 KB. Kill switch; no-ops when R2 env is missing. JSON image APIs still return Base64 (no 302).',
+  name: 'ff.r2-activity-images',
+  owner: '@principal-eng',
+  createdAt: '2026-09-05',
+  removeBy: '2027-03-05',
+  description: 'ADR-0011 — store weight, education, and good-habit photos in Cloudflare R2 at ≤22 KB. Kill switch; no-ops when R2 env is missing. JSON image APIs still return Base64 (no 302).',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.r2-captures',
-  owner:          '@principal-eng',
-  createdAt:      '2026-09-05',
-  removeBy:       '2027-03-05',
-  description:    'ADR-0012 — store capture photos once in Cloudflare R2; feature tables pointer to the same key. Kill switch; no-ops when R2 env is missing. Diary capture image 302s; format=json still returns Base64.',
+  name: 'ff.r2-captures',
+  owner: '@principal-eng',
+  createdAt: '2026-09-05',
+  removeBy: '2027-03-05',
+  description: 'ADR-0012 — store capture photos once in Cloudflare R2; feature tables pointer to the same key. Kill switch; no-ops when R2 env is missing. Diary capture image 302s; format=json still returns Base64.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.r2-transformation-photos',
-  owner:          '@principal-eng',
-  createdAt:      '2026-09-22',
-  removeBy:       '2027-03-22',
-  description:    'Dual-write Left/Centre/Right transformation_photos to R2 keys; keep base64 in JSONB for live apps. GET profile returns R2 URLs for app ≥3.5.1; older/missing get base64. Kill switch when R2 env missing.',
+  name: 'ff.r2-transformation-photos',
+  owner: '@principal-eng',
+  createdAt: '2026-09-22',
+  removeBy: '2027-03-22',
+  description: 'Dual-write Left/Centre/Right transformation_photos to R2 keys; keep base64 in JSONB for live apps. GET profile returns R2 URLs for app ≥3.5.1; older/missing get base64. Kill switch when R2 env missing.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.nav-page-access',
-  owner:          '@principal-eng',
-  createdAt:      '2026-09-17',
-  removeBy:       '2027-03-17',
-  description:    'DB-driven main-nav page access by role (Customer/Sponsor/Admin/Developer). Matrix in nav_page_access_config_table; Admin Config editor. When OFF, all main tabs visible (legacy).',
+  name: 'ff.nav-page-access',
+  owner: '@principal-eng',
+  createdAt: '2026-09-17',
+  removeBy: '2027-03-17',
+  description: 'DB-driven main-nav page access by role (Customer/Sponsor/Admin/Developer). Matrix in nav_page_access_config_table; Admin Config editor. When OFF, all main tabs visible (legacy).',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.community-id-otp',
-  owner:          '@principal-eng',
-  createdAt:      '2026-09-18',
-  removeBy:       '2027-03-18',
-  description:    'ADR-0013 — Profile Community ID create/co-sponsor requires 24h sponsor OTP. Kill switch; version routing (3.5.0+) skips immediate Community ID apply on profile save. Live 3.4.9 stays on legacy profile save.',
+  name: 'ff.community-id-otp',
+  owner: '@principal-eng',
+  createdAt: '2026-09-18',
+  removeBy: '2027-03-18',
+  description: 'ADR-0013 — Profile Community ID create/co-sponsor requires 24h sponsor OTP. Kill switch; version routing (3.5.0+) skips immediate Community ID apply on profile save. Live 3.4.9 stays on legacy profile save.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.community-position-otp',
-  owner:          '@principal-eng',
-  createdAt:      '2026-11-11',
-  removeBy:       '2027-05-11',
-  description:    'ADR-0016 — Profile Community Position sits under Community ID. Choosing a role emails a 24h code to the coach. Kill switch. Version routing: app 3.5.6+ skips immediate save on profile POST; older or missing versions still save the legacy list.',
+  name: 'ff.community-position-otp',
+  owner: '@principal-eng',
+  createdAt: '2026-11-11',
+  removeBy: '2027-05-11',
+  description: 'ADR-0016 — Profile Community Position sits under Community ID. Choosing a role emails a 24h code to the coach. Kill switch. Version routing: app 3.5.6+ skips immediate save on profile POST; older or missing versions still save the legacy list.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.height-change-otp',
-  owner:          '@principal-eng',
-  createdAt:      '2026-09-25',
-  removeBy:       '2027-03-25',
-  description:    'Profile height: first save free; later changes need the coach (CoachId) to approve by email. Kill switch; version routing (3.5.0+) strips differing height on profile save.',
+  name: 'ff.height-change-otp',
+  owner: '@principal-eng',
+  createdAt: '2026-09-25',
+  removeBy: '2027-03-25',
+  description: 'Profile height: first save free; later changes need the coach (CoachId) to approve by email. Kill switch; version routing (3.5.0+) strips differing height on profile save.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.profile-change-sponsor-otp',
-  owner:          '@principal-eng',
-  createdAt:      '2026-11-24',
-  removeBy:       '2027-05-24',
-  description:    'ADR-0018 — One coach OTP on Profile Save for later changes to gated fields (phone, height, health issues, community ID/position, intro, photo, etc.). First fill free. Kill switch; version routing 3.5.8+. Legacy apps keep per-field OTP.',
+  name: 'ff.profile-change-sponsor-otp',
+  owner: '@principal-eng',
+  createdAt: '2026-11-24',
+  removeBy: '2027-05-24',
+  description: 'ADR-0018 — One coach OTP on Profile Save for later changes to gated fields (phone, height, health issues, community ID/position, intro, photo, etc.). First fill free. Kill switch; version routing 3.5.8+. Legacy apps keep per-field OTP.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.broadcast',
-  owner:          '@principal-eng',
-  createdAt:      '2026-09-29',
-  removeBy:       '2027-03-29',
-  description:    'BroadCast paid screen: how-to video and payment entry. Upload and Burst stay locked until recharge. Kill switch hides the tab.',
+  name: 'ff.go-premium',
+  owner: '@principal-eng',
+  createdAt: '2026-10-28',
+  removeBy: '2027-04-28',
+  description: 'Profile Go Premium opens Cashfree checkout. Kill switch hides the row and the create-order API.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.go-premium',
-  owner:          '@principal-eng',
-  createdAt:      '2026-10-28',
-  removeBy:       '2027-04-28',
-  description:    'Profile Go Premium opens Cashfree checkout. Kill switch hides the row and the create-order API.',
+  name: 'ff.create-event',
+  owner: '@principal-eng',
+  createdAt: '2026-10-30',
+  removeBy: '2027-04-30',
+  description: 'Create Event page: name, organizer, place, seating, plus update, delete, postpone, and cancel.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.create-event',
-  owner:          '@principal-eng',
-  createdAt:      '2026-10-30',
-  removeBy:       '2027-04-30',
-  description:    'Create Event page: name, organizer, place, seating, plus update, delete, postpone, and cancel.',
+  name: 'ff.wallet',
+  owner: '@principal-eng',
+  createdAt: '2026-10-30',
+  removeBy: '2027-04-30',
+  description: 'Unique per-user wallet. Cash-in after OTP emailed to a selected Wellness Valley person. Kill switch hides the Profile row and wallet APIs.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.wallet',
-  owner:          '@principal-eng',
-  createdAt:      '2026-10-30',
-  removeBy:       '2027-04-30',
-  description:    'Unique per-user wallet. Cash-in after OTP emailed to a selected Wellness Valley person. Kill switch hides the Profile row and wallet APIs.',
+  name: 'ff.coach-portfolio',
+  owner: '@principal-eng',
+  createdAt: '2026-11-03',
+  removeBy: '2027-05-03',
+  description: 'Coach Website portfolio form + public pages. Kill switch hides Paid Feature / portfolio APIs. Per-site ₹399/yr checkout is ff.portfolio-site-checkout.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.coach-portfolio',
-  owner:          '@principal-eng',
-  createdAt:      '2026-11-03',
-  removeBy:       '2027-05-03',
-  description:    'Coach Website portfolio form + public pages. Kill switch hides Paid Feature / portfolio APIs. Per-site ₹399/yr checkout is ff.portfolio-site-checkout.',
-  defaultEnabled: true,
-});
-
-registerFlag({
-  name:           'ff.portfolio-site-checkout',
-  owner:          '@principal-eng',
-  createdAt:      '2026-11-20',
-  removeBy:       '2027-05-20',
-  description:    'Emergency kill switch for Digital Portfolio Cashfree website slots (₹399/yr). OFF hides create/confirm site-order APIs only. Default OFF until Cashfree go-live. Not the Play activation path — version routing uses PORTFOLIO_SITE_SLOTS_MIN.',
+  name: 'ff.portfolio-site-checkout',
+  owner: '@principal-eng',
+  createdAt: '2026-11-20',
+  removeBy: '2027-05-20',
+  description: 'Emergency kill switch for Digital Portfolio Cashfree website slots (₹399/yr). OFF hides create/confirm site-order APIs only. Default OFF until Cashfree go-live. Not the Play activation path — version routing uses PORTFOLIO_SITE_SLOTS_MIN.',
   defaultEnabled: false,
 });
 
 registerFlag({
-  name:           'ff.gbp-listing',
-  owner:          '@principal-eng',
-  createdAt:      '2026-11-12',
-  removeBy:       '2027-05-12',
-  description:    'Google Maps Listing request: coach form + FTP media kit + ops email/admin queue. Kill switch hides nav, Profile queue, and GBP APIs. Default OFF until Digital Portfolio review is done.',
+  name: 'ff.gbp-listing',
+  owner: '@principal-eng',
+  createdAt: '2026-11-12',
+  removeBy: '2027-05-12',
+  description: 'Google Maps Listing request: coach form + FTP media kit + ops email/admin queue. Kill switch hides nav, Profile queue, and GBP APIs. Default OFF until Digital Portfolio review is done.',
   defaultEnabled: false,
 });
 
 registerFlag({
-  name:           'ff.field-collection',
-  owner:          '@principal-eng',
-  createdAt:      '2026-11-12',
-  removeBy:       '2027-05-12',
-  description:    'Admin-configured profile fields. Community Position is first. Entry fields block; later fields follow skip count, ask interval, and a must-fill day. Role and community position decide who sees each field. Kill switch. Already released app bundles keep the previous onboarding screens.',
+  name: 'ff.field-collection',
+  owner: '@principal-eng',
+  createdAt: '2026-11-12',
+  removeBy: '2027-05-12',
+  description: 'Admin-configured profile fields. Community Position is first. Entry fields block; later fields follow skip count, ask interval, and a must-fill day. Role and community position decide who sees each field. Kill switch. Already released app bundles keep the previous onboarding screens.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.report-trial',
-  owner:          '@principal-eng',
-  createdAt:      '2026-11-05',
-  removeBy:       '2027-05-05',
-  description:    'Reports stay open. Unpaid detail is hidden until a 14-day trial or Premium. Kill switch. Version routing: app 3.5.5+ is gated; older or missing versions keep the full report.',
+  name: 'ff.report-trial',
+  owner: '@principal-eng',
+  createdAt: '2026-11-05',
+  removeBy: '2027-05-05',
+  description: 'Reports stay open. Unpaid detail is hidden until a 14-day trial or Premium. Kill switch. Version routing: app 3.5.5+ is gated; older or missing versions keep the full report.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.events-trial',
-  owner:          '@principal-eng',
-  createdAt:      '2026-11-12',
-  removeBy:       '2027-05-12',
-  description:    'Legacy Digital Portfolio gate for apps below PORTFOLIO_SITE_SLOTS_MIN. Shares Reports 14-day trial; Create Event/Check-in stay open. Apps at/above next-release site-slots min use per-site ₹399/yr credits instead. Kill switch.',
+  name: 'ff.events-trial',
+  owner: '@principal-eng',
+  createdAt: '2026-11-12',
+  removeBy: '2027-05-12',
+  description: 'Legacy Digital Portfolio gate for apps below PORTFOLIO_SITE_SLOTS_MIN. Shares Reports 14-day trial; Create Event/Check-in stay open. Apps at/above next-release site-slots min use per-site ₹399/yr credits instead. Kill switch.',
   defaultEnabled: true,
 });
 
 registerFlag({
-  name:           'ff.testimonial-upline-display-consent',
-  owner:          '@testimonials-team',
-  createdAt:      '2026-11-09',
-  removeBy:       '2027-05-09',
-  description:    'Gate coach-website What We Say / What We Do on member checkbox + member email OTP after coach content verify. When OFF: legacy verified + direct downline only.',
+  name: 'ff.testimonial-upline-display-consent',
+  owner: '@testimonials-team',
+  createdAt: '2026-11-09',
+  removeBy: '2027-05-09',
+  description: 'Gate coach-website What We Say / What We Do on member checkbox + member email OTP after coach content verify. When OFF: legacy verified + direct downline only.',
   defaultEnabled: true,
 });

@@ -316,9 +316,6 @@ const ActivityTimeReport = lazy(() =>
 const TestimonialsPage = lazy(() =>
   import("./features/testimonials").then((m) => ({ default: m.TestimonialsPage })),
 );
-const BroadcastPage = lazy(() =>
-  import("./features/broadcast").then((m) => ({ default: m.BroadcastPage })),
-);
 const PaidFeaturesPage = lazy(() =>
   import("./features/coach-portfolio").then((m) => ({ default: m.PaidFeaturesPage })),
 );
@@ -419,8 +416,8 @@ function WellnessValleyApp() {
   // background validation effect (checkUserStatus + checkProfileCompletion).
   const otpCacheRestoredRef = useRef(
     !Session.isUserSignedOut() &&
-      Session.isOtpVerified() &&
-      !!Session.getOtpUser(),
+    Session.isOtpVerified() &&
+    !!Session.getOtpUser(),
   );
   const [showInactiveModal, setShowInactiveModal] = useState(false);
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
@@ -653,8 +650,7 @@ function WellnessValleyApp() {
       const preStart = Date.now();
       const flowStart = captureFlowStartRef.current || preStart;
       debugLog(
-        `?? [PERF] ???  Precapture (html2canvas) started (+${
-          preStart - flowStart
+        `?? [PERF] ???  Precapture (html2canvas) started (+${preStart - flowStart
         }ms from capture start)`,
       );
       precaptureShareImage(foodShareCardRef.current).then((dataUrl) => {
@@ -662,8 +658,7 @@ function WellnessValleyApp() {
           foodShareImageDataUrlRef.current = dataUrl;
           foodShareImageReadyAtRef.current = Date.now();
           debugLog(
-            `?? [PERF] ???  Precapture ready: ${Date.now() - preStart}ms (+${
-              Date.now() - flowStart
+            `?? [PERF] ???  Precapture ready: ${Date.now() - preStart}ms (+${Date.now() - flowStart
             }ms from capture start)`,
           );
         } else if (!cancelled) {
@@ -764,7 +759,7 @@ function WellnessValleyApp() {
           if (prev && prev.startsWith("blob:")) {
             try {
               URL.revokeObjectURL(prev);
-            } catch (_) {}
+            } catch (_) { }
           }
           return null;
         });
@@ -931,8 +926,7 @@ function WellnessValleyApp() {
 
       const shareStart = Date.now();
       debugLog(
-        `?? [PERF] ?? Auto-share triggered ? sending WhatsApp link-preview card (+${
-          shareStart - (captureFlowStartRef.current || shareStart)
+        `?? [PERF] ?? Auto-share triggered ? sending WhatsApp link-preview card (+${shareStart - (captureFlowStartRef.current || shareStart)
         }ms from capture start)`,
       );
 
@@ -953,8 +947,7 @@ function WellnessValleyApp() {
       if (cancelled) return;
 
       debugLog(
-        `?? [PERF] ?? shareTextViaWhatsApp resolved in ${
-          Date.now() - shareStart
+        `?? [PERF] ?? shareTextViaWhatsApp resolved in ${Date.now() - shareStart
         }ms (ok=${ok})`,
       );
 
@@ -1498,7 +1491,7 @@ function WellnessValleyApp() {
     // always lands on a 'main' entry, never on a ghost enrollment entry.
     window.history.replaceState({ wvPage: 'main' }, '');
     return () => window.removeEventListener('popstate', handlePopState);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only; setters are stable
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only; setters are stable
   }, []);
 
   // ?? Food Correction Debug Logs State
@@ -1702,7 +1695,7 @@ function WellnessValleyApp() {
     })();
 
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: fire on user/auth change
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: fire on user/auth change
   }, [user?.id, user?.email, isOtpVerified, apiBaseUrl]);
 
   // Force-close Profile only for visible onboarding wizards — not soft resolve flaps
@@ -1806,7 +1799,7 @@ function WellnessValleyApp() {
     })();
 
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: after profile + sponsor gates
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: after profile + sponsor gates
   }, [
     user?.id,
     user?.email,
@@ -1965,7 +1958,7 @@ function WellnessValleyApp() {
           handle = h;
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     return () => {
       cancelled = true;
@@ -2014,7 +2007,7 @@ function WellnessValleyApp() {
       .then((h) => {
         earlyHandle = h;
       })
-      .catch(() => {});
+      .catch(() => { });
 
     // Part A n++ timeout ensures the camera is never blocked forever.
     const fallbackTimer = setTimeout(() => {
@@ -2188,7 +2181,7 @@ function WellnessValleyApp() {
         if (cancelled) h?.remove?.();
         else handle = h;
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       cancelled = true;
       try { handle?.remove?.(); } catch { /* ignore */ }
@@ -2384,7 +2377,7 @@ function WellnessValleyApp() {
         handle = h;
         if (cancelled) handle?.remove?.();
       })
-      .catch(() => {});
+      .catch(() => { });
 
     // Cold-start: the OS may have already delivered the launch URL before
     // this effect mounted. Inspect it once on first run.
@@ -2560,7 +2553,7 @@ function WellnessValleyApp() {
       if (!userId && user) {
         try {
           userId = await getUserId(user);
-        } catch (_) {}
+        } catch (_) { }
       }
       if (!userId || cancelled) return;
 
@@ -2697,9 +2690,10 @@ function WellnessValleyApp() {
       goBack,
       showToast,
       !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showBroadcast && !showCreateEvent && !showPaidFeatures && !showMapBusiness && !showEvents && !showReports && !showAdminConfigSetup && !showManualEntry && !showWellnessScore && !showProfilePage,
+      !showDashboard && !showWellnessCounselling && !showUniversityEnrollment && !showNutritionCentersMap && !showActivityReport && !showActivityTimeReport && !showTestimonials && !showCreateEvent && !showPaidFeatures && !showMapBusiness && !showEvents && !showReports && !showAdminConfigSetup && !showManualEntry && !showWellnessScore && !showProfilePage,
     );
     return () => cleanupBackButton();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- showMainPage is useCallback([]) stable; listing it here causes a TDZ crash because it is declared after this effect
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- showMainPage is useCallback([]) stable; listing it here causes a TDZ crash because it is declared after this effect
   }, [
     showDashboard,
     showWellnessCounselling,
@@ -2873,70 +2867,70 @@ function WellnessValleyApp() {
       if (navLockRef.current) return;
       navLockRef.current = true;
       try {
-      // Fire status check in the background � do NOT await it.
-      // Awaiting blocked the Diary nav for ~200-500 ms on every tap, and
-      // held navLockRef=true during that window so rapid taps were silently
-      // dropped. If the account has become inactive the periodic 60-second
-      // check (or the auth-state-change IIFE) will surface the modal shortly;
-      // we don't need to gate navigation on it here.
-      if (user) {
-        checkUserStatus(user).then((isActive) => {
-          if (!isActive) {
-            // Account became inactive while dashboard was opening � close it.
-            setShowDashboard(false);
-          }
-        }).catch(() => {/* fail-open */});
-      }
+        // Fire status check in the background � do NOT await it.
+        // Awaiting blocked the Diary nav for ~200-500 ms on every tap, and
+        // held navLockRef=true during that window so rapid taps were silently
+        // dropped. If the account has become inactive the periodic 60-second
+        // check (or the auth-state-change IIFE) will surface the modal shortly;
+        // we don't need to gate navigation on it here.
+        if (user) {
+          checkUserStatus(user).then((isActive) => {
+            if (!isActive) {
+              // Account became inactive while dashboard was opening � close it.
+              setShowDashboard(false);
+            }
+          }).catch(() => {/* fail-open */ });
+        }
 
-      // Clear transient capture/analysis state when switching to dashboard.
-      // All setters are unconditional � setState(null) when already null is
-      // a no-op in React (Object.is bail-out), so no extra render fires.
-      // This also removes nutritionData/imagePreview/etc. from the dep array
-      // below, preventing showDashboardPage from being recreated (and the
-      // gallery-monitoring effect from re-initialising) on every AI result.
-      setNutritionData(null);
-      setImagePreview(null);
-      setWatchResult(null);
-      setEducationResult(null);
-      clearWeightState();
-      setSelectedImage(null);
-      setImageType(null);
+        // Clear transient capture/analysis state when switching to dashboard.
+        // All setters are unconditional � setState(null) when already null is
+        // a no-op in React (Object.is bail-out), so no extra render fires.
+        // This also removes nutritionData/imagePreview/etc. from the dep array
+        // below, preventing showDashboardPage from being recreated (and the
+        // gallery-monitoring effect from re-initialising) on every AI result.
+        setNutritionData(null);
+        setImagePreview(null);
+        setWatchResult(null);
+        setEducationResult(null);
+        clearWeightState();
+        setSelectedImage(null);
+        setImageType(null);
 
-      // Stage 16 (final) � Dashboard about to open.
-      // Any in-flight food save (savePromiseRef) continues in the background;
-      // performNutritionSave calls triggerNutritionRefresh after the DB write
-      // so the Dashboard refreshes automatically once the data is committed.
-      // Awaiting here caused the Diary nav to appear frozen for up to ~10 s
-      // (GPS timeout 5 s + DB write) when the user tapped Diary right after
-      // taking a photo.
-      _ctLog(16, 'showDashboardPage � setShowDashboard(true) about to fire', {
-        hadPendingSave: !!savePromiseRef.current,
-        preferredTab,
-      });
+        // Stage 16 (final) � Dashboard about to open.
+        // Any in-flight food save (savePromiseRef) continues in the background;
+        // performNutritionSave calls triggerNutritionRefresh after the DB write
+        // so the Dashboard refreshes automatically once the data is committed.
+        // Awaiting here caused the Diary nav to appear frozen for up to ~10 s
+        // (GPS timeout 5 s + DB write) when the user tapped Diary right after
+        // taking a photo.
+        _ctLog(16, 'showDashboardPage � setShowDashboard(true) about to fire', {
+          hadPendingSave: !!savePromiseRef.current,
+          preferredTab,
+        });
 
-      // Use explicitly requested tab when provided (e.g., profile menu shortcuts).
-      // Never infer from imageTypeRef: after food/weight/education analysis the
-      // imageType ref still holds the last classification, which would force the
-      // Nutrition/Weight/Education tab even when the user explicitly taps Diary.
-      // Always defer to null so the Dashboard restores the last-used tab from
-      // localStorage � that is the correct behaviour for an explicit navigation.
-      if (
-        preferredTab === "weight" ||
-        preferredTab === "nutrition" ||
-        preferredTab === "education" ||
-        preferredTab === "diary"
-      ) {
-        setDashboardInitialTab(preferredTab);
-      } else {
-        setDashboardInitialTab(null); // Defer to last-used tab (localStorage)
-      }
-      // Urgent update — navigation flags are now used directly (no useDeferredValue),
-      // so this is an immediate render with no deferral possible.
-      bumpTabVisitKey('dashboard');
-      setShowDashboard(true);
-      Session.setCurrentPage("dashboard");
-      // Push a browser history entry so the native back button can return to home.
-      window.history.pushState({ wvPage: 'dashboard' }, '');
+        // Use explicitly requested tab when provided (e.g., profile menu shortcuts).
+        // Never infer from imageTypeRef: after food/weight/education analysis the
+        // imageType ref still holds the last classification, which would force the
+        // Nutrition/Weight/Education tab even when the user explicitly taps Diary.
+        // Always defer to null so the Dashboard restores the last-used tab from
+        // localStorage � that is the correct behaviour for an explicit navigation.
+        if (
+          preferredTab === "weight" ||
+          preferredTab === "nutrition" ||
+          preferredTab === "education" ||
+          preferredTab === "diary"
+        ) {
+          setDashboardInitialTab(preferredTab);
+        } else {
+          setDashboardInitialTab(null); // Defer to last-used tab (localStorage)
+        }
+        // Urgent update — navigation flags are now used directly (no useDeferredValue),
+        // so this is an immediate render with no deferral possible.
+        bumpTabVisitKey('dashboard');
+        setShowDashboard(true);
+        Session.setCurrentPage("dashboard");
+        // Push a browser history entry so the native back button can return to home.
+        window.history.pushState({ wvPage: 'dashboard' }, '');
       } finally {
         navLockRef.current = false;
       }
@@ -2992,7 +2986,7 @@ function WellnessValleyApp() {
     if (currentWvPage && currentWvPage !== 'main') {
       window.history.back();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- all setters are stable; refs are not reactive
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- all setters are stable; refs are not reactive
   }, []);
 
   // -- Cross-tab navigation helper -------------------------------------------
@@ -3045,7 +3039,7 @@ function WellnessValleyApp() {
       setShowBroadcast(false);
       setShowCreateEvent(false);
       setShowPaidFeatures(false);
-        setShowMapBusiness(false);
+      setShowMapBusiness(false);
       setShowReports(false);
       setShowAdminConfigSetup(false);
       setShowManualEntry(false);
@@ -3111,7 +3105,7 @@ function WellnessValleyApp() {
     setShowBroadcast(false);
     setShowCreateEvent(false);
     setShowPaidFeatures(false);
-        setShowMapBusiness(false);
+    setShowMapBusiness(false);
     setShowReports(false);
     setShowAdminConfigSetup(false);
     setShowManualEntry(false);
@@ -3230,7 +3224,7 @@ function WellnessValleyApp() {
       default:
         break;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- setters/refs stable; showDashboardPage stable
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setters/refs stable; showDashboardPage stable
   }, [showDashboardPage, userRole, bumpTabVisitKey, refreshOnTabFocus]);
 
   useEffect(() => {
@@ -3320,7 +3314,7 @@ function WellnessValleyApp() {
     } finally {
       _permissionFlowRunningRef.current = false;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Background location cache: keep latest GPS + club/city ready so photo
@@ -3410,7 +3404,7 @@ function WellnessValleyApp() {
         setUser(reactivated);
         setAuthLoading(false);
         // Re-check status in background after DB commit — do not block entry.
-        checkUserStatus(reactivated, true).catch(() => {});
+        checkUserStatus(reactivated, true).catch(() => { });
       } catch {
         /* ignore */
       }
@@ -3878,7 +3872,7 @@ function WellnessValleyApp() {
       allowRemainingProfile: Session.isSetupSkipped(),
     });
     return undefined;
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- restore legacy gates once
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restore legacy gates once
   }, [fieldCollectionLive]);
 
   // Email users: run profile completeness as the first gate (before activity / coach).
@@ -3889,7 +3883,7 @@ function WellnessValleyApp() {
     if (!email) return;
     // Always ask the API — session "complete" flags may be stale after new required fields (gender/photo).
     checkProfileCompletion(email, user, { silent: true });
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: user/auth only
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: user/auth only
   }, [user?.id, user?.email, isOtpVerified, checkProfileCompletion]);
 
   // Consent gate: ask only when DB has no ConsentAcceptedAt for this UserId.
@@ -3917,7 +3911,7 @@ function WellnessValleyApp() {
       }
     })();
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: identity only
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: identity only
   }, [user?.id, user?.UserId, user?.email, isOtpVerified]);
 
   // Profile avatar comes from Centre transformation photo — do not force a separate upload.
@@ -4030,13 +4024,13 @@ function WellnessValleyApp() {
         console.warn(
           "?? [Auth State] Blocked silent re-auth ? user signed out",
         );
-        signOutUser().catch(() => {});
+        signOutUser().catch(() => { });
         return;
       }
       // ? Block re-auth if account was permanently deleted
       if (user && Session.isAccountDeleted()) {
         console.warn("?? [Auth State] Blocked re-auth ? account was deleted");
-        signOutUser().catch(() => {});
+        signOutUser().catch(() => { });
         return;
       }
       // ? Hard gate: if forceLoggedOut is true, never re-login from Firebase
@@ -4044,7 +4038,7 @@ function WellnessValleyApp() {
         console.warn(
           "?? [Auth State] Blocked re-auth ? forceLoggedOut is true",
         );
-        signOutUser().catch(() => {});
+        signOutUser().catch(() => { });
         return;
       }
 
@@ -4194,7 +4188,7 @@ function WellnessValleyApp() {
     }
 
     return () => { mounted = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, advancePermissionFlow, handleSaveUserCache]);
 
   // Fetch education time window from DB so ImageUpload uses live values (no hardcoding)
@@ -4442,7 +4436,7 @@ function WellnessValleyApp() {
           handle = h;
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     return () => {
       cancelled = true;
@@ -4523,13 +4517,13 @@ function WellnessValleyApp() {
         if (cancelled) h?.remove?.();
         else handle = h;
       })
-      .catch(() => {});
+      .catch(() => { });
 
     return () => {
       cancelled = true;
       try { handle?.remove?.(); } catch { /* ignore */ }
     };
-  // Re-register when any of these change so the handler has fresh closure values.
+    // Re-register when any of these change so the handler has fresh closure values.
   }, [user, showGpsRequired, activePermission, permissionsReady, advancePermissionFlow]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sponsor setup / OTP — after display name, before remaining profile + activity.
@@ -4655,7 +4649,7 @@ function WellnessValleyApp() {
         if (cancelled) h?.remove?.();
         else handle = h;
       })
-      .catch(() => {});
+      .catch(() => { });
 
     return () => {
       cancelled = true;
@@ -4675,7 +4669,7 @@ function WellnessValleyApp() {
     if (
       showOnboardingTransformationPhotos
       || transformationPhotosGateRef.current
-      ||       showPhysicalActivitySetup
+      || showPhysicalActivitySetup
       || showCompleteProfile
     ) {
       setCoachSetupResolved(true);
@@ -4863,19 +4857,19 @@ function WellnessValleyApp() {
         ) {
           setShowConsentGate(true);
         }
-        
+
         if (data?.success && data?.data) {
           setSavedProfileImage(
             data.data.profileImage
-              || user?.photoURL
-              || user?.ProfileImage
-              || null
+            || user?.photoURL
+            || user?.ProfileImage
+            || null
           );
         } else {
           setSavedProfileImage(
             user?.photoURL
-              || user?.ProfileImage
-              || null
+            || user?.ProfileImage
+            || null
           );
         }
 
@@ -5127,9 +5121,9 @@ function WellnessValleyApp() {
         icon: "??",
         sub: weightWindow
           ? `${weightWindow.start?.slice(0, 5)}?${weightWindow.end?.slice(
-              0,
-              5,
-            )}`
+            0,
+            5,
+          )}`
           : null,
         onClick: () => {
           setShowManualFoodModal(false);
@@ -5144,9 +5138,9 @@ function WellnessValleyApp() {
         icon: "??",
         sub: educationWindow
           ? `${educationWindow.start?.slice(0, 5)}?${educationWindow.end?.slice(
-              0,
-              5,
-            )}`
+            0,
+            5,
+          )}`
           : null,
         onClick: () => {
           setShowManualFoodModal(false);
@@ -5367,7 +5361,7 @@ function WellnessValleyApp() {
           reservationId,
           analysisResult: creditPayload,
           apiBaseUrl,
-        }).catch(() => {});
+        }).catch(() => { });
       };
 
       if (detectedType.type === "food") {
@@ -5630,9 +5624,9 @@ function WellnessValleyApp() {
 
         let detectedType;
         try {
-          const dbOwnerUserId = user && ownerUserId === user.id 
-             ? await getUserId(user).catch(() => null) || ownerUserId 
-             : ownerUserId;
+          const dbOwnerUserId = user && ownerUserId === user.id
+            ? await getUserId(user).catch(() => null) || ownerUserId
+            : ownerUserId;
 
           detectedType = await orchestrateAnalyzeImage(file, {
             userId: dbOwnerUserId ? String(dbOwnerUserId) : null,
@@ -5686,7 +5680,7 @@ function WellnessValleyApp() {
             reservationId,
             analysisResult: analysisPayload,
             apiBaseUrl,
-          }).catch(() => {});
+          }).catch(() => { });
         };
 
         const releaseCredit = async (reason) => {
@@ -5911,8 +5905,8 @@ function WellnessValleyApp() {
         captureTimestamp
           ? "(from EXIF param)"
           : imageTimestamp
-          ? "(from state)"
-          : "(current time)",
+            ? "(from state)"
+            : "(current time)",
       );
 
       const storageImage = imageBase64
@@ -6592,7 +6586,7 @@ function WellnessValleyApp() {
 
     const previewDataUrl =
       typeof selectOptions?.previewDataUrl === "string" &&
-      selectOptions.previewDataUrl.length > 0
+        selectOptions.previewDataUrl.length > 0
         ? selectOptions.previewDataUrl
         : null;
 
@@ -6643,11 +6637,11 @@ function WellnessValleyApp() {
     const readPromise = previewDataUrl
       ? Promise.resolve(previewDataUrl)
       : new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (e) => resolve(e.target.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
 
     // ? MANUAL MODE: skip AI entirely, open best manual modal
     if (manualModeActive) {
@@ -6864,7 +6858,7 @@ function WellnessValleyApp() {
       if (!resolvedUserIdForOrchestrate) {
         try {
           resolvedUserIdForOrchestrate = await getUserId(user);
-        } catch (_) {}
+        } catch (_) { }
       }
       if (resolvedUserIdForOrchestrate && resolvedUserIdForOrchestrate !== user?.id) {
         setManualEntryPayload((prev) => {
@@ -6875,8 +6869,7 @@ function WellnessValleyApp() {
 
       const captureApiStart = Date.now();
       debugLog(
-        `?? [PERF] POST /captures started (+${
-          captureApiStart - perfStart
+        `?? [PERF] POST /captures started (+${captureApiStart - perfStart
         }ms from capture start)`,
       );
 
@@ -6930,25 +6923,23 @@ function WellnessValleyApp() {
             throw err;
           }
           // Accept flat { ok, data } or accidental nested { httpStatus, body }.
-        const capRaw = await capRes.json();
+          const capRaw = await capRes.json();
           const capData = capRaw?.body?.ok != null ? capRaw.body : capRaw;
-        const capDuration = Date.now() - captureApiStart;
+          const capDuration = Date.now() - captureApiStart;
           if (!capData.ok || !capData.data?.id) {
             throw new Error("Capture save returned no id");
           }
           captureShare = {
             id: capData.data.id,
-            url: `${apiBaseUrl}/share/${
-              capData.data.shareCode || capData.data.token
-            }`,
+            url: `${apiBaseUrl}/share/${capData.data.shareCode || capData.data.token
+              }`,
           };
           captureLocationByIdRef.current.set(
             String(captureShare.id),
             stripLocationDiagnostics(captureLocationFields),
           );
           debugLog(
-            `?? [PERF] POST /captures: ${capDuration}ms (+${
-              Date.now() - perfStart
+            `?? [PERF] POST /captures: ${capDuration}ms (+${Date.now() - perfStart
             }ms from capture start) — token ready (attempt ${capAttempt})`,
           );
           _ctLog(2, 'capture row created', {
@@ -6963,8 +6954,7 @@ function WellnessValleyApp() {
           captureLastErr = capErr;
           const retryable = capErr?._retryable !== false && capAttempt < CAPTURE_MAX_ATTEMPTS;
           debugLog(
-            `?? [PERF] POST /captures attempt ${capAttempt} FAILED: ${capErr?.message || capErr}${
-              retryable ? ` — retrying in 1s` : ''
+            `?? [PERF] POST /captures attempt ${capAttempt} FAILED: ${capErr?.message || capErr}${retryable ? ` — retrying in 1s` : ''
             }`,
           );
           if (!retryable) break;
@@ -6973,8 +6963,7 @@ function WellnessValleyApp() {
       }
       if (!captureShare) {
         debugLog(
-          `?? [PERF] POST /captures FAILED after ${
-            Date.now() - captureApiStart
+          `?? [PERF] POST /captures FAILED after ${Date.now() - captureApiStart
           }ms: ${captureLastErr?.message || captureLastErr}`,
         );
         setShowManualEntry(false);
@@ -7009,7 +6998,7 @@ function WellnessValleyApp() {
           void deleteCapture({
             captureId: captureShare.id,
             userId: discardUserId,
-          }).catch(() => {});
+          }).catch(() => { });
         }
         setCaptureFlowBusy(false);
         return;
@@ -7909,33 +7898,33 @@ function WellnessValleyApp() {
       <>
         {alertModalPortal}
         <Suspense
-        fallback={
-          <div
-            className="fixed inset-0 z-[999999] flex items-center justify-center bg-white"
-            aria-busy="true"
-            aria-label="Loading verification screen"
-          >
-            <LoadingSpinner />
-          </div>
-        }
-      >
-        <ValidateOTP
-          key="reactivation"
-          isReactivationFlow
-          userEmail={
-            user?.email || user?.Email || Session.getUserEmail() || ""
+          fallback={
+            <div
+              className="fixed inset-0 z-[999999] flex items-center justify-center bg-white"
+              aria-busy="true"
+              aria-label="Loading verification screen"
+            >
+              <LoadingSpinner />
+            </div>
           }
-          coachName={inactiveCoachName || undefined}
-          onClose={() => {
-            isInactiveReactivationFlowRef.current = false;
-            setShowValidateOTP(false);
-            setIsInactiveReactivationFlow(false);
-            handleSignOut();
-          }}
-          onSuccess={handleInactiveReactivationSuccess}
-          onLogout={handleSignOut}
-        />
-      </Suspense>
+        >
+          <ValidateOTP
+            key="reactivation"
+            isReactivationFlow
+            userEmail={
+              user?.email || user?.Email || Session.getUserEmail() || ""
+            }
+            coachName={inactiveCoachName || undefined}
+            onClose={() => {
+              isInactiveReactivationFlowRef.current = false;
+              setShowValidateOTP(false);
+              setIsInactiveReactivationFlow(false);
+              handleSignOut();
+            }}
+            onSuccess={handleInactiveReactivationSuccess}
+            onLogout={handleSignOut}
+          />
+        </Suspense>
       </>
     );
   }
@@ -8211,122 +8200,122 @@ function WellnessValleyApp() {
         />
         <div className="ios-scroll-body">
           <ProfilePageErrorBoundary onBack={() => navigateTo('home')}>
-          <UserProfilePage
-            user={user}
-            userRole={userRole}
-            allowedPages={navAccessPages}
-            onBack={() => navigateTo('home')}
-            onSignOut={handleSignOut}
-            onProfileUpdate={(profileData) => {
-              const email = profileData?.email
-                || user?.email
-                || Session.getUserEmail()
-                || "";
-              if (profileData?.email) {
-                Session.setUserEmail(profileData.email);
-              }
-              if (profileData?.adopted && profileData?.userId) {
-                Session.setDbUserId(profileData.userId);
-                clearUserIdCache();
-              }
-              // Persist otpUser so refresh restores the recovered account
-              // (same pattern as OnboardingIdentityPage). Without this, refresh
-              // reloads the pre-recover id/email from localStorage.
-              if (profileData?.email || profileData?.adopted) {
-                const cachedRaw = Session.getOtpUserRaw();
-                if (cachedRaw) {
-                  try {
-                    const cached = JSON.parse(cachedRaw);
-                    Session.setOtpUser({
-                      ...cached,
-                      ...(profileData.email
-                        ? { email: profileData.email, Email: profileData.email }
+            <UserProfilePage
+              user={user}
+              userRole={userRole}
+              allowedPages={navAccessPages}
+              onBack={() => navigateTo('home')}
+              onSignOut={handleSignOut}
+              onProfileUpdate={(profileData) => {
+                const email = profileData?.email
+                  || user?.email
+                  || Session.getUserEmail()
+                  || "";
+                if (profileData?.email) {
+                  Session.setUserEmail(profileData.email);
+                }
+                if (profileData?.adopted && profileData?.userId) {
+                  Session.setDbUserId(profileData.userId);
+                  clearUserIdCache();
+                }
+                // Persist otpUser so refresh restores the recovered account
+                // (same pattern as OnboardingIdentityPage). Without this, refresh
+                // reloads the pre-recover id/email from localStorage.
+                if (profileData?.email || profileData?.adopted) {
+                  const cachedRaw = Session.getOtpUserRaw();
+                  if (cachedRaw) {
+                    try {
+                      const cached = JSON.parse(cachedRaw);
+                      Session.setOtpUser({
+                        ...cached,
+                        ...(profileData.email
+                          ? { email: profileData.email, Email: profileData.email }
+                          : {}),
+                        ...(profileData.adopted && profileData.userId
+                          ? {
+                            id: profileData.userId,
+                            UserId: profileData.userId,
+                            userId: profileData.userId,
+                          }
+                          : {}),
+                        ...(profileData.phone
+                          ? {
+                            phone: profileData.phone,
+                            phoneNumber: profileData.phone,
+                            PhoneNumber: profileData.phone,
+                          }
+                          : {}),
+                        ...(profileData.name?.trim()
+                          ? {
+                            username: profileData.name.trim(),
+                            userName: profileData.name.trim(),
+                            UserName: profileData.name.trim(),
+                          }
+                          : {}),
+                      });
+                    } catch { /* non-fatal */ }
+                  }
+                }
+                if (profileData?.email || profileData?.adopted) {
+                  setUser((prevUser) => {
+                    if (!prevUser) return prevUser;
+                    return {
+                      ...prevUser,
+                      email: profileData.email || prevUser.email,
+                      Email: profileData.email || prevUser.Email,
+                      ...(profileData.name?.trim()
+                        ? {
+                          username: profileData.name.trim(),
+                          userName: profileData.name.trim(),
+                          displayName: profileData.name.trim(),
+                        }
                         : {}),
                       ...(profileData.adopted && profileData.userId
                         ? {
                           id: profileData.userId,
                           UserId: profileData.userId,
                           userId: profileData.userId,
+                          phone: profileData.phone || prevUser.phone,
+                          phoneNumber: profileData.phone || prevUser.phoneNumber,
                         }
                         : {}),
-                      ...(profileData.phone
-                        ? {
-                          phone: profileData.phone,
-                          phoneNumber: profileData.phone,
-                          PhoneNumber: profileData.phone,
-                        }
-                        : {}),
-                      ...(profileData.name?.trim()
-                        ? {
-                          username: profileData.name.trim(),
-                          userName: profileData.name.trim(),
-                          UserName: profileData.name.trim(),
-                        }
-                        : {}),
-                    });
-                  } catch { /* non-fatal */ }
+                    };
+                  });
                 }
-              }
-              if (profileData?.email || profileData?.adopted) {
-                setUser((prevUser) => {
-                  if (!prevUser) return prevUser;
-                  return {
+                profileCompletedRef.current = false;
+                // silent: stay on My Profile — non-silent sets profileChecking and
+                // swaps the whole app to the auth bridge (looks like a full reload).
+                checkProfileCompletion(email, user, { afterSave: true, silent: true });
+                if (profileData?.name?.trim()) {
+                  setSavedUserName(profileData.name.trim());
+                  if (email) cacheProfileUserName(email, profileData.name);
+                }
+                // Keep share cards + any prop-drilled avatars on the same photo source.
+                if (profileData?.profileImage) {
+                  setSavedProfileImage(profileData.profileImage);
+                  setUser((prevUser) => ({
                     ...prevUser,
-                    email: profileData.email || prevUser.email,
-                    Email: profileData.email || prevUser.Email,
-                    ...(profileData.name?.trim()
-                      ? {
-                        username: profileData.name.trim(),
-                        userName: profileData.name.trim(),
-                        displayName: profileData.name.trim(),
-                      }
-                      : {}),
-                    ...(profileData.adopted && profileData.userId
-                      ? {
-                        id: profileData.userId,
-                        UserId: profileData.userId,
-                        userId: profileData.userId,
-                        phone: profileData.phone || prevUser.phone,
-                        phoneNumber: profileData.phone || prevUser.phoneNumber,
-                      }
-                      : {}),
-                  };
-                });
-              }
-              profileCompletedRef.current = false;
-              // silent: stay on My Profile — non-silent sets profileChecking and
-              // swaps the whole app to the auth bridge (looks like a full reload).
-              checkProfileCompletion(email, user, { afterSave: true, silent: true });
-              if (profileData?.name?.trim()) {
-                setSavedUserName(profileData.name.trim());
-                if (email) cacheProfileUserName(email, profileData.name);
-              }
-              // Keep share cards + any prop-drilled avatars on the same photo source.
-              if (profileData?.profileImage) {
-                setSavedProfileImage(profileData.profileImage);
-                setUser((prevUser) => ({
-                  ...prevUser,
-                  profileImage: profileData.profileImage,
-                  ProfileImage: profileData.profileImage,
-                  photoURL: profileData.profileImage,
-                }));
-              }
-              if (profileData?.bmr || profileData?.physicalActivityLevel) {
-                setBmrUpdateKey((prev) => prev + 1);
-              }
-              if (profileData?.physicalActivityLevel) {
-                physicalActivityConfirmedRef.current = true;
-              }
-              if (profileData?.teamSearchRefresh) {
-                setTeamSearchRefreshKey((k) => k + 1);
-              }
-              // Increment profileKey so Header re-fetches avatar/name
-              setHeaderProfileKey((k) => k + 1);
-              // Refresh Home cards under the profile overlay (no full-app gate).
-              triggerNutritionRefresh({ immediate: true, source: 'profile-update' });
-              setBodyParamsRefreshKey((k) => k + 1);
-            }}
-          />
+                    profileImage: profileData.profileImage,
+                    ProfileImage: profileData.profileImage,
+                    photoURL: profileData.profileImage,
+                  }));
+                }
+                if (profileData?.bmr || profileData?.physicalActivityLevel) {
+                  setBmrUpdateKey((prev) => prev + 1);
+                }
+                if (profileData?.physicalActivityLevel) {
+                  physicalActivityConfirmedRef.current = true;
+                }
+                if (profileData?.teamSearchRefresh) {
+                  setTeamSearchRefreshKey((k) => k + 1);
+                }
+                // Increment profileKey so Header re-fetches avatar/name
+                setHeaderProfileKey((k) => k + 1);
+                // Refresh Home cards under the profile overlay (no full-app gate).
+                triggerNutritionRefresh({ immediate: true, source: 'profile-update' });
+                setBodyParamsRefreshKey((k) => k + 1);
+              }}
+            />
           </ProfilePageErrorBoundary>
         </div>
       </div>
@@ -8573,8 +8562,8 @@ function WellnessValleyApp() {
             onShowTestimonials={() => navigateTo('testimonials')}
             onShowBroadcast={() => navigateTo('broadcast')}
             onShowCreateEvent={() => navigateTo('create-event')}
-          onShowPaidFeatures={() => navigateTo('paid-features')}
-          onShowMapBusiness={() => navigateTo('map-business')}
+            onShowPaidFeatures={() => navigateTo('paid-features')}
+            onShowMapBusiness={() => navigateTo('map-business')}
             onShowEventCheckIn={() => navigateTo('event-check-in')}
             onShowReports={() => navigateTo('reports')}
             onOpenProfile={() => navigateTo('profile')}
@@ -9034,101 +9023,101 @@ function WellnessValleyApp() {
         style={{ display: homeOverlay ? 'none' : undefined }}
         aria-hidden={Boolean(homeOverlay)}
       >
-    <LocationGuard>
-      <div
-        className="ios-full-page"
-        style={{
-          background: 'var(--wv-page-wash)',
-        }}
-      >
-        {/* -- Permission denied modal (canRequest: true) ---------------------
+        <LocationGuard>
+          <div
+            className="ios-full-page"
+            style={{
+              background: 'var(--wv-page-wash)',
+            }}
+          >
+            {/* -- Permission denied modal (canRequest: true) ---------------------
           Location only. Camera must NEVER use this gate (App Store 5.1.1(iv)).
           Small overlay card: "<Perm> permission is required to continue."
           [ Allow Again ] immediately re-invokes the native OS dialog.
           [ Exit ] closes the app. */}
-        {/* Legacy hard gates disabled for Camera/Photos/Location (5.1.1(iv)).
+            {/* Legacy hard gates disabled for Camera/Photos/Location (5.1.1(iv)).
           Soft Settings notices use CameraPermissionNeededModal below. */}
-        {false && activePermission?.canRequest === true && (
-          <PermissionDeniedModal
-            type={activePermission.type}
-            config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
-            onAllow={() => handlePermissionAllow(activePermission.type)}
-            onExit={() => { import('@capacitor/app').then(({ App: CApp }) => CApp.exitApp()); }}
-            loading={permissionDialogLoading}
-          />
-        )}
-        {false && activePermission?.canRequest === false && (
-          <PermissionBlockedPage
-            type={activePermission.type}
-            config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
-            onOpenSettings={() => PermissionManager.openAppSettings()}
-            onExit={() => { import('@capacitor/app').then(({ App: CApp }) => CApp.exitApp()); }}
-          />
-        )}
+            {false && activePermission?.canRequest === true && (
+              <PermissionDeniedModal
+                type={activePermission.type}
+                config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
+                onAllow={() => handlePermissionAllow(activePermission.type)}
+                onExit={() => { import('@capacitor/app').then(({ App: CApp }) => CApp.exitApp()); }}
+                loading={permissionDialogLoading}
+              />
+            )}
+            {false && activePermission?.canRequest === false && (
+              <PermissionBlockedPage
+                type={activePermission.type}
+                config={PermissionManager.PERMISSION_CONFIG[activePermission.type]}
+                onOpenSettings={() => PermissionManager.openAppSettings()}
+                onExit={() => { import('@capacitor/app').then(({ App: CApp }) => CApp.exitApp()); }}
+              />
+            )}
 
-        {/* Camera feature-use notice — dismissible; Settings link only.
+            {/* Camera feature-use notice — dismissible; Settings link only.
           Shown when the user taps Take Photo after Camera was denied.
           Never "Allow Again" / never Exit / never blocks the whole app. */}
-        {mediaPermissionNeeded && (
-          <CameraPermissionNeededModal
-            kind={mediaPermissionNeeded}
-            onOpenSettings={async () => {
-              try {
-                if (mediaPermissionNeeded === 'location') {
-                  await nativeLifecycle.openLocationPermissionSettings();
-                } else {
-                  await PermissionManager.openAppSettings();
-                }
-              } catch (err) {
-                console.warn('[App] openAppSettings failed:', err);
-              } finally {
-                setMediaPermissionNeeded(null);
-              }
-            }}
-            onDismiss={() => setMediaPermissionNeeded(null)}
-          />
-        )}
+            {mediaPermissionNeeded && (
+              <CameraPermissionNeededModal
+                kind={mediaPermissionNeeded}
+                onOpenSettings={async () => {
+                  try {
+                    if (mediaPermissionNeeded === 'location') {
+                      await nativeLifecycle.openLocationPermissionSettings();
+                    } else {
+                      await PermissionManager.openAppSettings();
+                    }
+                  } catch (err) {
+                    console.warn('[App] openAppSettings failed:', err);
+                  } finally {
+                    setMediaPermissionNeeded(null);
+                  }
+                }}
+                onDismiss={() => setMediaPermissionNeeded(null)}
+              />
+            )}
 
-        {/* GPS hard-block disabled (App Store 5.1.1(iv) — do not trap the app).
+            {/* GPS hard-block disabled (App Store 5.1.1(iv) — do not trap the app).
           Location Services issues are handled at feature use with a soft notice. */}
-        {false && showGpsRequired && (
-          <GpsRequiredModal
-            platform={Capacitor.getPlatform()}
-            onOpenSettings={() => nativeLifecycle.openLocationSettings()}
-          />
-        )}
-        {/* Launch overlay � covers the home screen from app start until the
+            {false && showGpsRequired && (
+              <GpsRequiredModal
+                platform={Capacitor.getPlatform()}
+                onOpenSettings={() => nativeLifecycle.openLocationSettings()}
+              />
+            )}
+            {/* Launch overlay � covers the home screen from app start until the
           native camera overlay appears. Looks identical to the native splash
           (white + centred logo) so the transition is seamless: native splash
           fades, our overlay is already there, then camera opens on top.
           Dismissed right before openCamera() is called (see camera effect). */}
-        {showLaunchOverlay && (
-          <div
-            aria-hidden="true"
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 10000,
-              background: "#ffffff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <img
-              src={wellnessValleyIcon}
-              alt=""
-              style={{ width: 120, height: 120, objectFit: "contain" }}
-            />
-          </div>
-        )}
+            {showLaunchOverlay && (
+              <div
+                aria-hidden="true"
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  zIndex: 10000,
+                  background: "#ffffff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <img
+                  src={wellnessValleyIcon}
+                  alt=""
+                  style={{ width: 120, height: 120, objectFit: "contain" }}
+                />
+              </div>
+            )}
 
-        {/* ? Share-pending overlay � covers the home screen during the brief
+            {/* ? Share-pending overlay � covers the home screen during the brief
           window between native-camera close and WhatsApp share-sheet open.
           Glitter animations keep the user engaged so they don't navigate away. */}
-        {sharingPendingImage && (
-          <>
-            <style>{`
+            {sharingPendingImage && (
+              <>
+                <style>{`
             @keyframes _wb_shimmer {
               0%   { transform: translateX(-120%) skewX(-18deg); }
               100% { transform: translateX(350%)  skewX(-18deg); }
@@ -9157,1183 +9146,1181 @@ function WellnessValleyApp() {
             }
           `}</style>
 
-            <div
-              aria-hidden="true"
-              style={{
-                position: "fixed",
-                inset: 0,
-                zIndex: 9999,
-                background: "linear-gradient(160deg,#0a0a0a 0%,#111 100%)",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "16px 12px 32px",
-                gap: 0,
-              }}
-            >
-              {/* -- Photo with shimmer + glow ring -- */}
-              <div
-                style={{
-                  position: "relative",
-                  maxWidth: "100%",
-                  width: "100%",
-                  flex: "1 1 auto",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 18,
-                  animation: "_wb_glow_pulse 2s ease-in-out infinite",
-                  overflow: "hidden",
-                }}
-              >
-                <img
-                  src={sharingPendingImage}
-                  alt=""
-                  style={{
-                    maxWidth: "100%",
-                    maxHeight: "100%",
-                    width: "100%",
-                    objectFit: "contain",
-                    display: "block",
-                    borderRadius: 18,
-                  }}
-                />
-
-                {/* Shimmer sweep */}
                 <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    overflow: "hidden",
-                    borderRadius: 18,
-                    pointerEvents: "none",
-                  }}
-                >
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      width: "45%",
-                      height: "100%",
-                      background:
-                        "linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.22) 50%,transparent 100%)",
-                      animation: "_wb_shimmer 1.7s ease-in-out infinite",
-                      animationDelay: "0.4s",
-                    }}
-                  />
-                </div>
-
-                {/* Sparkle particles � distributed across image width */}
-                {[
-                  { color: "#FFD700", left: "8%", delay: 0 },
-                  { color: "#FF69B4", left: "20%", delay: 0.25 },
-                  { color: "#00CFFF", left: "35%", delay: 0.1 },
-                  { color: "#7CFC00", left: "50%", delay: 0.45 },
-                  { color: "#FFD700", left: "63%", delay: 0.15 },
-                  { color: "#FF8C00", left: "76%", delay: 0.35 },
-                  { color: "#E88EFF", left: "88%", delay: 0.05 },
-                  { color: "#00CFFF", left: "30%", delay: 0.55 },
-                  { color: "#FFD700", left: "55%", delay: 0.65 },
-                  { color: "#FF69B4", left: "72%", delay: 0.3 },
-                ].map((p, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      position: "absolute",
-                      bottom: "8%",
-                      left: p.left,
-                      width: 7,
-                      height: 7,
-                      borderRadius: "50%",
-                      background: p.color,
-                      boxShadow: `0 0 6px 2px ${p.color}99`,
-                      animation: `_wb_sparkle ${
-                        1.3 + i * 0.12
-                      }s ease-out infinite`,
-                      animationDelay: `${p.delay}s`,
-                      pointerEvents: "none",
-                    }}
-                  />
-                ))}
-              </div>
-
-              {/* -- Bottom status pill -- */}
-              <div
-                style={{
-                  marginTop: 24,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  background: "rgba(255,255,255,0.10)",
-                  backdropFilter: "blur(12px)",
-                  WebkitBackdropFilter: "blur(12px)",
-                  borderRadius: 999,
-                  padding: "11px 24px",
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  animation:
-                    "_wb_pill_in 0.45s cubic-bezier(0.34,1.56,0.64,1) both",
-                  animationDelay: "0.1s",
-                  boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
-                  flexShrink: 0,
-                }}
-              >
-                <Sparkles
-                  size={20}
-                  color="#FFD700"
                   aria-hidden="true"
                   style={{
-                    flexShrink: 0,
-                    animation: "_wb_stars_spin 3s linear infinite",
+                    position: "fixed",
+                    inset: 0,
+                    zIndex: 9999,
+                    background: "linear-gradient(160deg,#0a0a0a 0%,#111 100%)",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "16px 12px 32px",
+                    gap: 0,
+                  }}
+                >
+                  {/* -- Photo with shimmer + glow ring -- */}
+                  <div
+                    style={{
+                      position: "relative",
+                      maxWidth: "100%",
+                      width: "100%",
+                      flex: "1 1 auto",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderRadius: 18,
+                      animation: "_wb_glow_pulse 2s ease-in-out infinite",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <img
+                      src={sharingPendingImage}
+                      alt=""
+                      style={{
+                        maxWidth: "100%",
+                        maxHeight: "100%",
+                        width: "100%",
+                        objectFit: "contain",
+                        display: "block",
+                        borderRadius: 18,
+                      }}
+                    />
+
+                    {/* Shimmer sweep */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        overflow: "hidden",
+                        borderRadius: 18,
+                        pointerEvents: "none",
+                      }}
+                    >
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "45%",
+                          height: "100%",
+                          background:
+                            "linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.22) 50%,transparent 100%)",
+                          animation: "_wb_shimmer 1.7s ease-in-out infinite",
+                          animationDelay: "0.4s",
+                        }}
+                      />
+                    </div>
+
+                    {/* Sparkle particles � distributed across image width */}
+                    {[
+                      { color: "#FFD700", left: "8%", delay: 0 },
+                      { color: "#FF69B4", left: "20%", delay: 0.25 },
+                      { color: "#00CFFF", left: "35%", delay: 0.1 },
+                      { color: "#7CFC00", left: "50%", delay: 0.45 },
+                      { color: "#FFD700", left: "63%", delay: 0.15 },
+                      { color: "#FF8C00", left: "76%", delay: 0.35 },
+                      { color: "#E88EFF", left: "88%", delay: 0.05 },
+                      { color: "#00CFFF", left: "30%", delay: 0.55 },
+                      { color: "#FFD700", left: "55%", delay: 0.65 },
+                      { color: "#FF69B4", left: "72%", delay: 0.3 },
+                    ].map((p, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          position: "absolute",
+                          bottom: "8%",
+                          left: p.left,
+                          width: 7,
+                          height: 7,
+                          borderRadius: "50%",
+                          background: p.color,
+                          boxShadow: `0 0 6px 2px ${p.color}99`,
+                          animation: `_wb_sparkle ${1.3 + i * 0.12
+                            }s ease-out infinite`,
+                          animationDelay: `${p.delay}s`,
+                          pointerEvents: "none",
+                        }}
+                      />
+                    ))}
+                  </div>
+
+                  {/* -- Bottom status pill -- */}
+                  <div
+                    style={{
+                      marginTop: 24,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      background: "rgba(255,255,255,0.10)",
+                      backdropFilter: "blur(12px)",
+                      WebkitBackdropFilter: "blur(12px)",
+                      borderRadius: 999,
+                      padding: "11px 24px",
+                      border: "1px solid rgba(255,255,255,0.18)",
+                      animation:
+                        "_wb_pill_in 0.45s cubic-bezier(0.34,1.56,0.64,1) both",
+                      animationDelay: "0.1s",
+                      boxShadow: "0 4px 24px rgba(0,0,0,0.4)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Sparkles
+                      size={20}
+                      color="#FFD700"
+                      aria-hidden="true"
+                      style={{
+                        flexShrink: 0,
+                        animation: "_wb_stars_spin 3s linear infinite",
+                      }}
+                    />
+
+                    <span
+                      style={{
+                        color: "#fff",
+                        fontSize: 14,
+                        fontWeight: 700,
+                        letterSpacing: 0.3,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Getting ready to share
+                    </span>
+
+                    {/* Bouncing dots */}
+                    <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                      {[0, 1, 2].map((i) => (
+                        <div
+                          key={i}
+                          style={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: "50%",
+                            background: "#FFD700",
+                            boxShadow: "0 0 4px 1px #FFD70088",
+                            animation: "_wb_dot 1.3s ease-in-out infinite",
+                            animationDelay: `${i * 0.22}s`,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+            <Header
+              user={user}
+              userRole={userRole}
+              allowedPages={navAccessPages}
+              onShowBackgroundHistory={() => navigateTo('dashboard')}
+              onShowHome={() => navigateTo('home')}
+              onShowEvents={() => navigateTo('events')}
+              onShowWellnessEnrollment={() => navigateTo('enrollment')}
+              onShowWellnessCounselling={() => navigateTo('counselling')}
+              onShowNutritionCentersMap={() => navigateTo('physical-club')}
+              onShowActivityReport={() => navigateTo('activity-report')}
+              onShowTestimonials={() => navigateTo('testimonials')}
+              onShowBroadcast={() => navigateTo('broadcast')}
+              onShowCreateEvent={() => navigateTo('create-event')}
+              onShowPaidFeatures={() => navigateTo('paid-features')}
+              onShowMapBusiness={() => navigateTo('map-business')}
+              onShowEventCheckIn={() => navigateTo('event-check-in')}
+              onShowReports={() => navigateTo('reports')}
+              onShowWellnessScoreSetup={() => navigateTo('wellness-score-setup')}
+              wellnessScoreSetupEnabled={['admin', 'developer'].includes(userRole) && isFlagEnabled('ff.wellness-score-sheet')}
+              activePage={
+                showDashboard ? 'dashboard' :
+                  showUniversityEnrollment ? 'enrollment' :
+                    showWellnessCounselling ? 'counselling' :
+                      showNutritionCentersMap ? 'physical-club' :
+                        showActivityReport || showActivityTimeReport ? 'activity-report' :
+                          showTestimonials ? 'testimonials' :
+                            showEvents ? 'events' :
+                              showBroadcast ? 'broadcast' :
+                                showCreateEvent ? (createEventTab === 'checkin' ? 'event-check-in' : 'create-event') :
+                                  showMapBusiness ? 'map-business' :
+                                    showPaidFeatures ? 'paid-features' :
+                                      showReports ? 'reports' :
+                                        showAdminConfigSetup ? 'admin-config-setup' :
+                                          'home'
+              }
+              onShowRegisterCenter={null}
+              onSignOut={handleSignOut}
+              onLeaderboardRefresh={handleLeaderboardRefresh}
+              onOpenProfile={() => {
+                if (onboardingHardBlockingRef.current) return;
+                navigateTo('profile');
+              }}
+              profileKey={headerProfileKey}
+              // manualModeActive={manualModeActive}   // AI TOGGLE DISABLED
+              // onToggleManualMode={toggleManualMode}  // AI TOGGLE DISABLED
+              onProfileSaved={(profileData) => {
+                const email = user?.email || Session.getUserEmail() || "";
+                profileCompletedRef.current = false;
+                // silent: avoid full-app auth bridge / profileChecking gate on save.
+                checkProfileCompletion(email, user, { afterSave: true, silent: true });
+                if (profileData?.name?.trim()) {
+                  setSavedUserName(profileData.name.trim());
+                  cacheProfileUserName(email, profileData.name);
+                }
+                // If a new BMR was saved, force NutritionDashboard to re-fetch it
+                if (profileData?.bmr || profileData?.physicalActivityLevel) {
+                  setBmrUpdateKey((prev) => prev + 1);
+                }
+                if (profileData?.physicalActivityLevel) {
+                  physicalActivityConfirmedRef.current = true;
+                }
+                triggerNutritionRefresh({ immediate: true, source: 'profile-saved' });
+                setBodyParamsRefreshKey((k) => k + 1);
+              }}
+            />
+
+            <div
+              className="flex-1 overflow-y-auto px-2 xs:px-3 pt-0.5 flex flex-col"
+              style={{
+                paddingBottom: "max(env(safe-area-inset-bottom, 0px), 16px)",
+              }}
+            >
+              <div className="max-w-lg w-full mx-auto space-y-2 xs:space-y-3 py-1 flex-1 flex flex-col">
+                {/* Back button toast message */}
+                {toast.visible && (
+                  <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200 whitespace-nowrap">
+                    {toast.message}
+                  </div>
+                )}
+
+                {/* -- Hero banner: greeting + Camera / Gallery CTAs (sticky while home scrolls) -- */}
+                <div className="sticky top-0 z-20 -mx-2 xs:-mx-3 px-2 xs:px-3 pt-0.5 pb-1 bg-[var(--wv-page)]">
+                  <div className="mx-1 mt-0 rounded-2xl overflow-hidden shadow-lg"
+                    style={{ background: 'var(--wv-hero)' }}>
+                    <div className="px-2 pt-1 pb-2">
+                      {/* Date pill */}
+                      <div className="flex items-center justify-between">
+                        {/* Date */}
+                        <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-300">
+                          {new Date().toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </p>
+
+                        {/* Greeting */}
+                        <h2 className="text-xs font-bold text-white text-right inline-flex items-center justify-end gap-1 max-w-[65%] ml-auto">
+                          {(() => {
+                            const h = new Date().getHours();
+                            const phoneNumber = user?.phoneNumber || user?.PhoneNumber || user?.phone;
+                            const email = user?.email || user?.Email;
+                            const candidates = [
+                              savedUserName,
+                              user?.userName,
+                              user?.username,
+                              user?.displayName,
+                            ];
+                            const raw = candidates.find((n) => hasValidProfileName(n, { email, phoneNumber })) || '';
+                            const firstName = String(raw).trim().split(/\s+/)[0] || '';
+
+                            const name = firstName
+                              ? firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase()
+                              : '';
+
+                            const greeting =
+                              h < 12
+                                ? 'Good Morning'
+                                : h < 17
+                                  ? 'Good Afternoon'
+                                  : 'Good Evening';
+
+                            return (
+                              <>
+                                <span>{name ? `${greeting}, ${name}!` : `${greeting}!`}</span>
+                                <EmojiOrNative emoji="👋" className="w-3.5 h-3.5" nativeClassName="text-xs" />
+                              </>
+                            );
+                          })()}
+                        </h2>
+                      </div>
+
+                      {/* Camera — primary CTA opens camera directly; gallery icon for choosing existing photo */}
+                      <div className="mt-1.5 flex gap-3">
+                        <button
+                          onClick={() => fileInputRef.current?.openCamera?.({ userInitiated: true })}
+                          disabled={loading}
+                          className="flex-1 flex items-center justify-center gap-2.5 bg-white rounded-xl py-3 shadow-sm active:scale-95 transition-transform disabled:opacity-50"
+                          aria-label="Open camera"
+                        >
+                          <svg className="w-5 h-5 text-emerald-700" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          <span className="text-sm font-bold text-emerald-700">Take Photo</span>
+                        </button>
+                        <button
+                          onClick={() => fileInputRef.current?.openGallery?.()}
+                          disabled={loading}
+                          className="flex-1 flex items-center justify-center gap-2.5 bg-white rounded-xl py-3 shadow-sm active:scale-95 transition-transform disabled:opacity-50"
+                          aria-label="Choose from gallery"
+                        >
+                          <svg className="w-5 h-5 text-emerald-700" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span className="text-sm font-bold text-emerald-700">Gallery</span>
+                        </button>
+                      </div>
+                      <EventCancelledHomeNotice
+                        user={user}
+                        onOpenBookings={() => {
+                          setEventsInitialTab('bookings');
+                          navigateTo('events');
+                        }}
+                      />
+                      <DetoxDayReminder user={user} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Today's Nutrition Carousel � Calories � Macros � Heart Healthy � Low Carb */}
+                <HomeNutritionCarousel
+                  user={user}
+                  apiBaseUrl={apiBaseUrl}
+                  bmrUpdateKey={bmrUpdateKey}
+                  nutritionRefreshKey={nutritionRefreshKey}
+                  watchBurnedCalories={watchBurnedCalories}
+                  dateRange={homeCarouselDateRange.dateRange}
+                  customStartDate={homeCarouselDateRange.customStartDate}
+                  customEndDate={homeCarouselDateRange.customEndDate}
+                  onDateRangeChange={(next) => {
+                    setHomeCarouselDateRange({
+                      dateRange: next.dateRange || 'today',
+                      customStartDate: next.customStartDate ?? null,
+                      customEndDate: next.customEndDate ?? null,
+                    });
+                  }}
+                  onOpenWellnessScore={(rangeOpts = {}) => {
+                    const next = {
+                      dateRange: rangeOpts.dateRange || homeCarouselDateRange.dateRange || 'today',
+                      customStartDate: rangeOpts.customStartDate ?? homeCarouselDateRange.customStartDate ?? null,
+                      customEndDate: rangeOpts.customEndDate ?? homeCarouselDateRange.customEndDate ?? null,
+                    };
+                    setWellnessScoreInitialRange(next);
+                    setHomeCarouselDateRange(next);
+                    const scoreDate = rangeOpts.scoreDate || null;
+                    const scoreData = rangeOpts.scoreData || null;
+                    const uid = user?.id || user?.UserId || user?.userId || null;
+                    if (scoreData && scoreDate && uid) {
+                      seedDailyWellnessScoreCache(uid, scoreDate, scoreData);
+                    }
+                    navigateTo('wellness-score');
+                  }}
+                  onOpenWellnessScoreSetup={
+                    ['admin', 'developer'].includes(userRole)
+                      ? () => navigateTo('wellness-score-setup')
+                      : undefined
+                  }
+                />
+
+                <ImageUpload
+                  onImageSelect={handleImageSelect}
+                  imagePreview={imagePreview}
+                  loading={loading}
+                  loadingState={loadingState}
+                  imageType={imageType}
+                  detectedFoodNames={detectedFoodNames}
+                  ref={fileInputRef}
+                  onHelpClick={() => setShowHowToUse(!showHowToUse)}
+                  educationWindow={educationWindow}
+                  onCameraStateChange={handleCameraStateChange}
+                  onCameraPermissionNeeded={(kind = 'camera') => {
+                    if (kind === 'photos') setMediaPermissionNeeded('photos');
+                    else if (kind === 'location') setMediaPermissionNeeded('location');
+                    else setMediaPermissionNeeded('camera');
                   }}
                 />
 
-                <span
-                  style={{
-                    color: "#fff",
-                    fontSize: 14,
-                    fontWeight: 700,
-                    letterSpacing: 0.3,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Getting ready to share
-                </span>
-
-                {/* Bouncing dots */}
-                <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-                  {[0, 1, 2].map((i) => (
-                    <div
-                      key={i}
-                      style={{
-                        width: 7,
-                        height: 7,
-                        borderRadius: "50%",
-                        background: "#FFD700",
-                        boxShadow: "0 0 4px 1px #FFD70088",
-                        animation: "_wb_dot 1.3s ease-in-out infinite",
-                        animationDelay: `${i * 0.22}s`,
-                      }}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-        <Header
-          user={user}
-          userRole={userRole}
-          allowedPages={navAccessPages}
-          onShowBackgroundHistory={() => navigateTo('dashboard')}
-          onShowHome={() => navigateTo('home')}
-          onShowEvents={() => navigateTo('events')}
-          onShowWellnessEnrollment={() => navigateTo('enrollment')}
-          onShowWellnessCounselling={() => navigateTo('counselling')}
-          onShowNutritionCentersMap={() => navigateTo('physical-club')}
-          onShowActivityReport={() => navigateTo('activity-report')}
-          onShowTestimonials={() => navigateTo('testimonials')}
-          onShowBroadcast={() => navigateTo('broadcast')}
-          onShowCreateEvent={() => navigateTo('create-event')}
-          onShowPaidFeatures={() => navigateTo('paid-features')}
-          onShowMapBusiness={() => navigateTo('map-business')}
-          onShowEventCheckIn={() => navigateTo('event-check-in')}
-          onShowReports={() => navigateTo('reports')}
-          onShowWellnessScoreSetup={() => navigateTo('wellness-score-setup')}
-          wellnessScoreSetupEnabled={['admin', 'developer'].includes(userRole) && isFlagEnabled('ff.wellness-score-sheet')}
-          activePage={
-            showDashboard ? 'dashboard' :
-            showUniversityEnrollment ? 'enrollment' :
-            showWellnessCounselling ? 'counselling' :
-            showNutritionCentersMap ? 'physical-club' :
-            showActivityReport || showActivityTimeReport ? 'activity-report' :
-            showTestimonials ? 'testimonials' :
-            showEvents ? 'events' :
-            showBroadcast ? 'broadcast' :
-            showCreateEvent ? (createEventTab === 'checkin' ? 'event-check-in' : 'create-event') :
-            showMapBusiness ? 'map-business' :
-            showPaidFeatures ? 'paid-features' :
-            showReports ? 'reports' :
-            showAdminConfigSetup ? 'admin-config-setup' :
-            'home'
-          }
-          onShowRegisterCenter={null}
-          onSignOut={handleSignOut}
-          onLeaderboardRefresh={handleLeaderboardRefresh}
-          onOpenProfile={() => {
-            if (onboardingHardBlockingRef.current) return;
-            navigateTo('profile');
-          }}
-          profileKey={headerProfileKey}
-          // manualModeActive={manualModeActive}   // AI TOGGLE DISABLED
-          // onToggleManualMode={toggleManualMode}  // AI TOGGLE DISABLED
-          onProfileSaved={(profileData) => {
-            const email = user?.email || Session.getUserEmail() || "";
-            profileCompletedRef.current = false;
-            // silent: avoid full-app auth bridge / profileChecking gate on save.
-            checkProfileCompletion(email, user, { afterSave: true, silent: true });
-            if (profileData?.name?.trim()) {
-              setSavedUserName(profileData.name.trim());
-              cacheProfileUserName(email, profileData.name);
-            }
-            // If a new BMR was saved, force NutritionDashboard to re-fetch it
-            if (profileData?.bmr || profileData?.physicalActivityLevel) {
-              setBmrUpdateKey((prev) => prev + 1);
-            }
-            if (profileData?.physicalActivityLevel) {
-              physicalActivityConfirmedRef.current = true;
-            }
-            triggerNutritionRefresh({ immediate: true, source: 'profile-saved' });
-            setBodyParamsRefreshKey((k) => k + 1);
-          }}
-        />
-
-        <div
-          className="flex-1 overflow-y-auto px-2 xs:px-3 pt-0.5 flex flex-col"
-          style={{
-            paddingBottom: "max(env(safe-area-inset-bottom, 0px), 16px)",
-          }}
-        >
-          <div className="max-w-lg w-full mx-auto space-y-2 xs:space-y-3 py-1 flex-1 flex flex-col">
-            {/* Back button toast message */}
-            {toast.visible && (
-              <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200 whitespace-nowrap">
-                {toast.message}
-              </div>
-            )}
-
-            {/* -- Hero banner: greeting + Camera / Gallery CTAs (sticky while home scrolls) -- */}
-            <div className="sticky top-0 z-20 -mx-2 xs:-mx-3 px-2 xs:px-3 pt-0.5 pb-1 bg-[var(--wv-page)]">
-            <div className="mx-1 mt-0 rounded-2xl overflow-hidden shadow-lg"
-                style={{ background: 'var(--wv-hero)' }}>
-                <div className="px-2 pt-1 pb-2">
-                  {/* Date pill */}
-                  <div className="flex items-center justify-between">
-                    {/* Date */}
-                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-300">
-                      {new Date().toLocaleDateString('en-US', {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </p>
-
-                    {/* Greeting */}
-                   <h2 className="text-xs font-bold text-white text-right inline-flex items-center justify-end gap-1 max-w-[65%] ml-auto">
-  {(() => {
-    const h = new Date().getHours();
-    const phoneNumber = user?.phoneNumber || user?.PhoneNumber || user?.phone;
-    const email = user?.email || user?.Email;
-    const candidates = [
-      savedUserName,
-      user?.userName,
-      user?.username,
-      user?.displayName,
-    ];
-    const raw = candidates.find((n) => hasValidProfileName(n, { email, phoneNumber })) || '';
-    const firstName = String(raw).trim().split(/\s+/)[0] || '';
-
-    const name = firstName
-      ? firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase()
-      : '';
-
-    const greeting =
-      h < 12
-        ? 'Good Morning'
-        : h < 17
-        ? 'Good Afternoon'
-        : 'Good Evening';
-
-    return (
-      <>
-        <span>{name ? `${greeting}, ${name}!` : `${greeting}!`}</span>
-        <EmojiOrNative emoji="👋" className="w-3.5 h-3.5" nativeClassName="text-xs" />
-      </>
-    );
-  })()}
-</h2>
-                  </div>
-
-                  {/* Camera — primary CTA opens camera directly; gallery icon for choosing existing photo */}
-                  <div className="mt-1.5 flex gap-3">
-                    <button
-                      onClick={() => fileInputRef.current?.openCamera?.({ userInitiated: true })}
-                      disabled={loading}
-                      className="flex-1 flex items-center justify-center gap-2.5 bg-white rounded-xl py-3 shadow-sm active:scale-95 transition-transform disabled:opacity-50"
-                      aria-label="Open camera"
-                    >
-                      <svg className="w-5 h-5 text-emerald-700" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      <span className="text-sm font-bold text-emerald-700">Take Photo</span>
-                    </button>
-                    <button
-                      onClick={() => fileInputRef.current?.openGallery?.()}
-                      disabled={loading}
-                      className="flex-1 flex items-center justify-center gap-2.5 bg-white rounded-xl py-3 shadow-sm active:scale-95 transition-transform disabled:opacity-50"
-                      aria-label="Choose from gallery"
-                    >
-                      <svg className="w-5 h-5 text-emerald-700" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <span className="text-sm font-bold text-emerald-700">Gallery</span>
-                    </button>
-                  </div>
-                  <EventCancelledHomeNotice
-                    user={user}
-                    onOpenBookings={() => {
-                      setEventsInitialTab('bookings');
-                      navigateTo('events');
-                    }}
-                  />
-                  <DetoxDayReminder user={user} />
-                </div>
-              </div>
-            </div>
-
-            {/* Today's Nutrition Carousel � Calories � Macros � Heart Healthy � Low Carb */}
-            <HomeNutritionCarousel
-              user={user}
-              apiBaseUrl={apiBaseUrl}
-              bmrUpdateKey={bmrUpdateKey}
-              nutritionRefreshKey={nutritionRefreshKey}
-              watchBurnedCalories={watchBurnedCalories}
-              dateRange={homeCarouselDateRange.dateRange}
-              customStartDate={homeCarouselDateRange.customStartDate}
-              customEndDate={homeCarouselDateRange.customEndDate}
-              onDateRangeChange={(next) => {
-                setHomeCarouselDateRange({
-                  dateRange: next.dateRange || 'today',
-                  customStartDate: next.customStartDate ?? null,
-                  customEndDate: next.customEndDate ?? null,
-                });
-              }}
-              onOpenWellnessScore={(rangeOpts = {}) => {
-                const next = {
-                  dateRange: rangeOpts.dateRange || homeCarouselDateRange.dateRange || 'today',
-                  customStartDate: rangeOpts.customStartDate ?? homeCarouselDateRange.customStartDate ?? null,
-                  customEndDate: rangeOpts.customEndDate ?? homeCarouselDateRange.customEndDate ?? null,
-                };
-                setWellnessScoreInitialRange(next);
-                setHomeCarouselDateRange(next);
-                const scoreDate = rangeOpts.scoreDate || null;
-                const scoreData = rangeOpts.scoreData || null;
-                const uid = user?.id || user?.UserId || user?.userId || null;
-                if (scoreData && scoreDate && uid) {
-                  seedDailyWellnessScoreCache(uid, scoreDate, scoreData);
-                }
-                navigateTo('wellness-score');
-              }}
-              onOpenWellnessScoreSetup={
-                ['admin', 'developer'].includes(userRole)
-                  ? () => navigateTo('wellness-score-setup')
-                  : undefined
-              }
-            />
-
-            <ImageUpload
-              onImageSelect={handleImageSelect}
-              imagePreview={imagePreview}
-              loading={loading}
-              loadingState={loadingState}
-              imageType={imageType}
-              detectedFoodNames={detectedFoodNames}
-              ref={fileInputRef}
-              onHelpClick={() => setShowHowToUse(!showHowToUse)}
-              educationWindow={educationWindow}
-              onCameraStateChange={handleCameraStateChange}
-              onCameraPermissionNeeded={(kind = 'camera') => {
-                if (kind === 'photos') setMediaPermissionNeeded('photos');
-                else if (kind === 'location') setMediaPermissionNeeded('location');
-                else setMediaPermissionNeeded('camera');
-              }}
-            />
-
-            {/* Share Image + Link button removed: auto-share fires directly
+                {/* Share Image + Link button removed: auto-share fires directly
               to WhatsApp as soon as food is identified (see auto-share
               useEffect above). The analysis stays visible after the user
               returns from WhatsApp so they can review their nutrition data. */}
 
-            {/* Hidden off-screen template captured to image for the instant-share
+                {/* Hidden off-screen template captured to image for the instant-share
               button. Matches the post-analysis NutritionCard share template
               (profile header + photo) minus the nutrition breakdown. */}
-            {imageType === "food" &&
-              (imagePreview || processedImageRef.current) && (
-                <FoodImageShareCard
-                  ref={foodShareCardRef}
-                  user={user}
-                  savedUserName={savedUserName}
-                  savedProfileImage={savedProfileImage}
-                  sharePhotoBase64={sharePhotoBase64}
-                  imageSrc={imagePreview || processedImageRef.current}
-                  foodNames={detectedFoodNames}
+                {imageType === "food" &&
+                  (imagePreview || processedImageRef.current) && (
+                    <FoodImageShareCard
+                      ref={foodShareCardRef}
+                      user={user}
+                      savedUserName={savedUserName}
+                      savedProfileImage={savedProfileImage}
+                      sharePhotoBase64={sharePhotoBase64}
+                      imageSrc={imagePreview || processedImageRef.current}
+                      foodNames={detectedFoodNames}
+                    />
+                  )}
+
+                {imageType === "food" && nutritionData && (
+                  <NutritionCard
+                    data={nutritionData}
+                    onDataUpdate={(updatedData) => setNutritionData((prev) => ({ ...prev, ...updatedData }))}
+                    user={user}
+                    savedUserName={savedUserName}
+                    savedProfileImage={savedProfileImage}
+                    sharePhotoBase64={sharePhotoBase64}
+                    imagePreview={imagePreview}
+                    selectedImage={selectedImage}
+                    savedMealId={savedNutritionMealId}
+                    onClose={() => {
+                      setNutritionData(null);
+                      setImagePreview(null);
+                      setSelectedImage(null);
+                      setSavedNutritionMealId(null);
+                      foodCaptureIdRef.current = null;
+                      processedImageRef.current = null;
+                      foodShareImageDataUrlRef.current = null;
+                      setFoodShareUrl(null);
+                    }}
+                  />
+                )}
+
+                {/* Education Meeting Result */}
+                {imageType === "education" && educationResult && (
+                  <EducationLogCard
+                    educationData={educationResult}
+                    imagePreview={imagePreview}
+                    user={user}
+                    savedUserName={savedUserName}
+                    savedProfileImage={savedProfileImage}
+                    sharePhotoBase64={sharePhotoBase64}
+                    onClose={() => {
+                      setEducationResult(null);
+                      setImagePreview(null);
+                      setSelectedImage(null);
+                    }}
+                  />
+                )}
+
+                {/* Smartwatch / Fitness App Activity Result */}
+                {imageType === "smartwatch" && watchResult && (
+                  <WatchActivityCard
+                    watchData={watchResult}
+                    imagePreview={imagePreview}
+                    user={user}
+                    apiBaseUrl={apiBaseUrl}
+                    onSaved={({ caloriesBurned }) => {
+                      // Refresh Education tab
+                      setEducationRefreshKey((k) => k + 1);
+                      // Push burned calories to NutritionDashboard via Dashboard prop
+                      if (caloriesBurned > 0)
+                        setWatchBurnedCalories(caloriesBurned);
+                    }}
+                    onClose={() => {
+                      setWatchResult(null);
+                      setImagePreview(null);
+                      setSelectedImage(null);
+                      setImageType(null);
+                    }}
+                  />
+                )}
+
+                {/* Weight Loss Celebration - Shows confetti and joyful message on Home screen */}
+                <CelebrationConfetti
+                  show={showWeightCelebration}
+                  message={weightCelebrationMessage}
+                  onComplete={() => {
+                    setShowWeightCelebration(false);
+                  }}
                 />
-              )}
 
-            {imageType === "food" && nutritionData && (
-              <NutritionCard
-                data={nutritionData}
-                onDataUpdate={(updatedData) => setNutritionData((prev) => ({ ...prev, ...updatedData }))}
-                user={user}
-                savedUserName={savedUserName}
-                savedProfileImage={savedProfileImage}
-                sharePhotoBase64={sharePhotoBase64}
-                imagePreview={imagePreview}
-                selectedImage={selectedImage}
-                savedMealId={savedNutritionMealId}
-                onClose={() => {
-                  setNutritionData(null);
-                  setImagePreview(null);
-                  setSelectedImage(null);
-                  setSavedNutritionMealId(null);
-                  foodCaptureIdRef.current = null;
-                  processedImageRef.current = null;
-                  foodShareImageDataUrlRef.current = null;
-                  setFoodShareUrl(null);
-                }}
+                {imageType === "weight" && weightResult && (
+                  <>
+                    {/* Off-screen weight share card \xe2\x80\x94 captured by precaptureShareImage for instant share */}
+                    <WeightShareCard
+                      ref={weightAnalysisShareRef}
+                      user={user}
+                      savedUserName={savedUserName}
+                      savedProfileImage={savedProfileImage}
+                      sharePhotoBase64={sharePhotoBase64}
+                      imagePreview={imagePreview}
+                      weightResult={weightResult}
+                      weightDiff={weightDiff}
+                      idealWeight={idealWeight}
+                    />
+
+                    {/* Visible weight result card */}
+                    <WeightResultCard
+                      weightResult={weightResult}
+                      weightDiff={weightDiff}
+                      idealWeight={idealWeight}
+                      isEditingWeight={isEditingWeight}
+                      editWeightValue={editWeightValue}
+                      isSavingWeightEdit={isSavingWeightEdit}
+                      weightEditError={weightEditError}
+                      setEditWeightValue={setEditWeightValue}
+                      setIsEditingWeight={setIsEditingWeight}
+                      setWeightEditError={setWeightEditError}
+                      handleWeightEditSave={handleWeightEditSave}
+                    />
+                  </>
+                )}
+
+
+                {/* Saving Toast � hidden during async capture (photo already saved) */}
+                {saveLoading && loadingState !== "saved" && (
+                  <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
+                    <div className="bg-green-600 text-white px-6 py-3 rounded-t-xl shadow-lg animate-pulse font-semibold">
+                      {imageType === "weight"
+                        ? "Saving your weight progress..."
+                        : imageType === "education"
+                          ? "Saving your study session..."
+                          : "Saving your nutrition analysis..."}
+                    </div>
+                  </div>
+                )}
+
+                {/* Error Toast � hidden during async capture; analysis errors live in Diary only */}
+                {saveError && loadingState !== "saved" && (
+                  <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
+                    <div className="bg-red-600 text-white px-6 py-3 rounded-t-xl shadow-lg font-semibold">
+                      {saveError}
+                    </div>
+                  </div>
+                )}
+
+                {showHowToUse && (
+                  <div className="bg-white rounded-xl shadow-lg border border-green-200 p-4 relative">
+                    {" "}
+                    <button
+                      onClick={() => setShowHowToUse(false)}
+                      className="absolute top-4 right-4 text-gray-600 text-xl hover:text-gray-800 transition-colors focus:outline-none"
+                      aria-label="Close"
+                    >
+                      {" "}
+                      ?{" "}
+                    </button>{" "}
+                    <h3 className="font-semibold text-green-700 mb-2">
+                      ?? How to use:
+                    </h3>{" "}
+                    <div className="space-y-3">
+                      {" "}
+                      <div>
+                        {" "}
+                        <h4 className="font-medium text-green-600 mb-1">
+                          {" "}
+                          ?? Image Analysis:{" "}
+                        </h4>
+                        <ol className="text-sm text-gray-600 space-y-1 ml-4">
+                          <li>1. Take a clear photo of your food or weight</li>
+                          <li>
+                            2. Make sure the food or weight are well-lit and visible
+                          </li>
+                          <li>
+                            3. View detailed nutrition breakdown for detected foods
+                            or weights
+                          </li>
+                        </ol>
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <h4 className="font-semibold text-green-700 mb-2">
+                        ?? Tips for better results:
+                      </h4>
+                      <ul className="text-xs text-gray-600 space-y-1">
+                        <li>? Take photos in good lighting conditions </li>
+                        <li>? Ensure food items or weights are clearly visible</li>
+                        <li>? Avoid cluttered backgrounds </li>
+                        <li>
+                          ? For text queries, be specific about preparation methods{" "}
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
+                {/* Bottom leaderboard tiles — static (no marquee scroll) */}
+                <div className="space-y-2 xs:space-y-3 pt-1">
+                  {isFlagEnabled('ff.wellness-score-sheet') && (
+                    <WellnessScoreLeaderboard
+                      ref={wellnessLeaderboardRef}
+                      variant="tile"
+                      apiBaseUrl={apiBaseUrl}
+                      topN={10}
+                      userId={readNumericDbUserId(user)}
+                      email={user?.email || user?.Email || Session.getUserEmail() || ''}
+                      viewerName={savedUserName}
+                    />
+                  )}
+                  <WeightLossLeaderboard
+                    ref={leaderboardRef}
+                    variant="tile"
+                    apiBaseUrl={apiBaseUrl}
+                    topN={LEADERBOARD_CONFIG.TOP_N}
+                    userId={readNumericDbUserId(user)}
+                    email={user?.email || user?.Email || Session.getUserEmail() || ''}
+                  />
+                </div>
+
+                {/* Safe-area bottom padding */}
+                <div style={{ minHeight: 'env(safe-area-inset-bottom, 12px)', height: 'env(safe-area-inset-bottom, 12px)' }} />
+
+              </div>{/* end max-w-lg inner */}
+            </div>{/* end flex-1 scroll area */}
+
+            {/* Inactive User Modal */}
+            {showInactiveModal && (
+              <InactiveUserModal
+                userEmail={user?.email || user?.Email || "your account"}
+                coachName={inactiveCoachName}
+                coachNameLoading={inactiveCoachNameLoading}
+                onClose={handleInactiveModalClose}
+                onContactCoach={handleContactCoach}
               />
             )}
 
-            {/* Education Meeting Result */}
-            {imageType === "education" && educationResult && (
-              <EducationLogCard
-                educationData={educationResult}
-                imagePreview={imagePreview}
-                user={user}
-                savedUserName={savedUserName}
-                savedProfileImage={savedProfileImage}
-                sharePhotoBase64={sharePhotoBase64}
-                onClose={() => {
-                  setEducationResult(null);
-                  setImagePreview(null);
-                  setSelectedImage(null);
-                }}
+            {/* Manual Mode Toast */}
+            {manualModeToast && (
+              <div
+                key={manualModeToast}
+                className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none animate-manual-toast"
+              >
+                <span
+                  className={`text-xs font-semibold tracking-wide ${manualModeToast === "enabled"
+                      ? "text-green-500"
+                      : "text-gray-400"
+                    }`}
+                >
+                  {manualModeToast === "enabled"
+                    ? "? Manual mode enabled"
+                    : "? Manual mode disabled"}
+                </span>
+              </div>
+            )}
+
+
+            {/* User Not Found Modal */}
+            {showUserNotFoundModal && (
+              <UserNotFoundModal
+                userEmail={user?.email || user?.Email || "your account"}
+                onClose={handleUserNotFoundModalClose}
               />
             )}
 
-            {/* Smartwatch / Fitness App Activity Result */}
-            {imageType === "smartwatch" && watchResult && (
-              <WatchActivityCard
-                watchData={watchResult}
-                imagePreview={imagePreview}
-                user={user}
-                apiBaseUrl={apiBaseUrl}
-                onSaved={({ caloriesBurned }) => {
-                  // Refresh Education tab
-                  setEducationRefreshKey((k) => k + 1);
-                  // Push burned calories to NutritionDashboard via Dashboard prop
-                  if (caloriesBurned > 0)
-                    setWatchBurnedCalories(caloriesBurned);
-                }}
-                onClose={() => {
-                  setWatchResult(null);
-                  setImagePreview(null);
-                  setSelectedImage(null);
-                  setImageType(null);
-                }}
-              />
-            )}
-
-            {/* Weight Loss Celebration - Shows confetti and joyful message on Home screen */}
-            <CelebrationConfetti
-              show={showWeightCelebration}
-              message={weightCelebrationMessage}
-              onComplete={() => {
-                setShowWeightCelebration(false);
+            {/* PR 3 � Unknown / low-confidence capture disambiguation modal */}
+            <UnknownCaptureModal
+              isOpen={unknownCaptureModal.open}
+              onClose={() =>
+                setUnknownCaptureModal({ open: false, pendingSharePromise: null })
+              }
+              onPick={(chosenType) => {
+                // Re-tag the capture row to the user's choice so the share link
+                // resolves correctly and listAnalyses includes it in the right tab.
+                updatePendingCaptureType(
+                  unknownCaptureModal.pendingSharePromise,
+                  chosenType,
+                );
+                setUnknownCaptureModal({ open: false, pendingSharePromise: null });
+                setImageType(chosenType);
+                if (chosenType === "food") {
+                  setManualMealType(
+                    getMealTypeFromTime(
+                      imageTimestamp ? new Date(imageTimestamp) : new Date(),
+                    ),
+                  );
+                  setShowManualFoodModal(true);
+                } else if (chosenType === "weight") {
+                  fetchLastWeight();
+                  setCurrentWeightImage(null);
+                  setShowManualWeightModal(true);
+                } else if (chosenType === "education") {
+                  setShowManualEducationModal(true);
+                }
               }}
             />
 
-            {imageType === "weight" && weightResult && (
-              <>
-                {/* Off-screen weight share card \xe2\x80\x94 captured by precaptureShareImage for instant share */}
-                <WeightShareCard
-                  ref={weightAnalysisShareRef}
-                  user={user}
-                  savedUserName={savedUserName}
-                  savedProfileImage={savedProfileImage}
-                  sharePhotoBase64={sharePhotoBase64}
-                  imagePreview={imagePreview}
-                  weightResult={weightResult}
-                  weightDiff={weightDiff}
-                  idealWeight={idealWeight}
-                />
+            {/* PR-E � Unknown capture share-link viewer (image + Retry / Edit / Delete) */}
+            <UnknownShareViewer
+              isOpen={unknownShareView.open}
+              imageBase64={unknownShareView.imageBase64}
+              imageUrl={unknownShareView.imageUrl}
+              canMutate={unknownShareView.canMutate}
+              retrying={unknownShareView.retrying}
+              error={unknownShareView.error}
+              onRetry={handleUnknownShareRetry}
+              onEdit={handleUnknownShareEdit}
+              onDelete={handleUnknownShareDelete}
+              onClose={() =>
+                setUnknownShareView({
+                  open: false,
+                  captureId: null,
+                  imageBase64: null,
+                  imageUrl: null,
+                  createdAt: null,
+                  canMutate: false,
+                  retrying: false,
+                  error: null,
+                })
+              }
+            />
 
-                {/* Visible weight result card */}
-                <WeightResultCard
-                  weightResult={weightResult}
-                  weightDiff={weightDiff}
-                  idealWeight={idealWeight}
-                  isEditingWeight={isEditingWeight}
-                  editWeightValue={editWeightValue}
-                  isSavingWeightEdit={isSavingWeightEdit}
-                  weightEditError={weightEditError}
-                  setEditWeightValue={setEditWeightValue}
-                  setIsEditingWeight={setIsEditingWeight}
-                  setWeightEditError={setWeightEditError}
-                  handleWeightEditSave={handleWeightEditSave}
-                />
-              </>
-            )}
-
-
-            {/* Saving Toast � hidden during async capture (photo already saved) */}
-            {saveLoading && loadingState !== "saved" && (
-              <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
-                <div className="bg-green-600 text-white px-6 py-3 rounded-t-xl shadow-lg animate-pulse font-semibold">
-                  {imageType === "weight"
-                    ? "Saving your weight progress..."
-                    : imageType === "education"
-                    ? "Saving your study session..."
-                    : "Saving your nutrition analysis..."}
-                </div>
-              </div>
-            )}
-
-            {/* Error Toast � hidden during async capture; analysis errors live in Diary only */}
-            {saveError && loadingState !== "saved" && (
-              <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
-                <div className="bg-red-600 text-white px-6 py-3 rounded-t-xl shadow-lg font-semibold">
-                  {saveError}
-                </div>
-              </div>
-            )}
-
-            {showHowToUse && (
-              <div className="bg-white rounded-xl shadow-lg border border-green-200 p-4 relative">
-                {" "}
-                <button
-                  onClick={() => setShowHowToUse(false)}
-                  className="absolute top-4 right-4 text-gray-600 text-xl hover:text-gray-800 transition-colors focus:outline-none"
-                  aria-label="Close"
-                >
-                  {" "}
-                  ?{" "}
-                </button>{" "}
-                <h3 className="font-semibold text-green-700 mb-2">
-                  ?? How to use:
-                </h3>{" "}
-                <div className="space-y-3">
-                  {" "}
-                  <div>
-                    {" "}
-                    <h4 className="font-medium text-green-600 mb-1">
-                      {" "}
-                      ?? Image Analysis:{" "}
-                    </h4>
-                    <ol className="text-sm text-gray-600 space-y-1 ml-4">
-                      <li>1. Take a clear photo of your food or weight</li>
-                      <li>
-                        2. Make sure the food or weight are well-lit and visible
-                      </li>
-                      <li>
-                        3. View detailed nutrition breakdown for detected foods
-                        or weights
-                      </li>
-                    </ol>
-                  </div>
-                </div>
-                <div className="mt-3 pt-3 border-t border-gray-200">
-                  <h4 className="font-semibold text-green-700 mb-2">
-                    ?? Tips for better results:
-                  </h4>
-                  <ul className="text-xs text-gray-600 space-y-1">
-                    <li>? Take photos in good lighting conditions </li>
-                    <li>? Ensure food items or weights are clearly visible</li>
-                    <li>? Avoid cluttered backgrounds </li>
-                    <li>
-                      ? For text queries, be specific about preparation methods{" "}
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            )}
-
-            {/* Bottom leaderboard tiles — static (no marquee scroll) */}
-            <div className="space-y-2 xs:space-y-3 pt-1">
-              {isFlagEnabled('ff.wellness-score-sheet') && (
-                <WellnessScoreLeaderboard
-                  ref={wellnessLeaderboardRef}
-                  variant="tile"
-                  apiBaseUrl={apiBaseUrl}
-                  topN={10}
-                  userId={readNumericDbUserId(user)}
-                  email={user?.email || user?.Email || Session.getUserEmail() || ''}
-                  viewerName={savedUserName}
-                />
-              )}
-              <WeightLossLeaderboard
-                ref={leaderboardRef}
-                variant="tile"
-                apiBaseUrl={apiBaseUrl}
-                topN={LEADERBOARD_CONFIG.TOP_N}
-                userId={readNumericDbUserId(user)}
-                email={user?.email || user?.Email || Session.getUserEmail() || ''}
+            {/* 2026-06-09 � undo banner for unknown capture deletion (share-link viewer) */}
+            {unknownShareUndo && (
+              <UnknownCaptureUndoBanner
+                captureId={unknownShareUndo.captureId}
+                userId={unknownShareUndo.userId}
+                imageBase64={unknownShareUndo.imageBase64}
+                expiresAt={unknownShareUndo.expiresAt}
+                onUndo={async ({ captureId, userId }) => {
+                  await undoDeleteCapture({ captureId, userId });
+                  setUnknownShareUndo(null);
+                  showToast("Restored");
+                }}
+                onExpire={() => {
+                  setUnknownShareUndo(null);
+                }}
               />
-            </div>
+            )}
 
-            {/* Safe-area bottom padding */}
-            <div style={{ minHeight: 'env(safe-area-inset-bottom, 12px)', height: 'env(safe-area-inset-bottom, 12px)' }} />
+            {/* PR-E � dedicated food search modal whose save promotes unknown ? food */}
+            <SmartFoodSearchModal
+              isOpen={shareEditView.open}
+              onClose={() => setShareEditView({ open: false, captureId: null })}
+              onSave={handleShareEditSave}
+              mealType={manualMealType}
+              apiBaseUrl={apiBaseUrl}
+              userId={user?.id}
+              timeLabel="What was in this photo?"
+            />
 
-          </div>{/* end max-w-lg inner */}
-        </div>{/* end flex-1 scroll area */}
+            {/* Smart Food Search Modal (replaces ManualFoodEntryModal � shows history + global search) */}
+            <SmartFoodSearchModal
+              isOpen={showManualFoodModal}
+              onClose={() => {
+                setShowManualFoodModal(false);
+                setManualMealType("");
+              }}
+              onSave={handleManualFoodSave}
+              mealType={manualMealType}
+              apiBaseUrl={apiBaseUrl}
+              userId={user?.id}
+              timeLabel="It's food time! Do you want to add manually?"
+              altSwitchButtons={getAltSwitchButtons("food")}
+            />
 
-        {/* Inactive User Modal */}
-        {showInactiveModal && (
-          <InactiveUserModal
-            userEmail={user?.email || user?.Email || "your account"}
-            coachName={inactiveCoachName}
-            coachNameLoading={inactiveCoachNameLoading}
-            onClose={handleInactiveModalClose}
-            onContactCoach={handleContactCoach}
-          />
-        )}
+            {/* Manual Weight Entry Modal */}
+            <ManualWeightEntryModal
+              isOpen={showManualWeightModal}
+              onClose={() => {
+                setShowManualWeightModal(false);
+                setCurrentWeightImage(null);
+              }}
+              onSave={handleManualWeightSave}
+              imagePreview={currentWeightImage || imagePreview}
+              userId={user?.id}
+              lastWeight={lastWeight}
+              skipTypeSelect
+            />
 
-        {/* Manual Mode Toast */}
-        {manualModeToast && (
-          <div
-            key={manualModeToast}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none animate-manual-toast"
-          >
-            <span
-              className={`text-xs font-semibold tracking-wide ${
-                manualModeToast === "enabled"
-                  ? "text-green-500"
-                  : "text-gray-400"
-              }`}
-            >
-              {manualModeToast === "enabled"
-                ? "? Manual mode enabled"
-                : "? Manual mode disabled"}
-            </span>
-          </div>
-        )}
+            {/* Manual Education Entry Modal */}
+            <ManualEducationEntryModal
+              isOpen={showManualEducationModal}
+              onClose={() => setShowManualEducationModal(false)}
+              onBack={() => {
+                setShowManualEducationModal(false);
+                if (manualModeActive) openBestManualModal();
+              }}
+              altSwitchButtons={getAltSwitchButtons("education")}
+              onSave={async (data) => {
+                setShowManualEducationModal(false);
+                setError(null);
+                // Clear uploaded image ? it's unrelated to this education log
+                setImagePreview(null);
+                setSelectedImage(null);
+                setImageType("education");
+                setLoadingState("saving");
+                setSaveLoading(true);
+                await saveEducationLog(
+                  {
+                    platform: data.platform,
+                    topic: data.topic,
+                    confidence: 0.9,
+                    participantCount: null,
+                  },
+                  null,
+                  null,
+                  null,
+                );
+              }}
+            />
 
-
-        {/* User Not Found Modal */}
-        {showUserNotFoundModal && (
-          <UserNotFoundModal
-            userEmail={user?.email || user?.Email || "your account"}
-            onClose={handleUserNotFoundModalClose}
-          />
-        )}
-
-        {/* PR 3 � Unknown / low-confidence capture disambiguation modal */}
-        <UnknownCaptureModal
-          isOpen={unknownCaptureModal.open}
-          onClose={() =>
-            setUnknownCaptureModal({ open: false, pendingSharePromise: null })
-          }
-          onPick={(chosenType) => {
-            // Re-tag the capture row to the user's choice so the share link
-            // resolves correctly and listAnalyses includes it in the right tab.
-            updatePendingCaptureType(
-              unknownCaptureModal.pendingSharePromise,
-              chosenType,
-            );
-            setUnknownCaptureModal({ open: false, pendingSharePromise: null });
-            setImageType(chosenType);
-            if (chosenType === "food") {
-              setManualMealType(
-                getMealTypeFromTime(
-                  imageTimestamp ? new Date(imageTimestamp) : new Date(),
-                ),
-              );
-              setShowManualFoodModal(true);
-            } else if (chosenType === "weight") {
-              fetchLastWeight();
-              setCurrentWeightImage(null);
-              setShowManualWeightModal(true);
-            } else if (chosenType === "education") {
-              setShowManualEducationModal(true);
-            }
-          }}
-        />
-
-        {/* PR-E � Unknown capture share-link viewer (image + Retry / Edit / Delete) */}
-        <UnknownShareViewer
-          isOpen={unknownShareView.open}
-          imageBase64={unknownShareView.imageBase64}
-          imageUrl={unknownShareView.imageUrl}
-          canMutate={unknownShareView.canMutate}
-          retrying={unknownShareView.retrying}
-          error={unknownShareView.error}
-          onRetry={handleUnknownShareRetry}
-          onEdit={handleUnknownShareEdit}
-          onDelete={handleUnknownShareDelete}
-          onClose={() =>
-            setUnknownShareView({
-              open: false,
-              captureId: null,
-              imageBase64: null,
-              imageUrl: null,
-              createdAt: null,
-              canMutate: false,
-              retrying: false,
-              error: null,
-            })
-          }
-        />
-
-        {/* 2026-06-09 � undo banner for unknown capture deletion (share-link viewer) */}
-        {unknownShareUndo && (
-          <UnknownCaptureUndoBanner
-            captureId={unknownShareUndo.captureId}
-            userId={unknownShareUndo.userId}
-            imageBase64={unknownShareUndo.imageBase64}
-            expiresAt={unknownShareUndo.expiresAt}
-            onUndo={async ({ captureId, userId }) => {
-              await undoDeleteCapture({ captureId, userId });
-              setUnknownShareUndo(null);
-              showToast("Restored");
-            }}
-            onExpire={() => {
-              setUnknownShareUndo(null);
-            }}
-          />
-        )}
-
-        {/* PR-E � dedicated food search modal whose save promotes unknown ? food */}
-        <SmartFoodSearchModal
-          isOpen={shareEditView.open}
-          onClose={() => setShareEditView({ open: false, captureId: null })}
-          onSave={handleShareEditSave}
-          mealType={manualMealType}
-          apiBaseUrl={apiBaseUrl}
-          userId={user?.id}
-          timeLabel="What was in this photo?"
-        />
-
-        {/* Smart Food Search Modal (replaces ManualFoodEntryModal � shows history + global search) */}
-        <SmartFoodSearchModal
-          isOpen={showManualFoodModal}
-          onClose={() => {
-            setShowManualFoodModal(false);
-            setManualMealType("");
-          }}
-          onSave={handleManualFoodSave}
-          mealType={manualMealType}
-          apiBaseUrl={apiBaseUrl}
-          userId={user?.id}
-          timeLabel="It's food time! Do you want to add manually?"
-          altSwitchButtons={getAltSwitchButtons("food")}
-        />
-
-        {/* Manual Weight Entry Modal */}
-        <ManualWeightEntryModal
-          isOpen={showManualWeightModal}
-          onClose={() => {
-            setShowManualWeightModal(false);
-            setCurrentWeightImage(null);
-          }}
-          onSave={handleManualWeightSave}
-          imagePreview={currentWeightImage || imagePreview}
-          userId={user?.id}
-          lastWeight={lastWeight}
-          skipTypeSelect
-        />
-
-        {/* Manual Education Entry Modal */}
-        <ManualEducationEntryModal
-          isOpen={showManualEducationModal}
-          onClose={() => setShowManualEducationModal(false)}
-          onBack={() => {
-            setShowManualEducationModal(false);
-            if (manualModeActive) openBestManualModal();
-          }}
-          altSwitchButtons={getAltSwitchButtons("education")}
-          onSave={async (data) => {
-            setShowManualEducationModal(false);
-            setError(null);
-            // Clear uploaded image ? it's unrelated to this education log
-            setImagePreview(null);
-            setSelectedImage(null);
-            setImageType("education");
-            setLoadingState("saving");
-            setSaveLoading(true);
-            await saveEducationLog(
-              {
-                platform: data.platform,
-                topic: data.topic,
-                confidence: 0.9,
-                participantCount: null,
-              },
-              null,
-              null,
-              null,
-            );
-          }}
-        />
-
-        {/* Manual Watch Entry Modal */}
-        <ManualWatchEntryModal
-          isOpen={showManualWatchModal}
-          onClose={() => setShowManualWatchModal(false)}
-          onBack={() => setShowManualWatchModal(false)}
-          onSave={async (data) => {
-            setShowManualWatchModal(false);
-            setError(null);
-            // Clear any uploaded image so the watch card doesn't show the wrong photo
-            setImagePreview(null);
-            setSelectedImage(null);
-            let resolvedUserId = user?.id;
-            if (!resolvedUserId) {
-              try {
-                resolvedUserId = await getUserId(user);
-              } catch (err) {
-                debugLog("[getUserId] failed, continuing with null userId", {
-                  err: err?.message,
+            {/* Manual Watch Entry Modal */}
+            <ManualWatchEntryModal
+              isOpen={showManualWatchModal}
+              onClose={() => setShowManualWatchModal(false)}
+              onBack={() => setShowManualWatchModal(false)}
+              onSave={async (data) => {
+                setShowManualWatchModal(false);
+                setError(null);
+                // Clear any uploaded image so the watch card doesn't show the wrong photo
+                setImagePreview(null);
+                setSelectedImage(null);
+                let resolvedUserId = user?.id;
+                if (!resolvedUserId) {
+                  try {
+                    resolvedUserId = await getUserId(user);
+                  } catch (err) {
+                    debugLog("[getUserId] failed, continuing with null userId", {
+                      err: err?.message,
+                    });
+                  }
+                }
+                setImageType("smartwatch");
+                setWatchResult({
+                  caloriesBurned: data.caloriesBurned,
+                  source: data.source,
+                  loggedAt: new Date().toISOString(),
+                  userId: resolvedUserId,
+                  isManualEntry: true,
                 });
-              }
-            }
-            setImageType("smartwatch");
-            setWatchResult({
-              caloriesBurned: data.caloriesBurned,
-              source: data.source,
-              loggedAt: new Date().toISOString(),
-              userId: resolvedUserId,
-              isManualEntry: true,
-            });
-          }}
-        />
+              }}
+            />
 
 
-        {/* Duplicate Food Modal */}
-        {showDuplicateModal && duplicateInfo && (
-          <DuplicateFoodModal
-            foodName={
-              duplicateInfo.duplicateFoodName || duplicateInfo.originalFoodName
-            }
-            mealType={duplicateInfo.mealType}
-            duplicateCount={duplicateInfo.duplicateCount}
-            onConfirm={handleDuplicateConfirm}
-            onCancel={handleDuplicateCancel}
-          />
-        )}
-
-        {/* Duplicate Weight Modal */}
-        {showDuplicateWeightModal && duplicateWeightInfo && (
-          <DuplicateFoodModal
-            isWeight={true}
-            weightValue={duplicateWeightInfo.existingWeight}
-            unit={duplicateWeightInfo.unit}
-            timeDifference={duplicateWeightInfo.timeDifference}
-            existingTime={duplicateWeightInfo.existingTime}
-            onConfirm={handleDuplicateWeightConfirm}
-            onCancel={handleDuplicateWeightCancel}
-          />
-        )}
-
-        {/* Club Selection Modal */}
-        <ClubSelectionModal
-          isOpen={showClubSelectionModal}
-          onClose={() => {
-            setShowClubSelectionModal(false);
-            setPendingEducationData(null);
-            setPendingWeightData(null);
-            setPendingFoodData(null);
-            setSaveLoading(false);
-            setLoadingState("idle");
-          }}
-          nearbyCenters={nearbyCenters}
-          onSelectClub={handleClubSelection}
-        />
-
-        {/* Custom Alert Modal (for image validation and other critical messages) */}
-        <CustomAlertModal
-          isOpen={alertModal.isOpen}
-          onClose={() => {
-            setAlertModal({ ...alertModal, isOpen: false });
-            // Clear all weight images when closing validation error modal
-            setImagePreview(null);
-            setCurrentWeightImage(null);
-            setPendingWeightImage(null);
-            // Clear error state to prevent error box from showing
-            setError(null);
-          }}
-          title={alertModal.title}
-          message={alertModal.message}
-          type={alertModal.type}
-          confirmText={alertModal.confirmText}
-          cancelText={alertModal.cancelText}
-          onConfirm={alertModal.onConfirm}
-        />
-
-        {/* Email Gate removed — name on Welcome; email + Community ID on Profile KYC */}
-
-        {showPhysicalActivitySetup && user && !showCompleteProfile && !showOnboardingTransformationPhotos && !transformationPhotosGateRef.current && !showOnboardingIdentity && !showSetupWizard && !showValidateOTP && (
-          <PhysicalActivitySetup
-            user={user}
-            onComplete={async () => {
-              const email =
-                user?.email || user?.Email || Session.getUserEmail() || "";
-              physicalActivityConfirmedRef.current = true;
-              setShowPhysicalActivitySetup(false);
-              setPhysicalActivityResolved(true);
-              setBmrUpdateKey((prev) => prev + 1);
-              void email;
-            }}
-          />
-        )}
-
-        {/* Weight Progress Tips Modal (shows when weight moves opposite to goal) */}
-        <WeightProgressTipsModal
-          isOpen={showWeightProgressModal}
-          onClose={() => {
-            setShowWeightProgressModal(false);
-            weightProgressCheck.reset();
-          }}
-          onOpenGallery={() => {
-            fileInputRef.current?.openGallery?.();
-          }}
-          comparison={weightProgressCheck.comparison}
-          goalMode={weightProgressCheck.goalMode}
-          userName={savedUserName}
-        />
-
-        <UserProfileModal
-          isOpen={showNewUserProfileModal}
-          onClose={() => setShowNewUserProfileModal(false)}
-          user={user}
-          onProfileUpdate={() => {
-            debugLog("? [NewUserProfile] Profile updated successfully");
-            setBodyParamsRefreshKey((k) => k + 1);
-            triggerNutritionRefresh({ immediate: true, source: 'new-user-profile' });
-          }}
-        />
-
-        {/* -- Identity gate (name only) then sponsor → OTP → remaining profile ----- */}
-        {showOnboardingIdentity && !profileChecking && user && (
-          <OnboardingIdentityPage
-            user={user}
-            onComplete={async (savedData) => {
-              // Lock name gate before setUser / coach resolve — stale profile
-              // fetches must not reopen Welcome mid-handoff.
-              identityConfirmedRef.current = true;
-              identityFetchGenRef.current += 1;
-
-              const savedEmail =
-                savedData?.email
-                || user?.email
-                || user?.Email
-                || Session.getUserEmail()
-                || "";
-              const adoptedUserId = savedData?.adopted && savedData?.userId
-                ? savedData.userId
-                : null;
-              const uid = adoptedUserId
-                || user?.id
-                || user?.UserId
-                || user?.userId
-                || Session.getDbUserId();
-              if (adoptedUserId) {
-                Session.setDbUserId(adoptedUserId);
-              }
-              if (savedEmail) {
-                Session.setUserEmail(savedEmail);
-                const cachedRaw = Session.getOtpUserRaw();
-                if (cachedRaw) {
-                  try {
-                    const cached = JSON.parse(cachedRaw);
-                    Session.setOtpUser({
-                      ...cached,
-                      email: savedEmail,
-                      ...(adoptedUserId ? { id: adoptedUserId, UserId: adoptedUserId } : {}),
-                      ...(savedData?.phone ? { phone: savedData.phone, phoneNumber: savedData.phone } : {}),
-                      ...(savedData?.userName
-                        ? { username: savedData.userName, userName: savedData.userName }
-                        : {}),
-                    });
-                  } catch { /* non-fatal */ }
+            {/* Duplicate Food Modal */}
+            {showDuplicateModal && duplicateInfo && (
+              <DuplicateFoodModal
+                foodName={
+                  duplicateInfo.duplicateFoodName || duplicateInfo.originalFoodName
                 }
-              } else if (savedData?.userName) {
-                const cachedRaw = Session.getOtpUserRaw();
-                if (cachedRaw) {
-                  try {
-                    const cached = JSON.parse(cachedRaw);
-                    Session.setOtpUser({
-                      ...cached,
-                      username: savedData.userName,
-                      userName: savedData.userName,
-                    });
-                  } catch { /* non-fatal */ }
-                }
-              }
-              setUser((prevUser) => {
-                if (!prevUser) return prevUser;
-                return {
-                  ...prevUser,
-                  email: savedEmail || prevUser.email,
-                  username: savedData?.userName || prevUser.username,
-                  userName: savedData?.userName || prevUser.userName,
-                  ...(adoptedUserId
-                    ? {
-                      id: adoptedUserId,
-                      UserId: adoptedUserId,
-                      userId: adoptedUserId,
-                      phone: savedData.phone || prevUser.phone,
-                      phoneNumber: savedData.phone || prevUser.phoneNumber,
+                mealType={duplicateInfo.mealType}
+                duplicateCount={duplicateInfo.duplicateCount}
+                onConfirm={handleDuplicateConfirm}
+                onCancel={handleDuplicateCancel}
+              />
+            )}
+
+            {/* Duplicate Weight Modal */}
+            {showDuplicateWeightModal && duplicateWeightInfo && (
+              <DuplicateFoodModal
+                isWeight={true}
+                weightValue={duplicateWeightInfo.existingWeight}
+                unit={duplicateWeightInfo.unit}
+                timeDifference={duplicateWeightInfo.timeDifference}
+                existingTime={duplicateWeightInfo.existingTime}
+                onConfirm={handleDuplicateWeightConfirm}
+                onCancel={handleDuplicateWeightCancel}
+              />
+            )}
+
+            {/* Club Selection Modal */}
+            <ClubSelectionModal
+              isOpen={showClubSelectionModal}
+              onClose={() => {
+                setShowClubSelectionModal(false);
+                setPendingEducationData(null);
+                setPendingWeightData(null);
+                setPendingFoodData(null);
+                setSaveLoading(false);
+                setLoadingState("idle");
+              }}
+              nearbyCenters={nearbyCenters}
+              onSelectClub={handleClubSelection}
+            />
+
+            {/* Custom Alert Modal (for image validation and other critical messages) */}
+            <CustomAlertModal
+              isOpen={alertModal.isOpen}
+              onClose={() => {
+                setAlertModal({ ...alertModal, isOpen: false });
+                // Clear all weight images when closing validation error modal
+                setImagePreview(null);
+                setCurrentWeightImage(null);
+                setPendingWeightImage(null);
+                // Clear error state to prevent error box from showing
+                setError(null);
+              }}
+              title={alertModal.title}
+              message={alertModal.message}
+              type={alertModal.type}
+              confirmText={alertModal.confirmText}
+              cancelText={alertModal.cancelText}
+              onConfirm={alertModal.onConfirm}
+            />
+
+            {/* Email Gate removed — name on Welcome; email + Community ID on Profile KYC */}
+
+            {showPhysicalActivitySetup && user && !showCompleteProfile && !showOnboardingTransformationPhotos && !transformationPhotosGateRef.current && !showOnboardingIdentity && !showSetupWizard && !showValidateOTP && (
+              <PhysicalActivitySetup
+                user={user}
+                onComplete={async () => {
+                  const email =
+                    user?.email || user?.Email || Session.getUserEmail() || "";
+                  physicalActivityConfirmedRef.current = true;
+                  setShowPhysicalActivitySetup(false);
+                  setPhysicalActivityResolved(true);
+                  setBmrUpdateKey((prev) => prev + 1);
+                  void email;
+                }}
+              />
+            )}
+
+            {/* Weight Progress Tips Modal (shows when weight moves opposite to goal) */}
+            <WeightProgressTipsModal
+              isOpen={showWeightProgressModal}
+              onClose={() => {
+                setShowWeightProgressModal(false);
+                weightProgressCheck.reset();
+              }}
+              onOpenGallery={() => {
+                fileInputRef.current?.openGallery?.();
+              }}
+              comparison={weightProgressCheck.comparison}
+              goalMode={weightProgressCheck.goalMode}
+              userName={savedUserName}
+            />
+
+            <UserProfileModal
+              isOpen={showNewUserProfileModal}
+              onClose={() => setShowNewUserProfileModal(false)}
+              user={user}
+              onProfileUpdate={() => {
+                debugLog("? [NewUserProfile] Profile updated successfully");
+                setBodyParamsRefreshKey((k) => k + 1);
+                triggerNutritionRefresh({ immediate: true, source: 'new-user-profile' });
+              }}
+            />
+
+            {/* -- Identity gate (name only) then sponsor → OTP → remaining profile ----- */}
+            {showOnboardingIdentity && !profileChecking && user && (
+              <OnboardingIdentityPage
+                user={user}
+                onComplete={async (savedData) => {
+                  // Lock name gate before setUser / coach resolve — stale profile
+                  // fetches must not reopen Welcome mid-handoff.
+                  identityConfirmedRef.current = true;
+                  identityFetchGenRef.current += 1;
+
+                  const savedEmail =
+                    savedData?.email
+                    || user?.email
+                    || user?.Email
+                    || Session.getUserEmail()
+                    || "";
+                  const adoptedUserId = savedData?.adopted && savedData?.userId
+                    ? savedData.userId
+                    : null;
+                  const uid = adoptedUserId
+                    || user?.id
+                    || user?.UserId
+                    || user?.userId
+                    || Session.getDbUserId();
+                  if (adoptedUserId) {
+                    Session.setDbUserId(adoptedUserId);
+                  }
+                  if (savedEmail) {
+                    Session.setUserEmail(savedEmail);
+                    const cachedRaw = Session.getOtpUserRaw();
+                    if (cachedRaw) {
+                      try {
+                        const cached = JSON.parse(cachedRaw);
+                        Session.setOtpUser({
+                          ...cached,
+                          email: savedEmail,
+                          ...(adoptedUserId ? { id: adoptedUserId, UserId: adoptedUserId } : {}),
+                          ...(savedData?.phone ? { phone: savedData.phone, phoneNumber: savedData.phone } : {}),
+                          ...(savedData?.userName
+                            ? { username: savedData.userName, userName: savedData.userName }
+                            : {}),
+                        });
+                      } catch { /* non-fatal */ }
                     }
-                    : {}),
-                };
-              });
-              if (savedData?.userName) {
-                setSavedUserName(savedData.userName);
-                if (savedEmail) cacheProfileUserName(savedEmail, savedData.userName);
-              }
+                  } else if (savedData?.userName) {
+                    const cachedRaw = Session.getOtpUserRaw();
+                    if (cachedRaw) {
+                      try {
+                        const cached = JSON.parse(cachedRaw);
+                        Session.setOtpUser({
+                          ...cached,
+                          username: savedData.userName,
+                          userName: savedData.userName,
+                        });
+                      } catch { /* non-fatal */ }
+                    }
+                  }
+                  setUser((prevUser) => {
+                    if (!prevUser) return prevUser;
+                    return {
+                      ...prevUser,
+                      email: savedEmail || prevUser.email,
+                      username: savedData?.userName || prevUser.username,
+                      userName: savedData?.userName || prevUser.userName,
+                      ...(adoptedUserId
+                        ? {
+                          id: adoptedUserId,
+                          UserId: adoptedUserId,
+                          userId: adoptedUserId,
+                          phone: savedData.phone || prevUser.phone,
+                          phoneNumber: savedData.phone || prevUser.phoneNumber,
+                        }
+                        : {}),
+                    };
+                  });
+                  if (savedData?.userName) {
+                    setSavedUserName(savedData.userName);
+                    if (savedEmail) cacheProfileUserName(savedEmail, savedData.userName);
+                  }
 
-              // Keep Name visible until sponsor/OTP/remaining gate is set — avoids Home flash.
-              setIdentityResolved(true);
-              setCoachSetupResolved(false);
-              await resolveCoachSetupStatus(savedEmail, {
-                openRemainingProfile: false,
-                userId: uid,
-              });
-              setShowOnboardingIdentity(false);
-              setCoachSetupResolved(true);
-            }}
-          />
-        )}
+                  // Keep Name visible until sponsor/OTP/remaining gate is set — avoids Home flash.
+                  setIdentityResolved(true);
+                  setCoachSetupResolved(false);
+                  await resolveCoachSetupStatus(savedEmail, {
+                    openRemainingProfile: false,
+                    userId: uid,
+                  });
+                  setShowOnboardingIdentity(false);
+                  setCoachSetupResolved(true);
+                }}
+              />
+            )}
 
-        {isFlagEnabled('ff.field-collection') && fieldCollectionLive && sponsorReady && user && isOtpVerified && !showOnboardingIdentity && !showSetupWizard && !showValidateOTP && (
-          <FieldCollectionHost
-            user={user}
-            apiBaseUrl={apiBaseUrl}
-            nonce={fieldCollectionNonce}
-            onBlockingChange={setFieldCollectionBlocking}
-            onInactive={() => {
-              fieldCollectionLiveRef.current = false;
-              setFieldCollectionLive(false);
-            }}
-          />
-        )}
+            {isFlagEnabled('ff.field-collection') && fieldCollectionLive && sponsorReady && user && isOtpVerified && !showOnboardingIdentity && !showSetupWizard && !showValidateOTP && (
+              <FieldCollectionHost
+                user={user}
+                apiBaseUrl={apiBaseUrl}
+                nonce={fieldCollectionNonce}
+                onBlockingChange={setFieldCollectionBlocking}
+                onInactive={() => {
+                  fieldCollectionLiveRef.current = false;
+                  setFieldCollectionLive(false);
+                }}
+              />
+            )}
 
-        {/* -- Remaining profile fields (after sponsor OTP) ---------------------
+            {/* -- Remaining profile fields (after sponsor OTP) ---------------------
            Gender, height, diet, metrics — then mandatory transformation photos.
       ------------------------------------------------------------------- */}
-        {showCompleteProfile && !profileChecking && !showOnboardingIdentity && !showOnboardingTransformationPhotos && user && (
-          <CompleteProfilePage
-            user={user}
-            apiBaseUrl={apiBaseUrl}
-            showPictureSection={false}
-            identityLocked
-            snoozeData={profilePicSnoozeData}
-            userId={user.id || user.UserId || Session.getDbUserId()}
-            onComplete={async (savedData) => {
-              const savedEmail =
-                savedData?.email
-                || user?.email
-                || user?.Email
-                || Session.getUserEmail()
-                || "";
-              const reviewedUserId =
-                user?.id
-                || user?.UserId
-                || user?.userId
-                || Session.getDbUserId()
-                || null;
-              if (reviewedUserId) {
-                Session.markBcmProfileReviewed(reviewedUserId);
-              }
-              if (savedEmail) {
-                Session.setUserEmail(savedEmail);
-                Session.markProfileComplete(savedEmail);
-                const cachedRaw = Session.getOtpUserRaw();
-                if (cachedRaw) {
-                  try {
-                    const cached = JSON.parse(cachedRaw);
-                    Session.setOtpUser({
-                      ...cached,
-                      email: savedEmail,
-                      ...(savedData?.userName
-                        ? { username: savedData.userName, userName: savedData.userName }
-                        : {}),
-                    });
-                  } catch { /* non-fatal */ }
-                }
-              }
-              profileCompletedRef.current = true;
-              // Set gate BEFORE setUser — email change re-runs checkProfileCompletion
-              // and must not clear the Transformation Photos step.
-              transformationPhotosGateRef.current = true;
-              setShowCompleteProfile(false);
-              setShowOnboardingTransformationPhotos(true);
-              setProfileChecking(false);
+            {showCompleteProfile && !profileChecking && !showOnboardingIdentity && !showOnboardingTransformationPhotos && user && (
+              <CompleteProfilePage
+                user={user}
+                apiBaseUrl={apiBaseUrl}
+                showPictureSection={false}
+                identityLocked
+                snoozeData={profilePicSnoozeData}
+                userId={user.id || user.UserId || Session.getDbUserId()}
+                onComplete={async (savedData) => {
+                  const savedEmail =
+                    savedData?.email
+                    || user?.email
+                    || user?.Email
+                    || Session.getUserEmail()
+                    || "";
+                  const reviewedUserId =
+                    user?.id
+                    || user?.UserId
+                    || user?.userId
+                    || Session.getDbUserId()
+                    || null;
+                  if (reviewedUserId) {
+                    Session.markBcmProfileReviewed(reviewedUserId);
+                  }
+                  if (savedEmail) {
+                    Session.setUserEmail(savedEmail);
+                    Session.markProfileComplete(savedEmail);
+                    const cachedRaw = Session.getOtpUserRaw();
+                    if (cachedRaw) {
+                      try {
+                        const cached = JSON.parse(cachedRaw);
+                        Session.setOtpUser({
+                          ...cached,
+                          email: savedEmail,
+                          ...(savedData?.userName
+                            ? { username: savedData.userName, userName: savedData.userName }
+                            : {}),
+                        });
+                      } catch { /* non-fatal */ }
+                    }
+                  }
+                  profileCompletedRef.current = true;
+                  // Set gate BEFORE setUser — email change re-runs checkProfileCompletion
+                  // and must not clear the Transformation Photos step.
+                  transformationPhotosGateRef.current = true;
+                  setShowCompleteProfile(false);
+                  setShowOnboardingTransformationPhotos(true);
+                  setProfileChecking(false);
 
-              setUser((prevUser) => {
-                if (!prevUser) return prevUser;
-                return {
-                  ...prevUser,
-                  email: savedEmail || prevUser.email,
-                  username: savedData?.userName || prevUser.username,
-                  userName: savedData?.userName || prevUser.userName,
-                  ...(savedData?.profileImage
-                    ? {
+                  setUser((prevUser) => {
+                    if (!prevUser) return prevUser;
+                    return {
+                      ...prevUser,
+                      email: savedEmail || prevUser.email,
+                      username: savedData?.userName || prevUser.username,
+                      userName: savedData?.userName || prevUser.userName,
+                      ...(savedData?.profileImage
+                        ? {
+                          profileImage: savedData.profileImage,
+                          ProfileImage: savedData.profileImage,
+                          photoURL: savedData.profileImage,
+                        }
+                        : {}),
+                    };
+                  });
+                  if (savedData?.userName) {
+                    setSavedUserName(savedData.userName);
+                    if (savedEmail) cacheProfileUserName(savedEmail, savedData.userName);
+                  }
+                }}
+              />
+            )}
+
+            {/* -- Transformation photos (mandatory Left/Centre/Right) after Complete Profile */}
+            {showOnboardingTransformationPhotos && !showOnboardingIdentity && !showCompleteProfile && user && (
+              <OnboardingTransformationPhotosPage
+                user={user}
+                onComplete={async (savedData) => {
+                  transformationPhotosGateRef.current = false;
+                  transformationPhotosConfirmedRef.current = true;
+                  setShowOnboardingTransformationPhotos(false);
+                  if (savedData?.profileImage) {
+                    setSavedProfileImage(savedData.profileImage);
+                    setUser((prevUser) => {
+                      if (!prevUser) return prevUser;
+                      return {
+                        ...prevUser,
                         profileImage: savedData.profileImage,
                         ProfileImage: savedData.profileImage,
                         photoURL: savedData.profileImage,
-                      }
-                    : {}),
-                };
-              });
-              if (savedData?.userName) {
-                setSavedUserName(savedData.userName);
-                if (savedEmail) cacheProfileUserName(savedEmail, savedData.userName);
-              }
-            }}
-          />
-        )}
+                      };
+                    });
+                  }
+                  setHeaderProfileKey((k) => k + 1);
+                  // Navigate immediately — resolve activity in background (avoid ~1s GET block).
+                  setShowPhysicalActivitySetup(true);
+                  setPhysicalActivityResolved(true);
+                  const savedEmail =
+                    user?.email
+                    || user?.Email
+                    || Session.getUserEmail()
+                    || "";
+                  const uid =
+                    user?.id
+                    || user?.UserId
+                    || user?.userId
+                    || Session.getDbUserId()
+                    || null;
+                  if (!savedEmail && !uid) return;
+                  fetchProfile(
+                    savedEmail ? { email: savedEmail } : { userId: uid },
+                  ).then(({ data }) => {
+                    if (data && data.physicalActivityLevel) {
+                      physicalActivityConfirmedRef.current = true;
+                      setShowPhysicalActivitySetup(false);
+                    }
+                  }).catch(() => { });
+                }}
+              />
+            )}
 
-        {/* -- Transformation photos (mandatory Left/Centre/Right) after Complete Profile */}
-        {showOnboardingTransformationPhotos && !showOnboardingIdentity && !showCompleteProfile && user && (
-          <OnboardingTransformationPhotosPage
-            user={user}
-            onComplete={async (savedData) => {
-              transformationPhotosGateRef.current = false;
-              transformationPhotosConfirmedRef.current = true;
-              setShowOnboardingTransformationPhotos(false);
-              if (savedData?.profileImage) {
-                setSavedProfileImage(savedData.profileImage);
-                setUser((prevUser) => {
-                  if (!prevUser) return prevUser;
-                  return {
-                    ...prevUser,
-                    profileImage: savedData.profileImage,
-                    ProfileImage: savedData.profileImage,
-                    photoURL: savedData.profileImage,
-                  };
-                });
-              }
-              setHeaderProfileKey((k) => k + 1);
-              // Navigate immediately — resolve activity in background (avoid ~1s GET block).
-              setShowPhysicalActivitySetup(true);
-              setPhysicalActivityResolved(true);
-              const savedEmail =
-                user?.email
-                || user?.Email
-                || Session.getUserEmail()
-                || "";
-              const uid =
-                user?.id
-                || user?.UserId
-                || user?.userId
-                || Session.getDbUserId()
-                || null;
-              if (!savedEmail && !uid) return;
-              fetchProfile(
-                savedEmail ? { email: savedEmail } : { userId: uid },
-              ).then(({ data }) => {
-                if (data && data.physicalActivityLevel) {
-                  physicalActivityConfirmedRef.current = true;
-                  setShowPhysicalActivitySetup(false);
-                }
-              }).catch(() => {});
-            }}
-          />
-        )}
-
-        {/* -- Mandatory Profile Picture Upload Gate ? DISABLED -------------
+            {/* -- Mandatory Profile Picture Upload Gate ? DISABLED -------------
       {showMandatoryProfilePictureModal && !showCompleteProfile && user && (
         <MandatoryProfilePictureModal
           user={user}
@@ -10401,92 +10388,92 @@ function WellnessValleyApp() {
       )}
       ------------------------------------------------------------------- */}
 
-        {/* Register Nutrition Center (main app � when not on Physical Club full page) */}
-        {showRegisterCenter && (
-          <Suspense fallback={null}>
-            <NutritionCenterRegistration
-              user={user}
-              initialCenter={editCenterData}
-              onSaved={returnToMyClubs}
-              onBack={() => {
-                setShowRegisterCenter(false);
-                setEditCenterData(null);
-                setShowNutritionCentersMap(true);
-              }}
-            />
-          </Suspense>
-        )}
+            {/* Register Nutrition Center (main app � when not on Physical Club full page) */}
+            {showRegisterCenter && (
+              <Suspense fallback={null}>
+                <NutritionCenterRegistration
+                  user={user}
+                  initialCenter={editCenterData}
+                  onSaved={returnToMyClubs}
+                  onBack={() => {
+                    setShowRegisterCenter(false);
+                    setEditCenterData(null);
+                    setShowNutritionCentersMap(true);
+                  }}
+                />
+              </Suspense>
+            )}
 
-        {/* Setup Wizard - Sponsor selection (after name+email, before remaining profile) */}
-        {showSetupWizard && !showCompleteProfile && !showOnboardingTransformationPhotos && !showOnboardingIdentity && !showPhysicalActivitySetup && (
-          <Suspense fallback={null}>
-            <SetupWizard
-              userEmail={user?.email || user?.Email || Session.getUserEmail()}
-              userId={user?.id || user?.UserId || user?.userId || Session.getDbUserId()}
-              onClose={() => setShowSetupWizard(false)}
-              onNavigateToOTP={() => {
-                setShowSetupWizard(false);
-                setShowValidateOTP(true);
-              }}
-              onLogout={handleSignOut}
-            />
-          </Suspense>
-        )}
+            {/* Setup Wizard - Sponsor selection (after name+email, before remaining profile) */}
+            {showSetupWizard && !showCompleteProfile && !showOnboardingTransformationPhotos && !showOnboardingIdentity && !showPhysicalActivitySetup && (
+              <Suspense fallback={null}>
+                <SetupWizard
+                  userEmail={user?.email || user?.Email || Session.getUserEmail()}
+                  userId={user?.id || user?.UserId || user?.userId || Session.getDbUserId()}
+                  onClose={() => setShowSetupWizard(false)}
+                  onNavigateToOTP={() => {
+                    setShowSetupWizard(false);
+                    setShowValidateOTP(true);
+                  }}
+                  onLogout={handleSignOut}
+                />
+              </Suspense>
+            )}
 
-        {/* OTP Validation Page */}
-        {showValidateOTP && (
-          <Suspense fallback={null}>
-            <ValidateOTP
-              key={isInactiveReactivationFlow ? "reactivation" : "setup"}
-              isReactivationFlow={isInactiveReactivationFlow}
-              userEmail={user?.email || user?.Email || Session.getUserEmail()}
-              userId={user?.id || user?.UserId || user?.userId || Session.getDbUserId()}
-              coachName={isInactiveReactivationFlow ? inactiveCoachName || undefined : undefined}
-              onClose={() => {
-                console.log("?? [ValidateOTP onClose] User closed modal", {
-                  isInactiveReactivationFlow,
-                });
-                setShowValidateOTP(false);
-                if (isInactiveReactivationFlow) {
-                  isInactiveReactivationFlowRef.current = false;
-                  setIsInactiveReactivationFlow(false);
-                  handleSignOut();
-                } else {
-                  // Regular login flow - go back to setup wizard only if not inactive
-                  if (isUserActive) {
-                    setShowSetupWizard(true);
-                  } else {
-                    console.log(
-                      "?? [ValidateOTP onClose] User is inactive, not showing setup wizard",
-                    );
-                  }
-                }
-              }}
-              onSuccess={async () => {
-                if (isInactiveReactivationFlow) {
-                  handleInactiveReactivationSuccess();
-                  return;
-                }
-                setShowValidateOTP(false);
-                Session.markCoachOtpVerified();
-                markSponsorReady(true);
-                const email =
-                  user?.email || user?.Email || Session.getUserEmail() || "";
-                // Bust profile cache after sponsor OTP so needsName cannot
-                // reopen Welcome when name was already saved this session.
-                await checkProfileCompletion(email || null, user, {
-                  silent: true,
-                  allowRemainingProfile: true,
-                  afterSave: true,
-                });
-              }}
-              onLogout={handleSignOut}
-            />
-          </Suspense>
-        )}
+            {/* OTP Validation Page */}
+            {showValidateOTP && (
+              <Suspense fallback={null}>
+                <ValidateOTP
+                  key={isInactiveReactivationFlow ? "reactivation" : "setup"}
+                  isReactivationFlow={isInactiveReactivationFlow}
+                  userEmail={user?.email || user?.Email || Session.getUserEmail()}
+                  userId={user?.id || user?.UserId || user?.userId || Session.getDbUserId()}
+                  coachName={isInactiveReactivationFlow ? inactiveCoachName || undefined : undefined}
+                  onClose={() => {
+                    console.log("?? [ValidateOTP onClose] User closed modal", {
+                      isInactiveReactivationFlow,
+                    });
+                    setShowValidateOTP(false);
+                    if (isInactiveReactivationFlow) {
+                      isInactiveReactivationFlowRef.current = false;
+                      setIsInactiveReactivationFlow(false);
+                      handleSignOut();
+                    } else {
+                      // Regular login flow - go back to setup wizard only if not inactive
+                      if (isUserActive) {
+                        setShowSetupWizard(true);
+                      } else {
+                        console.log(
+                          "?? [ValidateOTP onClose] User is inactive, not showing setup wizard",
+                        );
+                      }
+                    }
+                  }}
+                  onSuccess={async () => {
+                    if (isInactiveReactivationFlow) {
+                      handleInactiveReactivationSuccess();
+                      return;
+                    }
+                    setShowValidateOTP(false);
+                    Session.markCoachOtpVerified();
+                    markSponsorReady(true);
+                    const email =
+                      user?.email || user?.Email || Session.getUserEmail() || "";
+                    // Bust profile cache after sponsor OTP so needsName cannot
+                    // reopen Welcome when name was already saved this session.
+                    await checkProfileCompletion(email || null, user, {
+                      silent: true,
+                      allowRemainingProfile: true,
+                      afterSave: true,
+                    });
+                  }}
+                  onLogout={handleSignOut}
+                />
+              </Suspense>
+            )}
 
-        {/* ?? Floating Bug Button - Show Correction Logs (Web & Android) */}
-        {/* {user && (
+            {/* ?? Floating Bug Button - Show Correction Logs (Web & Android) */}
+            {/* {user && (
         <button
           onClick={() => setShowCorrectionModal(true)}
           disabled={correctionLogs.length === 0}
@@ -10507,265 +10494,265 @@ function WellnessValleyApp() {
         </button>
       )} */}
 
-        {/* Fixed buttons removed - now using sticky footer layout inside scrollable content */}
+            {/* Fixed buttons removed - now using sticky footer layout inside scrollable content */}
 
-        {/* ?? Correction Logs Modal (Web & Android Optimized) */}
-        {showCorrectionModal && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 z-[9999] flex items-center justify-center p-4"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setShowCorrectionModal(false);
-            }}
-          >
-            <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              {/* Header */}
+            {/* ?? Correction Logs Modal (Web & Android Optimized) */}
+            {showCorrectionModal && (
+              <div
+                className="fixed inset-0 bg-black bg-opacity-50 z-[9999] flex items-center justify-center p-4"
+                onClick={(e) => {
+                  if (e.target === e.currentTarget) setShowCorrectionModal(false);
+                }}
+              >
+                <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                  {/* Header */}
 
-<div className="bg-gradient-to-r from-blue-700 to-sky-500 text-white p-4 md:p-6 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Bug className="w-6 h-6 md:w-8 md:h-8" />
-                  <div>
-                    <h2 className="text-xl md:text-2xl font-bold">
-                      Food Correction Logs
-                    </h2>
-                    <p className="text-orange-100 text-xs md:text-sm">
-                      AI Detection vs User Corrections ({correctionLogs.length}{" "}
-                      entries)
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowCorrectionModal(false)}
-                  className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors"
-                  aria-label="Close modal"
-                >
-                  <svg
-                    className="w-5 h-5 md:w-6 md:h-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-gray-900">
-                {correctionLogs.length === 0 ? (
-                  <div className="text-center py-12 text-gray-400">
-                    <Bug className="w-16 h-16 mx-auto mb-4 opacity-20" />
-                    <p className="text-lg font-semibold">
-                      No correction logs yet
-                    </p>
-                    <p className="text-sm">
-                      Upload food images to see correction logs
-                    </p>
-                  </div>
-                ) : (
-                  correctionLogs.map((log, index) => (
-                    <div
-                      key={index}
-                      className="bg-gray-950 rounded-lg p-4 md:p-5 border border-gray-700 font-mono text-xs md:text-sm"
-                    >
-                      {/* Timestamp Header */}
-                      <div className="text-gray-400 mb-3 pb-2 border-b border-gray-700">
-                        <span className="text-blue-400">
-                          ?? {new Date(log.timestamp).toLocaleString()}
-                        </span>
-                        {log.wasAutoCorrected && (
-                          <span className="ml-3 bg-green-900 text-green-300 px-2 py-1 rounded text-xs">
-                            ? AUTO-CORRECTED
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Main Correction Flow Box */}
-                      <div className="bg-gray-800 rounded p-4 mb-3 border border-gray-600">
-                        <div className="text-blue-400 font-bold mb-2">
-                          +----------------------------------------------------------------
-                        </div>
-                        <div className="text-blue-400 font-bold mb-1">
-                          ? ?? FOOD CORRECTION FLOW
-                        </div>
-                        <div className="text-blue-400 font-bold mb-2">
-                          �----------------------------------------------------------------
-                        </div>
-
-                        <div className="text-white mb-1">
-                          <span className="text-gray-400">?</span> ??{" "}
-                          <span className="text-cyan-400">
-                            AI Detected Name:
-                          </span>
-                          <span className="ml-4 text-yellow-300">
-                            "{log.aiDetected}"
-                          </span>
-                        </div>
-
-                        {log.aiDetected.trim().toLowerCase() ===
-                        log.userCorrected.trim().toLowerCase() ? (
-                          <div className="text-white mb-2">
-                            <span className="text-gray-400">?</span> ?{" "}
-                            <span className="text-cyan-400">Status:</span>
-                            <span className="ml-2 text-green-300">
-                              No Correction - User accepted AI suggestion
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="text-white mb-2">
-                            <span className="text-gray-400">?</span> ??{" "}
-                            <span className="text-cyan-400">
-                              User Corrected To:
-                            </span>
-                            <span className="ml-2 text-green-300">
-                              "{log.userCorrected}"
-                            </span>
-                          </div>
-                        )}
-
-                        <div className="text-white mb-2">
-                          <span className="text-gray-400">?</span> ??{" "}
-                          <span className="text-cyan-400">
-                            Final Display Name:
-                          </span>
-                          <span className="ml-2 text-green-300">
-                            "{log.finalDisplay}"
-                          </span>
-                        </div>
-
-                        <div className="text-blue-400 font-bold">
-                          +----------------------------------------------------------------
-                        </div>
-                      </div>
-
-                      {/* Individual Console Logs */}
-                      <div className="space-y-1 text-gray-300">
-                        <div>
-                          <span className="text-blue-400">
-                            ?? [AI-DETECTED]
-                          </span>
-                          <span className="ml-2">
-                            Original:{" "}
-                            <span className="text-yellow-300">
-                              {log.aiDetected}
-                            </span>
-                          </span>
-                        </div>
-
-                        {log.aiDetected.trim().toLowerCase() ===
-                        log.userCorrected.trim().toLowerCase() ? (
-                          <div>
-                            <span className="text-green-400">
-                              ? [NO-CORRECTION]
-                            </span>
-                            <span className="ml-2">
-                              User accepted AI suggestion
-                            </span>
-                          </div>
-                        ) : (
-                          <div>
-                            <span className="text-green-400">
-                              ?? [USER-CORRECTED]
-                            </span>
-                            <span className="ml-2">
-                              Mapped to:{" "}
-                              <span className="text-green-300">
-                                {log.userCorrected}
-                              </span>
-                            </span>
-                          </div>
-                        )}
-
-                        <div>
-                          <span className="text-purple-400">
-                            ?? [FINAL-DISPLAY]
-                          </span>
-                          <span className="ml-2">
-                            Will show:{" "}
-                            <span className="text-green-300">
-                              {log.finalDisplay}
-                            </span>
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Structured Data Object */}
-                      <div className="mt-3 pt-3 border-t border-gray-700">
-                        <div className="text-gray-400">[CORRECTION-DATA]</div>
-                        <pre className="text-xs text-gray-300 mt-1 overflow-x-auto">
-                          {JSON.stringify(
-                            {
-                              aiDetected: log.aiDetected,
-                              userCorrected: log.userCorrected,
-                              finalDisplay: log.finalDisplay,
-                              userCount: log.userCount,
-                              portion: log.portion,
-                              calories: log.calories,
-                              timestamp: log.timestamp,
-                            },
-                            null,
-                            2,
-                          )}
-                        </pre>
+                  <div className="bg-gradient-to-r from-blue-700 to-sky-500 text-white p-4 md:p-6 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Bug className="w-6 h-6 md:w-8 md:h-8" />
+                      <div>
+                        <h2 className="text-xl md:text-2xl font-bold">
+                          Food Correction Logs
+                        </h2>
+                        <p className="text-orange-100 text-xs md:text-sm">
+                          AI Detection vs User Corrections ({correctionLogs.length}{" "}
+                          entries)
+                        </p>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
+                    <button
+                      onClick={() => setShowCorrectionModal(false)}
+                      className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors"
+                      aria-label="Close modal"
+                    >
+                      <svg
+                        className="w-5 h-5 md:w-6 md:h-6"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
 
-              {/* Footer */}
-              <div className="bg-gray-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-3 border-t">
-                <button
-                  onClick={() => {
-                    setCorrectionLogs([]);
-                    setShowCorrectionModal(false);
-                  }}
-                  className="text-sm text-red-600 hover:text-red-700 font-semibold hover:underline transition-colors order-2 sm:order-1"
-                >
-                  Clear All Logs
-                </button>
-                <div className="flex gap-2 order-1 sm:order-2">
-                  <button
-                    onClick={() => {
-                      // Copy logs to clipboard for web users
-                      const logText = correctionLogs
-                        .map(
-                          (log) =>
-                            `${new Date(log.timestamp).toLocaleString()}\n` +
-                            `AI: ${log.aiDetected} ? Corrected: ${log.userCorrected} ? Final: ${log.finalDisplay}\n` +
-                            `Stats: Users ${log.userCount} | ${log.portion} | ${log.calories}cal\n`,
-                        )
-                        .join("\n");
-                      navigator.clipboard
-                        ?.writeText(logText)
-                        .then(() => alert("Logs copied to clipboard!"))
-                        .catch(() => debugLog("Copy not supported"));
-                    }}
-                    className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg font-semibold transition-colors text-sm"
-                  >
-                    ?? Copy Logs
-                  </button>
-                  <button
-                    onClick={() => setShowCorrectionModal(false)}
-                    className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
-                  >
-                    Close
-                  </button>
+                  {/* Content */}
+                  <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-gray-900">
+                    {correctionLogs.length === 0 ? (
+                      <div className="text-center py-12 text-gray-400">
+                        <Bug className="w-16 h-16 mx-auto mb-4 opacity-20" />
+                        <p className="text-lg font-semibold">
+                          No correction logs yet
+                        </p>
+                        <p className="text-sm">
+                          Upload food images to see correction logs
+                        </p>
+                      </div>
+                    ) : (
+                      correctionLogs.map((log, index) => (
+                        <div
+                          key={index}
+                          className="bg-gray-950 rounded-lg p-4 md:p-5 border border-gray-700 font-mono text-xs md:text-sm"
+                        >
+                          {/* Timestamp Header */}
+                          <div className="text-gray-400 mb-3 pb-2 border-b border-gray-700">
+                            <span className="text-blue-400">
+                              ?? {new Date(log.timestamp).toLocaleString()}
+                            </span>
+                            {log.wasAutoCorrected && (
+                              <span className="ml-3 bg-green-900 text-green-300 px-2 py-1 rounded text-xs">
+                                ? AUTO-CORRECTED
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Main Correction Flow Box */}
+                          <div className="bg-gray-800 rounded p-4 mb-3 border border-gray-600">
+                            <div className="text-blue-400 font-bold mb-2">
+                              +----------------------------------------------------------------
+                            </div>
+                            <div className="text-blue-400 font-bold mb-1">
+                              ? ?? FOOD CORRECTION FLOW
+                            </div>
+                            <div className="text-blue-400 font-bold mb-2">
+                              �----------------------------------------------------------------
+                            </div>
+
+                            <div className="text-white mb-1">
+                              <span className="text-gray-400">?</span> ??{" "}
+                              <span className="text-cyan-400">
+                                AI Detected Name:
+                              </span>
+                              <span className="ml-4 text-yellow-300">
+                                "{log.aiDetected}"
+                              </span>
+                            </div>
+
+                            {log.aiDetected.trim().toLowerCase() ===
+                              log.userCorrected.trim().toLowerCase() ? (
+                              <div className="text-white mb-2">
+                                <span className="text-gray-400">?</span> ?{" "}
+                                <span className="text-cyan-400">Status:</span>
+                                <span className="ml-2 text-green-300">
+                                  No Correction - User accepted AI suggestion
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="text-white mb-2">
+                                <span className="text-gray-400">?</span> ??{" "}
+                                <span className="text-cyan-400">
+                                  User Corrected To:
+                                </span>
+                                <span className="ml-2 text-green-300">
+                                  "{log.userCorrected}"
+                                </span>
+                              </div>
+                            )}
+
+                            <div className="text-white mb-2">
+                              <span className="text-gray-400">?</span> ??{" "}
+                              <span className="text-cyan-400">
+                                Final Display Name:
+                              </span>
+                              <span className="ml-2 text-green-300">
+                                "{log.finalDisplay}"
+                              </span>
+                            </div>
+
+                            <div className="text-blue-400 font-bold">
+                              +----------------------------------------------------------------
+                            </div>
+                          </div>
+
+                          {/* Individual Console Logs */}
+                          <div className="space-y-1 text-gray-300">
+                            <div>
+                              <span className="text-blue-400">
+                                ?? [AI-DETECTED]
+                              </span>
+                              <span className="ml-2">
+                                Original:{" "}
+                                <span className="text-yellow-300">
+                                  {log.aiDetected}
+                                </span>
+                              </span>
+                            </div>
+
+                            {log.aiDetected.trim().toLowerCase() ===
+                              log.userCorrected.trim().toLowerCase() ? (
+                              <div>
+                                <span className="text-green-400">
+                                  ? [NO-CORRECTION]
+                                </span>
+                                <span className="ml-2">
+                                  User accepted AI suggestion
+                                </span>
+                              </div>
+                            ) : (
+                              <div>
+                                <span className="text-green-400">
+                                  ?? [USER-CORRECTED]
+                                </span>
+                                <span className="ml-2">
+                                  Mapped to:{" "}
+                                  <span className="text-green-300">
+                                    {log.userCorrected}
+                                  </span>
+                                </span>
+                              </div>
+                            )}
+
+                            <div>
+                              <span className="text-purple-400">
+                                ?? [FINAL-DISPLAY]
+                              </span>
+                              <span className="ml-2">
+                                Will show:{" "}
+                                <span className="text-green-300">
+                                  {log.finalDisplay}
+                                </span>
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Structured Data Object */}
+                          <div className="mt-3 pt-3 border-t border-gray-700">
+                            <div className="text-gray-400">[CORRECTION-DATA]</div>
+                            <pre className="text-xs text-gray-300 mt-1 overflow-x-auto">
+                              {JSON.stringify(
+                                {
+                                  aiDetected: log.aiDetected,
+                                  userCorrected: log.userCorrected,
+                                  finalDisplay: log.finalDisplay,
+                                  userCount: log.userCount,
+                                  portion: log.portion,
+                                  calories: log.calories,
+                                  timestamp: log.timestamp,
+                                },
+                                null,
+                                2,
+                              )}
+                            </pre>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="bg-gray-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-3 border-t">
+                    <button
+                      onClick={() => {
+                        setCorrectionLogs([]);
+                        setShowCorrectionModal(false);
+                      }}
+                      className="text-sm text-red-600 hover:text-red-700 font-semibold hover:underline transition-colors order-2 sm:order-1"
+                    >
+                      Clear All Logs
+                    </button>
+                    <div className="flex gap-2 order-1 sm:order-2">
+                      <button
+                        onClick={() => {
+                          // Copy logs to clipboard for web users
+                          const logText = correctionLogs
+                            .map(
+                              (log) =>
+                                `${new Date(log.timestamp).toLocaleString()}\n` +
+                                `AI: ${log.aiDetected} ? Corrected: ${log.userCorrected} ? Final: ${log.finalDisplay}\n` +
+                                `Stats: Users ${log.userCount} | ${log.portion} | ${log.calories}cal\n`,
+                            )
+                            .join("\n");
+                          navigator.clipboard
+                            ?.writeText(logText)
+                            .then(() => alert("Logs copied to clipboard!"))
+                            .catch(() => debugLog("Copy not supported"));
+                        }}
+                        className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg font-semibold transition-colors text-sm"
+                      >
+                        ?? Copy Logs
+                      </button>
+                      <button
+                        onClick={() => setShowCorrectionModal(false)}
+                        className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
+            )}
 
-        {/* Waiting for coach OTP — portal so it renders above all other layers */}
-        {isWaitingForCoachOTP &&
-          ReactDOM.createPortal(<WaitingForCoachModal />, document.body)}
-      </div>
-    </LocationGuard>
+            {/* Waiting for coach OTP — portal so it renders above all other layers */}
+            {isWaitingForCoachOTP &&
+              ReactDOM.createPortal(<WaitingForCoachModal />, document.body)}
+          </div>
+        </LocationGuard>
       </div>
       <PremiumSuccessHost
         userId={user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null}

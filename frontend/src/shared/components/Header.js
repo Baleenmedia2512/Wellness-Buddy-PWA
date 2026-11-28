@@ -37,7 +37,6 @@ const Header = ({
   onShowNutritionCentersMap,
   onShowActivityReport,
   onShowTestimonials,
-  onShowBroadcast,
   onShowCreateEvent,
   onShowPaidFeatures,
   onShowMapBusiness,
@@ -163,7 +162,7 @@ const Header = ({
       }
     };
     fetchUserProfile();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: profileKey drives force-refresh
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: profileKey drives force-refresh
   }, [user?.email, user?.Email, user?.id, user?.UserId, user?.userId, profileKey]);
 
   const phoneNumber = user?.phoneNumber || user?.PhoneNumber || user?.phone;
@@ -273,7 +272,6 @@ const Header = ({
           onShowWellnessCounselling={onShowWellnessCounselling}
           onShowNutritionCentersMap={onShowNutritionCentersMap}
           onShowTestimonials={onShowTestimonials}
-          onShowBroadcast={onShowBroadcast}
           onShowCreateEvent={onShowCreateEvent}
           onShowPaidFeatures={onShowPaidFeatures}
           onShowMapBusiness={onShowMapBusiness}
@@ -330,11 +328,10 @@ const Header = ({
             type="button"
             onClick={handleShareInvite}
             disabled={isSharingInvite}
-            className={`inline-flex items-center justify-center aspect-square h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-full border transition-all active:scale-95 disabled:opacity-60 ${
-              isPremiumMember
+            className={`inline-flex items-center justify-center aspect-square h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-full border transition-all active:scale-95 disabled:opacity-60 ${isPremiumMember
                 ? 'border-sky-200 text-sky-700 bg-sky-50 hover:bg-sky-100'
                 : 'border-green-200 text-green-700 bg-green-50 hover:bg-green-100'
-            }`}
+              }`}
             title="Share on WhatsApp"
             ariaLabel="Share on WhatsApp"
             data-testid="header-share-button"
@@ -361,9 +358,8 @@ const Header = ({
               {isPremiumMember ? <PremiumCrownMark /> : null}
             </span>
             <span
-              className={`absolute -bottom-3 text-[8.5px] xs:text-[9px] font-bold text-center whitespace-nowrap leading-none select-none tracking-tight max-w-[64px] truncate cursor-pointer ${
-                isPremiumMember ? 'text-sky-700' : 'text-green-700'
-              }`}
+              className={`absolute -bottom-3 text-[8.5px] xs:text-[9px] font-bold text-center whitespace-nowrap leading-none select-none tracking-tight max-w-[64px] truncate cursor-pointer ${isPremiumMember ? 'text-sky-700' : 'text-green-700'
+                }`}
               title={`Community Position: ${displayCommunityPosition}`}
               aria-label={`Community Position: ${displayCommunityPosition}`}
               data-testid="header-community-position"
@@ -400,7 +396,6 @@ const Header = ({
           onShowWellnessCounselling={onShowWellnessCounselling}
           onShowNutritionCentersMap={onShowNutritionCentersMap}
           onShowTestimonials={onShowTestimonials}
-          onShowBroadcast={onShowBroadcast}
           onShowCreateEvent={onShowCreateEvent}
           onShowPaidFeatures={onShowPaidFeatures}
           onShowMapBusiness={onShowMapBusiness}

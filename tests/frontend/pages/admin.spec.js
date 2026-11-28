@@ -68,8 +68,8 @@ test.describe('Admin Page - Wellness Score & Activity Time Settings (ADMIN_001)'
   }
 
   async function setupMocks(page, role = 'admin') {
-    await page.context().grantPermissions(['geolocation', 'camera', 'microphone']).catch(() => {});
-    await page.context().setGeolocation({ latitude: 12.9716, longitude: 77.5946 }).catch(() => {});
+    await page.context().grantPermissions(['geolocation', 'camera', 'microphone']).catch(() => { });
+    await page.context().setGeolocation({ latitude: 12.9716, longitude: 77.5946 }).catch(() => { });
 
     // Ensure feature flags for wellness score sheet, AI credits & page access are active
     await page.addInitScript(() => {
@@ -490,11 +490,11 @@ test.describe('Admin Page - Wellness Score & Activity Time Settings (ADMIN_001)'
         initialTimeWindows = initialTimeWindows.map((tw) =>
           tw.ActivityType === postData.activityType
             ? {
-                ...tw,
-                WindowStartTime: `${postData.windowStartTime}:00`,
-                WindowEndTime: `${postData.windowEndTime}:00`,
-                LastUpdated: new Date().toISOString(),
-              }
+              ...tw,
+              WindowStartTime: `${postData.windowStartTime}:00`,
+              WindowEndTime: `${postData.windowEndTime}:00`,
+              LastUpdated: new Date().toISOString(),
+            }
             : tw
         );
 
@@ -717,10 +717,10 @@ test.describe('Admin Page - Wellness Score & Activity Time Settings (ADMIN_001)'
           body: JSON.stringify({
             success: true,
             matrix: {
-              user: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true, broadcast: true },
-              coach: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true, broadcast: true },
-              admin: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true, broadcast: true },
-              developer: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true, broadcast: true },
+              user: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true },
+              coach: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true },
+              admin: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true },
+              developer: { home: true, dashboard: true, 'activity-report': true, enrollment: true, counselling: true, 'physical-club': true, testimonials: true, reports: true },
             },
           }),
         });
@@ -833,11 +833,11 @@ test.describe('Admin Page - Wellness Score & Activity Time Settings (ADMIN_001)'
         initialTimeWindows = initialTimeWindows.map((tw) =>
           tw.ActivityType === postData.activityType
             ? {
-                ...tw,
-                WindowStartTime: `${postData.windowStartTime}:00`,
-                WindowEndTime: `${postData.windowEndTime}:00`,
-                LastUpdated: new Date().toISOString(),
-              }
+              ...tw,
+              WindowStartTime: `${postData.windowStartTime}:00`,
+              WindowEndTime: `${postData.windowEndTime}:00`,
+              LastUpdated: new Date().toISOString(),
+            }
             : tw
         );
 

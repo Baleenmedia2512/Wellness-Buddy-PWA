@@ -28,10 +28,10 @@ const REGISTRY = Object.freeze({
   // legacy disambiguation modal. Set REACT_APP_FF_DIARY_FEED=false or
   // localStorage 'ff.diary-feed'='false' to fall back to the old method.
   'ff.diary-feed': {
-    envKey:         'REACT_APP_FF_DIARY_FEED',
-    storageKey:     'ff.diary-feed',
+    envKey: 'REACT_APP_FF_DIARY_FEED',
+    storageKey: 'ff.diary-feed',
     defaultEnabled: true,
-    description:    'Mount the Diary tab in Dashboard.js (ADR-0003 PR-C).',
+    description: 'Mount the Diary tab in Dashboard.js (ADR-0003 PR-C).',
   },
 
   // Unified activity timeline layout. When ON (requires ff.diary-feed=ON),
@@ -41,10 +41,10 @@ const REGISTRY = Object.freeze({
   // REACT_APP_FF_DIARY_TIMELINE=false or
   // localStorage 'ff.diary-timeline'='false' to revert to the stacked layout.
   'ff.diary-timeline': {
-    envKey:         'REACT_APP_FF_DIARY_TIMELINE',
-    storageKey:     'ff.diary-timeline',
+    envKey: 'REACT_APP_FF_DIARY_TIMELINE',
+    storageKey: 'ff.diary-timeline',
     defaultEnabled: true,
-    description:    'Unified activity timeline layout in Diary (replaces stacked section-dashboards).',
+    description: 'Unified activity timeline layout in Diary (replaces stacked section-dashboards).',
   },
 
   // Herbalife Shake Calculator — combine Formula 1 + Shakemate + Protein
@@ -53,10 +53,10 @@ const REGISTRY = Object.freeze({
   // Herbalife documentation. Set REACT_APP_FF_SHAKE_CALCULATOR=true or
   // localStorage 'ff.shake-calculator'='true' to enable during QA.
   'ff.shake-calculator': {
-    envKey:         'REACT_APP_FF_SHAKE_CALCULATOR',
-    storageKey:     'ff.shake-calculator',
+    envKey: 'REACT_APP_FF_SHAKE_CALCULATOR',
+    storageKey: 'ff.shake-calculator',
     defaultEnabled: false,
-    description:    'Herbalife Shake Nutrition Calculator entry point in NutritionDashboard.',
+    description: 'Herbalife Shake Nutrition Calculator entry point in NutritionDashboard.',
   },
 
   // Contact Picker API — one-tap pre-fill of the phone number field from the
@@ -64,19 +64,19 @@ const REGISTRY = Object.freeze({
   // is not supported on iOS Safari or Firefox). Default OFF; enable per-device
   // via localStorage 'ff.contact-picker'='true' for QA.
   'ff.contact-picker': {
-    envKey:         'REACT_APP_FF_CONTACT_PICKER',
-    storageKey:     'ff.contact-picker',
+    envKey: 'REACT_APP_FF_CONTACT_PICKER',
+    storageKey: 'ff.contact-picker',
     defaultEnabled: false,
-    description:    'Contact Picker API shortcut on the phone login field.',
+    description: 'Contact Picker API shortcut on the phone login field.',
   },
 
   // Sample Events page and name-only demo registration. Owner: @principal-eng.
   // Remove by 2027-01-31, or when live event data replaces this demo.
   'ff.events': {
-    envKey:         'REACT_APP_FF_EVENTS',
-    storageKey:     'ff.events',
+    envKey: 'REACT_APP_FF_EVENTS',
+    storageKey: 'ff.events',
     defaultEnabled: true,
-    description:    'Sample Events page and non-persistent name-only registration demo.',
+    description: 'Sample Events page and non-persistent name-only registration demo.',
   },
 
   // Testimonials — before/after Herbalife transformation photos with
@@ -84,20 +84,20 @@ const REGISTRY = Object.freeze({
   // Default ON. Set REACT_APP_FF_TESTIMONIALS=false or
   // localStorage 'ff.testimonials'='false' to disable.
   'ff.testimonials': {
-    envKey:         'REACT_APP_FF_TESTIMONIALS',
-    storageKey:     'ff.testimonials',
+    envKey: 'REACT_APP_FF_TESTIMONIALS',
+    storageKey: 'ff.testimonials',
     defaultEnabled: true,
-    description:    'Before/after testimonial upload + coach OTP verification flow.',
+    description: 'Before/after testimonial upload + coach OTP verification flow.',
   },
 
   // Member must agree + email OTP before Transformation shows on upline coach websites.
   // Default ON. Set REACT_APP_FF_TESTIMONIAL_UPLINE_DISPLAY_CONSENT=false to hide UI;
   // backend kill switch is FF_TESTIMONIAL_UPLINE_DISPLAY_CONSENT.
   'ff.testimonial-upline-display-consent': {
-    envKey:         'REACT_APP_FF_TESTIMONIAL_UPLINE_DISPLAY_CONSENT',
-    storageKey:     'ff.testimonial-upline-display-consent',
+    envKey: 'REACT_APP_FF_TESTIMONIAL_UPLINE_DISPLAY_CONSENT',
+    storageKey: 'ff.testimonial-upline-display-consent',
     defaultEnabled: true,
-    description:    'Checkbox + member OTP to show Transformation on all upline coach websites.',
+    description: 'Checkbox + member OTP to show Transformation on all upline coach websites.',
   },
 
   // Reports module — common analytics (Ideal Weight, Wellness Score, Nutrition, Trend).
@@ -106,20 +106,20 @@ const REGISTRY = Object.freeze({
   // Default ON. Set REACT_APP_FF_REPORTS_MODULE=false or
   // localStorage 'ff.reports-module'='false' to disable.
   'ff.reports-module': {
-    envKey:         'REACT_APP_FF_REPORTS_MODULE',
-    storageKey:     'ff.reports-module',
+    envKey: 'REACT_APP_FF_REPORTS_MODULE',
+    storageKey: 'ff.reports-module',
     defaultEnabled: true,
-    description:    'Reports module: Ideal Weight + Wellness Score + Nutrition + Trend for all users.',
+    description: 'Reports module: Ideal Weight + Wellness Score + Nutrition + Trend for all users.',
   },
 
   // Wellness Score Sheet — home tile + 34-parameter score view + coach config.
   // Default ON for UI preview. Set REACT_APP_FF_WELLNESS_SCORE_SHEET=false or
   // localStorage 'ff.wellness-score-sheet'='false' to hide.
   'ff.wellness-score-sheet': {
-    envKey:         'REACT_APP_FF_WELLNESS_SCORE_SHEET',
-    storageKey:     'ff.wellness-score-sheet',
+    envKey: 'REACT_APP_FF_WELLNESS_SCORE_SHEET',
+    storageKey: 'ff.wellness-score-sheet',
     defaultEnabled: true,
-    description:    'Wellness Score home tile, daily score API, admin setup, and Wellness Score Report.',
+    description: 'Wellness Score home tile, daily score API, admin setup, and Wellness Score Report.',
   },
 
   // AI Credits — Manual Entry AI Mode + Diary Retry AI credit gate.
@@ -127,184 +127,174 @@ const REGISTRY = Object.freeze({
   // Default ON. Set REACT_APP_FF_AI_CREDITS=false or
   // localStorage 'ff.ai-credits'='false' to disable.
   'ff.ai-credits': {
-    envKey:         'REACT_APP_FF_AI_CREDITS',
-    storageKey:     'ff.ai-credits',
+    envKey: 'REACT_APP_FF_AI_CREDITS',
+    storageKey: 'ff.ai-credits',
     defaultEnabled: true,
-    description:    'AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI).',
+    description: 'AI credit-based food analysis (Manual Entry AI Mode + Diary Retry AI).',
   },
 
   // DB-driven main-nav page access by role. Matrix edited in Admin Config.
   // When OFF, all main tabs stay visible (legacy). Kill switch: localStorage or env.
   'ff.nav-page-access': {
-    envKey:         'REACT_APP_FF_NAV_PAGE_ACCESS',
-    storageKey:     'ff.nav-page-access',
+    envKey: 'REACT_APP_FF_NAV_PAGE_ACCESS',
+    storageKey: 'ff.nav-page-access',
     defaultEnabled: true,
-    description:    'Role → nav page access from DB (Customer/Sponsor/Admin/Developer).',
+    description: 'Role → nav page access from DB (Customer/Sponsor/Admin/Developer).',
   },
 
   // ADR-0005 — master nutrition knowledge base (search/resolve micros).
   // Default ON. Set REACT_APP_FF_NUTRITION_KNOWLEDGE=false or
   // localStorage 'ff.nutrition-knowledge'='false' to disable.
   'ff.nutrition-knowledge': {
-    envKey:         'REACT_APP_FF_NUTRITION_KNOWLEDGE',
-    storageKey:     'ff.nutrition-knowledge',
+    envKey: 'REACT_APP_FF_NUTRITION_KNOWLEDGE',
+    storageKey: 'ff.nutrition-knowledge',
     defaultEnabled: true,
-    description:    'Master nutrition DB + history micros in food search (ADR-0005).',
+    description: 'Master nutrition DB + history micros in food search (ADR-0005).',
   },
 
   // ADR-0006 — User Consent Form before account creation / app use.
   // Default ON. Set REACT_APP_FF_CONSENT_GATE=false or
   // localStorage 'ff.consent-gate'='false' to disable.
   'ff.consent-gate': {
-    envKey:         'REACT_APP_FF_CONSENT_GATE',
-    storageKey:     'ff.consent-gate',
+    envKey: 'REACT_APP_FF_CONSENT_GATE',
+    storageKey: 'ff.consent-gate',
     defaultEnabled: true,
-    description:    'Require User Consent Form Agree before OTP/Google and app use (ADR-0006).',
+    description: 'Require User Consent Form Agree before OTP/Google and app use (ADR-0006).',
   },
 
   // ADR-0008 — Manual Log Good Habit (single photo).
   // Default ON. Set REACT_APP_FF_GOOD_HABIT=false or
   // localStorage 'ff.good-habit'='false' to hide the tile.
   'ff.good-habit': {
-    envKey:         'REACT_APP_FF_GOOD_HABIT',
-    storageKey:     'ff.good-habit',
+    envKey: 'REACT_APP_FF_GOOD_HABIT',
+    storageKey: 'ff.good-habit',
     defaultEnabled: true,
-    description:    'Manual Log Good Habit and wellness-score Good Habit Post (ADR-0008).',
+    description: 'Manual Log Good Habit and wellness-score Good Habit Post (ADR-0008).',
   },
 
   // Meal Builder — multi-add tray + bottom sheet (replaces cart UX in food search).
   // Default ON. Set REACT_APP_FF_MEAL_BUILDER=false or
   // localStorage 'ff.meal-builder'='false' to fall back to the orange cart panel.
   'ff.meal-builder': {
-    envKey:         'REACT_APP_FF_MEAL_BUILDER',
-    storageKey:     'ff.meal-builder',
+    envKey: 'REACT_APP_FF_MEAL_BUILDER',
+    storageKey: 'ff.meal-builder',
     defaultEnabled: true,
-    description:    'Meal Builder multi-add tray + sheet + voice insert in SmartFoodSearchModal.',
+    description: 'Meal Builder multi-add tray + sheet + voice insert in SmartFoodSearchModal.',
   },
 
   // ADR-0013 — Community ID create / co-sponsor via 24h sponsor OTP on Profile.
   // Default ON. Set REACT_APP_FF_COMMUNITY_ID_OTP=false or
   // localStorage 'ff.community-id-otp'='false' to restore immediate Save Profile.
   'ff.community-id-otp': {
-    envKey:         'REACT_APP_FF_COMMUNITY_ID_OTP',
-    storageKey:     'ff.community-id-otp',
+    envKey: 'REACT_APP_FF_COMMUNITY_ID_OTP',
+    storageKey: 'ff.community-id-otp',
     defaultEnabled: true,
-    description:    'Profile Community ID Create + sponsor OTP (create / co-sponsor).',
+    description: 'Profile Community ID Create + sponsor OTP (create / co-sponsor).',
   },
 
   // ADR-0016 — Community Position under Community ID. Send code emails the coach.
   // Default ON. Set REACT_APP_FF_COMMUNITY_POSITION_OTP=false or
   // localStorage 'ff.community-position-otp'='false' to save the role with the profile.
   'ff.community-position-otp': {
-    envKey:         'REACT_APP_FF_COMMUNITY_POSITION_OTP',
-    storageKey:     'ff.community-position-otp',
+    envKey: 'REACT_APP_FF_COMMUNITY_POSITION_OTP',
+    storageKey: 'ff.community-position-otp',
     defaultEnabled: true,
-    description:    'Profile Community Position under Community ID; coach OTP before the role is saved.',
+    description: 'Profile Community Position under Community ID; coach OTP before the role is saved.',
   },
 
   // Profile height: first Save free; later changes need the coach's email approval.
   // Default ON. Set REACT_APP_FF_HEIGHT_CHANGE_OTP=false or
   // localStorage 'ff.height-change-otp'='false' to restore free height edits.
   'ff.height-change-otp': {
-    envKey:         'REACT_APP_FF_HEIGHT_CHANGE_OTP',
-    storageKey:     'ff.height-change-otp',
+    envKey: 'REACT_APP_FF_HEIGHT_CHANGE_OTP',
+    storageKey: 'ff.height-change-otp',
     defaultEnabled: true,
-    description:    'Profile height lock after first save; OTP to change.',
+    description: 'Profile height lock after first save; OTP to change.',
   },
 
   // ADR-0018 — one coach OTP on Profile Save for later gated field changes.
   // Default ON. Set REACT_APP_FF_PROFILE_CHANGE_SPONSOR_OTP=false or
   // localStorage 'ff.profile-change-sponsor-otp'='false' to restore legacy per-field OTP.
   'ff.profile-change-sponsor-otp': {
-    envKey:         'REACT_APP_FF_PROFILE_CHANGE_SPONSOR_OTP',
-    storageKey:     'ff.profile-change-sponsor-otp',
+    envKey: 'REACT_APP_FF_PROFILE_CHANGE_SPONSOR_OTP',
+    storageKey: 'ff.profile-change-sponsor-otp',
     defaultEnabled: true,
-    description:    'One coach OTP on Save for later profile field changes (3.5.8+).',
-  },
-
-  // BroadCast — paid how-to + payment entry. Upload and Burst wait on recharge.
-  // Default ON. Set REACT_APP_FF_BROADCAST=false or
-  // localStorage 'ff.broadcast'='false' to hide the tab.
-  'ff.broadcast': {
-    envKey:         'REACT_APP_FF_BROADCAST',
-    storageKey:     'ff.broadcast',
-    defaultEnabled: true,
-    description:    'BroadCast paid screen: how-to video and payment entry.',
+    description: 'One coach OTP on Save for later profile field changes (3.5.8+).',
   },
 
   // Profile Go Premium — opens Cashfree checkout. Kill switch hides the row.
   'ff.go-premium': {
-    envKey:         'REACT_APP_FF_GO_PREMIUM',
-    storageKey:     'ff.go-premium',
+    envKey: 'REACT_APP_FF_GO_PREMIUM',
+    storageKey: 'ff.go-premium',
     defaultEnabled: true,
-    description:    'Profile Go Premium opens Cashfree checkout.',
+    description: 'Profile Go Premium opens Cashfree checkout.',
   },
 
   // Create Event — event form plus update, delete, postpone, and cancel.
   'ff.create-event': {
-    envKey:         'REACT_APP_FF_CREATE_EVENT',
-    storageKey:     'ff.create-event',
+    envKey: 'REACT_APP_FF_CREATE_EVENT',
+    storageKey: 'ff.create-event',
     defaultEnabled: true,
-    description:    'Create Event page in the main navigation.',
+    description: 'Create Event page in the main navigation.',
   },
 
   // Unique per-user wallet. Cash-in after OTP to a selected Wellness Valley person.
   // Default ON. Set REACT_APP_FF_WALLET=false or localStorage 'ff.wallet'='false' to hide.
   'ff.wallet': {
-    envKey:         'REACT_APP_FF_WALLET',
-    storageKey:     'ff.wallet',
+    envKey: 'REACT_APP_FF_WALLET',
+    storageKey: 'ff.wallet',
     defaultEnabled: true,
-    description:    'Profile Wallet: unique balance and OTP-approved cash-in.',
+    description: 'Profile Wallet: unique balance and OTP-approved cash-in.',
   },
 
   // Coach Website portfolio form + public pages.
   // Default ON. Set REACT_APP_FF_COACH_PORTFOLIO=false or
   // localStorage 'ff.coach-portfolio'='false' to hide.
   'ff.coach-portfolio': {
-    envKey:         'REACT_APP_FF_COACH_PORTFOLIO',
-    storageKey:     'ff.coach-portfolio',
+    envKey: 'REACT_APP_FF_COACH_PORTFOLIO',
+    storageKey: 'ff.coach-portfolio',
     defaultEnabled: true,
-    description:    'Coach Website portfolio form and public pages.',
+    description: 'Coach Website portfolio form and public pages.',
   },
 
   // Digital Portfolio ₹399/yr Cashfree checkout only. Default OFF until go-live.
   'ff.portfolio-site-checkout': {
-    envKey:         'REACT_APP_FF_PORTFOLIO_SITE_CHECKOUT',
-    storageKey:     'ff.portfolio-site-checkout',
+    envKey: 'REACT_APP_FF_PORTFOLIO_SITE_CHECKOUT',
+    storageKey: 'ff.portfolio-site-checkout',
     defaultEnabled: false,
-    description:    'Cashfree create/confirm for Digital Portfolio website slots (₹399/yr). Default OFF.',
+    description: 'Cashfree create/confirm for Digital Portfolio website slots (₹399/yr). Default OFF.',
   },
 
   'ff.gbp-listing': {
-    envKey:         'REACT_APP_FF_GBP_LISTING',
-    storageKey:     'ff.gbp-listing',
+    envKey: 'REACT_APP_FF_GBP_LISTING',
+    storageKey: 'ff.gbp-listing',
     defaultEnabled: false,
-    description:    'Google Maps Listing request form + ops queue. Off for Digital Portfolio APK review.',
+    description: 'Google Maps Listing request form + ops queue. Off for Digital Portfolio APK review.',
   },
 
   // Profile field collection. Kill switch returns to the previous onboarding screens.
   'ff.field-collection': {
-    envKey:         'REACT_APP_FF_FIELD_COLLECTION',
-    storageKey:     'ff.field-collection',
+    envKey: 'REACT_APP_FF_FIELD_COLLECTION',
+    storageKey: 'ff.field-collection',
     defaultEnabled: true,
-    description:    'Community Position first, then admin-configured entry and later fields.',
+    description: 'Community Position first, then admin-configured entry and later fields.',
   },
 
   // Reports detail trial. Kill switch shows the full report again.
   'ff.report-trial': {
-    envKey:         'REACT_APP_FF_REPORT_TRIAL',
-    storageKey:     'ff.report-trial',
+    envKey: 'REACT_APP_FF_REPORT_TRIAL',
+    storageKey: 'ff.report-trial',
     defaultEnabled: true,
-    description:    'Unpaid report details stay hidden until a 14-day trial or Premium.',
+    description: 'Unpaid report details stay hidden until a 14-day trial or Premium.',
   },
 
   // Legacy Digital Portfolio gate for apps below PORTFOLIO_SITE_SLOTS_MIN.
   // Next-release builds use per-site ₹399/yr credits instead. Create Event/Check-in stay open.
   'ff.events-trial': {
-    envKey:         'REACT_APP_FF_EVENTS_TRIAL',
-    storageKey:     'ff.events-trial',
+    envKey: 'REACT_APP_FF_EVENTS_TRIAL',
+    storageKey: 'ff.events-trial',
     defaultEnabled: true,
-    description:    'Legacy Digital Portfolio trial/Premium gate for older apps. Create Event and Check-in stay open.',
+    description: 'Legacy Digital Portfolio trial/Premium gate for older apps. Create Event and Check-in stay open.',
   },
 });
 
@@ -323,7 +313,7 @@ function readStorage(key) {
 function parseBoolean(raw) {
   if (typeof raw !== 'string') return null;
   const lower = raw.trim().toLowerCase();
-  if (lower === 'true')  return true;
+  if (lower === 'true') return true;
   if (lower === 'false') return false;
   return null;
 }

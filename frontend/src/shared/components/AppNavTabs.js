@@ -11,7 +11,6 @@ import {
   Map,
   Trophy,
   FileBarChart,
-  Megaphone,
   CalendarPlus,
   Sparkles,
   MapPinned,
@@ -35,7 +34,6 @@ export default function AppNavTabs({
   onShowWellnessCounselling,
   onShowNutritionCentersMap,
   onShowTestimonials,
-  onShowBroadcast,
   onShowCreateEvent,
   onShowPaidFeatures,
   onShowMapBusiness,
@@ -46,7 +44,6 @@ export default function AppNavTabs({
   allowedPages = null,
 }) {
   const allow = (pageKey) => canAccessNavPage(allowedPages, pageKey);
-  const broadcastEnabled = isFlagEnabled('ff.broadcast');
   const createEventEnabled = isFlagEnabled('ff.create-event');
   const paidFeaturesEnabled = isFlagEnabled('ff.coach-portfolio');
   const mapBusinessEnabled = isFlagEnabled('ff.gbp-listing');
@@ -89,7 +86,7 @@ export default function AppNavTabs({
     >
       {allow('home') && (
         <NavTabButton
-          onClick={onShowHome ?? (() => {})}
+          onClick={onShowHome ?? (() => { })}
           active={activePage === 'home'}
           icon={Home}
           label="Home"
@@ -97,7 +94,7 @@ export default function AppNavTabs({
       )}
       {upcomingEventsEnabled && allow('events') && (
         <NavTabButton
-          onClick={onShowEvents ?? (() => {})}
+          onClick={onShowEvents ?? (() => { })}
           active={activePage === 'events' || activePage === 'create-event'}
           icon={CalendarDays}
           label="Events"
@@ -106,7 +103,7 @@ export default function AppNavTabs({
       )}
       {allow('dashboard') && (
         <NavTabButton
-          onClick={() => (onShowBackgroundHistory ?? (() => {}))()}
+          onClick={() => (onShowBackgroundHistory ?? (() => { }))()}
           active={activePage === 'dashboard'}
           icon={LayoutDashboard}
           label="Diary"
@@ -114,7 +111,7 @@ export default function AppNavTabs({
       )}
       {allow('activity-report') && (
         <NavTabButton
-          onClick={onShowActivityReport ?? (() => {})}
+          onClick={onShowActivityReport ?? (() => { })}
           active={activePage === 'activity-report'}
           activeBg="bg-violet-100"
           hoverBg="hover:bg-violet-50"
@@ -129,7 +126,7 @@ export default function AppNavTabs({
       )}
       {allow('enrollment') && (
         <NavTabButton
-          onClick={onShowWellnessEnrollment ?? (() => {})}
+          onClick={onShowWellnessEnrollment ?? (() => { })}
           active={activePage === 'enrollment'}
           activeBg="bg-emerald-100"
           hoverBg="hover:bg-emerald-50"
@@ -144,7 +141,7 @@ export default function AppNavTabs({
       )}
       {allow('counselling') && (
         <NavTabButton
-          onClick={onShowWellnessCounselling ?? (() => {})}
+          onClick={onShowWellnessCounselling ?? (() => { })}
           active={activePage === 'counselling'}
           activeBg="bg-pink-100"
           hoverBg="hover:bg-pink-50"
@@ -159,7 +156,7 @@ export default function AppNavTabs({
       )}
       {allow('physical-club') && (
         <NavTabButton
-          onClick={onShowNutritionCentersMap ?? (() => {})}
+          onClick={onShowNutritionCentersMap ?? (() => { })}
           active={activePage === 'physical-club'}
           activeBg="bg-teal-100"
           hoverBg="hover:bg-teal-50"
@@ -174,7 +171,7 @@ export default function AppNavTabs({
       )}
       {allow('testimonials') && (
         <NavTabButton
-          onClick={onShowTestimonials ?? (() => {})}
+          onClick={onShowTestimonials ?? (() => { })}
           active={activePage === 'testimonials'}
           activeBg="bg-teal-100"
           hoverBg="hover:bg-teal-50"
@@ -189,7 +186,7 @@ export default function AppNavTabs({
       )}
       {reportsEnabled && allow('reports') && (
         <NavTabButton
-          onClick={onShowReports ?? (() => {})}
+          onClick={onShowReports ?? (() => { })}
           active={activePage === 'reports'}
           activeBg="bg-teal-100"
           hoverBg="hover:bg-teal-50"
@@ -202,25 +199,10 @@ export default function AppNavTabs({
           ariaLabel="Reports Dashboard"
         />
       )}
-      {broadcastEnabled && allow('broadcast') && (
-        <NavTabButton
-          onClick={onShowBroadcast ?? (() => {})}
-          active={activePage === 'broadcast'}
-          activeBg="bg-emerald-100"
-          hoverBg="hover:bg-emerald-50"
-          icon={Megaphone}
-          iconActiveClass="text-emerald-800"
-          iconClass="text-emerald-700"
-          labelActiveClass="text-emerald-900"
-          labelClass="text-emerald-800"
-          label="BroadCast"
-          ariaLabel="BroadCast"
-        />
-      )}
 
       {paidFeaturesEnabled && allow('paid-features') && (
         <NavTabButton
-          onClick={onShowPaidFeatures ?? (() => {})}
+          onClick={onShowPaidFeatures ?? (() => { })}
           active={activePage === 'paid-features'}
           activeBg="bg-emerald-100"
           hoverBg="hover:bg-emerald-50"
@@ -235,7 +217,7 @@ export default function AppNavTabs({
       )}
       {mapBusinessEnabled && allow('map-business') && (
         <NavTabButton
-          onClick={onShowMapBusiness ?? (() => {})}
+          onClick={onShowMapBusiness ?? (() => { })}
           active={activePage === 'map-business'}
           activeBg="bg-emerald-100"
           hoverBg="hover:bg-emerald-50"
@@ -250,7 +232,7 @@ export default function AppNavTabs({
       )}
       {createEventEnabled && allow('event-check-in') && (
         <NavTabButton
-          onClick={onShowEventCheckIn ?? onShowCreateEvent ?? (() => {})}
+          onClick={onShowEventCheckIn ?? onShowCreateEvent ?? (() => { })}
           active={activePage === 'event-check-in'}
           activeBg="bg-emerald-100"
           hoverBg="hover:bg-emerald-50"

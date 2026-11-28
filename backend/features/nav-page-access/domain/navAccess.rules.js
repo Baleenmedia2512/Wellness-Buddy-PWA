@@ -13,7 +13,6 @@ export const NAV_PAGE_KEYS = Object.freeze([
   'physical-club',
   'testimonials',
   'reports',
-  'broadcast',
   'create-event',
   'event-check-in',
   'paid-features',
@@ -45,7 +44,6 @@ const CUSTOMER_DEFAULT = Object.freeze({
   'physical-club': false,
   testimonials: true,
   reports: false,
-  broadcast: true,
   'create-event': true,
   'event-check-in': false,
   'paid-features': true,
@@ -115,7 +113,7 @@ export function normalizePageMap(pages) {
 /**
  * Read-path matrix. Keys saved in JSON keep their boolean.
  * A page added after that save (no key yet) uses the role default,
- * so BroadCast appears without a manual migration.
+ * so new pages appear without a manual migration.
  *
  * @param {unknown} matrix
  * @returns {Record<string, Record<string, boolean>>}
