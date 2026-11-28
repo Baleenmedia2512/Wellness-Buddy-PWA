@@ -1,6 +1,6 @@
-// Editable body metrics (Age, Fat %, Body Age, Chest/Waist/Hip).
+// Editable body metrics (DOB → Age, Fat %, Body Age, Chest/Waist/Hip).
 // Fat % is required. BMI is calculated from height + weight — read-only.
-// hideReadOnly omits that calculated field (initial Complete Profile).
+// Age is derived from DOB (as per Aadhaar); hideReadOnly omits calculated fields (initial Complete Profile).
 import React, { useMemo } from 'react';
 import {
   evaluateChestCm,
@@ -9,6 +9,7 @@ import {
   getBodyMetricReferences,
 } from '../../../body-parameters-card/domain/bodyMetricReferences';
 import { computeBmiFromHeightWeight } from '../../domain/bmi';
+import { DOB_FIELD_LABEL, DOB_HINT, ageFromDateOfBirth } from '../../domain/dateOfBirth';
 
 const inputCls =
   'flex-1 min-w-0 px-3 py-2 border rounded-lg bg-white text-sm font-medium focus:outline-none';
@@ -23,7 +24,8 @@ const referenceBadCls =
   'w-[88px] shrink-0 px-2 py-2 border border-red-200 rounded-lg bg-red-50 text-[11px] text-red-600 text-center leading-tight flex items-center justify-center';
 
 const FIELDS = [
-  { key: 'age', label: 'Age', inputMode: 'numeric' },
+  { key: 'dateOfBirth', label: DOB_FIELD_LABEL, inputType: 'date', hint: DOB_HINT },
+  { key: 'age', label: 'Age', inputMode: 'numeric', readOnly: true },
   { key: 'fatPercent', label: 'Fat %', inputMode: 'decimal', required: true },
   { key: 'bmi', label: 'Indian BMI', inputMode: 'decimal', readOnly: true },
   { key: 'bodyAge', label: 'Body Age', inputMode: 'decimal' },
@@ -57,12 +59,13 @@ function isMetricOutOfRange(key, metrics) {
 }
 
 const MetricField = ({
-  label, value, reference, inputMode, onChange, readOnly, required, outOfRange,
+  label, value, reference, inputMode, inputType, onChange, readOnly, required, outOfRange, hint, max,
 }) => (
   <div>
     <label className="block text-sm font-medium text-gray-700 mb-1">
       {label}{required ? <span className="text-red-500"> *</span> : null}
     </label>
+    {hint ? <p className="text-xs text-gray-500 mb-1">{hint}</p> : null}
     <div className="flex items-stretch gap-2">
       {readOnly ? (
         <div
@@ -73,9 +76,10 @@ const MetricField = ({
         </div>
       ) : (
         <input
-          type="text"
+          type={inputType || 'text'}
           inputMode={inputMode}
           value={value == null ? '' : String(value)}
+          max={max}
           onChange={(e) => onChange?.(e.target.value)}
           className={outOfRange ? inputBadCls : inputOkCls}
           aria-invalid={outOfRange}
@@ -119,18 +123,35 @@ const UserProfileBodyMetrics = ({
     [heightCm, weightKg],
   );
 
+  const derivedAge = useMemo(() => {
+    const fromDob = ageFromDateOfBirth(metrics.dateOfBirth);
+    if (fromDob != null) return String(fromDob);
+    return metrics.age ?? '';
+  }, [metrics.dateOfBirth, metrics.age]);
+
   const displayMetrics = useMemo(() => ({
     ...metrics,
     gender: gender || metrics.gender || '',
+    age: derivedAge,
     bmi: derivedBmi != null ? derivedBmi : (metrics.bmi ?? ''),
-  }), [metrics, derivedBmi, gender]);
+  }), [metrics, derivedBmi, gender, derivedAge]);
 
   const references = useMemo(
     () => getBodyMetricReferences(displayMetrics),
     [displayMetrics],
   );
 
-  const visibleFields = hideReadOnly ? FIELDS.filter((field) => !field.readOnly) : FIELDS;
+  const todayIso = useMemo(() => {
+    const ist = new Date(Date.now() + (5 * 60 + 30) * 60 * 1000);
+    const yyyy = ist.getUTCFullYear();
+    const mm = String(ist.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(ist.getUTCDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }, []);
+
+  const visibleFields = hideReadOnly
+    ? FIELDS.filter((field) => !field.readOnly || field.key === 'age')
+    : FIELDS;
   const hasAnyReference = visibleFields.some(({ key }) => references[key]);
 
   return (
@@ -147,16 +168,19 @@ const UserProfileBodyMetrics = ({
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {visibleFields.map(({ key, label, inputMode, required, readOnly: fieldReadOnly }) => (
+        {visibleFields.map(({ key, label, inputMode, inputType, required, readOnly: fieldReadOnly, hint }) => (
           <MetricField
             key={key}
             label={label}
             value={displayMetrics[key]}
             reference={references[key]}
             inputMode={inputMode}
+            inputType={inputType}
             required={Boolean(required)}
             readOnly={readOnly || Boolean(fieldReadOnly)}
             outOfRange={isMetricOutOfRange(key, displayMetrics)}
+            hint={hint}
+            max={key === 'dateOfBirth' ? todayIso : undefined}
             onChange={fieldReadOnly ? undefined : (v) => onChange?.(key, v)}
           />
         ))}

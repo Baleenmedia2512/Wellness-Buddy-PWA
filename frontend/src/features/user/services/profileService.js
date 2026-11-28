@@ -105,6 +105,13 @@ export const saveProfile = async (payload) => {
       if (payload.physicalActivityLevel !== undefined) merged.physicalActivityLevel = payload.physicalActivityLevel;
       if (payload.communityId !== undefined) merged.communityId = payload.communityId;
       if (payload.bodyFat !== undefined) merged.bodyFat = payload.bodyFat;
+      if (payload.age !== undefined || payload.dateOfBirth !== undefined) {
+        const bm = { ...(merged.bodyMetrics || {}) };
+        if (payload.age !== undefined) bm.age = payload.age;
+        if (payload.dateOfBirth !== undefined) bm.dateOfBirth = payload.dateOfBirth;
+        merged.bodyMetrics = bm;
+        if (payload.dateOfBirth !== undefined) merged.dateOfBirth = payload.dateOfBirth;
+      }
       localStorage.setItem(demoStorageKey(payload.email), JSON.stringify(merged));
     } catch { /* ignore */ }
   }

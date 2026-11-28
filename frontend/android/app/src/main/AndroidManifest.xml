@@ -184,6 +184,14 @@
                 <data android:scheme="wellnessvalley" android:host="share" />
             </intent-filter>
 
+            <!-- Premium website checkout return: wellnessvalley://premium/paid -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="wellnessvalley" android:host="premium" />
+            </intent-filter>
+
             <!-- Add these intent filters for Firebase Auth redirect -->
             <!-- <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

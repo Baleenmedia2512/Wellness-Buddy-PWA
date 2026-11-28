@@ -14,6 +14,10 @@ import {
 import { validateHeightCm as validateHeightCmInput } from './domain/heightChange.rules.js';
 import { isValidPositionCode, normalizePositionCode } from './domain/communityPosition.rules.js';
 import { normalizeProfileIntroPatch, PROFILE_INTRO_KEYS } from './domain/profileIntro.rules.js';
+import {
+  ageFromDateOfBirth,
+  normalizeDateOfBirthIso,
+} from './domain/dateOfBirth.rules.js';
 
 const VALID_DIETS = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
 const VALID_GOAL_MODES = ['loss', 'gain', 'maintain'];
@@ -177,12 +181,41 @@ export function validateUpdateProfile(body) {
     return parsed.value;
   };
 
-  const age = parseMetric(['age', 'Age'], { min: 1, max: 120, integer: true }, 'age');
+  let age = parseMetric(['age', 'Age'], { min: 1, max: 120, integer: true }, 'age');
   const visceralFat = parseMetric(['visceralFat', 'VisceralFat', 'visceral_fat'], { min: 1, max: 59 }, 'visceralFat');
   const bodyAge = parseMetric(['bodyAge', 'BodyAge', 'body_age'], { min: 1, max: 120 }, 'bodyAge');
   const chestCm = parseMetric(['chestCm', 'ChestCm', 'chest_cm'], { min: 30, max: 200 }, 'chestCm');
   const waistCm = parseMetric(['waistCm', 'WaistCm', 'waist_cm'], { min: 30, max: 200 }, 'waistCm');
   const hipCm = parseMetric(['hipCm', 'HipCm', 'hip_cm'], { min: 30, max: 200 }, 'hipCm');
+
+  // DOB (as per Aadhaar) — additive; older apps omit it and keep sending age.
+  let dateOfBirth;
+  const dobPresent = ['dateOfBirth', 'DateOfBirth', 'date_of_birth', 'dob'].some((k) => k in body);
+  if (dobPresent) {
+    const raw = ['dateOfBirth', 'DateOfBirth', 'date_of_birth', 'dob']
+      .reduce((acc, k) => (acc !== undefined ? acc : body[k]), undefined);
+    if (raw === null || raw === '') {
+      dateOfBirth = null;
+    } else {
+      const normalized = normalizeDateOfBirthIso(raw);
+      if (normalized === null) {
+        throw new ValidationError(
+          400,
+          'Invalid date of birth. Use the DOB on your Aadhaar (age must be 1–120).',
+        );
+      }
+      dateOfBirth = normalized;
+      const derived = ageFromDateOfBirth(normalized);
+      if (derived == null) {
+        throw new ValidationError(
+          400,
+          'Invalid date of birth. Use the DOB on your Aadhaar (age must be 1–120).',
+        );
+      }
+      // Server-derived age wins when DOB is present.
+      age = derived;
+    }
+  }
 
   let recoveredHealthIssues;
   if (
@@ -301,6 +334,7 @@ export function validateUpdateProfile(body) {
     currentWeight,
     timezoneIana,
     age,
+    dateOfBirth,
     visceralFat,
     bodyAge,
     chestCm,
