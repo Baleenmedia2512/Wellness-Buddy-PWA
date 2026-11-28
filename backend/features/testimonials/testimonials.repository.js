@@ -466,6 +466,47 @@ export async function updateTestimonialVideos(id, payload) {
 }
 
 /**
+ * Soft-delete a testimonial row when no photo or video data should remain.
+ * @param {number} id
+ */
+export async function softDeleteTestimonial(id) {
+  const db = getMysqlClient();
+  const { error } = await db
+    .from(TABLE)
+    .update({
+      is_deleted: true,
+      status: 'incomplete',
+      otp_hash: null,
+      otp_expires_at: null,
+      verified_at: null,
+      updated_at: nowUtc(),
+    })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+/**
+ * Reset photo, weight, and duration columns while keeping uploaded result videos intact.
+ * @param {number} id
+ * @param {number} userId
+ */
+export async function clearTransformationPhotoFields(id, userId) {
+  const placeholder = videoOnlyPlaceholderPath(userId);
+  return updateTestimonial(id, {
+    beforeImagePath: placeholder,
+    afterImagePath: placeholder,
+    beforeWeightKg: 0,
+    afterWeightKg: 0,
+    goalType: 'loss',
+    durationText: '—',
+    status: 'incomplete',
+    otpHash: null,
+    otpExpiresAt: null,
+    verifiedAt: null,
+  });
+}
+
+/**
  * Fetch team members for a coach alongside their testimonial status.
  * scope:
  *   - direct (default): reporting downline with inactive-coach rollup

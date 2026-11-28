@@ -488,8 +488,18 @@ export async function composeTransformationShareCardJpeg(opts) {
     : 0;
   const pillH = 30;
   const issues = normalizeIssueList(opts.recoveredHealthIssues);
-  const photoH = PHOTO_H;
   const collagePhotoW = CARD_W - PHOTO_SIDE_PAD * 2;
+  let photoH = PHOTO_H;
+  if (shareAsCollage) {
+    try {
+      const meta = await sharp(beforeBuffer).rotate().metadata();
+      if (meta?.width > 0 && meta?.height > 0) {
+        photoH = Math.min(620, Math.max(160, Math.round(collagePhotoW * (meta.height / meta.width))));
+      }
+    } catch {
+      photoH = PHOTO_H;
+    }
+  }
 
   const beforeSlot = shareAsCollage
     ? await containJpeg(beforeBuffer, collagePhotoW, photoH)

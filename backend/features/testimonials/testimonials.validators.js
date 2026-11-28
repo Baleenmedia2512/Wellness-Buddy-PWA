@@ -704,3 +704,15 @@ export function validateCancelUnifiedOtp(body) {
   return result;
 }
 
+/**
+ * Validate payload for POST /api/testimonials/delete-photo
+ */
+export function validateDeleteTransformationPhoto(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const userIdN = parseInt(body.userId, 10);
+  if (!body.userId || isNaN(userIdN) || userIdN < 1) {
+    throw new ValidationError(400, 'userId must be a valid integer');
+  }
+  return { userId: userIdN };
+}
+

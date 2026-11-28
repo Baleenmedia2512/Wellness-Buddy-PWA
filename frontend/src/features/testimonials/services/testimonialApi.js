@@ -330,6 +330,19 @@ export async function cancelUnifiedOtp(payload) {
 }
 
 /**
+ * Delete the member's transformation collage photo, weights, and duration.
+ * @param {{ userId: number }} payload
+ */
+export async function deleteTestimonialPhoto(payload) {
+  const res = await CapacitorHttp.post({
+    url:     `${base()}/delete-photo`,
+    headers: { 'Content-Type': 'application/json' },
+    data:    payload,
+  });
+  return parseApiResponse(res, 'Failed to delete transformation photo');
+}
+
+/**
  * Member: request email OTP to allow Transformation on all upline coach websites.
  * @param {{ userId: number, websiteDisplayAgreed?: boolean }} payload
  */

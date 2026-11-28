@@ -48,6 +48,7 @@ import {
   validateVerifyUnifiedOtp,
   validateResendUnifiedOtp,
   validateCancelUnifiedOtp,
+  validateDeleteTransformationPhoto,
   validateUpdateMemberHealthIssues,
   MAX_HEALTH_VIDEO_BYTES,
   MAX_BUSINESS_VIDEO_BYTES,
@@ -2770,5 +2771,39 @@ export async function cancelUnifiedOtp(rawBody) {
       message: 'Pending approval cancelled and changes reverted.',
       testimonial: display,
     },
+  };
+}
+
+/**
+ * Delete the member's transformation photo, weights, and duration.
+ * Soft-deletes the row when no result videos exist; otherwise resets photo/weight fields.
+ */
+export async function deleteTransformationPhoto(rawBody) {
+  const { userId } = validateDeleteTransformationPhoto(rawBody);
+  const row = await repo.findByUserId(userId);
+  if (!row) {
+    return {
+      httpStatus: 200,
+      body: { success: true, deleted: true, testimonial: null },
+    };
+  }
+
+  await repo.clearBaselineSnapshot(userId);
+
+  const hasVideos = Boolean(row.health_video_path || row.business_video_path);
+  if (hasVideos) {
+    await repo.clearTransformationPhotoFields(row.id, userId);
+    const updatedRow = await repo.findByUserId(userId);
+    const display = await enrichTestimonialForDisplay(updatedRow);
+    return {
+      httpStatus: 200,
+      body: { success: true, deleted: true, testimonial: display },
+    };
+  }
+
+  await repo.softDeleteTestimonial(row.id);
+  return {
+    httpStatus: 200,
+    body: { success: true, deleted: true, testimonial: null },
   };
 }

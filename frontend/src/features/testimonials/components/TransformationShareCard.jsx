@@ -308,7 +308,7 @@ async function bakeKeepRatioPhotos(el, scale = CAPTURE_SCALE) {
 function waitForPacifico(maxMs) {
   if (!document.fonts?.load) return Promise.resolve();
   return Promise.race([
-    document.fonts.load('40px Pacifico').catch(() => {}),
+    document.fonts.load('40px Pacifico').catch(() => { }),
     new Promise((resolve) => { setTimeout(resolve, maxMs); }),
   ]);
 }
@@ -435,7 +435,7 @@ export async function captureTransformationCardAsJpegDataUrl(el, opts = {}) {
     'left:0',
     'top:0',
     `width:${CARD_W}px`,
-    `height:${CARD_H}px`,
+    'height:auto',
     'opacity:1',
     'pointer-events:none',
     'z-index:-1',
@@ -519,7 +519,7 @@ let shareWarmChain = Promise.resolve();
 
 function enqueueShareWarm(task) {
   const run = shareWarmChain.then(task, task);
-  shareWarmChain = run.then(() => {}, () => {});
+  shareWarmChain = run.then(() => { }, () => { });
   return run;
 }
 
@@ -860,6 +860,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
   const shareAsCollage = testimonial?.shareAsCollage === true
     || (beforeSrc && afterSrc && beforeSrc === afterSrc);
   const collageSrc = beforeSrc || afterSrc;
+  const isCollageCard = Boolean(shareAsCollage && collageSrc);
   const showPhotoRow = Boolean(beforeSrc || afterSrc || bw > 0 || aw > 0);
   const isLoss = isTransformationWeightLoss(bw, aw);
   const diff = isLoss == null ? null : Math.abs(aw - bw).toFixed(1);
@@ -890,7 +891,7 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
       style={{
         position: 'relative',
         width: CARD_W,
-        height: CARD_H,
+        height: isCollageCard ? 'auto' : CARD_H,
         background: '#ffffff',
         overflow: 'hidden',
         fontFamily: CARD_FONT,
@@ -975,10 +976,8 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                 style={{
                   position: 'relative',
                   width: '100%',
-                  height: photoH,
                   overflow: 'hidden',
                   borderRadius: 14,
-                  background: FRAME_BG,
                 }}
               >
                 <img
@@ -988,7 +987,8 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
                   crossOrigin="anonymous"
                   style={{
                     width: '100%',
-                    height: '100%',
+                    height: 'auto',
+                    maxHeight: 680,
                     objectFit: 'contain',
                     objectPosition: 'center',
                     display: 'block',
@@ -1192,16 +1192,19 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         </tbody>
       </table>
 
-      
+
       <div
         style={{
-          position: 'absolute',
+          position: isCollageCard ? 'relative' : 'absolute',
           left: 0,
           right: 0,
-          bottom: 0,
+          bottom: isCollageCard ? undefined : 0,
+          marginTop: isCollageCard ? 8 : 0,
           width: '100%',
           boxSizing: 'border-box',
-          margin: 0,
+          marginLeft: 0,
+          marginRight: 0,
+          marginBottom: 0,
           padding: '10px 16px 12px',
           backgroundColor: '#FFF2A6',
           borderTop: '2px solid #E52525',
@@ -1257,9 +1260,9 @@ export const TransformationCardContent = forwardRef(function TransformationCardC
         </p>
       </div>
 
-        </div>
-      );
-    });
+    </div>
+  );
+});
 
 /**
  * Optional preview modal — kept for callers that still open a preview.
