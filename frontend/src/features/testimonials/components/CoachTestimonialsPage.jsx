@@ -100,8 +100,8 @@ import { compressImage } from '../utils/compressTestimonialImage.js';
 import {
   buildCollageChatGptPrompt,
   copyTransformCollagePrompt,
-  openChatGptCollageWindow,
 } from '../utils/transformationCollagePrompt.js';
+import ChatGptCollageGuideModal from './ChatGptCollageGuideModal.jsx';
 const COLLAGE_IMAGE_CLASS =
   'w-full h-auto max-h-[70vh] object-contain block overflow-hidden rounded-xl border border-gray-200 bg-white';
 
@@ -2151,335 +2151,75 @@ function MemberCard({
             )}
 
             {editable && collageGuideOpen && !collageMetaOpen && (
-                            <div className="mx-3 mb-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3 space-y-2.5 text-left">
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="text-xs font-bold text-emerald-900 leading-snug">
-                                  Ready to create your 3-panel collage in ChatGPT
-                                </p>
-                                <button
-                                  type="button"
-                                  onClick={() => setCollageGuideOpen(false)}
-                                  className="text-emerald-700/70 hover:text-emerald-900 p-0.5"
-                                  aria-label="Close ChatGPT prompt box"
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-                              <p className="text-[11px] text-emerald-800">
-                                Prompt uses your saved details: Before {shownBeforeKg} kg → After {shownAfterKg} kg
-                                {usableDuration ? ` (${displayDuration})` : ''}.
-                              </p>
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  const dynamicPrompt = buildCollageChatGptPrompt({
-                                    beforeWeightKg: shownBeforeKg,
-                                    afterWeightKg: shownAfterKg,
-                                    durationText: usableDuration ? displayDuration : '',
-                                  });
-                                  let copied = false;
-                                  try {
-                                    copied = await copyTransformCollagePrompt(dynamicPrompt);
-                                  } catch {
-                                    copied = false;
-                                  }
-                                  setPromptCopied(Boolean(copied));
-                                  setChatGptModalOpen(true);
-                                }}
-                                className="w-full py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold transition-colors"
-                              >
-                                {promptCopied ? 'Prompt & link copied — view steps' : 'Copy and open ChatGPT'}
-                              </button>
-                            </div>
-            )}
-                          </div>
-                        </div>,
-                        document.body,
-                      )}
-
-                      {editable && chatGptModalOpen && typeof document !== 'undefined' && createPortal(
-                        <div
-                          className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4"
-                          role="dialog"
-                          aria-modal="true"
-                          aria-labelledby="chatgpt-collage-guide-title"
-                          onClick={() => setChatGptModalOpen(false)}
-                        >
-                          <div
-                            className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-5 space-y-4 text-left"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-800">
-                                  <CheckCircle className="h-3 w-3 shrink-0" />
-                                  {promptCopied ? 'Prompt & ChatGPT link copied' : 'Copy prompt below before opening'}
-                                </span>
-                                <h3 id="chatgpt-collage-guide-title" className="text-base font-bold text-gray-900 mt-2">
-                                  How to create your collage in ChatGPT
-                                </h3>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => setChatGptModalOpen(false)}
-                                className="p-1.5 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-                                aria-label="Close instructions"
-                              >
-                                <X className="h-4 w-4" />
-                              </button>
-                            </div>
-                            <input
-                              ref={collageGalRef}
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              aria-label="Collage gallery upload"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                e.target.value = '';
-                                if (file) { void handleCollageFile(file); setPickerSlot(null); }
-                              }}
-                            />
-                          </div>
-          )}
-                          {editable && chatGptModalOpen && typeof document !== 'undefined' && createPortal(
-                            <div
-                              className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4"
-                              role="dialog"
-                              aria-modal="true"
-                              aria-labelledby="chatgpt-collage-guide-title"
-                              onClick={() => setChatGptModalOpen(false)}
-                            >
-                              <div
-                                className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-5 space-y-4 text-left"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-green-100 text-green-800">
-                                      <CheckCircle className="h-3 w-3 shrink-0" />
-                                      {promptCopied ? 'Prompt & ChatGPT link copied' : 'Copy prompt below before opening'}
-                                    </span>
-                                    <h3 id="chatgpt-collage-guide-title" className="text-base font-bold text-gray-900 mt-2">
-                                      How to create your collage in ChatGPT
-                                    </h3>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setChatGptModalOpen(false)}
-                                    className="p-1.5 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-                                    aria-label="Close instructions"
-                                  >
-                                    <X className="h-4 w-4" />
-                                  </button>
-                                </div>
-
-                                <ol className="space-y-2 text-xs text-gray-700 list-decimal list-inside">
-                                  <li>
-                                    <span className="font-semibold text-gray-900">Upload 3 photos to edit:</span>{' '}
-                                    In ChatGPT, attach your photos in order — <span className="font-semibold">1) BEFORE</span>, <span className="font-semibold">2) AFTER</span>, <span className="font-semibold">3) NOW</span>.
-                                  </li>
-                                  <li>
-                                    <span className="font-semibold text-gray-900">Paste the copied prompt:</span>{' '}
-                                    Paste your custom prompt (Before {shownBeforeKg} kg → After {shownAfterKg} kg{usableDuration ? `, ${displayDuration}` : ''}) and send it.
-                                  </li>
-                                  <li>
-                                    <span className="font-semibold text-gray-900">Save the collage image:</span>{' '}
-                                    Download the single 3-panel collage generated by ChatGPT.
-                                  </li>
-                                  <li>
-                                    <span className="font-semibold text-gray-900">Upload it back here:</span>{' '}
-                                    Return to this page and tap the <span className="font-semibold">Transformation photo box</span> to upload that collage.
-                                  </li>
-                                </ol>
-                                <ol className="space-y-2 text-xs text-gray-700 list-decimal list-inside">
-                                  <li>
-                                    <span className="font-semibold text-gray-900">Upload 3 photos to edit:</span>{' '}
-                                    In ChatGPT, attach your photos in order — <span className="font-semibold">1) BEFORE</span>, <span className="font-semibold">2) AFTER</span>, <span className="font-semibold">3) NOW</span>.
-                                  </li>
-                                  <li>
-                                    <span className="font-semibold text-gray-900">Paste the copied prompt:</span>{' '}
-                                    Paste your custom prompt (Before {shownBeforeKg} kg → After {shownAfterKg} kg{usableDuration ? `, ${displayDuration}` : ''}) and send it.
-                                  </li>
-                                  <li>
-                                    <span className="font-semibold text-gray-900">Save the collage image:</span>{' '}
-                                    Download the single 3-panel collage generated by ChatGPT.
-                                  </li>
-                                  <li>
-                                    <span className="font-semibold text-gray-900">Upload it back here:</span>{' '}
-                                    Return to this page and tap the <span className="font-semibold">Transformation photo box</span> to upload that collage.
-                                  </li>
-                                </ol>
-
-                                <div className="rounded-xl border border-gray-200 bg-gray-50 p-2.5 space-y-1.5">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                                      Your custom prompt
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={async () => {
-                                        const dynamicPrompt = buildCollageChatGptPrompt({
-                                          beforeWeightKg: shownBeforeKg,
-                                          afterWeightKg: shownAfterKg,
-                                          durationText: usableDuration ? displayDuration : '',
-                                        });
-                                        try {
-                                          const ok = await copyTransformCollagePrompt(dynamicPrompt);
-                                          setPromptCopied(Boolean(ok));
-                                        } catch {
-                                          setPromptCopied(false);
-                                        }
-                                      }}
-                                      className="text-[11px] font-bold text-green-700 hover:text-green-800"
-                                    >
-                                      {promptCopied ? 'Copied' : 'Copy prompt'}
-                                    </button>
-                                  </div>
-                                  <pre className="text-[11px] text-gray-700 whitespace-pre-wrap font-sans leading-relaxed max-h-32 overflow-y-auto">
-                                    {buildCollageChatGptPrompt({
-                                      beforeWeightKg: shownBeforeKg,
-                                      afterWeightKg: shownAfterKg,
-                                      durationText: usableDuration ? displayDuration : '',
-                                    })}
-                                  </pre>
-                                </div>
-                                <div className="rounded-xl border border-gray-200 bg-gray-50 p-2.5 space-y-1.5">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                                      Your custom prompt
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={async () => {
-                                        const dynamicPrompt = buildCollageChatGptPrompt({
-                                          beforeWeightKg: shownBeforeKg,
-                                          afterWeightKg: shownAfterKg,
-                                          durationText: usableDuration ? displayDuration : '',
-                                        });
-                                        try {
-                                          const ok = await copyTransformCollagePrompt(dynamicPrompt);
-                                          setPromptCopied(Boolean(ok));
-                                        } catch {
-                                          setPromptCopied(false);
-                                        }
-                                      }}
-                                      className="text-[11px] font-bold text-green-700 hover:text-green-800"
-                                    >
-                                      {promptCopied ? 'Copied' : 'Copy prompt'}
-                                    </button>
-                                  </div>
-                                  <pre className="text-[11px] text-gray-700 whitespace-pre-wrap font-sans leading-relaxed max-h-32 overflow-y-auto">
-                                    {buildCollageChatGptPrompt({
-                                      beforeWeightKg: shownBeforeKg,
-                                      afterWeightKg: shownAfterKg,
-                                      durationText: usableDuration ? displayDuration : '',
-                                    })}
-                                  </pre>
-                                </div>
-
-                                <div className="flex gap-2 pt-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => setChatGptModalOpen(false)}
-                                    className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-50"
-                                  >
-                                    Close
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      const dynamicPrompt = buildCollageChatGptPrompt({
-                                        beforeWeightKg: shownBeforeKg,
-                                        afterWeightKg: shownAfterKg,
-                                        durationText: usableDuration ? displayDuration : '',
-                                      });
-                                      if (!promptCopied) {
-                                        try {
-                                          const ok = await copyTransformCollagePrompt(dynamicPrompt);
-                                          setPromptCopied(Boolean(ok));
-                                        } catch {
-                                          // keep going to open ChatGPT
-                                        }
-                                      }
-                                      openChatGptCollageWindow(dynamicPrompt);
-                                      setChatGptModalOpen(false);
-                                      setCollageGuideOpen(false);
-                                    }}
-                                    className="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold"
-                                  >
-                                    Open ChatGPT
-                                  </button>
-                                </div>
-                              </div>
-                            </div>,
-                            document.body,
-                          )}
-
-                          <input
-                            ref={collageGalRef}
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            aria-label="Collage gallery upload"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              e.target.value = '';
-                              if (file) { void handleCollageFile(file); setPickerSlot(null); }
-                              <div className="flex gap-2 pt-1">
-                                <button
-                                  type="button"
-                                  onClick={() => setChatGptModalOpen(false)}
-                                  className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 text-xs font-bold hover:bg-gray-50"
-                                >
-                                  Close
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    const dynamicPrompt = buildCollageChatGptPrompt({
-                                      beforeWeightKg: shownBeforeKg,
-                                      afterWeightKg: shownAfterKg,
-                                      durationText: usableDuration ? displayDuration : '',
-                                    });
-                                    if (!promptCopied) {
-                                      try {
-                                        const ok = await copyTransformCollagePrompt(dynamicPrompt);
-                                        setPromptCopied(Boolean(ok));
-                                      } catch {
-                                        // keep going to open ChatGPT
-                                      }
-                                    }
-                                    openChatGptCollageWindow(dynamicPrompt);
-                                    setChatGptModalOpen(false);
-                                    setCollageGuideOpen(false);
-                                  }}
-                                />
-                                className="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold"
-                    >
-                                Open ChatGPT
-                              </button>
-                  </div>
-                      )}
-                    </div>
-                  </div>,
-                  document.body,
-            )}
-
-                  <input
-                    ref={collageGalRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    aria-label="Collage gallery upload"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      e.target.value = '';
-                      if (file) { void handleCollageFile(file); setPickerSlot(null); }
-                    }}
-                  />
+              <div className="mx-3 mb-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3 space-y-2.5 text-left">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs font-bold text-emerald-900 leading-snug">
+                    Ready to create your 3-panel collage in ChatGPT
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setCollageGuideOpen(false)}
+                    className="text-emerald-700/70 hover:text-emerald-900 p-0.5"
+                    aria-label="Close ChatGPT prompt box"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <p className="text-[11px] text-emerald-800">
+                  Prompt uses your saved details: Before {shownBeforeKg} kg → After {shownAfterKg} kg
+                  {usableDuration ? ` (${displayDuration})` : ''}.
+                </p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const dynamicPrompt = buildCollageChatGptPrompt({
+                      beforeWeightKg: shownBeforeKg,
+                      afterWeightKg: shownAfterKg,
+                      durationText: usableDuration ? displayDuration : '',
+                    });
+                    let copied = false;
+                    try {
+                      copied = await copyTransformCollagePrompt(dynamicPrompt);
+                    } catch {
+                      copied = false;
+                    }
+                    setPromptCopied(Boolean(copied));
+                    setChatGptModalOpen(true);
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold transition-colors"
+                >
+                  {promptCopied ? 'Prompt & link copied — view steps' : 'Copy and open ChatGPT'}
+                </button>
               </div>
             )}
+            <ChatGptCollageGuideModal
+              isOpen={editable && chatGptModalOpen}
+              onClose={() => setChatGptModalOpen(false)}
+              onOpenedChatGpt={() => {
+                setChatGptModalOpen(false);
+                setCollageGuideOpen(false);
+              }}
+              beforeWeightKg={shownBeforeKg}
+              afterWeightKg={shownAfterKg}
+              durationText={usableDuration ? displayDuration : ''}
+              promptCopied={promptCopied}
+              onPromptCopiedChange={setPromptCopied}
+            />
+
+            <input
+              ref={collageGalRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              aria-label="Collage gallery upload"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) { void handleCollageFile(file); setPickerSlot(null); }
+              }}
+            />
+          </div>
+        )}
 
             {/* Unified OTP — after submit, or when a pending OTP is still open */}
             {showUnifiedOtp && (
