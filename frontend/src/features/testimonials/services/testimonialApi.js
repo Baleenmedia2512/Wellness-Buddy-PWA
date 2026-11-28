@@ -126,7 +126,7 @@ export async function listForCoach(coachId, opts = {}) {
     page: String(page),
     limit: String(limit),
   });
-  if (scope === 'full') params.set('scope', 'full');
+  if (scope === 'full' || scope === 'team') params.set('scope', scope);
   if (search) params.set('search', search);
   if (healthIssue) params.set('healthIssue', healthIssue);
   if (uploadFilter && uploadFilter !== 'all') params.set('uploadFilter', uploadFilter);
@@ -235,7 +235,7 @@ export async function verifyTestimonialVideoOtp(payload) {
  */
 export async function getTestimonialVideoReport(coachId, scope = 'direct') {
   const params = new URLSearchParams({ coachId: String(coachId) });
-  if (scope === 'full') params.set('scope', 'full');
+  if (scope === 'full' || scope === 'team') params.set('scope', scope);
   const res = await CapacitorHttp.get({
     url: `${base()}/video-report?${params.toString()}`,
   });

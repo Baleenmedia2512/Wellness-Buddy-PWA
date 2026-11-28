@@ -10,7 +10,10 @@ import {
   seedTestimonialFromProfilePhotos,
 } from './domain/profileTransformationPhotos.seed.js';
 import { resolveCoCoachPartnerId } from './domain/otpRecipient.rules.js';
-import { isRealImagePath } from './domain/testimonials-list.pagination.js';
+import {
+  isRealImagePath,
+  orderTeamMembersDirectFirst,
+} from './domain/testimonials-list.pagination.js';
 import { isActiveTeamStatus } from '../../utils/teamHierarchyBuilder.js';
 
 const TABLE = 'testimonials_table';
@@ -595,7 +598,7 @@ export async function listForCoach(coachId, scope = 'direct') {
     canEditHealthIssues: false,
   }));
 
-  if (scope === 'full') {
+  if (scope === 'full' || scope === 'team') {
     await mergeProfileTransformationPhotosIntoRows(rows);
   }
 
@@ -799,12 +802,29 @@ async function fetchReportingTeamMembers(coachId, scope = 'direct', context = nu
   const resolvedContext = context ?? await loadTeamReportingContext(coachId);
   const {
     getSharedTeamDirectMembers,
+    getSharedTeamFullMembers,
     getSharedTeamFullMembersWithUplines,
   } = await import('../../utils/sharedTeamReporting.js');
-  const members = scope === 'full'
-    ? getSharedTeamFullMembersWithUplines(coachId, resolvedContext)
-    : getSharedTeamDirectMembers(coachId, resolvedContext);
-  return members
+  const directMembers = getSharedTeamDirectMembers(coachId, resolvedContext);
+  if (scope === 'team') {
+    const fullDownline = getSharedTeamFullMembers(coachId, resolvedContext);
+    return orderTeamMembersDirectFirst(
+      directMembers,
+      fullDownline,
+      coachId,
+      (status) => isActiveTeamStatus(status),
+    );
+  }
+  if (scope === 'full') {
+    const fullWithUplines = getSharedTeamFullMembersWithUplines(coachId, resolvedContext);
+    return orderTeamMembersDirectFirst(
+      directMembers,
+      fullWithUplines,
+      coachId,
+      (status) => isActiveTeamStatus(status),
+    );
+  }
+  return directMembers
     .filter((member) => member.UserId !== Number(coachId))
     .filter((member) => isActiveTeamStatus(member.Status))
     .sort((a, b) => String(a.UserName || '').localeCompare(String(b.UserName || '')));
@@ -874,7 +894,7 @@ export async function countPhotoUploadStatsForCoach(coachId, scope = 'direct', c
   }
 
   let profilePhotoMap = new Map();
-  if (scope === 'full') {
+  if (scope === 'full' || scope === 'team') {
     const needsProfileCheck = members.filter(
       (m) => !memberHasVisibleTransformationPhoto(testimonialMap[m.UserId], null),
     );

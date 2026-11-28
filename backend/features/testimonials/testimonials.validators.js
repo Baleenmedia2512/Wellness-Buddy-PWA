@@ -222,7 +222,7 @@ export function validateListForCoach(query) {
   const normalized = normalizeTestimonialsListPagination(query || {});
   if (!normalized.coachId) throw new ValidationError(400, 'coachId is required');
   // Mine scope is frontend-only (my-testimonial); list API treats it as direct empty-safe.
-  const scope = normalized.scope === 'full' ? 'full' : 'direct';
+  const scope = ['full', 'team'].includes(normalized.scope) ? normalized.scope : 'direct';
   return {
     coachId: normalized.coachId,
     scope,

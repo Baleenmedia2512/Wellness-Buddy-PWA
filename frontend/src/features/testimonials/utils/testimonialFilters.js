@@ -9,6 +9,7 @@ export const UPLOAD_FILTERS = {
 /** Team scope filter values. */
 export const TEAM_SCOPES = {
   MINE:   'mine',
+  TEAM:   'team',
   DIRECT: 'direct',
   FULL:   'full',
 };

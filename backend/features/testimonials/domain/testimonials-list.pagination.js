@@ -13,7 +13,57 @@ export const TESTIMONIALS_UPLOAD_FILTERS = new Set([
   'not_uploaded',
 ]);
 
-export const TESTIMONIALS_LIST_SCOPES = new Set(['mine', 'direct', 'full']);
+export const TESTIMONIALS_LIST_SCOPES = new Set(['mine', 'direct', 'full', 'team']);
+
+/**
+ * Order unified team members with ALL active direct members first (sorted A-Z),
+ * followed by remaining active indirect/full-team members (sorted A-Z).
+ *
+ * @template T
+ * @param {T[]} directMembers
+ * @param {T[]} fullMembers
+ * @param {number|string} coachId
+ * @param {(status: unknown) => boolean} [isActiveFn]
+ * @returns {T[]}
+ */
+export function orderTeamMembersDirectFirst(
+  directMembers = [],
+  fullMembers = [],
+  coachId = null,
+  isActiveFn = () => true,
+) {
+  const selfId = Number(coachId);
+  const byName = (a, b) => String(a?.UserName || '').localeCompare(String(b?.UserName || ''));
+  const isIncluded = (member) => (
+    member
+    && Number(member.UserId) !== selfId
+    && isActiveFn(member.Status)
+  );
+
+  const directSeen = new Set();
+  const directSorted = [];
+  for (const member of (Array.isArray(directMembers) ? directMembers : [])) {
+    if (!isIncluded(member)) continue;
+    const id = Number(member.UserId);
+    if (directSeen.has(id)) continue;
+    directSeen.add(id);
+    directSorted.push(member);
+  }
+  directSorted.sort(byName);
+
+  const indirectSeen = new Set();
+  const indirectSorted = [];
+  for (const member of (Array.isArray(fullMembers) ? fullMembers : [])) {
+    if (!isIncluded(member)) continue;
+    const id = Number(member.UserId);
+    if (directSeen.has(id) || indirectSeen.has(id)) continue;
+    indirectSeen.add(id);
+    indirectSorted.push(member);
+  }
+  indirectSorted.sort(byName);
+
+  return [...directSorted, ...indirectSorted];
+}
 
 /**
  * @param {object} raw
