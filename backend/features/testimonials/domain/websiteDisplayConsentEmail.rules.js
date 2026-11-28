@@ -36,7 +36,7 @@ export function buildWebsiteDisplayConsentEmail({
   });
   const whatsappButtonHtml = buildWhatsAppShareButtonHtml({
     shareUrl: waUrl,
-    label: 'Share code on WhatsApp',
+    label: `Share code ${code} on WhatsApp`,
   });
   const text = [
     `Hi ${name},`,
@@ -47,11 +47,11 @@ export function buildWebsiteDisplayConsentEmail({
     code,
     '',
     `This code expires in ${hours} hour(s).`,
-    ...(waUrl ? ['', `Share on WhatsApp: ${waUrl}`] : []),
+    ...(waUrl ? ['', `Share code ${code} on WhatsApp: ${waUrl}`] : []),
     '',
     'If you did not request this, ignore this email — nothing will be shown on websites.',
     '',
-    '— Wellness Valley',
+    `— Wellness Valley (Ref: #${code})`,
   ].join('\n');
 
   const html = `<!DOCTYPE html><html><body style="font-family:sans-serif;color:#0f172a;line-height:1.5">
@@ -61,7 +61,7 @@ export function buildWebsiteDisplayConsentEmail({
   <p style="font-size:28px;font-weight:700;letter-spacing:0.35em;margin:16px 0">${escapeHtml(code)}</p>
   ${whatsappButtonHtml}
   <p style="color:#64748b;font-size:13px">Expires in ${hours} hour(s). If you did not request this, ignore this email.</p>
-  <p style="color:#94a3b8;font-size:12px">— Wellness Valley</p>
+  <p style="color:#94a3b8;font-size:12px">— Wellness Valley (Ref: #${escapeHtml(code)})</p>
 </body></html>`;
 
   return { subject, text, html, whatsappUrl: waUrl };

@@ -45,7 +45,7 @@ export function buildGoodHabitOtpEmail({
   });
   const whatsappButtonHtml = buildWhatsAppShareButtonHtml({
     shareUrl: waUrl,
-    label: 'Share code on WhatsApp',
+    label: `Share code ${code} on WhatsApp`,
   });
 
   const subject = `Task by Coach OTP for ${member}`;
@@ -58,11 +58,11 @@ export function buildGoodHabitOtpEmail({
     `This code is valid until ${until}.`,
     '',
     'The photo is attached / shown below. If it looks correct, tap Share code on WhatsApp to open their chat with the code ready — then just send.',
-    ...(waUrl ? ['', `Share on WhatsApp: ${waUrl}`] : []),
+    ...(waUrl ? ['', `Share code ${code} on WhatsApp: ${waUrl}`] : []),
     '',
     'After they verify, their score increases. You will get a second email with a Reject link if the task should be removed and the score decreased.',
     '',
-    '— Wellness Valley',
+    `— Wellness Valley (Ref: #${code})`,
   ].join('\n');
 
   const html = `
@@ -71,13 +71,13 @@ export function buildGoodHabitOtpEmail({
       <p style="margin:0 0 12px"><strong>${escapeHtml(member)}</strong> wants to log a <strong>Task by Coach</strong> photo.</p>
       <p style="margin:0 0 8px;font-size:13px;color:#475569">Verification code</p>
       <p style="margin:0 0 16px;font-size:28px;font-weight:800;letter-spacing:0.2em;color:#047857">${escapeHtml(code)}</p>
-      <p style="margin:0 0 8px;font-size:13px;color:#64748b">Valid until <strong>${escapeHtml(until)}</strong>. If the photo looks correct, share this code with your member.</p>
       ${whatsappButtonHtml}
       <p style="margin:12px 0 16px;font-size:12px;color:#94a3b8">Opens WhatsApp with ${escapeHtml(member)}'s chat and the code already typed — just tap Send.</p>
+      <p style="margin:0 0 8px;font-size:13px;color:#64748b">Valid until <strong>${escapeHtml(until)}</strong>. If the photo looks correct, share this code with your member.</p>
       <p style="margin:0 0 8px;font-size:13px;font-weight:600">Photo</p>
       <img src="cid:task-by-coach" alt="Task by Coach photo" style="max-width:100%;border-radius:12px;border:1px solid #d1fae5" />
       <p style="margin:16px 0 12px;font-size:12px;color:#64748b">After they verify, their score increases. You will get a second email with a <strong>Reject</strong> link if the task should be removed and the score decreased.</p>
-      <p style="margin:0;font-size:12px;color:#94a3b8">— Wellness Valley</p>
+      <p style="margin:0;font-size:12px;color:#94a3b8">— Wellness Valley (Ref: #${escapeHtml(code)})</p>
     </div>
   `.trim();
 

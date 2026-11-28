@@ -27,8 +27,12 @@ describe('openPremiumCheckout', () => {
         apiFetch: async () => okSession(),
         savePendingPremiumOrder: (row) => calls.push(['pending', row]),
         platformInfo: { isNative: false, platform: 'web' },
+        apiBaseUrl: 'https://wellnessvalley.in',
         startNativeUpiIntent: async () => {
           throw new Error('native must not run on web');
+        },
+        openExternalBrowser: async () => {
+          throw new Error('external browser must not run on web');
         },
         openJsCheckout: async (input) => {
           calls.push(['js', input.paymentSessionId, input.mode]);
@@ -41,74 +45,60 @@ describe('openPremiumCheckout', () => {
     assert.deepEqual(calls[1], ['js', 'session_abc', 'production']);
   });
 
-  it('opens native UPI Intent on Android APK', async () => {
+  it('opens the website pay page on native iOS', async () => {
+    const opened = [];
     const result = await openPremiumCheckout(
       { userId: 42 },
       {
-        apiFetch: async () => okSession(),
+        apiFetch: async (_url, init) => {
+          const body = JSON.parse(init.body);
+          assert.match(body.returnUrl, /\/premium\/paid\?order_id=\{order_id\}$/);
+          return okSession();
+        },
         savePendingPremiumOrder: () => {},
-        platformInfo: { isNative: true, platform: 'android' },
-        startNativeUpiIntent: async () => ({ status: 'verify', orderId: 'premium_42_abc' }),
+        platformInfo: { isNative: true, platform: 'ios' },
+        apiBaseUrl: 'https://wellnessvalley.in',
+        openExternalBrowser: async (url) => {
+          opened.push(url);
+        },
+        startNativeUpiIntent: async () => {
+          throw new Error('native UPI must not run when external web is used');
+        },
         openJsCheckout: async () => {
-          throw new Error('JS modal must not run when native works');
+          throw new Error('JS modal must not run on native external checkout');
         },
       },
     );
     assert.deepEqual(result, {
       orderId: 'premium_42_abc',
-      result: { paymentDetails: { orderId: 'premium_42_abc' } },
+      result: { externalBrowser: true },
     });
+    assert.equal(opened.length, 1);
+    assert.match(opened[0], /^https:\/\/wellnessvalley\.in\/premium\/pay\?/);
+    assert.match(opened[0], /payment_session_id=session_abc/);
   });
 
-  it('falls back to the JS modal if native cannot start', async () => {
-    const error = new Error('NATIVE_UNAVAILABLE');
-    error.code = 'UNAVAILABLE';
+  it('opens the website pay page on native Android', async () => {
+    const opened = [];
     const result = await openPremiumCheckout(
       { userId: 42 },
       {
         apiFetch: async () => okSession(),
         savePendingPremiumOrder: () => {},
         platformInfo: { isNative: true, platform: 'android' },
-        startNativeUpiIntent: async () => {
-          throw error;
+        apiBaseUrl: 'https://wellnessvalley.in',
+        openExternalBrowser: async (url) => {
+          opened.push(url);
         },
-        openJsCheckout: async () => ({ from: 'js-fallback' }),
+        startNativeUpiIntent: async () => {
+          throw new Error('native UPI must not run when external web is used');
+        },
+        openJsCheckout: async () => {
+          throw new Error('JS modal must not run on native external checkout');
+        },
       },
     );
-    assert.deepEqual(result, { orderId: 'premium_42_abc', result: { from: 'js-fallback' } });
-  });
-
-  it('does not open a second JS checkout after a native payment error', async () => {
-    await assert.rejects(
-      () => openPremiumCheckout(
-        { userId: 42 },
-        {
-          apiFetch: async () => okSession(),
-          savePendingPremiumOrder: () => {},
-          platformInfo: { isNative: true, platform: 'android' },
-          startNativeUpiIntent: async () => {
-            throw new Error('Payment could not complete');
-          },
-          openJsCheckout: async () => ({ from: 'js' }),
-        },
-      ),
-      /Payment could not complete/,
-    );
-  });
-
-  it('opens the JS modal when Google Pay blocks a sideloaded APK', async () => {
-    const result = await openPremiumCheckout(
-      { userId: 42 },
-      {
-        apiFetch: async () => okSession(),
-        savePendingPremiumOrder: () => {},
-        platformInfo: { isNative: true, platform: 'android' },
-        startNativeUpiIntent: async () => {
-          throw new Error('com.google.android.packageinstaller is not a trusted source');
-        },
-        openJsCheckout: async () => ({ from: 'js-sideload' }),
-      },
-    );
-    assert.deepEqual(result, { orderId: 'premium_42_abc', result: { from: 'js-sideload' } });
+    assert.equal(result.result.externalBrowser, true);
+    assert.match(opened[0], /mode=production/);
   });
 });

@@ -397,13 +397,20 @@ registerFlag({
   description: 'Profile Go Premium opens Cashfree checkout. Kill switch hides the row and the create-order API.',
   defaultEnabled: true,
 });
-
 registerFlag({
   name: 'ff.create-event',
   owner: '@principal-eng',
   createdAt: '2026-10-30',
   removeBy: '2027-04-30',
   description: 'Create Event page: name, organizer, place, seating, plus update, delete, postpone, and cancel.',
+  defaultEnabled: true,
+});
+registerFlag({
+  name: 'ff.go-premium',
+  owner: '@principal-eng',
+  createdAt: '2026-10-28',
+  removeBy: '2027-04-28',
+  description: 'Profile Go Premium opens Cashfree checkout. Kill switch hides the row and the create-order API.',
   defaultEnabled: true,
 });
 

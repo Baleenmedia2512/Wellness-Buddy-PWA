@@ -678,8 +678,8 @@ const WellnessScoreLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, userId, vi
         <div className="shrink-0" style={{ overflow: 'visible' }}>
           <LeaderboardAvatar
             apiBaseUrl={apiBaseUrl}
-            userId={user.userId}
-            email={user.email}
+            userId={user.userId ?? user.UserId}
+            email={user.email || user.Email}
             userName={shownName}
             profileImage={user.profileImage}
             interactive={false}

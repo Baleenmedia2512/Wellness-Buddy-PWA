@@ -7,13 +7,31 @@ import assert from 'node:assert/strict';
 import {
   buildUserAvatarUrl,
   bumpAvatarDisplayVersion,
+  clearAvatarFailed,
   getAvatarDisplayVersion,
+  isAvatarFailed,
+  markAvatarFailed,
   pickShareAvatarSrc,
   resolveClientAvatarSrc,
   subscribeAvatarDisplayVersion,
 } from '../avatarDisplayVersion.js';
 
 describe('avatarDisplayVersion', () => {
+  it('tracks failed avatar userIds and clears on bump or clear', () => {
+    assert.equal(isAvatarFailed(101), false);
+    markAvatarFailed(101);
+    assert.equal(isAvatarFailed(101), true);
+    assert.equal(isAvatarFailed('101'), true);
+    assert.equal(isAvatarFailed(102), false);
+
+    clearAvatarFailed(101);
+    assert.equal(isAvatarFailed(101), false);
+
+    markAvatarFailed(103);
+    assert.equal(isAvatarFailed(103), true);
+    bumpAvatarDisplayVersion();
+    assert.equal(isAvatarFailed(103), false);
+  });
   it('bumps generation and notifies subscribers', () => {
     const before = getAvatarDisplayVersion();
     const seen = [];

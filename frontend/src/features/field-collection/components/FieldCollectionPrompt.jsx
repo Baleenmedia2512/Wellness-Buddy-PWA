@@ -35,6 +35,7 @@ function accountIds(user) {
 export default function FieldCollectionPrompt({ user, prompt, apiBaseUrl, onDone }) {
   const [value, setValue] = useState('');
   const [issues, setIssues] = useState([]);
+  const [healthQuery, setHealthQuery] = useState('');
   const [languages, setLanguages] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -90,7 +91,18 @@ export default function FieldCollectionPrompt({ user, prompt, apiBaseUrl, onDone
       if (prompt.key === 'waist') payload.waistCm = n;
       if (prompt.key === 'hip') payload.hipCm = n;
     } else if (prompt.key === 'healthIssues') {
-      payload.recoveredHealthIssues = issues;
+      let finalIssues = Array.isArray(issues) ? [...issues] : [];
+      if (
+        healthQuery.trim().toLowerCase() === 'none' &&
+        !finalIssues.some((s) => String(s || '').trim().toLowerCase() === 'none')
+      ) {
+        finalIssues.push('None');
+      }
+      if (blocking && finalIssues.length === 0) {
+        setError('Please select your health issues or type "None".');
+        return false;
+      }
+      payload.recoveredHealthIssues = finalIssues;
     } else if (prompt.key === 'communityPosition') {
       if (!value) {
         setError('Choose a community position.');
@@ -270,7 +282,12 @@ export default function FieldCollectionPrompt({ user, prompt, apiBaseUrl, onDone
               ) : null}
             </div>
           ) : prompt.key === 'healthIssues' ? (
-            <DiseaseMultiSelect value={issues} onChange={setIssues} />
+            <DiseaseMultiSelect
+              value={issues}
+              onChange={setIssues}
+              onQueryChange={setHealthQuery}
+              required={prompt.mode === 'ask_blocking'}
+            />
           ) : PROFILE_INTRO_KEYS.includes(prompt.key) ? (
             <ProfileIntroFields
               values={{

@@ -59,7 +59,7 @@ export function buildProfileChangeOtpEmail({
   });
   const whatsappButtonHtml = buildWhatsAppShareButtonHtml({
     shareUrl: waUrl,
-    label: 'Share code on WhatsApp',
+    label: `Share code ${code} on WhatsApp`,
   });
   const text = [
     'Wellness Valley',
@@ -67,6 +67,9 @@ export function buildProfileChangeOtpEmail({
     requestLine,
     `Share this approval code with them. It expires in ${expiresHours} hours.`,
     `Approval code: ${code}`,
+    ...(waUrl ? ['', `Share code ${code} on WhatsApp: ${waUrl}`] : []),
+    '',
+    `If you were not expecting this, you can ignore this message. (Ref: #${code})`,
   ].join('\n');
 
   const html = wrapHtml(`
@@ -75,6 +78,7 @@ export function buildProfileChangeOtpEmail({
 <p style="margin:0 0 12px">Share this approval code with them. It expires in ${expiresHours} hours.</p>
 <p style="margin:0 0 16px;font-size:28px;letter-spacing:4px;font-weight:bold">${escapeHtml(code)}</p>
 ${whatsappButtonHtml || ''}
+<p style="margin-top:16px;font-size:13px;color:#666666">If you were not expecting this, you can ignore this message. (Ref: #${escapeHtml(code)})</p>
 `);
 
   return { subject, text, html };

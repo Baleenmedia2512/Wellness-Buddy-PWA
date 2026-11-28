@@ -758,6 +758,33 @@ export async function setEventProfilePreferences(userId, prefs = {}) {
 
 const INTRO_COLUMNS = 'ProfessionalTitle, InstagramUrl, YoutubeUrl, LinkedinUrl, HerbalifeJoinedOn, AboutMe, Qualification, Languages';
 
+/**
+ * Soft-load DateOfBirth (column may be missing pre-migration).
+ * @param {number} userId
+ * @returns {Promise<string|null>} yyyy-MM-dd or null
+ */
+export async function getDateOfBirth(userId) {
+  try {
+    const row = await findByUserId(userId, '"DateOfBirth"');
+    const raw = row?.DateOfBirth;
+    if (raw == null || raw === '') return null;
+    if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+      const ist = new Date(raw.getTime() + (5 * 60 + 30) * 60 * 1000);
+      const yyyy = ist.getUTCFullYear();
+      const mm = String(ist.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(ist.getUTCDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    const text = String(raw).trim();
+    const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return iso ? `${iso[1]}-${iso[2]}-${iso[3]}` : null;
+  } catch (err) {
+    const msg = String(err?.message || err || '');
+    if (/DateOfBirth|Unknown column|1054|column/i.test(msg)) return null;
+    throw err;
+  }
+}
+
 function parseLanguageCodes(value) {
   if (Array.isArray(value)) return value.map((item) => String(item));
   if (value == null || value === '') return [];

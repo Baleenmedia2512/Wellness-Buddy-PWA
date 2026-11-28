@@ -1,4 +1,6 @@
+import { App } from '@capacitor/app';
 import { apiFetch } from '../../shared/services/apiFetch.js';
+import { getApiBaseUrl } from '../../config/api.config.js';
 import { savePendingPremiumOrder } from './services/premiumApi.js';
 import {
   getCheckoutPlatform,
@@ -10,6 +12,13 @@ import {
   shouldFallbackToJsCheckout,
   shouldUseNativeUpiCheckout,
 } from './domain/nativePremiumCheckout.rules.js';
+import {
+  buildPremiumPayPageUrl,
+  buildPremiumPaidReturnUrl,
+  externalBrowserCheckoutResult,
+  resolvePremiumWebOrigin,
+  shouldUseExternalWebCheckout,
+} from './domain/externalPremiumCheckout.rules.js';
 
 const SDK_SRC = 'https://sdk.cashfree.com/js/v3/cashfree.js';
 
@@ -38,8 +47,7 @@ function loadCashfreeScript() {
   });
 }
 
-async function createPremiumSession({ userId, fetchApi }) {
-  const returnUrl = typeof window !== 'undefined' ? window.location.href : '';
+async function createPremiumSession({ userId, returnUrl, fetchApi }) {
   const response = await fetchApi('/api/payments/create-premium-order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -65,9 +73,30 @@ async function openJsModalCheckout({ paymentSessionId, mode, loadScript }) {
   return result;
 }
 
+async function openSystemBrowser(url, openUrl) {
+  const target = String(url || '').trim();
+  if (!target) throw new Error('Payment page could not open');
+  if (typeof openUrl === 'function') {
+    await openUrl(target);
+    return;
+  }
+  try {
+    await App.openUrl({ url: target });
+    return;
+  } catch {
+    // Capacitor openUrl missing or blocked — fall through.
+  }
+  if (typeof window !== 'undefined') {
+    const opened = window.open(target, '_blank', 'noopener,noreferrer');
+    if (opened) return;
+  }
+  throw new Error('Payment page could not open');
+}
+
 /**
- * Ask the server for a Premium payment session, then open Cashfree's payment options.
- * Android APK uses Cashfree native checkout (card + UPI apps). Web, iOS, and native-start failures keep the JS modal.
+ * Ask the server for a Premium payment session, then open checkout.
+ * Native iOS/Android: system browser → wellnessvalley.in/premium/pay → return to app.
+ * Web: Cashfree JS modal. Android may still try native UPI only when external web is off.
  * @param {{ userId: string|number }} input
  * @param {object} [deps]
  */
@@ -77,10 +106,30 @@ export async function openPremiumCheckout({ userId }, deps = {}) {
   const loadScript = deps.loadCashfreeScript || loadCashfreeScript;
   const startNative = deps.startNativeUpiIntent || startNativeUpiIntent;
   const openJs = deps.openJsCheckout || openJsModalCheckout;
+  const openBrowser = deps.openExternalBrowser || openSystemBrowser;
   const platformInfo = deps.platformInfo || getCheckoutPlatform();
+  const apiBaseUrl = deps.apiBaseUrl || getApiBaseUrl();
+  const webOrigin = deps.webOrigin || resolvePremiumWebOrigin(apiBaseUrl);
 
-  const session = await createPremiumSession({ userId, fetchApi });
+  const useExternal = shouldUseExternalWebCheckout(platformInfo);
+  const returnUrl = useExternal
+    ? buildPremiumPaidReturnUrl(webOrigin)
+    : (typeof window !== 'undefined' ? window.location.href : '');
+
+  const session = await createPremiumSession({ userId, returnUrl, fetchApi });
   savePending({ userId, orderId: session.orderId });
+
+  if (useExternal) {
+    const payUrl = buildPremiumPayPageUrl({
+      webOrigin,
+      paymentSessionId: session.paymentSessionId,
+      orderId: session.orderId,
+      mode: session.mode,
+    });
+    if (!payUrl) throw new Error('Payment page could not open');
+    await openBrowser(payUrl, deps.openUrl);
+    return { orderId: session.orderId, result: externalBrowserCheckoutResult() };
+  }
 
   if (shouldUseNativeUpiCheckout(platformInfo)) {
     try {

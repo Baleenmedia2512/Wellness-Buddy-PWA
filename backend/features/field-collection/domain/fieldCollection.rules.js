@@ -63,7 +63,7 @@ const PHOTO_KEYS = Object.freeze(Object.keys(PHOTO_SLOT_BY_KEY));
 export const FIELD_LABELS = Object.freeze({
   communityPosition: 'Community Position',
   gender: 'Gender',
-  age: 'Age',
+  age: 'Date of birth (as per Aadhaar)',
   height: 'Height',
   diet: 'Diet',
   lifestyle: 'Lifestyle',
@@ -428,6 +428,30 @@ export function planCollectionStep({
     .map((item) => item.field.key);
   if (profileFields.length > 0) {
     return { step: 'profileIntro', entryFields: [], photoSlots: [], profileFields, scheduled: null };
+  }
+
+  // Any prompt-based field configured as "Required while entering" (e.g. healthIssues,
+  // currentWeight, fatPercent, bodyAge, chest, waist, hip) that is blocking:
+  const blockingEntry = decisions.find((item) => {
+    return item.field.phase === 'entry' && item.mode === 'ask_blocking';
+  });
+  if (blockingEntry) {
+    return {
+      step: 'scheduled',
+      entryFields: [],
+      photoSlots: [],
+      profileFields: [],
+      scheduled: {
+        key: blockingEntry.field.key,
+        label: blockingEntry.field.label,
+        mode: 'ask_blocking',
+        askEveryDays: null,
+        maxSkips: 0,
+        mustFillWithinDays: null,
+        skipCount: 0,
+        skipsRemaining: 0,
+      },
+    };
   }
 
   const deferred = new Set(deferKeys);

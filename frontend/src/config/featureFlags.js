@@ -222,12 +222,17 @@ const REGISTRY = Object.freeze({
     description: 'One coach OTP on Save for later profile field changes (3.5.8+).',
   },
 
-  // Profile Go Premium — opens Cashfree checkout. Kill switch hides the row.
+  // BroadCast — paid how-to + payment entry. Upload and Burst wait on recharge.
+  // Default ON. Set REACT_APP_FF_BROADCAST=false or
+  // localStorage 'ff.broadcast'='false' to hide the tab.
+
+
+  // Profile Go Premium — web: Cashfree modal; native: Safari/Chrome → wellnessvalley.in.
   'ff.go-premium': {
     envKey: 'REACT_APP_FF_GO_PREMIUM',
     storageKey: 'ff.go-premium',
     defaultEnabled: true,
-    description: 'Profile Go Premium opens Cashfree checkout.',
+    description: 'Profile Go Premium. Native opens website checkout; web keeps Cashfree modal.',
   },
 
   // Create Event — event form plus update, delete, postpone, and cancel.

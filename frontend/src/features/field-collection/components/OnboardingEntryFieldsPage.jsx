@@ -1,17 +1,23 @@
 /**
- * Entry fields that still block this person: Gender, Age, Height, Diet.
+ * Entry fields that still block this person: Gender, Age (via Aadhaar DOB), Height, Diet.
  * Only the keys the server marked as blocking are shown.
  */
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { saveProfile } from '../../user/services/profileService';
 import { DIET_OPTIONS } from '../../user/services/dietOptions';
 import { VALID_GENDERS } from '../../user/domain/profileCompleteness';
+import {
+  DOB_FIELD_LABEL,
+  DOB_HINT,
+  ageFromDateOfBirth,
+  istTodayIso,
+} from '../../user/domain/dateOfBirth';
 
 const inputCls = 'w-full px-3 py-3 border-2 border-gray-200 rounded-xl text-base focus:outline-none focus:border-green-400';
 
 export default function OnboardingEntryFieldsPage({ user, fields, onComplete }) {
   const [gender, setGender] = useState('');
-  const [age, setAge] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [height, setHeight] = useState('');
   const [diet, setDiet] = useState('');
   const [saving, setSaving] = useState(false);
@@ -19,17 +25,20 @@ export default function OnboardingEntryFieldsPage({ user, fields, onComplete }) 
   const email = user?.email || user?.Email || '';
   const userId = user?.id || user?.UserId || user?.userId;
   const asked = new Set(fields || []);
+  const todayIso = useMemo(() => istTodayIso(), []);
+  const derivedAge = ageFromDateOfBirth(dateOfBirth);
 
   const handleSave = async () => {
-    const ageNum = parseInt(age, 10);
     const heightNum = parseFloat(height);
     if (asked.has('gender') && !VALID_GENDERS.includes(gender)) {
       setError('Select Male or Female.');
       return;
     }
-    if (asked.has('age') && !(ageNum >= 1 && ageNum <= 120)) {
-      setError('Enter age from 1 to 120.');
-      return;
+    if (asked.has('age')) {
+      if (derivedAge == null || !(derivedAge >= 1 && derivedAge <= 120)) {
+        setError('Enter your date of birth as on Aadhaar (age must be 1–120).');
+        return;
+      }
     }
     if (asked.has('height') && !(heightNum >= 50 && heightNum <= 250)) {
       setError('Enter height from 50 to 250 cm.');
@@ -52,7 +61,10 @@ export default function OnboardingEntryFieldsPage({ user, fields, onComplete }) 
       if (userId) payload.userId = userId;
       else if (email) payload.email = email;
       if (asked.has('gender')) payload.gender = gender;
-      if (asked.has('age')) payload.age = ageNum;
+      if (asked.has('age')) {
+        payload.dateOfBirth = dateOfBirth;
+        payload.age = derivedAge;
+      }
       if (asked.has('height')) payload.height = heightNum;
       if (asked.has('diet')) payload.dietType = diet;
       await saveProfile(payload);
@@ -91,16 +103,25 @@ export default function OnboardingEntryFieldsPage({ user, fields, onComplete }) 
             </label>
           )}
           {asked.has('age') && (
-            <label className="block text-sm font-semibold text-gray-700">
-              Age <span className="text-red-500">*</span>
-              <input
-                inputMode="numeric"
-                value={age}
-                onChange={(e) => setAge(e.target.value)}
-                placeholder="e.g. 32"
-                className={`${inputCls} mt-1`}
-              />
-            </label>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700">
+                {DOB_FIELD_LABEL} <span className="text-red-500">*</span>
+                <input
+                  type="date"
+                  value={dateOfBirth}
+                  max={todayIso}
+                  onChange={(e) => setDateOfBirth(e.target.value)}
+                  className={`${inputCls} mt-1`}
+                />
+              </label>
+              <p className="text-xs text-gray-500 mt-1">{DOB_HINT}</p>
+              <div className="mt-3">
+                <p className="text-sm font-semibold text-gray-700 mb-1">Age</p>
+                <div className={`${inputCls} bg-gray-50 text-gray-800`}>
+                  {derivedAge != null ? String(derivedAge) : '—'}
+                </div>
+              </div>
+            </div>
           )}
           {asked.has('height') && (
             <label className="block text-sm font-semibold text-gray-700">

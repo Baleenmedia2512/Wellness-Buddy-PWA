@@ -129,8 +129,8 @@ export function communityPositionFromProfile(data, userId, storage = browserSess
     rememberSavedCommunityPosition(userId, fromServer);
     return fromServer;
   }
-  if (!key || !storage) return '';
-  try { return String(storage.getItem(key) || '').trim(); } catch { return ''; }
+  if (!key || !storage) return 'GUEST';
+  try { return String(storage.getItem(key) || '').trim() || 'GUEST'; } catch { return 'GUEST'; }
 }
 
 /**
@@ -154,7 +154,7 @@ export function communityPositionDraftAfterSync({
     return { draft: settled, pending: null, clearSettled: parentCaughtUp };
   }
   return {
-    draft: pendingCode || confirmed,
+    draft: pendingCode || confirmed || 'GUEST',
     pending: pendingRequest || null,
     clearSettled: false,
   };

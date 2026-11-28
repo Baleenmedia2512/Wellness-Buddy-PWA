@@ -98,8 +98,9 @@ export function buildWalletCashOtpEmail({
     `Approval code: ${code}`,
   ];
   if (whatsappUrl) {
-    textLines.push('', `Share on WhatsApp: ${whatsappUrl}`);
+    textLines.push('', `Share code ${code} on WhatsApp: ${whatsappUrl}`);
   }
+  textLines.push('', `(Ref: #${code})`);
   const text = textLines.join('\n');
 
   const whatsappButtonHtml = whatsappUrl
@@ -109,7 +110,7 @@ export function buildWalletCashOtpEmail({
                   <td align="center">
                     <a href="${safeWhatsappUrl}" target="_blank" rel="noopener noreferrer"
                        style="display:inline-block;background-color:#16a34a;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;line-height:1.2;text-decoration:none;border-radius:12px;padding:14px 22px;">
-                      Share code on WhatsApp
+                      Share code ${escapeHtml(code)} on WhatsApp
                     </a>
                   </td>
                 </tr>
@@ -163,6 +164,7 @@ export function buildWalletCashOtpEmail({
                 </tr>
               </table>
 ${whatsappButtonHtml}
+              <p style="margin:20px 0 0 0;font-size:12px;color:#9ca3af;text-align:center;">(Ref: #${escapeHtml(code)})</p>
             </td>
           </tr>
         </table>

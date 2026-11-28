@@ -28,11 +28,13 @@ import {
   MIN_BODY_FAT_PCT,
   MAX_BODY_FAT_PCT,
 } from '../domain/profileCompleteness';
+import { ageFromDateOfBirth } from '../domain/dateOfBirth';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const API = process.env.REACT_APP_API_BASE_URL;
 
 const EMPTY_OPTIONAL_METRICS = {
+  dateOfBirth: '',
   age: '',
   fatPercent: '',
   bmi: '',
@@ -183,8 +185,15 @@ const CompleteProfilePage = ({
           : (hasValidBodyFatPercent(profile?.bodyFat)
             ? profile.bodyFat
             : bm.fatPercent);
+        const dob = bm.dateOfBirth != null && bm.dateOfBirth !== ''
+          ? String(bm.dateOfBirth)
+          : '';
+        const derivedAge = ageFromDateOfBirth(dob);
         setOptionalMetrics({
-          age: bm.age != null ? String(bm.age) : '',
+          dateOfBirth: dob,
+          age: derivedAge != null
+            ? String(derivedAge)
+            : (bm.age != null ? String(bm.age) : ''),
           fatPercent: fatFallback != null && fatFallback !== '' ? String(fatFallback) : '',
           bmi: bm.bmi != null ? String(bm.bmi) : '',
           bodyAge: bm.bodyAge != null ? String(bm.bodyAge) : '',
@@ -370,7 +379,17 @@ const CompleteProfilePage = ({
       const chestCm = parseOptionalNumber(optionalMetrics.chestCm);
       const waistCm = parseOptionalNumber(optionalMetrics.waistCm);
       const hipCm = parseOptionalNumber(optionalMetrics.hipCm);
-      if (age !== undefined) payload.age = age;
+      const dob = optionalMetrics.dateOfBirth && String(optionalMetrics.dateOfBirth).trim() !== ''
+        ? String(optionalMetrics.dateOfBirth).trim()
+        : null;
+      if (dob) {
+        payload.dateOfBirth = dob;
+        const derived = ageFromDateOfBirth(dob);
+        if (derived != null) payload.age = derived;
+        else if (age !== undefined) payload.age = age;
+      } else if (age !== undefined) {
+        payload.age = age;
+      }
       if (bodyAge !== undefined) payload.bodyAge = bodyAge;
       if (chestCm !== undefined) payload.chestCm = chestCm;
       if (waistCm !== undefined) payload.waistCm = waistCm;
@@ -473,7 +492,16 @@ const CompleteProfilePage = ({
               weightKg={currentWeight}
               hideReadOnly
               onChange={(key, value) => {
-                if (key === 'bmi') return;
+                if (key === 'bmi' || key === 'age') return;
+                if (key === 'dateOfBirth') {
+                  const derived = ageFromDateOfBirth(value);
+                  setOptionalMetrics((prev) => ({
+                    ...prev,
+                    dateOfBirth: value,
+                    age: derived != null ? String(derived) : '',
+                  }));
+                  return;
+                }
                 setOptionalMetrics((prev) => ({ ...prev, [key]: value }));
               }}
             />

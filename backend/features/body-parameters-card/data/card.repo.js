@@ -673,6 +673,7 @@ export async function createTeamMemberFromPhone({
     PhoneNumber: storedPhone,
     CoachId: null,
     Role: 'user',
+    EventLevel: 'GUEST',
     ...(memberFields.Height != null ? { Height: memberFields.Height } : {}),
     ...(memberFields.Bmr != null ? { Bmr: memberFields.Bmr } : {}),
   };
@@ -680,10 +681,17 @@ export async function createTeamMemberFromPhone({
   const created = await mysql().$transaction(async (tx) => {
     const max = await tx.team_table.aggregate({ _max: { UserId: true } });
     const UserId = Number(max._max.UserId || 0) + 1;
-    return tx.team_table.create({
+    const row = await tx.team_table.create({
       data: { ...insertPayload, UserId },
       select: { UserId: true },
     });
+    // Keep team_userid_counter in sync so new signups never hit duplicate UserId collisions
+    await tx.$executeRawUnsafe(
+      'UPDATE `team_userid_counter` SET `next_val` = ? WHERE `id` = 1 AND `next_val` <= ?',
+      UserId + 1,
+      UserId,
+    );
+    return row;
   });
 
   await enforceBpcLeadNoCoachUntilOnboarding(created.UserId);

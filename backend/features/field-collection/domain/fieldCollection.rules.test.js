@@ -637,4 +637,33 @@ describe('planCollectionStep', () => {
     assert.equal(plan.scheduled?.key, 'herbalifeJoinedOn');
     assert.deepEqual(plan.profileFields || [], []);
   });
+
+  it('mandates prompt-based fields like healthIssues while entering without skips', () => {
+    const fields = defaultFieldPolicy().map((field) => (
+      field.key === 'healthIssues'
+        ? { ...field, phase: 'entry' }
+        : field
+    ));
+    const emptyIssues = { ...filledEntry, healthIssues: [] };
+    const plan = planCollectionStep({
+      fields,
+      values: emptyIssues,
+      states: {},
+      role: 'member',
+      now: NOW,
+    });
+    assert.equal(plan.step, 'scheduled');
+    assert.equal(plan.scheduled?.key, 'healthIssues');
+    assert.equal(plan.scheduled?.mode, 'ask_blocking');
+    assert.equal(plan.scheduled?.skipsRemaining, 0);
+
+    const filledPlan = planCollectionStep({
+      fields,
+      values: { ...emptyIssues, healthIssues: ['Knee Pain'] },
+      states: {},
+      role: 'member',
+      now: NOW,
+    });
+    assert.equal(filledPlan.step, 'done');
+  });
 });

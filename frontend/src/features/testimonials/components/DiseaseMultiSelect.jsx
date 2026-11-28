@@ -10,6 +10,7 @@ import { searchMedicalConditions } from '../domain/medicalConditionSearch.js';
 import { ALL_MEDICAL_CONDITIONS } from '../data/medicalConditions.js';
 
 const PRESET_DISEASES = [
+  'None',
   'Diabetes Type 2',
   'Pre-Diabetes',
   'High Blood Pressure',
@@ -83,6 +84,7 @@ function Chip({ label, onRemove, disabled }) {
 export default function DiseaseMultiSelect({
   value = [],
   onChange,
+  onQueryChange,
   disabled = false,
   maxItems = MAX_ITEMS,
   required = false,
@@ -228,11 +230,19 @@ export default function DiseaseMultiSelect({
               value={query}
               placeholder={selected.length === 0 ? 'Search health issues…' : 'Add more…'}
               onChange={(e) => {
-                setQuery(e.target.value);
+                const next = e.target.value;
+                setQuery(next);
+                onQueryChange?.(next);
                 setOpen(true);
                 setHighlight(-1);
               }}
               onFocus={() => setOpen(true)}
+              onBlur={() => {
+                if (query.trim().toLowerCase() === 'none') {
+                  add('None');
+                  onQueryChange?.('');
+                }
+              }}
               onKeyDown={handleKeyDown}
               className="flex-1 min-w-[7rem] text-sm bg-transparent focus:outline-none text-gray-800 placeholder-gray-400 py-0.5"
             />

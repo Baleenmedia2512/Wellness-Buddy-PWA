@@ -6,7 +6,8 @@ import { cacheProfileUserName } from "../utils/shareUtils.js";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 import AppNavTabs from "./AppNavTabs";
 import wellnessValleyIcon from "../../assets/wellness-valley-icon.png";
-import { getProfile } from "../../features/user/services/user.api";
+import idealWeightBadge from "../../assets/ideal-weight-badge.jpg";
+import { getCachedProfile, getProfile } from "../../features/user/services/user.api";
 import {
   getAvatarDisplayVersion,
   resolveClientAvatarSrc,
@@ -25,9 +26,26 @@ import {
   readSavedCommunityPosition,
 } from "../../features/user/domain/communityPosition";
 
+export function isIdealWeightProfile(profile) {
+  if (!profile) return false;
+  if (profile.weightGoalMode === 'maintain') return true;
+  const h = parseFloat(profile.height);
+  const w = parseFloat(
+    profile.latestWeight != null
+      ? profile.latestWeight
+      : (profile.weightKg != null ? profile.weightKg : profile.lastWeight)
+  );
+  if (!h || h < 50 || h > 250 || !w || w <= 0) return false;
+  const m = h / 100;
+  const idealMin = 19 * m * m;
+  const idealMax = 23 * m * m;
+  return w >= idealMin - 0.5 && w <= idealMax + 0.5;
+}
+
 const Header = ({
   user,
   userRole = "user",
+  isIdealWeight = undefined,
   onSignOut,
   onShowBackgroundHistory,
   onShowHome,
@@ -71,6 +89,13 @@ const Header = ({
   const [avatarFailed, setAvatarFailed] = useState(false);
   const [avatarVersion, setAvatarVersion] = useState(getAvatarDisplayVersion);
   const [isSharingInvite, setIsSharingInvite] = useState(false);
+  const [isAtIdealWeight, setIsAtIdealWeight] = useState(() => {
+    const email = user?.email || user?.Email || null;
+    const uid = user?.id || user?.UserId || user?.userId || Session.getDbUserId() || null;
+    if (!email && !uid) return false;
+    const cached = getCachedProfile({ email, userId: uid });
+    return isIdealWeightProfile(cached?.data);
+  });
   const prevProfileKeyRef = useRef(profileKey);
 
   // Premium members get a light blue header. Tab-only bars use the same check.
@@ -156,6 +181,8 @@ const Header = ({
           if (resolvedPos) {
             setSavedCommunityPosition(String(resolvedPos).trim());
           }
+
+          setIsAtIdealWeight(isIdealWeightProfile(data.data));
         }
       } catch (err) {
         console.error("Error fetching user profile for header:", err);
@@ -284,16 +311,18 @@ const Header = ({
     );
   }
 
+  const showIdealWeightLogo = isIdealWeight !== undefined ? Boolean(isIdealWeight) : isAtIdealWeight;
+
   return (
     <header className="bg-white shadow-lg border-b-4 border-green-500 safe-top safe-left safe-right">
-      <div className="max-w-lg mx-auto px-3 xs:px-4 py-2 flex justify-between items-center">
-        {/* Brand / Logo */}
-        <div className="flex-1 min-w-0">
+      <div className="max-w-lg mx-auto pl-1 pr-2 xs:pl-1.5 xs:pr-2.5 py-1.5 sm:py-2 flex justify-between items-center">
+        {/* Brand / Logo — aligned to left corner */}
+        <div className="flex-1 min-w-0 pr-1">
           <div className="flex items-center space-x-1">
             <img
               src={wellnessValleyIcon}
               alt="Wellness Valley"
-              className="h-12 w-12 sm:h-12 sm:w-12 object-contain flex-shrink-0 header-logo app-logo"
+              className="h-9 w-9 xs:h-10 xs:w-10 sm:h-11 sm:w-11 object-contain flex-shrink-0 header-logo app-logo"
               draggable="false"
               role="presentation"
               aria-hidden="true"
@@ -306,10 +335,10 @@ const Header = ({
                 WebkitTapHighlightColor: "transparent",
               }}
             />
-            <div className="flex-1 min-w-0 -ml-1">
-              <h1 className={`text-lg xs:text-xl sm:text-2xl font-extrabold truncate flex items-baseline gap-1 ${isPremiumMember ? 'text-sky-800' : 'text-green-700'}`}>
+            <div className="flex-1 min-w-0 -ml-0.5">
+              <h1 className={`text-[13.5px] xs:text-[15px] sm:text-xl font-extrabold truncate flex items-baseline gap-1 ${isPremiumMember ? 'text-sky-800' : 'text-green-700'}`}>
                 Wellness Valley
-                <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-3xl border border-gray-200 text-[10px] font-medium text-gray-500 bg-transparent relative top-[1px] w-12 h-4">
+                <span className="inline-flex items-center justify-center px-1 py-0 rounded-2xl border border-gray-200 text-[8.5px] xs:text-[9.5px] font-medium text-gray-500 bg-transparent relative top-[0.5px] h-3.5 shrink-0 whitespace-nowrap">
                   <span className="text-gray-500">V{APP_VERSION.VERSION.split(".")[0]}</span>
                   <span className="text-gray-400">.</span>
                   <span className={isPremiumMember ? 'text-sky-600' : 'text-green-600'}>{APP_VERSION.VERSION.split(".")[1]}</span>
@@ -317,18 +346,38 @@ const Header = ({
                   <span className={isPremiumMember ? 'text-sky-600' : 'text-green-600'}>{APP_VERSION.VERSION.split('.')[2]}</span>
                 </span>
               </h1>
-              <p className={`text-xs sm:text-sm truncate ${isPremiumMember ? 'text-sky-600' : 'text-green-600'}`}>Tracking Wellness with Ease</p>
+              <p className={`text-[10px] xs:text-[11px] sm:text-xs truncate ${isPremiumMember ? 'text-sky-600' : 'text-green-600'}`}>Tracking Wellness with Ease</p>
             </div>
           </div>
         </div>
 
-        {/* Actions: WhatsApp invite share & Profile avatar */}
-        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+        {/* Actions: Ideal Weight badge, WhatsApp invite share & Profile avatar */}
+        <div className="flex items-center gap-1 xs:gap-1.5 sm:gap-2.5 flex-shrink-0">
+          {showIdealWeightLogo && (
+            <TouchFeedbackButton
+              type="button"
+              onClick={() => {
+                if (typeof onOpenProfile === 'function') onOpenProfile();
+              }}
+              className="inline-flex items-center justify-center aspect-square h-8 w-8 xs:h-8.5 xs:w-8.5 sm:h-9.5 sm:w-9.5 shrink-0 p-0 rounded-full transition-transform active:scale-95 focus:outline-none"
+              title="At Ideal Weight! Tap to view profile"
+              ariaLabel="At Ideal Weight"
+              data-testid="header-ideal-weight-badge"
+            >
+              <img
+                src={idealWeightBadge}
+                alt="At Ideal Weight"
+                className="h-8 w-8 xs:h-8.5 xs:w-8.5 sm:h-9.5 sm:w-9.5 object-contain mix-blend-multiply"
+                draggable="false"
+              />
+            </TouchFeedbackButton>
+          )}
+
           <TouchFeedbackButton
             type="button"
             onClick={handleShareInvite}
             disabled={isSharingInvite}
-            className={`inline-flex items-center justify-center aspect-square h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-full border transition-all active:scale-95 disabled:opacity-60 ${isPremiumMember
+            className={`inline-flex items-center justify-center aspect-square h-8.5 w-8.5 sm:h-10 sm:w-10 shrink-0 rounded-full border transition-all active:scale-95 disabled:opacity-60 ${isPremiumMember
                 ? 'border-sky-200 text-sky-700 bg-sky-50 hover:bg-sky-100'
                 : 'border-green-200 text-green-700 bg-green-50 hover:bg-green-100'
               }`}

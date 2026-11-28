@@ -18,6 +18,7 @@ describe('buildSignInOtpEmail', () => {
     assert.equal(mail.subject, 'Wellness Valley sign-in code');
     assert.match(mail.text, /4821/);
     assert.match(mail.html, /4821/);
+    assert.match(mail.html, /Share code 4821 on WhatsApp/);
     assert.match(mail.text, /5 minutes/);
     assert.equal(looksLikeSpamBait(mail.subject), false);
     assert.equal(looksLikeSpamBait(mail.text), false);
@@ -36,6 +37,7 @@ describe('buildSponsorOtpEmail', () => {
     assert.match(mail.text, /Adithya/);
     assert.match(mail.text, /1199/);
     assert.match(mail.html, /1199/);
+    assert.match(mail.html, /Share code 1199 on WhatsApp/);
     assert.equal(looksLikeSpamBait(mail.subject), false);
     assert.equal(looksLikeSpamBait(mail.text), false);
     assert.equal(looksLikeSpamBait(mail.html), false);
@@ -44,5 +46,6 @@ describe('buildSponsorOtpEmail', () => {
   it('falls back when member name is missing', () => {
     const mail = buildSponsorOtpEmail({ otp: '2200' });
     assert.equal(mail.subject, 'A member -Wellness Valley login request');
+    assert.match(mail.html, /Share code 2200 on WhatsApp/);
   });
 });
