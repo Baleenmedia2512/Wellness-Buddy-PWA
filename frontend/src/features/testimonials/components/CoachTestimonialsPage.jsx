@@ -2621,7 +2621,6 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
   const [hasDownline, setHasDownline] = useState(false);
 
   const [uploadFilter, setUploadFilter] = useState(UPLOAD_FILTERS.ALL);
-  const [teamScope, setTeamScope] = useState(TEAM_SCOPES.MINE);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [listReloadKey, setListReloadKey] = useState(0);
@@ -2770,13 +2769,11 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         const total = teamResult?.pagination?.total ?? team.length;
         setTeamMemberCount(total);
         setHasDownline(total > 0);
-        if (total === 0) setTeamScope(TEAM_SCOPES.MINE);
       } else {
         setTeamRows([]);
         setTeamPagination({ page: 1, totalPages: 1, hasMore: false, hasPrevious: false, total: 0 });
         setTeamMemberCount(0);
         setHasDownline(false);
-        setTeamScope(TEAM_SCOPES.MINE);
         if (isFirstLoad && mineOutcome.status !== 'fulfilled') {
           setError(teamOutcome.reason?.message || 'Failed to load testimonials');
         }
@@ -2825,12 +2822,6 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     return () => { cancelled = true; };
   }, [reloadSignal, buildMineRow, hasDownline, coachId]);
 
-  const handleScopeSelect = useCallback((nextScope) => {
-    setTeamScope(nextScope);
-    setIsSearchOpen(false);
-    setHighlightedSuggestion(-1);
-  }, []);
-
   const resetTeamSearch = useCallback(() => {
     setSearchQuery('');
     setIsSearchOpen(false);
@@ -2838,35 +2829,12 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
     setUploadFilter(UPLOAD_FILTERS.ALL);
   }, []);
 
-  // Switch to Team tab when searching downlines; keep Team tab open when search is cleared.
-  const syncScopeForSearch = useCallback((nextSearchQuery) => {
-    if (!hasDownline) {
-      setTeamScope(TEAM_SCOPES.MINE);
-      return;
-    }
-    if (normalizeSearchQuery(nextSearchQuery).length > 0) {
-      setTeamScope(TEAM_SCOPES.TEAM);
-    }
-  }, [hasDownline]);
-
   // ── Derived state ──────────────────────────────────────────────────────────
-
-  const isMineScope = !hasDownline || teamScope === TEAM_SCOPES.MINE;
-
-  const scopeRows = useMemo(() => {
-    if (!hasDownline || teamScope === TEAM_SCOPES.MINE) return mineRow ? [mineRow] : [];
-    return teamRows;
-  }, [hasDownline, teamScope, mineRow, teamRows]);
 
   const uploadCounts = teamUploadCounts;
   const filteredRows = teamRows;
 
-  // Server already filtered — use scopeRows as filteredRows for team scope.
-  const filteredRows = scopeRows;
-
   const nameSuggestions = useMemo(
-    () => buildSearchSuggestions(filteredRows, searchQuery),
-    [filteredRows, searchQuery],
     () => buildSearchSuggestions(teamRows, searchQuery),
     [teamRows, searchQuery],
   );
@@ -2874,7 +2842,6 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
   const activePagination = teamPagination;
 
   const loadMoreTeam = useCallback(async () => {
-    if (isMineScope || loadingMore || loading || teamLoading) return;
     if (!hasDownline || loadingMore || loading || teamLoading) return;
     if (!activePagination.hasMore) return;
     scrollArmedRef.current = false;
@@ -2914,47 +2881,30 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
       setLoadingMore(false);
     }
   }, [
-    isMineScope, loadingMore, loading, teamLoading, activePagination,
     hasDownline, loadingMore, loading, teamLoading, activePagination,
     searchQuery, uploadFilter, coachId,
   ]);
 
-  // Load / refetch page 1 when team tab opens with search or upload filter changes.
-  const prevTeamFetchRef = useRef({ teamScope, listReloadKey, searchQuery, uploadFilter });
   // Refetch page 1 when search or upload filter changes.
   const prevTeamFetchRef = useRef({ listReloadKey, searchQuery, uploadFilter });
   const teamRowsCountRef = useRef(0);
   teamRowsCountRef.current = teamRows.length;
   useEffect(() => {
-    if (!coachId || !hasDownline || isMineScope) {
-      prevTeamFetchRef.current = { teamScope, listReloadKey, searchQuery, uploadFilter };
       if (!coachId || !hasDownline) {
         prevTeamFetchRef.current = { listReloadKey, searchQuery, uploadFilter };
         return undefined;
       }
       const prev = prevTeamFetchRef.current;
-      const scopeOrReloadChanged = prev.teamScope !== teamScope || prev.listReloadKey !== listReloadKey;
       const reloadChanged = prev.listReloadKey !== listReloadKey;
       const queryUnchanged = prev.searchQuery === searchQuery && prev.uploadFilter === uploadFilter;
-      prevTeamFetchRef.current = { teamScope, listReloadKey, searchQuery, uploadFilter };
       prevTeamFetchRef.current = { listReloadKey, searchQuery, uploadFilter };
 
-      // Switching back to unfiltered Team tab when page 1 is already loaded: keep instant list.
-      if (
-        scopeOrReloadChanged
-        && queryUnchanged
-        && !normalizeSearchQuery(searchQuery)
-        && (!uploadFilter || uploadFilter === UPLOAD_FILTERS.ALL)
-        && teamRowsCountRef.current > 0
-        && prev.listReloadKey === listReloadKey
-      ) {
         if (!reloadChanged && queryUnchanged && teamRowsCountRef.current > 0) {
           return undefined;
         }
 
-        const normalizedSearch = normalizeSearchQuery(searchQuery);
-        const cacheKey = `team|${normalizedSearch}|${uploadFilter}|1`;
-        if (pageCacheRef.current.has(cacheKey) && prev.listReloadKey === listReloadKey) {
+          const normalizedSearch = normalizeSearchQuery(searchQuery);
+          const cacheKey = `team|${normalizedSearch}|${uploadFilter}|1`;
           if (pageCacheRef.current.has(cacheKey) && !reloadChanged) {
             const cached = pageCacheRef.current.get(cacheKey);
             setTeamRows(Array.isArray(cached?.data) ? cached.data : []);
@@ -2964,55 +2914,51 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
           }
 
           let cancelled = false;
-          const delay = scopeOrReloadChanged ? 0 : 300;
           const delay = reloadChanged ? 0 : 300;
           if (teamRowsCountRef.current === 0 || !queryUnchanged) {
             setTeamLoading(true);
           }
 
-          const timer = setTimeout(async () => {
-            try {
-              const result = await listForCoach(coachId, {
-                scope: 'team',
-                page: 1,
-                limit: TEAM_PAGE_SIZE,
-                search: normalizedSearch,
-                uploadFilter,
-              });
-              if (cancelled) return;
-              pageCacheRef.current.set(cacheKey, result);
-              const pageData = Array.isArray(result?.data) ? result.data : [];
-              const pagination = result.pagination || { page: 1, totalPages: 1, hasMore: false, hasPrevious: false, total: 0 };
-              const isUnfilteredList = (!uploadFilter || uploadFilter === UPLOAD_FILTERS.ALL)
-                && !normalizedSearch;
-              setTeamRows(pageData);
-              setTeamPagination(pagination);
-              if (result.uploadCounts) setTeamUploadCounts(result.uploadCounts);
-              if (isUnfilteredList && Number.isFinite(pagination.total)) {
-                setTeamMemberCount(pagination.total);
-              }
-            } catch (err) {
-              if (!cancelled) setError(err?.message || 'Failed to load team');
-            } finally {
-              if (!cancelled) setTeamLoading(false);
-            }
-          }, delay);
-          return () => {
-            cancelled = true;
-            clearTimeout(timer);
-          };
-        }, [
-          searchQuery, uploadFilter, teamScope, coachId,
-          hasDownline, isMineScope, listReloadKey,
-          searchQuery, uploadFilter, coachId,
-          hasDownline, listReloadKey,
-        ]);
+  const timer = setTimeout(async () => {
+    try {
+      const result = await listForCoach(coachId, {
+        scope: 'team',
+        page: 1,
+        limit: TEAM_PAGE_SIZE,
+        search: normalizedSearch,
+        uploadFilter,
+      });
+      if (cancelled) return;
+      pageCacheRef.current.set(cacheKey, result);
+      const pageData = Array.isArray(result?.data) ? result.data : [];
+      const pagination = result.pagination || { page: 1, totalPages: 1, hasMore: false, hasPrevious: false, total: 0 };
+      const isUnfilteredList = (!uploadFilter || uploadFilter === UPLOAD_FILTERS.ALL)
+        && !normalizedSearch;
+      setTeamRows(pageData);
+      setTeamPagination(pagination);
+      if (result.uploadCounts) setTeamUploadCounts(result.uploadCounts);
+      if (isUnfilteredList && Number.isFinite(pagination.total)) {
+        setTeamMemberCount(pagination.total);
+      }
+    } catch (err) {
+      if (!cancelled) setError(err?.message || 'Failed to load team');
+    } finally {
+      if (!cancelled) setTeamLoading(false);
+    }
+  }, delay);
+  return () => {
+    cancelled = true;
+    clearTimeout(timer);
+  };
+}, [
+  searchQuery, uploadFilter, coachId,
+  hasDownline, listReloadKey,
+]);
 
-  // Strict 5-member batch scroll pagination:
-  // Stops at every 5 members and waits for a real scroll past the 450ms settle window
-  // before loading the next batch of 5 (never cascades on momentum or tall screens).
-  useEffect(() => {
-    if (isMineScope) {
+// Strict 5-member batch scroll pagination:
+// Stops at every 5 members and waits for a real scroll past the 450ms settle window
+// before loading the next batch of 5 (never cascades on momentum or tall screens).
+useEffect(() => {
       if (!hasDownline || loading) {
         scrollArmedRef.current = false;
         sentinelVisibleRef.current = false;
@@ -3038,35 +2984,31 @@ export default function CoachTestimonialsPage({ user, reloadSignal = 0, tabVisit
         window.removeEventListener('touchmove', onUserScroll);
         window.removeEventListener('wheel', onUserScroll);
       };
-    }, [isMineScope, activePagination.hasMore, loadingMore, teamLoading, loadMoreTeam]);
-}, [hasDownline, loading, activePagination.hasMore, loadingMore, teamLoading, loadMoreTeam]);
+    }, [hasDownline, loading, activePagination.hasMore, loadingMore, teamLoading, loadMoreTeam]);
 
-useEffect(() => {
-  if (isMineScope || !activePagination.hasMore) {
-    if (!hasDownline || loading || !activePagination.hasMore) {
-      sentinelVisibleRef.current = false;
-      return undefined;
-    }
-    const node = loadMoreSentinelRef.current;
-    if (!node) return undefined;
-    const observer = new IntersectionObserver((entries) => {
-      const visible = Boolean(entries[0]?.isIntersecting);
-      sentinelVisibleRef.current = visible;
-      if (!visible) return;
-      if (!scrollArmedRef.current) return;
-      if (Date.now() - batchSettledAtRef.current < 450) return;
-      scrollArmedRef.current = false;
-      void loadMoreTeam();
-    }, { rootMargin: '0px', threshold: 0.25 });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [isMineScope, activePagination.hasMore, loadMoreTeam, filteredRows.length]);
+    useEffect(() => {
+      if (!hasDownline || loading || !activePagination.hasMore) {
+        sentinelVisibleRef.current = false;
+        return undefined;
+      }
+      const node = loadMoreSentinelRef.current;
+      if (!node) return undefined;
+      const observer = new IntersectionObserver((entries) => {
+        const visible = Boolean(entries[0]?.isIntersecting);
+        sentinelVisibleRef.current = visible;
+        if (!visible) return;
+        if (!scrollArmedRef.current) return;
+        if (Date.now() - batchSettledAtRef.current < 450) return;
+        scrollArmedRef.current = false;
+        void loadMoreTeam();
+      }, { rootMargin: '0px', threshold: 0.25 });
+      observer.observe(node);
+      return () => observer.disconnect();
   }, [hasDownline, loading, activePagination.hasMore, loadMoreTeam, filteredRows.length]);
 
 // ── Handlers ───────────────────────────────────────────────────────────────
 
 const handleUploadToggle = useCallback((next) => {
-  setUploadFilter((current) => toggleStatusFilter(current, next));
   setUploadFilter((current) => toggleStatusFilter(current, next));
 }, []);
 
@@ -3074,182 +3016,74 @@ const handleSearchChange = useCallback((value) => {
   setSearchQuery(value);
   setIsSearchOpen(true);
   setHighlightedSuggestion(-1);
-  syncScopeForSearch(value);
-}, [syncScopeForSearch]);
-setSearchQuery(value);
-setIsSearchOpen(true);
-setHighlightedSuggestion(-1);
-  }, []);
+}, []);
 
 const handleSelectNameSuggestion = useCallback((row) => {
   const name = row?.user?.userName || '';
   setSearchQuery(name);
   setIsSearchOpen(false);
   setHighlightedSuggestion(-1);
-  syncScopeForSearch(name);
-}, [syncScopeForSearch]);
-setSearchQuery(name);
-setIsSearchOpen(false);
-setHighlightedSuggestion(-1);
-  }, []);
+}, []);
 
-const handleSearchKeyDown = useCallback((event) => {
-  const hasQuery = normalizeSearchQuery(searchQuery).length > 0;
-  if (!hasQuery) return;
+  const handleSearchKeyDown = useCallback((event) => {
+    const hasQuery = normalizeSearchQuery(searchQuery).length > 0;
+    if (!hasQuery) return;
 
-  if (event.key === 'ArrowDown') {
-    event.preventDefault();
-    if (!nameSuggestions.length) return;
-    setIsSearchOpen(true);
-    setHighlightedSuggestion((prev) => (prev < nameSuggestions.length - 1 ? prev + 1 : 0));
-    return;
-  }
-  if (event.key === 'ArrowUp') {
-    event.preventDefault();
-    if (!nameSuggestions.length) return;
-    setIsSearchOpen(true);
-    setHighlightedSuggestion((prev) => (prev > 0 ? prev - 1 : nameSuggestions.length - 1));
-    return;
-  }
-  if (event.key === 'Enter') {
-    event.preventDefault();
-    if (highlightedSuggestion >= 0 && nameSuggestions[highlightedSuggestion]) {
-      handleSelectNameSuggestion(nameSuggestions[highlightedSuggestion]);
-    } else {
-      setIsSearchOpen(false);
-      setHighlightedSuggestion(-1);
-    }
-    return;
-  }
-  if (event.key === 'Escape') {
-    setIsSearchOpen(false);
-    setHighlightedSuggestion(-1);
-  }
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          if (!nameSuggestions.length) return;
+          setIsSearchOpen(true);
+          setHighlightedSuggestion((prev) => (prev < nameSuggestions.length - 1 ? prev + 1 : 0));
+          return;
+        }
+        if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          if (!nameSuggestions.length) return;
+          setIsSearchOpen(true);
+          setHighlightedSuggestion((prev) => (prev > 0 ? prev - 1 : nameSuggestions.length - 1));
+          return;
+        }
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          if (highlightedSuggestion >= 0 && nameSuggestions[highlightedSuggestion]) {
+            handleSelectNameSuggestion(nameSuggestions[highlightedSuggestion]);
+          } else {
+            setIsSearchOpen(false);
+            setHighlightedSuggestion(-1);
+          }
+          return;
+        }
+        if (event.key === 'Escape') {
+          setIsSearchOpen(false);
+          setHighlightedSuggestion(-1);
+        }
 }, [searchQuery, nameSuggestions, highlightedSuggestion, handleSelectNameSuggestion]);
 
 const hasActiveSearch = normalizeSearchQuery(searchQuery).length > 0;
 const hasActiveUploadFilter = uploadFilter && uploadFilter !== UPLOAD_FILTERS.ALL;
 const showTeamChrome = hasDownline;
 const showPageSkeleton = shouldShowTestimonialsPageSkeleton(loading, mineRow);
-const showSearchLoading = teamLoading && !isMineScope;
 const showSearchLoading = teamLoading;
 const totalMembers = activePagination.total ?? filteredRows.length;
 
-return (
-  <div className="max-w-lg mx-auto px-4 pt-4 pb-24 space-y-4">
+    return (
+    <div className="max-w-lg mx-auto px-4 pt-4 pb-24 space-y-4">
 
-    {/* Header */}
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <Users className="h-5 w-5 text-green-700" />
-        <h1 className="text-lg font-bold text-gray-900">
-          {!isMineScope && showTeamChrome ? 'Team Transformation' : 'My Transformation'}
-        </h1>
-        <h1 className="text-lg font-bold text-gray-900">Transformation</h1>
-      </div>
-      <TouchFeedbackButton
-        onClick={() => { loadDirectAndMine(); }}
-        disabled={loading || teamLoading}
-        className="p-2 rounded-full text-gray-500 hover:text-green-700 hover:bg-green-50 transition-colors"
-        ariaLabel="Refresh"
-      >
-        <RefreshCw className={`h-4 w-4 ${loading || teamLoading ? 'animate-spin' : ''}`} />
-      </TouchFeedbackButton>
-    </div>
-
-    {/* Mine / Team tabs (only shown when team members exist) */}
-    {!loading && showTeamChrome && (
-      <div className="grid grid-cols-2 gap-1.5 rounded-2xl bg-gray-100 p-1">
-        {TEAM_SCOPE_OPTIONS.map((opt) => {
-          const active = teamScope === opt.value;
-          const badge = opt.value === TEAM_SCOPES.TEAM && teamMemberCount != null
-            ? ` (${teamMemberCount})`
-            : '';
-          return (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => handleScopeSelect(opt.value)}
-              aria-pressed={active}
-              className={`rounded-xl py-2 px-3 text-sm font-bold transition-all ${active
-                  ? 'bg-white text-green-700 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-                }`}
-            >
-              {opt.label}{badge}
-            </button>
-          );
-        })}
-        {/* States */}
-        {showPageSkeleton && (
-          <div className="space-y-3 animate-pulse">
-            <div className="h-32 bg-gray-100 rounded-2xl" />
-            <div className="h-6 bg-gray-100 rounded-xl w-3/4" />
-            <div className="h-6 bg-gray-100 rounded-xl w-1/2" />
-          </div>
-        )}
-
-        {/* Search inside unified Team tab (direct members first, then full team, 5 per page) */}
-        {!loading && showTeamChrome && !isMineScope && (
-          <div className="space-y-3">
-            <div className="relative">
-              <p className="text-xs font-semibold text-gray-600 mb-1.5">Search user name</p>
-              <TestimonialSearchBar
-                variant="name"
-                value={searchQuery}
-                onChange={handleSearchChange}
-                suggestions={nameSuggestions}
-                isOpen={isSearchOpen}
-                onOpenChange={setIsSearchOpen}
-                highlightedIndex={highlightedSuggestion}
-                onHighlightChange={setHighlightedSuggestion}
-                onSelectSuggestion={handleSelectNameSuggestion}
-                onKeyDown={handleSearchKeyDown}
-              />
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-green-700" />
+              <h1 className="text-lg font-bold text-gray-900">Transformation</h1>
             </div>
-            {hasActiveSearch ? (
-              <button
-                type="button"
-                onClick={resetTeamSearch}
-                className="text-xs font-semibold text-green-700 hover:text-green-800"
-              >
-                Clear search
-              </button>
-            ) : (
-              <p className="text-[11px] text-gray-400 leading-snug">
-                Showing direct team members first, followed by full team members.
-              </p>
-            )}
-            {error && (
-              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{error}</div>
-            )}
-
-            {/* Mine card (editable) */}
-            {!showPageSkeleton && mineRow && (
-              <MemberCard
-                key={mineRow.user.userId}
-                row={mineRow}
-                teamStats={resolveRowTeamUploadPerformance({
-                  row: mineRow,
-                  teamScope: TEAM_SCOPES.MINE,
-                  loggedInCoachId: coachId,
-                  teamPerformanceByUserId,
-                  reportType: 'photo',
-                })}
-                editable
-                userId={mineRow.user.userId}
-                coachId={coachId}
-                onMineRefresh={refreshMineRow}
-                onOtpVerified={() => loadDirectAndMine()}
-              />
-            )}
-
-            {!showPageSkeleton && !error && !mineRow && !showTeamChrome && (
-              <div className="text-center py-12 text-gray-400">
-                <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p className="font-medium">Unable to load your transformation</p>
-              </div>
-            )}
+            <TouchFeedbackButton
+              onClick={() => { loadDirectAndMine(); }}
+              disabled={loading || teamLoading}
+              className="p-2 rounded-full text-gray-500 hover:text-green-700 hover:bg-green-50 transition-colors"
+              ariaLabel="Refresh"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading || teamLoading ? 'animate-spin' : ''}`} />
+            </TouchFeedbackButton>
+          </div>
 
             {/* States */}
             {showPageSkeleton && (
@@ -3259,22 +3093,52 @@ return (
                 <div className="h-6 bg-gray-100 rounded-xl w-1/2" />
               </div>
             )}
-            {/* Team Members right after Mine (only when downline members exist) */}
-            {!showPageSkeleton && showTeamChrome && (
-              <div className="pt-2 space-y-3">
-                <div className="flex items-center justify-between border-t border-gray-200 pt-4">
-                  <div>
-                    <h2 className="text-base font-bold text-gray-900">
-                      Team Members{teamMemberCount != null ? ` (${teamMemberCount})` : ''}
-                    </h2>
-                    <p className="text-[11px] text-gray-400 leading-snug">
-                      Direct team members first, followed by full team members.
-                    </p>
-                  </div>
-                </div>
 
                 {error && (
-              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{error}</div>
+                  <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-red-700">{error}</div>
+                )}
+
+                {/* Mine card (editable) */}
+                {!showPageSkeleton && mineRow && (
+                  <MemberCard
+                    key={mineRow.user.userId}
+                    row={mineRow}
+                    teamStats={resolveRowTeamUploadPerformance({
+                      row: mineRow,
+                      teamScope: TEAM_SCOPES.MINE,
+                      loggedInCoachId: coachId,
+                      teamPerformanceByUserId,
+                      reportType: 'photo',
+                    })}
+                    editable
+                    userId={mineRow.user.userId}
+                    coachId={coachId}
+                    onMineRefresh={refreshMineRow}
+                    onOtpVerified={() => loadDirectAndMine()}
+                  />
+                )}
+
+                {!showPageSkeleton && !error && !mineRow && !showTeamChrome && (
+                  <div className="text-center py-12 text-gray-400">
+                    <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                    <p className="font-medium">Unable to load your transformation</p>
+                  </div>
+                )}
+
+                    {/* Team Members right after Mine (only when downline members exist) */}
+                    {!showPageSkeleton && showTeamChrome && (
+                      <div className="pt-2 space-y-3">
+                        <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+                          <div>
+                            <h2 className="text-base font-bold text-gray-900">
+                              Team Members{teamMemberCount != null ? ` (${teamMemberCount})` : ''}
+                            </h2>
+                            <p className="text-[11px] text-gray-400 leading-snug">
+                              Direct team members first, followed by full team members.
+                            </p>
+                          </div>
+                        </div>
+
           <div className="space-y-2">
             <div className="relative">
               <p className="text-xs font-semibold text-gray-600 mb-1.5">Search user name</p>
@@ -3302,114 +3166,52 @@ return (
             )}
           </div>
 
-            {showSearchLoading && (
-                  <div className="py-6">
-                    <LoadingSpinner context="normal" />
-                    <p className="text-center text-sm text-gray-500 mt-2">Searching team…</p>
-                  </div>
-                )}
-                {showSearchLoading && (
-                  <div className="py-6">
-                    <LoadingSpinner context="normal" />
-                    <p className="text-center text-sm text-gray-500 mt-2">Searching team…</p>
-                  </div>
-                )}
+                        {showSearchLoading && (
+                          <div className="py-6">
+                            <LoadingSpinner context="normal" />
+                            <p className="text-center text-sm text-gray-500 mt-2">Searching team…</p>
+                          </div>
+                        )}
 
-                {!showPageSkeleton && !showSearchLoading && !error && filteredRows.length === 0 && (
-                  <div className="text-center py-12 text-gray-400">
-                    <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                    <p className="font-medium">
-                      {hasActiveSearch
-                        ? 'No matching members found.'
-                        : hasActiveUploadFilter
-                          ? 'No records match the selected filter.'
-                          : 'Unable to load your transformation'}
-                    </p>
-                    {hasActiveSearch ? (
-                      <button
-                        type="button"
-                        onClick={resetTeamSearch}
-                        className="mt-3 text-sm font-semibold text-green-700 hover:text-green-800"
-                      >
-                        Clear search
-                      </button>
-                    ) : null}
-                  </div>
-                )}
-                {!showSearchLoading && !error && filteredRows.length === 0 && (
-                  <div className="text-center py-10 text-gray-400">
-                    <Users className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                    <p className="font-medium text-sm">
-                      {hasActiveSearch
-                        ? 'No matching members found.'
-                        : hasActiveUploadFilter
-                          ? 'No records match the selected filter.'
-                          : 'No team members found.'}
-                    </p>
-                    {hasActiveSearch ? (
-                      <button
-                        type="button"
-                        onClick={resetTeamSearch}
-                        className="mt-3 text-sm font-semibold text-green-700 hover:text-green-800"
-                      >
-                        Clear search
-                      </button>
-                    ) : null}
-                  </div>
-                )}
+                        {!showSearchLoading && !error && filteredRows.length === 0 && (
+                          <div className="text-center py-10 text-gray-400">
+                            <Users className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                            <p className="font-medium text-sm">
+                              {hasActiveSearch
+                                ? 'No matching members found.'
+                                : hasActiveUploadFilter
+                                  ? 'No records match the selected filter.'
+                                  : 'No team members found.'}
+                            </p>
+                            {hasActiveSearch ? (
+                              <button
+                                type="button"
+                                onClick={resetTeamSearch}
+                                className="mt-3 text-sm font-semibold text-green-700 hover:text-green-800"
+                              >
+                                Clear search
+                              </button>
+                            ) : null}
+                          </div>
+                        )}
 
-                {/* Member cards — own transformation, or search matches only */}
-                {!showPageSkeleton && !showSearchLoading && filteredRows.map((row) => (
-                  <MemberCard
-                    key={row.user.userId}
-                    row={row}
-                    teamStats={resolveRowTeamUploadPerformance({
-                      row,
-                      teamScope: isMineScope ? TEAM_SCOPES.MINE : teamScope,
-                      loggedInCoachId: coachId,
-                      teamPerformanceByUserId,
-                      reportType: 'photo',
-                    })}
-                    editable={isMineScope}
-                    userId={row.user.userId}
-                    coachId={coachId}
-                    onMineRefresh={isMineScope ? refreshMineRow : undefined}
-                    onOtpVerified={isMineScope ? () => loadDirectAndMine() : undefined}
-                  />
-                ))}
-                {!showSearchLoading && filteredRows.map((row) => (
-                  <MemberCard
-                    key={row.user.userId}
-                    row={row}
-                    teamStats={resolveRowTeamUploadPerformance({
-                      row,
-                      teamScope: TEAM_SCOPES.TEAM,
-                      loggedInCoachId: coachId,
-                      teamPerformanceByUserId,
-                      reportType: 'photo',
-                    })}
-                    editable={false}
-                    userId={row.user.userId}
-                    coachId={coachId}
-                  />
-                ))}
+                        {!showSearchLoading && filteredRows.map((row) => (
+                          <MemberCard
+                            key={row.user.userId}
+                            row={row}
+                            teamStats={resolveRowTeamUploadPerformance({
+                              row,
+                              teamScope: TEAM_SCOPES.TEAM,
+                              loggedInCoachId: coachId,
+                              teamPerformanceByUserId,
+                              reportType: 'photo',
+                            })}
+                            editable={false}
+                            userId={row.user.userId}
+                            coachId={coachId}
+                          />
+                        ))}
 
-                {!showPageSkeleton && !showSearchLoading && !isMineScope && activePagination.hasMore && (
-                  <div ref={loadMoreSentinelRef} className="py-4 flex flex-col items-center gap-1 text-center">
-                    {loadingMore ? (
-                      <>
-                        <LoadingSpinner context="normal" />
-                        <p className="text-xs text-gray-500">Loading next 5 members…</p>
-                      </>
-                    ) : (
-                      <p className="text-xs font-medium text-gray-400">
-                        Showing {filteredRows.length} of {totalMembers} · scroll down for next {Math.min(TEAM_PAGE_SIZE, Math.max(1, totalMembers - filteredRows.length))}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
             {!showSearchLoading && activePagination.hasMore && (
               <div ref={loadMoreSentinelRef} className="py-4 flex flex-col items-center gap-1 text-center">
                 {loadingMore ? (
@@ -3427,5 +3229,5 @@ return (
           </div>
         )}
       </div>
-    );
+      );
 }
